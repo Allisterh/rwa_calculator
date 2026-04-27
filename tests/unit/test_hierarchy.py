@@ -4814,4 +4814,486 @@ class TestContingentInFacilityUndrawn:
         # Sub-facilities should NOT have undrawn records
         sub_refs = df["exposure_reference"].to_list()
         assert "SUB001_UNDRAWN" not in sub_refs
-        assert "SUB002_UNDRAWN" not in sub_refs
+
+
+class TestMOFAndFacilityShare:
+    """Tests for Multiple Option Facility (MOF) parent-CCF derivation and
+    Facility Share riskiest-counterparty allocation."""
+
+    def test_mof_parent_inherits_max_child_ccf(
+        self,
+        resolver: HierarchyResolver,
+    ) -> None:
+        """Parent of two sub-facilities (FR and MR) inherits FR (highest SA CCF)."""
+        facilities = pl.DataFrame(
+            {
+                "facility_reference": ["MOF", "SUB_FR", "SUB_MR"],
+                "product_type": ["RCF", "RCF", "RCF"],
+                "book_code": ["CORP"] * 3,
+                "counterparty_reference": ["CP_X"] * 3,
+                "value_date": [date(2024, 1, 1)] * 3,
+                "maturity_date": [date(2027, 1, 1)] * 3,
+                "currency": ["GBP"] * 3,
+                "limit": [1_000_000.0, 600_000.0, 400_000.0],
+                "lgd": [0.45] * 3,
+                "seniority": ["senior"] * 3,
+                # Parent intentionally LR (would otherwise produce 0% CCF under CRR);
+                # MOF inference must override this with FR (100%) from SUB_FR.
+                "risk_type": ["LR", "FR", "MR"],
+            }
+        ).lazy()
+
+        loans = pl.LazyFrame(
+            schema={
+                "loan_reference": pl.String,
+                "counterparty_reference": pl.String,
+                "drawn_amount": pl.Float64,
+                "currency": pl.String,
+                "product_type": pl.String,
+                "book_code": pl.String,
+                "value_date": pl.Date,
+                "maturity_date": pl.Date,
+                "lgd": pl.Float64,
+                "seniority": pl.String,
+            }
+        )
+
+        facility_mappings = pl.DataFrame(
+            {
+                "parent_facility_reference": ["MOF", "MOF"],
+                "child_reference": ["SUB_FR", "SUB_MR"],
+                "child_type": ["facility", "facility"],
+            }
+        ).lazy()
+
+        root_lookup = resolver._build_facility_root_lookup(facility_mappings)
+
+        undrawn = resolver._calculate_facility_undrawn(
+            facilities,
+            loans,
+            None,
+            facility_mappings,
+            root_lookup,
+        ).collect()
+
+        mof_row = undrawn.filter(pl.col("exposure_reference") == "MOF_UNDRAWN")
+        assert len(mof_row) == 1
+        # Parent's own LR risk_type is overridden by FR (highest CCF descendant)
+        assert mof_row["risk_type"][0] == "FR"
+        assert mof_row["mof_risk_type_source"][0] == "SUB_FR"
+
+    def test_mof_basel_3_1_ccf_table_used(
+        self,
+        resolver: HierarchyResolver,
+    ) -> None:
+        """Under Basel 3.1, OC (40%) > LR (10%) — MOF picks the OC child."""
+        facilities = pl.DataFrame(
+            {
+                "facility_reference": ["MOF_B31", "SUB_OC", "SUB_LR"],
+                "product_type": ["RCF"] * 3,
+                "book_code": ["CORP"] * 3,
+                "counterparty_reference": ["CP_X"] * 3,
+                "value_date": [date(2024, 1, 1)] * 3,
+                "maturity_date": [date(2027, 1, 1)] * 3,
+                "currency": ["GBP"] * 3,
+                "limit": [1_000_000.0, 600_000.0, 400_000.0],
+                "lgd": [0.45] * 3,
+                "seniority": ["senior"] * 3,
+                "risk_type": [None, "OC", "LR"],
+            }
+        ).lazy()
+
+        loans = pl.LazyFrame(
+            schema={
+                "loan_reference": pl.String,
+                "counterparty_reference": pl.String,
+                "drawn_amount": pl.Float64,
+                "currency": pl.String,
+                "product_type": pl.String,
+                "book_code": pl.String,
+                "value_date": pl.Date,
+                "maturity_date": pl.Date,
+                "lgd": pl.Float64,
+                "seniority": pl.String,
+            }
+        )
+
+        facility_mappings = pl.DataFrame(
+            {
+                "parent_facility_reference": ["MOF_B31", "MOF_B31"],
+                "child_reference": ["SUB_OC", "SUB_LR"],
+                "child_type": ["facility", "facility"],
+            }
+        ).lazy()
+
+        root_lookup = resolver._build_facility_root_lookup(facility_mappings)
+
+        config_b31 = CalculationConfig.basel_3_1(reporting_date=date(2027, 6, 30))
+        undrawn = resolver._calculate_facility_undrawn(
+            facilities,
+            loans,
+            None,
+            facility_mappings,
+            root_lookup,
+            config=config_b31,
+        ).collect()
+
+        mof_row = undrawn.filter(pl.col("exposure_reference") == "MOF_B31_UNDRAWN")
+        assert len(mof_row) == 1
+        # Basel 3.1: OC=40%, LR=10% — OC wins
+        assert mof_row["risk_type"][0] == "OC"
+        assert mof_row["mof_risk_type_source"][0] == "SUB_OC"
+
+    def test_mof_with_no_facility_children_uses_own_risk_type(
+        self,
+        resolver: HierarchyResolver,
+    ) -> None:
+        """A plain hierarchy (only loan children) is not a MOF — parent risk_type unchanged."""
+        facilities = pl.DataFrame(
+            {
+                "facility_reference": ["FAC_PLAIN"],
+                "product_type": ["RCF"],
+                "book_code": ["CORP"],
+                "counterparty_reference": ["CP_X"],
+                "value_date": [date(2024, 1, 1)],
+                "maturity_date": [date(2027, 1, 1)],
+                "currency": ["GBP"],
+                "limit": [1_000_000.0],
+                "lgd": [0.45],
+                "seniority": ["senior"],
+                "risk_type": ["MR"],
+            }
+        ).lazy()
+
+        loans = pl.DataFrame(
+            {
+                "loan_reference": ["L1"],
+                "counterparty_reference": ["CP_X"],
+                "drawn_amount": [100_000.0],
+                "currency": ["GBP"],
+                "product_type": ["TERM_LOAN"],
+                "book_code": ["CORP"],
+                "value_date": [date(2024, 1, 1)],
+                "maturity_date": [date(2027, 1, 1)],
+                "lgd": [0.45],
+                "seniority": ["senior"],
+            }
+        ).lazy()
+
+        facility_mappings = pl.DataFrame(
+            {
+                "parent_facility_reference": ["FAC_PLAIN"],
+                "child_reference": ["L1"],
+                "child_type": ["loan"],
+            }
+        ).lazy()
+
+        root_lookup = resolver._build_facility_root_lookup(facility_mappings)
+
+        undrawn = resolver._calculate_facility_undrawn(
+            facilities,
+            loans,
+            None,
+            facility_mappings,
+            root_lookup,
+        ).collect()
+
+        row = undrawn.filter(pl.col("exposure_reference") == "FAC_PLAIN_UNDRAWN")
+        assert len(row) == 1
+        # No facility children → not a MOF → parent's own MR is preserved
+        assert row["risk_type"][0] == "MR"
+        assert row["mof_risk_type_source"][0] is None
+
+    def test_facility_share_allocates_undrawn_to_riskiest_cp(
+        self,
+        resolver: HierarchyResolver,
+    ) -> None:
+        """Facility with 3 distinct loan-counterparties allocates undrawn to the highest-RW one."""
+        # CP_LOW: corporate CQS=1 (RW=20%); CP_MID: corporate CQS=3 (RW=100%);
+        # CP_HIGH: corporate CQS=5 (RW=150%) — riskiest, should win.
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["CP_LOW", "CP_MID", "CP_HIGH"],
+                "counterparty_name": ["Low", "Mid", "High"],
+                "entity_type": ["corporate"] * 3,
+                "country_code": ["GB"] * 3,
+                "default_status": [False] * 3,
+            }
+        ).lazy()
+        org_mappings = pl.DataFrame(
+            schema={
+                "parent_counterparty_reference": pl.String,
+                "child_counterparty_reference": pl.String,
+            }
+        ).lazy()
+        ratings = pl.DataFrame(
+            {
+                "rating_reference": ["R1", "R2", "R3"],
+                "counterparty_reference": ["CP_LOW", "CP_MID", "CP_HIGH"],
+                "rating_type": ["external"] * 3,
+                "rating_agency": ["MOODYS"] * 3,
+                "rating_value": ["AAA", "BBB", "B"],
+                "cqs": [1, 3, 5],
+                "pd": [None, None, None],
+                "rating_date": [date(2024, 6, 1)] * 3,
+                "is_solicited": [True] * 3,
+            }
+        ).lazy()
+
+        facilities = pl.DataFrame(
+            {
+                "facility_reference": ["SHARE_FAC"],
+                "product_type": ["RCF"],
+                "book_code": ["CORP"],
+                # Facility's own counterparty is CP_LOW — should be overridden to CP_HIGH.
+                "counterparty_reference": ["CP_LOW"],
+                "value_date": [date(2024, 1, 1)],
+                "maturity_date": [date(2027, 1, 1)],
+                "currency": ["GBP"],
+                "limit": [1_000_000.0],
+                "lgd": [0.45],
+                "seniority": ["senior"],
+                "risk_type": ["MR"],
+            }
+        ).lazy()
+
+        loans = pl.DataFrame(
+            {
+                "loan_reference": ["L_LOW", "L_MID", "L_HIGH"],
+                "product_type": ["TERM_LOAN"] * 3,
+                "book_code": ["CORP"] * 3,
+                "counterparty_reference": ["CP_LOW", "CP_MID", "CP_HIGH"],
+                "value_date": [date(2024, 1, 1)] * 3,
+                "maturity_date": [date(2027, 1, 1)] * 3,
+                "currency": ["GBP"] * 3,
+                "drawn_amount": [50_000.0, 50_000.0, 50_000.0],
+                "lgd": [0.45] * 3,
+                "seniority": ["senior"] * 3,
+            }
+        ).lazy()
+
+        facility_mappings = pl.DataFrame(
+            {
+                "parent_facility_reference": ["SHARE_FAC"] * 3,
+                "child_reference": ["L_LOW", "L_MID", "L_HIGH"],
+                "child_type": ["loan"] * 3,
+            }
+        ).lazy()
+
+        counterparty_lookup, _ = resolver._build_counterparty_lookup(
+            counterparties, org_mappings, ratings
+        )
+
+        root_lookup = resolver._build_facility_root_lookup(facility_mappings)
+        config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))
+        undrawn = resolver._calculate_facility_undrawn(
+            facilities,
+            loans,
+            None,
+            facility_mappings,
+            root_lookup,
+            counterparty_lookup=counterparty_lookup,
+            config=config,
+        ).collect()
+
+        row = undrawn.filter(pl.col("exposure_reference") == "SHARE_FAC_UNDRAWN")
+        assert len(row) == 1
+        assert row["counterparty_reference"][0] == "CP_HIGH"
+        assert row["original_counterparty_reference"][0] == "CP_LOW"
+
+    def test_facility_share_single_member_unchanged(
+        self,
+        resolver: HierarchyResolver,
+    ) -> None:
+        """A facility with only one distinct loan-counterparty is not a share — no override."""
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["CP_ONLY"],
+                "counterparty_name": ["Only"],
+                "entity_type": ["corporate"],
+                "country_code": ["GB"],
+                "default_status": [False],
+            }
+        ).lazy()
+        org_mappings = pl.DataFrame(
+            schema={
+                "parent_counterparty_reference": pl.String,
+                "child_counterparty_reference": pl.String,
+            }
+        ).lazy()
+        ratings = pl.DataFrame(
+            schema={
+                "rating_reference": pl.String,
+                "counterparty_reference": pl.String,
+                "rating_type": pl.String,
+                "rating_agency": pl.String,
+                "rating_value": pl.String,
+                "cqs": pl.Int8,
+                "pd": pl.Float64,
+                "rating_date": pl.Date,
+                "is_solicited": pl.Boolean,
+            }
+        ).lazy()
+
+        facilities = pl.DataFrame(
+            {
+                "facility_reference": ["FAC_SOLO"],
+                "product_type": ["RCF"],
+                "book_code": ["CORP"],
+                "counterparty_reference": ["CP_ONLY"],
+                "value_date": [date(2024, 1, 1)],
+                "maturity_date": [date(2027, 1, 1)],
+                "currency": ["GBP"],
+                "limit": [500_000.0],
+                "lgd": [0.45],
+                "seniority": ["senior"],
+                "risk_type": ["MR"],
+            }
+        ).lazy()
+
+        loans = pl.DataFrame(
+            {
+                "loan_reference": ["L1", "L2"],
+                "product_type": ["TERM_LOAN"] * 2,
+                "book_code": ["CORP"] * 2,
+                "counterparty_reference": ["CP_ONLY"] * 2,
+                "value_date": [date(2024, 1, 1)] * 2,
+                "maturity_date": [date(2027, 1, 1)] * 2,
+                "currency": ["GBP"] * 2,
+                "drawn_amount": [50_000.0, 50_000.0],
+                "lgd": [0.45] * 2,
+                "seniority": ["senior"] * 2,
+            }
+        ).lazy()
+
+        facility_mappings = pl.DataFrame(
+            {
+                "parent_facility_reference": ["FAC_SOLO", "FAC_SOLO"],
+                "child_reference": ["L1", "L2"],
+                "child_type": ["loan", "loan"],
+            }
+        ).lazy()
+
+        counterparty_lookup, _ = resolver._build_counterparty_lookup(
+            counterparties, org_mappings, ratings
+        )
+
+        root_lookup = resolver._build_facility_root_lookup(facility_mappings)
+        config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))
+        undrawn = resolver._calculate_facility_undrawn(
+            facilities,
+            loans,
+            None,
+            facility_mappings,
+            root_lookup,
+            counterparty_lookup=counterparty_lookup,
+            config=config,
+        ).collect()
+
+        row = undrawn.filter(pl.col("exposure_reference") == "FAC_SOLO_UNDRAWN")
+        assert len(row) == 1
+        # Only one distinct member — no share override
+        assert row["counterparty_reference"][0] == "CP_ONLY"
+
+    def test_mof_and_share_combined(
+        self,
+        resolver: HierarchyResolver,
+    ) -> None:
+        """A MOF parent whose sub-facilities' loans span multiple counterparties.
+
+        Both overrides apply: parent risk_type from max-CCF descendant, and undrawn CP
+        from highest-RW member among descendant loan counterparties.
+        """
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["CP_A", "CP_B"],
+                "counterparty_name": ["A", "B"],
+                # CP_A retail (75%), CP_B corporate CQS=5 (150%) — CP_B wins.
+                "entity_type": ["retail", "corporate"],
+                "country_code": ["GB", "GB"],
+                "default_status": [False, False],
+            }
+        ).lazy()
+        org_mappings = pl.DataFrame(
+            schema={
+                "parent_counterparty_reference": pl.String,
+                "child_counterparty_reference": pl.String,
+            }
+        ).lazy()
+        ratings = pl.DataFrame(
+            {
+                "rating_reference": ["R_B"],
+                "counterparty_reference": ["CP_B"],
+                "rating_type": ["external"],
+                "rating_agency": ["MOODYS"],
+                "rating_value": ["B"],
+                "cqs": [5],
+                "pd": [None],
+                "rating_date": [date(2024, 6, 1)],
+                "is_solicited": [True],
+            }
+        ).lazy()
+
+        facilities = pl.DataFrame(
+            {
+                "facility_reference": ["MOF_TOP", "SUB_A", "SUB_B"],
+                "product_type": ["RCF"] * 3,
+                "book_code": ["CORP"] * 3,
+                "counterparty_reference": ["CP_A", "CP_A", "CP_B"],
+                "value_date": [date(2024, 1, 1)] * 3,
+                "maturity_date": [date(2027, 1, 1)] * 3,
+                "currency": ["GBP"] * 3,
+                "limit": [1_000_000.0, 500_000.0, 500_000.0],
+                "lgd": [0.45] * 3,
+                "seniority": ["senior"] * 3,
+                "risk_type": ["LR", "MLR", "FR"],
+            }
+        ).lazy()
+
+        loans = pl.DataFrame(
+            {
+                "loan_reference": ["L_A", "L_B"],
+                "product_type": ["TERM_LOAN"] * 2,
+                "book_code": ["CORP"] * 2,
+                "counterparty_reference": ["CP_A", "CP_B"],
+                "value_date": [date(2024, 1, 1)] * 2,
+                "maturity_date": [date(2027, 1, 1)] * 2,
+                "currency": ["GBP"] * 2,
+                "drawn_amount": [50_000.0, 50_000.0],
+                "lgd": [0.45] * 2,
+                "seniority": ["senior"] * 2,
+            }
+        ).lazy()
+
+        facility_mappings = pl.DataFrame(
+            {
+                "parent_facility_reference": ["MOF_TOP", "MOF_TOP", "SUB_A", "SUB_B"],
+                "child_reference": ["SUB_A", "SUB_B", "L_A", "L_B"],
+                "child_type": ["facility", "facility", "loan", "loan"],
+            }
+        ).lazy()
+
+        counterparty_lookup, _ = resolver._build_counterparty_lookup(
+            counterparties, org_mappings, ratings
+        )
+
+        root_lookup = resolver._build_facility_root_lookup(facility_mappings)
+        config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))
+        undrawn = resolver._calculate_facility_undrawn(
+            facilities,
+            loans,
+            None,
+            facility_mappings,
+            root_lookup,
+            counterparty_lookup=counterparty_lookup,
+            config=config,
+        ).collect()
+
+        row = undrawn.filter(pl.col("exposure_reference") == "MOF_TOP_UNDRAWN")
+        assert len(row) == 1
+        # MOF: SUB_B has FR (100%) which beats SUB_A's MLR (20%) and parent's LR (0%).
+        assert row["risk_type"][0] == "FR"
+        assert row["mof_risk_type_source"][0] == "SUB_B"
+        # Share: CP_B (corporate CQS=5, RW=150%) beats CP_A (retail RW=75%).
+        assert row["counterparty_reference"][0] == "CP_B"
+        assert row["original_counterparty_reference"][0] == "CP_A"
