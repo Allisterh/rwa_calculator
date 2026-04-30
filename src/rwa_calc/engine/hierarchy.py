@@ -923,6 +923,12 @@ class HierarchyResolver:
         MOF parents are expanded into per-sub waterfall rows by
         ``_expand_mof_facility_undrawn``; non-MOF parents flow through the
         single-row path with the optional Facility Share counterparty override.
+
+        Scratch: ``_is_mof_parent`` is added here, read by
+        ``_apply_facility_share_override`` (suppress override on MOF) and by
+        ``_expand_mof_facility_undrawn`` (route into waterfall vs. pass-through);
+        kept on the frame through to the final select where it is dropped
+        implicitly by not appearing in ``_undrawn_select_expressions``.
         """
         mof_parent_marker = (
             root_lookup.select(pl.col("root_facility_reference").alias("facility_reference"))
@@ -1241,6 +1247,13 @@ class HierarchyResolver:
 
         # Pull sub-facility attributes from the facilities frame — risk_type,
         # counterparty, limit, and the committed flag (defaulting to True).
+        # Scratch: `_sub_*` columns drive the per-sub waterfall — `_sub_risk_type`
+        # / `_sub_counterparty` are written into the sub-row's `mof_risk_type` /
+        # `share_counterparty_reference`; `_sub_limit` feeds `sub_headroom`;
+        # `_sub_committed` filters out unconditionally cancellable sub-facilities;
+        # `_sub_ref` is the join key and is also baked into `_exposure_suffix`
+        # so each waterfall row gets a unique `<facility>_UNDRAWN_<sub>` reference.
+        # All scratch columns are dropped via `helper_cols` before concat.
         fac_cols = set(facilities.collect_schema().names())
         sub_select: list[pl.Expr] = [pl.col("facility_reference").alias("_sub_ref")]
         if "risk_type" in fac_cols:
@@ -1899,9 +1912,12 @@ class HierarchyResolver:
             ]
         )
 
-        # Resolve root_facility_reference and facility_hierarchy_depth using root lookup
+        # Resolve root_facility_reference and facility_hierarchy_depth using root lookup.
         # Left join is safe even when lookup is empty — NULLs fall through to the
         # when/then/otherwise chain, producing identical results to the no-lookup case.
+        # Scratch: facility-root-lookup columns join as `_frl_child` (consumed by the
+        # join `right_on`), `_frl_root` and `_frl_depth` (consumed by the when/then
+        # chain below); all dropped by the trailing `.drop(["_frl_root", "_frl_depth"])`.
         return (
             exposures.join(
                 facility_root_lookup.select(
@@ -1957,6 +1973,10 @@ class HierarchyResolver:
         exp_schema: set[str] = set()
 
         if has_fac_ref:
+            # Scratch: facility-side QRRE / limit / termination columns join as
+            # `_fac_*`, get coalesced into their unprefixed exposure-level
+            # counterparts (`is_revolving`, `is_qrre_transactor`, `facility_limit`,
+            # `facility_termination_date`) below, then dropped via `temp_cols`.
             fac_select = [pl.col("facility_reference").alias("_fac_ref")]
             if "is_revolving" in fac_cols:
                 fac_select.append(pl.col("is_revolving").fill_null(False).alias("_fac_revolving"))
@@ -2233,6 +2253,13 @@ class HierarchyResolver:
         bt_lower = pl.col("beneficiary_type").str.to_lowercase()
         is_residential = pl.col("property_type").str.to_lowercase() == "residential"
 
+        # Scratch: a single conditional group_by produces `_level` (direct /
+        # facility / counterparty), `_res` (residential market value sum), and
+        # `_prop` (all-property market value sum). The aggregate is then split
+        # by `_level` into three frames; per-level columns are renamed with
+        # suffixes (`_res_d`/`_prop_d`, `_res_f`/`_prop_f`, `_res_c`/`_prop_c`)
+        # so the three joins below can carry their own values without collision.
+        # All scratch columns are coalesced and dropped before the helper returns.
         # Single conditional group_by: 6 aggregates in one pass
         coll_agg = (
             all_property_collateral.with_columns(
