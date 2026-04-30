@@ -632,52 +632,15 @@ class HierarchyResolver:
         Returns:
             LazyFrame with facility_undrawn exposure records
         """
-        # Validate facilities have required columns
-        required_cols = {"facility_reference", "limit"}
-        if not has_required_columns(facilities, required_cols):
-            # No valid facilities, return empty LazyFrame with expected schema
-            return pl.LazyFrame(
-                schema={
-                    "exposure_reference": pl.String,
-                    "exposure_type": pl.String,
-                    "product_type": pl.String,
-                    "book_code": pl.String,
-                    "counterparty_reference": pl.String,
-                    "original_counterparty_reference": pl.String,
-                    "value_date": pl.Date,
-                    "maturity_date": pl.Date,
-                    "currency": pl.String,
-                    "drawn_amount": pl.Float64,
-                    "interest": pl.Float64,
-                    "undrawn_amount": pl.Float64,
-                    "nominal_amount": pl.Float64,
-                    "lgd": pl.Float64,
-                    "beel": pl.Float64,
-                    "seniority": pl.String,
-                    "risk_type": pl.String,
-                    "mof_risk_type_source": pl.String,
-                    "underlying_risk_type": pl.String,
-                    "ccf_modelled": pl.Float64,
-                    "ead_modelled": pl.Float64,
-                    "is_short_term_trade_lc": pl.Boolean,
-                    "is_obs_commitment": pl.Boolean,
-                    "is_payroll_loan": pl.Boolean,
-                    "is_buy_to_let": pl.Boolean,
-                    "has_one_day_maturity_floor": pl.Boolean,
-                    "is_sft": pl.Boolean,
-                    "has_netting_agreement": pl.Boolean,
-                    "is_revolving": pl.Boolean,
-                    "is_qrre_transactor": pl.Boolean,
-                    "facility_limit": pl.Float64,
-                    "source_facility_reference": pl.String,
-                    "facility_termination_date": pl.Date,
-                    "effective_maturity": pl.Float64,
-                }
-            )
+        # Validate facilities have required columns; bail out with empty frame if not.
+        if not has_required_columns(facilities, {"facility_reference", "limit"}):
+            return self._empty_facility_undrawn_frame()
 
-        # Check if facility_mappings is valid
-        mapping_required_cols = {"parent_facility_reference", "child_reference"}
-        if not has_required_columns(facility_mappings, mapping_required_cols):
+        # Defensive empty mapping frame so downstream joins are well-typed even
+        # when the caller passes a malformed facility_mappings.
+        if not has_required_columns(
+            facility_mappings, {"parent_facility_reference", "child_reference"}
+        ):
             facility_mappings = pl.LazyFrame(
                 schema={
                     "parent_facility_reference": pl.String,
@@ -688,8 +651,9 @@ class HierarchyResolver:
 
         type_col = _detect_type_column(set(facility_mappings.collect_schema().names()))
 
-        # Prepare root lookup for multi-level hierarchies (used by both loan and contingent sections).
-        # Left join with empty lookup naturally produces nulls; coalesce falls back to parent.
+        # Root lookup for multi-level hierarchies (used by both loan and contingent
+        # aggregations). Left join with empty lookup naturally produces nulls; coalesce
+        # falls back to the directly-mapped parent.
         root_lookup = (
             facility_root_lookup
             if facility_root_lookup is not None
@@ -701,83 +665,217 @@ class HierarchyResolver:
             )
         )
 
-        # Get loan schema columns to ensure we can join
-        loan_schema = loans.collect_schema()
-        loan_ref_col = "loan_reference" if "loan_reference" in loan_schema.names() else None
+        loan_drawn_totals = self._aggregate_loan_drawn_per_facility(
+            loans, facility_mappings, root_lookup, type_col
+        )
+        contingent_totals = self._aggregate_contingent_per_facility(
+            contingents, facility_mappings, root_lookup, type_col
+        )
 
-        if loan_ref_col is None:
-            # No valid loans, all facilities are 100% undrawn
-            loan_drawn_totals = pl.LazyFrame(
+        facility_with_drawn = self._compute_facility_undrawn_per_root(
+            facilities, loan_drawn_totals, contingent_totals, root_lookup
+        )
+
+        facility_with_drawn = self._apply_mof_parent_marker(facility_with_drawn, root_lookup)
+
+        is_basel_3_1 = bool(getattr(config, "is_basel_3_1", False)) if config is not None else False
+
+        facility_with_drawn = self._apply_facility_share_override(
+            facility_with_drawn,
+            facilities,
+            facility_mappings,
+            loans,
+            contingents,
+            counterparty_lookup,
+            root_lookup,
+            is_basel_3_1,
+        )
+
+        # Expand MOF parents into per-sub waterfall rows + optional residual.
+        # Non-MOF parents pass through unchanged. After this step
+        # facility_with_drawn contains:
+        #   - 1 row per non-MOF parent (existing behaviour)
+        #   - N waterfall rows + optional 1 residual row per MOF parent
+        # Each row carries the right risk_type / counterparty / undrawn_amount
+        # for its emit slot, plus an exposure_suffix for a unique exposure_reference.
+        facility_with_drawn = self._expand_mof_facility_undrawn(
+            facility_with_drawn,
+            facilities,
+            root_lookup,
+            loans,
+            contingents,
+            facility_mappings,
+            is_basel_3_1,
+        )
+
+        facility_cols = set(facilities.collect_schema().names())
+        select_exprs = self._undrawn_select_expressions(facility_cols)
+
+        # Create exposure records for facilities with undrawn > 0 AND committed=True.
+        # Uncommitted (unconditionally cancellable) facilities generate no synthetic
+        # undrawn exposure: the bank can refuse to lend, so no commitment EAD/RWA is
+        # held against the unused headroom. Loans/contingents already mapped to the
+        # facility are unaffected — they remain independent exposure rows. Missing
+        # `committed` column or null values default to True (committed), matching
+        # FACILITY_SCHEMA's default.
+        committed_expr = (
+            pl.col("committed").fill_null(True) if "committed" in facility_cols else pl.lit(True)
+        )
+        return facility_with_drawn.filter((pl.col("undrawn_amount") > 0) & committed_expr).select(
+            select_exprs
+        )
+
+    def _empty_facility_undrawn_frame(self) -> pl.LazyFrame:
+        """Empty LazyFrame matching the canonical facility-undrawn output schema.
+
+        Returned by ``_calculate_facility_undrawn`` when the input ``facilities``
+        frame lacks the required columns to compute undrawn amounts.
+        """
+        return pl.LazyFrame(
+            schema={
+                "exposure_reference": pl.String,
+                "exposure_type": pl.String,
+                "product_type": pl.String,
+                "book_code": pl.String,
+                "counterparty_reference": pl.String,
+                "original_counterparty_reference": pl.String,
+                "value_date": pl.Date,
+                "maturity_date": pl.Date,
+                "currency": pl.String,
+                "drawn_amount": pl.Float64,
+                "interest": pl.Float64,
+                "undrawn_amount": pl.Float64,
+                "nominal_amount": pl.Float64,
+                "lgd": pl.Float64,
+                "beel": pl.Float64,
+                "seniority": pl.String,
+                "risk_type": pl.String,
+                "mof_risk_type_source": pl.String,
+                "underlying_risk_type": pl.String,
+                "ccf_modelled": pl.Float64,
+                "ead_modelled": pl.Float64,
+                "is_short_term_trade_lc": pl.Boolean,
+                "is_obs_commitment": pl.Boolean,
+                "is_payroll_loan": pl.Boolean,
+                "is_buy_to_let": pl.Boolean,
+                "has_one_day_maturity_floor": pl.Boolean,
+                "is_sft": pl.Boolean,
+                "has_netting_agreement": pl.Boolean,
+                "is_revolving": pl.Boolean,
+                "is_qrre_transactor": pl.Boolean,
+                "facility_limit": pl.Float64,
+                "source_facility_reference": pl.String,
+                "facility_termination_date": pl.Date,
+                "effective_maturity": pl.Float64,
+            }
+        )
+
+    def _aggregate_loan_drawn_per_facility(
+        self,
+        loans: pl.LazyFrame,
+        facility_mappings: pl.LazyFrame,
+        root_lookup: pl.LazyFrame,
+        type_col: str | None,
+    ) -> pl.LazyFrame:
+        """Sum positive drawn amounts per (root or standalone) facility.
+
+        Negative drawn balances are clamped to 0 before summing — they do not
+        increase available undrawn headroom. Returns an empty 2-col frame if
+        ``loans`` lacks ``loan_reference``, in which case all facilities are
+        treated as 100% undrawn.
+        """
+        loan_cols = loans.collect_schema().names()
+        if "loan_reference" not in loan_cols:
+            return pl.LazyFrame(
                 schema={
                     "aggregation_facility": pl.String,
                     "total_drawn": pl.Float64,
                 }
             )
-        else:
-            loan_mappings = _filter_mappings_by_child_type(facility_mappings, "loan", type_col)
 
-            # Sum drawn amounts by parent facility
-            # Clamp negative drawn amounts to 0 before summing - negative balances
-            # should not increase available undrawn headroom
-            loan_with_parent = loans.join(
-                loan_mappings,
-                left_on="loan_reference",
-                right_on="child_reference",
-                how="inner",
-            )
+        loan_mappings = _filter_mappings_by_child_type(facility_mappings, "loan", type_col)
 
-            loan_with_parent = _resolve_to_root_facility(loan_with_parent, root_lookup)
+        loan_with_parent = loans.join(
+            loan_mappings,
+            left_on="loan_reference",
+            right_on="child_reference",
+            how="inner",
+        )
 
-            loan_drawn_totals = loan_with_parent.group_by("aggregation_facility").agg(
-                [
-                    pl.col("drawn_amount").clip(lower_bound=0.0).sum().alias("total_drawn"),
-                ]
-            )
+        loan_with_parent = _resolve_to_root_facility(loan_with_parent, root_lookup)
 
-        # Calculate contingent utilisation (parallel to loan drawn totals)
-        contingent_ref_col = None
-        if contingents is not None:
-            cont_schema = contingents.collect_schema()
-            if "contingent_reference" in cont_schema.names():
-                contingent_ref_col = "contingent_reference"
+        return loan_with_parent.group_by("aggregation_facility").agg(
+            [
+                pl.col("drawn_amount").clip(lower_bound=0.0).sum().alias("total_drawn"),
+            ]
+        )
 
-        if contingent_ref_col is None:
-            contingent_totals = pl.LazyFrame(
+    def _aggregate_contingent_per_facility(
+        self,
+        contingents: pl.LazyFrame | None,
+        facility_mappings: pl.LazyFrame,
+        root_lookup: pl.LazyFrame,
+        type_col: str | None,
+    ) -> pl.LazyFrame:
+        """Sum positive contingent nominal amounts per (root or standalone) facility.
+
+        Parallel to ``_aggregate_loan_drawn_per_facility``. Negative balances are
+        clamped to 0. Returns an empty 2-col frame if no contingents are provided
+        or the frame lacks ``contingent_reference``.
+        """
+        if contingents is None:
+            return pl.LazyFrame(
                 schema={
                     "aggregation_facility": pl.String,
                     "total_contingent": pl.Float64,
                 }
             )
-        else:
-            contingent_mappings = _filter_mappings_by_child_type(
-                facility_mappings, "contingent", type_col
+
+        contingent_cols = contingents.collect_schema().names()
+        if "contingent_reference" not in contingent_cols:
+            return pl.LazyFrame(
+                schema={
+                    "aggregation_facility": pl.String,
+                    "total_contingent": pl.Float64,
+                }
             )
 
-            # Join contingents with their parent facility
-            contingent_with_parent = contingents.join(
-                contingent_mappings,
-                left_on="contingent_reference",
-                right_on="child_reference",
-                how="inner",
-            )
+        contingent_mappings = _filter_mappings_by_child_type(
+            facility_mappings, "contingent", type_col
+        )
 
-            contingent_with_parent = _resolve_to_root_facility(contingent_with_parent, root_lookup)
+        contingent_with_parent = contingents.join(
+            contingent_mappings,
+            left_on="contingent_reference",
+            right_on="child_reference",
+            how="inner",
+        )
 
-            contingent_totals = contingent_with_parent.group_by("aggregation_facility").agg(
-                [
-                    pl.col("nominal_amount").clip(lower_bound=0.0).sum().alias("total_contingent"),
-                ]
-            )
+        contingent_with_parent = _resolve_to_root_facility(contingent_with_parent, root_lookup)
 
-        # Identify sub-facilities to exclude from output
-        # Sub-facilities appear as child_reference with child_type="facility"
-        # Anti-join with empty frame naturally returns all rows
+        return contingent_with_parent.group_by("aggregation_facility").agg(
+            [
+                pl.col("nominal_amount").clip(lower_bound=0.0).sum().alias("total_contingent"),
+            ]
+        )
+
+    def _compute_facility_undrawn_per_root(
+        self,
+        facilities: pl.LazyFrame,
+        loan_drawn_totals: pl.LazyFrame,
+        contingent_totals: pl.LazyFrame,
+        root_lookup: pl.LazyFrame,
+    ) -> pl.LazyFrame:
+        """Join drawn/contingent totals onto facilities and compute undrawn headroom.
+
+        Sub-facilities (those that appear as a child in ``root_lookup``) are
+        anti-joined out — only root or standalone facilities emit an undrawn
+        exposure row.
+        """
         sub_facility_refs = root_lookup.select(
             pl.col("child_facility_reference").alias("_sub_ref"),
         )
 
-        # Join with facilities to calculate undrawn
-        # Combine loan drawn + contingent utilisation
         facility_with_drawn = (
             facilities.join(
                 loan_drawn_totals,
@@ -807,87 +905,98 @@ class HierarchyResolver:
             )
         )
 
-        # Exclude sub-facilities: only root/standalone facilities produce undrawn exposures
-        facility_with_drawn = facility_with_drawn.join(
+        return facility_with_drawn.join(
             sub_facility_refs,
             left_on="facility_reference",
             right_on="_sub_ref",
             how="anti",
         )
 
-        # MOF parents (those with at least one facility-typed descendant) are
-        # expanded into per-sub waterfall rows below. Non-MOF parents flow through
-        # the single-row path with the optional Facility Share counterparty override.
-        is_basel_3_1 = bool(getattr(config, "is_basel_3_1", False)) if config is not None else False
+    def _apply_mof_parent_marker(
+        self,
+        facility_with_drawn: pl.LazyFrame,
+        root_lookup: pl.LazyFrame,
+    ) -> pl.LazyFrame:
+        """Tag each row with ``_is_mof_parent`` (True for facilities that have
+        at least one facility-typed descendant).
+
+        MOF parents are expanded into per-sub waterfall rows by
+        ``_expand_mof_facility_undrawn``; non-MOF parents flow through the
+        single-row path with the optional Facility Share counterparty override.
+        """
         mof_parent_marker = (
             root_lookup.select(pl.col("root_facility_reference").alias("facility_reference"))
             .unique()
             .with_columns(pl.lit(True).alias("_is_mof_parent"))
         )
 
-        facility_with_drawn = facility_with_drawn.join(
+        return facility_with_drawn.join(
             mof_parent_marker,
             on="facility_reference",
             how="left",
         ).with_columns(pl.col("_is_mof_parent").fill_null(False))
 
-        # MOF parents do not need the share-counterparty override — each waterfall
-        # row already carries its sub-facility's own counterparty. Non-MOF parents
-        # still benefit from the riskiest-CP allocation.
-        if counterparty_lookup is not None:
-            share_lookup = self._derive_facility_share_counterparty(
-                facilities,
-                facility_mappings,
-                loans,
-                contingents,
-                counterparty_lookup,
-                root_lookup,
-                is_basel_3_1,
-            )
-            facility_with_drawn = facility_with_drawn.join(
-                share_lookup,
-                on="facility_reference",
-                how="left",
-            ).with_columns(
-                # Suppress share override on MOF parents — sub rows handle it.
-                pl.when(pl.col("_is_mof_parent"))
-                .then(pl.lit(None).cast(pl.String))
-                .otherwise(pl.col("share_counterparty_reference"))
-                .alias("share_counterparty_reference")
-            )
-        else:
-            facility_with_drawn = facility_with_drawn.with_columns(
+    def _apply_facility_share_override(
+        self,
+        facility_with_drawn: pl.LazyFrame,
+        facilities: pl.LazyFrame,
+        facility_mappings: pl.LazyFrame,
+        loans: pl.LazyFrame,
+        contingents: pl.LazyFrame | None,
+        counterparty_lookup: CounterpartyLookup | None,
+        root_lookup: pl.LazyFrame,
+        is_basel_3_1: bool,
+    ) -> pl.LazyFrame:
+        """Attach ``share_counterparty_reference`` to non-MOF facilities.
+
+        MOF parents do not need the share override — each waterfall row already
+        carries its sub-facility's own counterparty. Non-MOF parents benefit
+        from the riskiest-CP allocation when more than one counterparty appears
+        among the facility's descendants.
+
+        When ``counterparty_lookup`` is None, the column is added as NULL
+        on every row so the downstream select keeps a stable schema.
+        """
+        if counterparty_lookup is None:
+            return facility_with_drawn.with_columns(
                 pl.lit(None).cast(pl.String).alias("share_counterparty_reference")
             )
 
-        # Expand MOF parents into per-sub waterfall rows + optional residual.
-        # Non-MOF parents pass through unchanged. After this step
-        # facility_with_drawn contains:
-        #   - 1 row per non-MOF parent (existing behaviour)
-        #   - N waterfall rows + optional 1 residual row per MOF parent
-        # Each row carries the right risk_type / counterparty / undrawn_amount
-        # for its emit slot, plus an exposure_suffix for a unique exposure_reference.
-        facility_with_drawn = self._expand_mof_facility_undrawn(
-            facility_with_drawn,
+        share_lookup = self._derive_facility_share_counterparty(
             facilities,
-            root_lookup,
+            facility_mappings,
             loans,
             contingents,
-            facility_mappings,
+            counterparty_lookup,
+            root_lookup,
             is_basel_3_1,
         )
+        return facility_with_drawn.join(
+            share_lookup,
+            on="facility_reference",
+            how="left",
+        ).with_columns(
+            # Suppress share override on MOF parents — sub rows handle it.
+            pl.when(pl.col("_is_mof_parent"))
+            .then(pl.lit(None).cast(pl.String))
+            .otherwise(pl.col("share_counterparty_reference"))
+            .alias("share_counterparty_reference")
+        )
 
-        # Get facility schema to check for optional columns
-        facility_schema = facilities.collect_schema()
-        facility_cols = set(facility_schema.names())
+    def _undrawn_select_expressions(self, facility_cols: set[str]) -> list[pl.Expr]:
+        """List of select expressions that shape ``facility_with_drawn`` into the
+        canonical facility_undrawn exposure schema.
 
-        # Build select expressions with defaults for missing columns
-        # Note: parent_facility_reference is set to the source facility to enable
-        # facility-level collateral allocation to undrawn amounts.
-        # _exposure_suffix is "" for non-MOF rows, "_{sub_ref}" for MOF waterfall
-        # rows, and "_RESIDUAL" for the optional MOF residual row — set by
-        # _expand_mof_facility_undrawn.
-        select_exprs = [
+        Defensive ``if "X" in facility_cols`` branches keep optional columns
+        consistent across fixtures with different schemas.
+
+        Note: ``parent_facility_reference`` is set to the source facility to
+        enable facility-level collateral allocation to undrawn amounts.
+        ``_exposure_suffix`` is "" for non-MOF rows, "_{sub_ref}" for MOF
+        waterfall rows, and "_RESIDUAL" for the optional MOF residual row —
+        set by ``_expand_mof_facility_undrawn``.
+        """
+        return [
             (pl.col("facility_reference") + pl.lit("_UNDRAWN") + pl.col("_exposure_suffix")).alias(
                 "exposure_reference"
             ),
@@ -1018,22 +1127,6 @@ class HierarchyResolver:
             # This allows facility-level collateral to be linked to undrawn exposures
             pl.col("facility_reference").alias("source_facility_reference"),
         ]
-
-        # Create exposure records for facilities with undrawn > 0 AND committed=True.
-        # Uncommitted (unconditionally cancellable) facilities generate no synthetic
-        # undrawn exposure: the bank can refuse to lend, so no commitment EAD/RWA is
-        # held against the unused headroom. Loans/contingents already mapped to the
-        # facility are unaffected — they remain independent exposure rows. Missing
-        # `committed` column or null values default to True (committed), matching
-        # FACILITY_SCHEMA's default.
-        committed_expr = (
-            pl.col("committed").fill_null(True) if "committed" in facility_cols else pl.lit(True)
-        )
-        facility_undrawn_exposures = facility_with_drawn.filter(
-            (pl.col("undrawn_amount") > 0) & committed_expr
-        ).select(select_exprs)
-
-        return facility_undrawn_exposures
 
     def _expand_mof_facility_undrawn(
         self,
