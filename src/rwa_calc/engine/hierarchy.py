@@ -49,7 +49,7 @@ from rwa_calc.data.tables.crr_risk_weights import (
 from rwa_calc.domain.enums import CQS, ExposureClass
 from rwa_calc.engine.classifier import ENTITY_TYPES_BY_SA_CLASS
 from rwa_calc.engine.fx_converter import FXConverter
-from rwa_calc.engine.utils import has_required_columns
+from rwa_calc.engine.utils import has_required_columns, partition_by_nullable
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
@@ -356,8 +356,16 @@ class HierarchyResolver:
 
         # Art. 138: per-agency dedup to most recent, then resolve across agencies.
         # Rows without a CQS are ignored (only rated assessments count).
+        # The counterparty_reference.is_not_null filter is defence-in-depth
+        # against a downstream .over("counterparty_reference") collapsing all
+        # null-keyed ratings into one bucket — the loader contract should
+        # already guarantee non-null counterparty_reference on ratings.
         per_agency_latest = (
-            ratings.filter((pl.col("rating_type") == "external") & pl.col("cqs").is_not_null())
+            ratings.filter(
+                (pl.col("rating_type") == "external")
+                & pl.col("cqs").is_not_null()
+                & pl.col("counterparty_reference").is_not_null()
+            )
             .sort(sort_cols, descending=[True, True])
             .group_by(["counterparty_reference", "rating_agency"])
             .first()
@@ -2314,17 +2322,23 @@ class HierarchyResolver:
             .rename({"_res": "_res_c", "_prop": "_prop_c"})
         )
 
-        # .over() window functions for allocation weights (no self-join!)
+        # .over() window functions for allocation weights (no self-join!).
+        # Both partition keys are nullable in this frame: direct exposures
+        # (no facility) have null parent_facility_reference; null
+        # counterparty_reference can arise from upstream join misses. The
+        # null-partition guard prevents pooling unrelated rows.
         exposures = exposures.with_columns(
             [
-                pl.when(pl.col("parent_facility_reference").is_not_null())
-                .then(pl.col("total_exposure_amount").sum().over("parent_facility_reference"))
-                .otherwise(pl.col("total_exposure_amount"))
-                .alias("facility_total"),
-                pl.when(pl.col("counterparty_reference").is_not_null())
-                .then(pl.col("total_exposure_amount").sum().over("counterparty_reference"))
-                .otherwise(pl.col("total_exposure_amount"))
-                .alias("cp_total"),
+                partition_by_nullable(
+                    pl.col("total_exposure_amount").sum().over("parent_facility_reference"),
+                    "parent_facility_reference",
+                    pl.col("total_exposure_amount"),
+                ).alias("facility_total"),
+                partition_by_nullable(
+                    pl.col("total_exposure_amount").sum().over("counterparty_reference"),
+                    "counterparty_reference",
+                    pl.col("total_exposure_amount"),
+                ).alias("cp_total"),
             ]
         )
 
@@ -2453,33 +2467,31 @@ class HierarchyResolver:
             how="left",
         )
 
-        # .over() window functions for group totals (no self-join!)
+        # .over() window functions for group totals (no self-join!).
         # When no lending group, aggregate over counterparty_reference so the
-        # retail threshold test sees the obligor's full exposure, not a single line.
+        # retail threshold test sees the obligor's full exposure, not a single
+        # line. lending_group_reference is left-join nullable, so the null-
+        # partition guard prevents pooling unrelated unmapped rows.
         exposures = exposures.with_columns(
             [
-                pl.when(pl.col("lending_group_reference").is_not_null())
-                .then(
+                partition_by_nullable(
                     pl.col("drawn_amount")
                     .clip(lower_bound=0.0)
                     .sum()
                     .over("lending_group_reference")
-                    + pl.col("nominal_amount").sum().over("lending_group_reference")
-                )
-                .otherwise(
+                    + pl.col("nominal_amount").sum().over("lending_group_reference"),
+                    "lending_group_reference",
                     pl.col("drawn_amount")
                     .clip(lower_bound=0.0)
                     .sum()
                     .over("counterparty_reference")
-                    + pl.col("nominal_amount").sum().over("counterparty_reference")
-                )
-                .alias("lending_group_total_exposure"),
-                pl.when(pl.col("lending_group_reference").is_not_null())
-                .then(pl.col("exposure_for_retail_threshold").sum().over("lending_group_reference"))
-                .otherwise(
-                    pl.col("exposure_for_retail_threshold").sum().over("counterparty_reference")
-                )
-                .alias("lending_group_adjusted_exposure"),
+                    + pl.col("nominal_amount").sum().over("counterparty_reference"),
+                ).alias("lending_group_total_exposure"),
+                partition_by_nullable(
+                    pl.col("exposure_for_retail_threshold").sum().over("lending_group_reference"),
+                    "lending_group_reference",
+                    pl.col("exposure_for_retail_threshold").sum().over("counterparty_reference"),
+                ).alias("lending_group_adjusted_exposure"),
             ]
         )
 

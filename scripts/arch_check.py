@@ -73,6 +73,11 @@ VALIDATION_ENUM_ALLOWLIST: dict[str, set[str]] = {
     },
     # Art. 231 allocation column mapping (PR #249 — retained as engine config)
     "engine/crm/expressions.py": {"CRM_ALLOC_COLUMNS"},
+    # Nullable-partition-key registry for the partition_by_nullable helper.
+    # These are engine-internal column names tightly coupled to the helper's
+    # AST-level contract test; keeping them in `data/schemas.py` would split
+    # the rule from the code that enforces it.
+    "engine/utils.py": {"NULLABLE_PARTITION_KEYS"},
 }
 
 # Engine modules exempt from the check-8 "must declare a module logger" rule.

@@ -11,6 +11,56 @@ from datetime import date
 
 import polars as pl
 
+# Partition keys that can carry null values in the engine's frames. A naked
+# ``.over(key)`` on any of these will collapse all null-keyed rows into one
+# bucket, silently pooling unrelated rows in pro-rata aggregates. Use
+# ``partition_by_nullable`` to guard window aggregates over these keys.
+#
+# This set is the single source of truth for the AST contract test at
+# ``tests/contracts/test_no_raw_over_on_nullable_keys.py`` — keep both in sync.
+# Membership is derived from ``ColumnSpec(required=False)`` columns and
+# left-join nullable inputs in ``data/schemas.py``.
+NULLABLE_PARTITION_KEYS: frozenset[str] = frozenset(
+    {
+        "parent_facility_reference",
+        "lending_group_reference",
+        "counterparty_reference",
+    }
+)
+
+
+def partition_by_nullable(
+    agg_expr: pl.Expr,
+    key: str,
+    else_expr: pl.Expr,
+) -> pl.Expr:
+    """Guard a window aggregate against null-partition collapse.
+
+    Polars ``.over(key)`` collapses ALL null-keyed rows into a single
+    partition, so an unguarded ``.sum()`` over a nullable key silently
+    aggregates unrelated rows together — typically producing wrong pro-rata
+    weights downstream. This helper wraps an ``agg_expr`` (which already
+    contains ``.over(key)``) in a ``pl.when(key.is_not_null())`` conditional,
+    falling back to ``else_expr`` for null-keyed rows.
+
+    The shape is intentionally a thin ``pl.when`` shim, not an ``.over``
+    injector: call sites with compound additive aggregates (e.g.
+    ``drawn.over(K) + nominal.over(K)``) or multi-key partitions can
+    construct ``agg_expr`` themselves and pass it in fully formed.
+
+    Args:
+        agg_expr: The window aggregate expression. Must contain ``.over(key)``.
+        key: The partition column name; must match ``agg_expr``'s ``.over`` arg.
+        else_expr: Expression evaluated for rows where ``key`` is null. Accepts
+            any ``pl.Expr`` — column references, literals (wrap scalars in
+            ``pl.lit``), or other ``.over()`` expressions (e.g. a fallback
+            aggregation over a different key).
+
+    Returns:
+        A conditional Polars expression safe against null-partition collapse.
+    """
+    return pl.when(pl.col(key).is_not_null()).then(agg_expr).otherwise(else_expr)
+
 
 def exact_fractional_years_expr(
     start_date: date,
