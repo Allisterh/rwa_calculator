@@ -414,6 +414,260 @@ class TestBuildRatingInheritanceLazy:
         assert cp004["cqs"][0] is None
 
 
+class TestInheritanceTruthTable:
+    """Behavioural lock for the dual coalesce in _build_rating_inheritance_lazy.
+
+    See REVIEWER NOTE on _build_rating_inheritance_lazy: rows 4, 6, 7 of this
+    truth table are the load-bearing assertions. A refactor that simplifies
+    the coalesce (e.g. fusing PD + model_id into a struct-coalesce, or
+    collapsing the two own/parent joins into one) MUST update these rows;
+    do not delete them.
+
+    Row 7 (desync) is skipped pending a Risk decision on whether
+    independent-coalesce or strict-pairing is the intended semantic for the
+    case where own_pd is present but own_model_id is null. Replace RWA-XXXX
+    with the real ticket and unskip with the agreed expected tuple before
+    merge.
+    """
+
+    @staticmethod
+    def _build_inheritance_inputs(
+        own_pd: float | None,
+        own_model_id: str | None,
+        parent_pd: float | None,
+        parent_model_id: str | None,
+        *,
+        own_cqs: int | None = None,
+        parent_cqs: int | None = None,
+        multi_level: bool = False,
+    ) -> tuple[pl.LazyFrame, pl.LazyFrame, pl.LazyFrame]:
+        """Build (counterparties, ratings, org_mappings) for one truth-table row.
+
+        Single-level: CHILD -> PARENT.
+        Multi-level (depth 2): CHILD -> MID -> ULT, parent_* applied to ULT.
+        """
+        if multi_level:
+            counterparty_refs = ["CHILD", "MID", "ULT"]
+            org_mappings = pl.DataFrame(
+                {
+                    "child_counterparty_reference": ["CHILD", "MID"],
+                    "parent_counterparty_reference": ["MID", "ULT"],
+                }
+            ).lazy()
+            parent_ref = "ULT"
+        else:
+            counterparty_refs = ["CHILD", "PARENT"]
+            org_mappings = pl.DataFrame(
+                {
+                    "child_counterparty_reference": ["CHILD"],
+                    "parent_counterparty_reference": ["PARENT"],
+                }
+            ).lazy()
+            parent_ref = "PARENT"
+
+        counterparties = pl.DataFrame({"counterparty_reference": counterparty_refs}).lazy()
+
+        rating_rows: dict[str, list[object]] = {
+            "rating_reference": [],
+            "counterparty_reference": [],
+            "rating_type": [],
+            "rating_agency": [],
+            "rating_value": [],
+            "cqs": [],
+            "pd": [],
+            "model_id": [],
+            "rating_date": [],
+        }
+
+        def _add(
+            rating_ref: str,
+            cp_ref: str,
+            rtype: str,
+            agency: str,
+            value: str,
+            cqs: int | None,
+            pd_value: float | None,
+            model_id: str | None,
+        ) -> None:
+            rating_rows["rating_reference"].append(rating_ref)
+            rating_rows["counterparty_reference"].append(cp_ref)
+            rating_rows["rating_type"].append(rtype)
+            rating_rows["rating_agency"].append(agency)
+            rating_rows["rating_value"].append(value)
+            rating_rows["cqs"].append(cqs)
+            rating_rows["pd"].append(pd_value)
+            rating_rows["model_id"].append(model_id)
+            rating_rows["rating_date"].append(date(2024, 6, 1))
+
+        if own_pd is not None or own_model_id is not None:
+            _add("R_OWN_INT", "CHILD", "internal", "INTERNAL", "INT", None, own_pd, own_model_id)
+        if own_cqs is not None:
+            _add("R_OWN_EXT", "CHILD", "external", "MOODYS", "Aa1", own_cqs, None, None)
+        if parent_pd is not None or parent_model_id is not None:
+            _add(
+                "R_PARENT_INT",
+                parent_ref,
+                "internal",
+                "INTERNAL",
+                "INT",
+                None,
+                parent_pd,
+                parent_model_id,
+            )
+        if parent_cqs is not None:
+            _add("R_PARENT_EXT", parent_ref, "external", "MOODYS", "Aa1", parent_cqs, None, None)
+
+        if not rating_rows["rating_reference"]:
+            ratings = pl.DataFrame(
+                schema={
+                    "rating_reference": pl.String,
+                    "counterparty_reference": pl.String,
+                    "rating_type": pl.String,
+                    "rating_agency": pl.String,
+                    "rating_value": pl.String,
+                    "cqs": pl.Int64,
+                    "pd": pl.Float64,
+                    "model_id": pl.String,
+                    "rating_date": pl.Date,
+                }
+            ).lazy()
+        else:
+            ratings = pl.DataFrame(rating_rows).lazy()
+
+        return counterparties, ratings, org_mappings
+
+    @pytest.mark.parametrize(
+        (
+            "scenario",
+            "own_pd",
+            "own_model",
+            "parent_pd",
+            "parent_model",
+            "own_cqs",
+            "parent_cqs",
+            "multi",
+            "exp_pd",
+            "exp_model",
+            "exp_cqs",
+        ),
+        [
+            ("1_empty", None, None, None, None, None, None, False, None, None, None),
+            ("2_inherit", None, None, 0.02, "M_PARENT", None, None, False, 0.02, "M_PARENT", None),
+            ("3_own_only", 0.01, "M_OWN", None, None, None, None, False, 0.01, "M_OWN", None),
+            (
+                "4_gap_own_wins",
+                0.01,
+                "M_OWN",
+                0.02,
+                "M_PARENT",
+                None,
+                None,
+                False,
+                0.01,
+                "M_OWN",
+                None,
+            ),
+            ("5_tie", 0.02, "M_OWN", 0.02, "M_PARENT", None, None, False, 0.02, "M_OWN", None),
+            ("6_multi_level", None, None, 0.01, "M_ULT", None, None, True, 0.01, "M_ULT", None),
+            pytest.param(
+                "7_desync_blocked",
+                0.02,
+                None,
+                None,
+                "M_PARENT",
+                None,
+                None,
+                False,
+                None,
+                None,
+                None,
+                marks=pytest.mark.skip(
+                    reason=(
+                        "BLOCKED on Risk decision RWA-XXXX: Option A "
+                        "(independent coalesce, current: pd=0.02, model=M_PARENT) "
+                        "vs Option B (strict pairing: pd=0.02, model=null). "
+                        "Replace RWA-XXXX with the real ticket and unskip with "
+                        "the agreed expected tuple before merge."
+                    )
+                ),
+            ),
+            ("8_desync_mirror", None, "M_OWN", 0.02, None, None, None, False, 0.02, "M_OWN", None),
+            ("9_external_fence", None, None, None, None, None, 2, False, None, None, None),
+            ("10_full_rating", 0.005, "M_OWN", 0.02, "M_PARENT", 1, None, False, 0.005, "M_OWN", 1),
+        ],
+    )
+    def test_inheritance_truth_table(
+        self,
+        resolver: HierarchyResolver,
+        scenario: str,
+        own_pd: float | None,
+        own_model: str | None,
+        parent_pd: float | None,
+        parent_model: str | None,
+        own_cqs: int | None,
+        parent_cqs: int | None,
+        multi: bool,
+        exp_pd: float | None,
+        exp_model: str | None,
+        exp_cqs: int | None,
+    ) -> None:
+        """Behavioural truth table for the dual own->parent coalesce."""
+        counterparties, ratings, org_mappings = self._build_inheritance_inputs(
+            own_pd,
+            own_model,
+            parent_pd,
+            parent_model,
+            own_cqs=own_cqs,
+            parent_cqs=parent_cqs,
+            multi_level=multi,
+        )
+
+        ultimate_parents = resolver._build_ultimate_parent_lazy(org_mappings)
+
+        if multi:
+            # Pre-assert that ultimate-parent resolution actually walked 2 hops.
+            ups = ultimate_parents.collect()
+            child_row = ups.filter(pl.col("counterparty_reference") == "CHILD")
+            assert len(child_row) == 1, f"missing CHILD in {scenario} ultimate_parents"
+            assert child_row["ultimate_parent_reference"][0] == "ULT", scenario
+            assert child_row["hierarchy_depth"][0] == 2, scenario
+
+        result = resolver._build_rating_inheritance_lazy(
+            counterparties, ratings, ultimate_parents
+        ).collect()
+
+        child = result.filter(pl.col("counterparty_reference") == "CHILD")
+        assert len(child) == 1, f"expected exactly one CHILD row in {scenario}"
+
+        # Canonical column assertions.
+        if exp_pd is None:
+            assert child["internal_pd"][0] is None, scenario
+        else:
+            assert child["internal_pd"][0] == pytest.approx(exp_pd), scenario
+
+        if exp_model is None:
+            assert child["internal_model_id"][0] is None, scenario
+        else:
+            assert child["internal_model_id"][0] == exp_model, scenario
+
+        if exp_cqs is None:
+            assert child["external_cqs"][0] is None, scenario
+        else:
+            assert child["external_cqs"][0] == exp_cqs, scenario
+
+        # Alias column assertions — pin the alias derivation at
+        # hierarchy.py:434-439 so a refactor that drops the alias fails loudly.
+        if exp_pd is None:
+            assert child["pd"][0] is None, scenario
+        else:
+            assert child["pd"][0] == pytest.approx(exp_pd), scenario
+
+        if exp_cqs is None:
+            assert child["cqs"][0] is None, scenario
+        else:
+            assert child["cqs"][0] == exp_cqs, scenario
+
+
 class TestDualRatingResolution:
     """Tests for dual per-type (internal/external) rating resolution."""
 

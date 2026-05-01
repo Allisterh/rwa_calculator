@@ -319,6 +319,17 @@ class HierarchyResolver:
         - external_cqs: Art. 138-resolved external CQS (own only — not inherited)
         - cqs: Alias of external_cqs
         - pd: Alias of internal_pd
+
+        REVIEWER NOTE: the dual coalesce on internal_pd / internal_model_id
+        below (paired ``own → parent`` joins followed by independent
+        ``pl.coalesce`` per column) is deliberate per CRR Art. 171(1) and
+        Art. 175(3). The asymmetry between internal-inherits and
+        external-does-not-inherit is encoded by the *presence* of the
+        parent-internal join versus the *absence* of a parent-external one.
+        See ``tests/unit/test_hierarchy.py::TestInheritanceTruthTable``
+        rows 4, 6, 7 for the behavioural lock — simplification proposals
+        (e.g. fusing into a single struct-coalesce, or collapsing the two
+        joins into one) must update those rows; do not delete them.
         """
         sort_cols = ["rating_date", "rating_reference"]
 
