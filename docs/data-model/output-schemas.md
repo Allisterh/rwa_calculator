@@ -429,11 +429,33 @@ behave the same as before.
 
 ### Supporting factors (CRR only)
 
+The supporting-factor columns capture both the SME (CRR Art. 501) and infrastructure
+(CRR Art. 501a) RWA reductions. Under Basel 3.1 / PRA PS1/26 these factors are not
+available and the columns are populated for schema parity only (`supporting_factor = 1.0`,
+`supporting_factor_applied = False`). The `*_applied` flag is **generic** — it is `True`
+whenever any qualifying factor was applied, regardless of whether the binding factor was
+SME or infrastructure.
+
 | Column | Type | Description |
 |--------|------|-------------|
-| `sme_supporting_factor` | `Float64` | SME factor (0.7619/0.85), CRR only |
-| `infra_supporting_factor` | `Float64` | Infrastructure factor (0.75), CRR only |
-| `supporting_factor_benefit` | `Float64` | RWA reduction from factors |
+| `supporting_factor` | `Float64` | Effective (most beneficial) factor applied — `min(sme_factor, infra_factor)`. Defaults to `1.0` when no factor applies or under Basel 3.1. |
+| `supporting_factor_applied` | `Boolean` | `True` when `supporting_factor < 1.0`. Generic flag covering both Art. 501 (SME) and Art. 501a (infrastructure). |
+| `rwa_pre_factor` | `Float64` | RWA before any supporting factor was applied. |
+| `rwa_post_factor` | `Float64` | `rwa_pre_factor × supporting_factor` — RWA after the most beneficial factor. |
+| `sme_supporting_factor` | `Float64` | SME factor component (0.7619 below threshold / 0.85 above, blended on E\*). CRR only. |
+| `infra_supporting_factor` | `Float64` | Infrastructure factor component (0.75). CRR only. |
+| `supporting_factor_benefit` | `Float64` | RWA reduction from the applied factor (`rwa_pre_factor − rwa_post_factor`). |
+
+!!! note "Column rename — generic `supporting_factor_applied`"
+    Earlier releases emitted `sme_supporting_factor_applied`. The column was renamed to
+    the generic `supporting_factor_applied` when the Art. 501a infrastructure factor was
+    added to the same code path (`engine/sa/supporting_factors.py`,
+    `engine/aggregator/_supporting_factors.py`) — the flag now signals whichever factor
+    was binding. The legacy `sme_supporting_factor_applied` and
+    `infrastructure_factor_applied` keys are still defined in
+    `CRR_OUTPUT_SCHEMA_ADDITIONS` for back-compat with COREP-driven exporters; new
+    consumers should read `supporting_factor_applied` together with `is_sme` /
+    `is_infrastructure` to disambiguate.
 
 ### Warnings and validation
 
@@ -452,15 +474,14 @@ behave the same as before.
 |--------|------|-------------|
 | `regulatory_framework` | `String` | `"CRR"` |
 | `crr_effective_date` | `Date` | Regulation effective date |
-| `sme_supporting_factor_eligible` | `Boolean` | Turnover < EUR 50m |
-| `sme_supporting_factor_applied` | `Boolean` | Whether factor was applied |
-| `sme_supporting_factor_value` | `Float64` | 0.7619 |
+| `sme_supporting_factor_eligible` | `Boolean` | Turnover < EUR 50m (CRR Art. 501) |
+| `supporting_factor_applied` | `Boolean` | **Generic** flag — `True` whenever any factor (Art. 501 SME or Art. 501a infrastructure) was applied. Emitted by `engine/sa/supporting_factors.py`; replaces the legacy `sme_supporting_factor_applied` / `infrastructure_factor_applied` pair (which remain in `CRR_OUTPUT_SCHEMA_ADDITIONS` as legacy aliases for COREP back-compat). |
+| `sme_supporting_factor_value` | `Float64` | 0.7619 below threshold / 0.85 above (CRR Art. 501) |
 | `rwa_before_sme_factor` | `Float64` | RWA before SME factor |
 | `rwa_sme_factor_benefit` | `Float64` | RWA reduction from SME factor |
-| `infrastructure_factor_eligible` | `Boolean` | Qualifies as infrastructure |
-| `infrastructure_factor_applied` | `Boolean` | Whether factor was applied |
-| `infrastructure_factor_value` | `Float64` | 0.75 |
-| `rwa_infrastructure_factor_benefit` | `Float64` | RWA reduction |
+| `infrastructure_factor_eligible` | `Boolean` | Qualifies as infrastructure (CRR Art. 501a) |
+| `infrastructure_factor_value` | `Float64` | 0.75 (CRR Art. 501a) |
+| `rwa_infrastructure_factor_benefit` | `Float64` | RWA reduction from infrastructure factor |
 | `crr_exposure_class` | `String` | CRR-specific classification |
 | `crr_exposure_subclass` | `String` | Sub-classification where applicable |
 | `crr_mortgage_treatment` | `String` | `"35_pct"` or `"split_treatment"` |
