@@ -11,6 +11,9 @@ flowchart TD
     B --> D[Institution]
     B --> E[Corporate]
     B --> F[Retail]
+    B --> K[Real Estate]
+    B --> L[CIU]
+    B --> M[Covered Bond]
     B --> G[Specialised Lending]
     B --> H[Equity]
     B --> I[Defaulted]
@@ -29,6 +32,9 @@ flowchart TD
 | **Retail Mortgage** | Residential mortgages | :white_check_mark: | | :white_check_mark: | |
 | **Retail QRRE** | Qualifying revolving exposures | :white_check_mark: | | :white_check_mark: | |
 | **Retail Other** | Other retail exposures | :white_check_mark: | | :white_check_mark: | |
+| [**Real Estate (B31)**](secured-by-real-estate.md) | RE-secured loans (loan-splitting / income-producing / ADC) | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
+| [**CIU**](cius.md) | Collective Investment Undertakings | :white_check_mark: | | | |
+| [**Covered Bonds**](covered-bonds.md) | Eligible covered bonds (Art. 129) | :white_check_mark: | | | |
 | **Specialised Lending** | Project/object/commodity finance | :white_check_mark: | | | :white_check_mark: |
 | [**Equity**](other.md) | Equity holdings | :white_check_mark: | :white_check_mark: | | |
 | **Defaulted** | Non-performing exposures | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
@@ -223,4 +229,7 @@ config = CalculationConfig.crr(
 - [**Institution**](institution.md) - Bank and investment firm exposures
 - [**Corporate**](corporate.md) - Corporate and SME exposures
 - [**Retail**](retail.md) - Retail mortgage, QRRE, and other retail
+- [**Real Estate (B31)**](secured-by-real-estate.md) - Loan-splitting, income-producing, and ADC under Art. 124–124L
+- [**CIU**](cius.md) - Collective investment undertakings: look-through, mandate-based, and 1,250% fallback
+- [**Covered Bonds**](covered-bonds.md) - Eligible covered bonds under Art. 129
 - [**Other Classes**](other.md) - Equity, PSE, MDB, and defaulted exposures
