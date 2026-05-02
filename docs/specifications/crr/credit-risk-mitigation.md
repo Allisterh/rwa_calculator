@@ -263,6 +263,63 @@ Note: Pro-rata allocation gives different LGD* than sequential fill when total c
 
 Non-financial collateral is recognised through the Foundation Collateral Method using the LGD* formula with LGDS values.
 
+### Eligibility for Other Physical Collateral (CRR Art. 199(6))
+
+Before any Art. 230 LGD\* mechanics can be applied, **other physical collateral**
+(i.e., physical collateral that is *not* immovable property under Art. 199(2)–(4) or
+receivables under Art. 199(5)) must clear the Art. 199(6) eligibility gate. CRR
+Art. 199(6) requires the competent authority to permit the institution to use the
+collateral, and is conditional on **all four** of the following:
+
+| Para | Condition |
+|------|-----------|
+| (a) | **Liquid market.** There are liquid markets, evidenced by frequent transactions taking into account the asset type, for the disposal of the collateral in an expeditious and economically efficient manner. The institution must reassess this periodically and where information indicates material market changes. |
+| (b) | **Public market prices.** There are well-established, publicly available market prices for the collateral, drawn from reliable sources (e.g., public indices), reflecting prices of transactions under normal conditions, and obtainable regularly without undue burden. |
+| (c) | **Realisation analysis.** The institution analyses the market prices, the time and costs required to realise the collateral, and the realised proceeds from the collateral. |
+| (d) | **70% / 10% realisation test.** *"the institution demonstrates that the realised proceeds from the collateral are not below 70% of the collateral value in more than 10% of all liquidations for a given type of collateral"* (CRR Art. 199(6)(d) verbatim, `docs/assets/crr.pdf` p. 197). Where there is material price volatility, the institution must additionally demonstrate to the competent authority that its valuation is sufficiently conservative. |
+
+The (d) test is a **collateral-type-level** historical realisation track record — it is
+assessed across the institution's full population of past liquidations of that
+collateral type, not loan-by-loan. Failing the test (or any of (a)–(c)) renders
+the collateral type ineligible: it cannot enter the Art. 230 LGD\* waterfall at
+all, and there is no fallback to a haircut-based recognition.
+
+Art. 199(6) eligibility is the **gate**; [Art. 230](#non-financial-collateral-recognition-crr-art-230)
+governs the **mechanics** (the C\*/C\*\* minimum coverage thresholds and the
+LGDS values applied to the secured portion via the LGD\* formula). The two
+articles operate in sequence: 199(6) decides whether the collateral type may be
+used at all, and 230 then converts the eligible collateral into an LGD effect
+subject to the 30% C\* minimum and 140% C\*\* full-recognition thresholds for
+"other collateral" in [Art. 230 Table 5](#f-irb-lgds-values-art-230--art-161).
+
+Art. 199(6) also feeds the documentation duty: institutions shall document
+fulfilment of (a)–(d) and the operational requirements under
+[Art. 210](#crm-eligibility-principles-art-193-194). Art. 199(8) further
+requires the PRA to publish a list of types of physical collateral for which
+institutions can assume that conditions (a) and (b) of paragraph 6 are met
+(condition (d) is institution-specific and cannot be satisfied by such a list).
+
+!!! info "Verbatim text vs plan reference"
+    The 70%/10% realisation test is sometimes informally cited as "Art. 199(3)"
+    (e.g., in legacy gap-analysis tracking) because the same test sits at point
+    16 of Annex VIII Part 1 of the original 2006 Capital Requirements Directive
+    framework, and the renumbering between Annex VIII (CRD III) and CRR
+    Art. 199 was not always updated downstream. In the consolidated UK-onshored
+    CRR (`docs/assets/crr.pdf` p. 197), the rule sits at **Art. 199(6)(d)**.
+    Art. 199(3) in the consolidated CRR is the unrelated UK-residential-property
+    loss-rate derogation paragraph (≤ 0.3% / ≤ 0.5% loss limits for the
+    derogation from the Art. 199(2)(b) repayment-source test). PS1/26 carries
+    Art. 199 forward unchanged for IRB physical-collateral eligibility — the
+    70%/10% test applies under both CRR and Basel 3.1.
+
+!!! warning "Not Yet Implemented"
+    The calculator does not currently enforce the Art. 199(6) eligibility gate
+    on inputs. Other-physical collateral rows enter the Foundation Collateral
+    Method (Art. 230) directly, subject only to the 30% C\* minimum threshold
+    and 1.4× overcollateralisation ratio below. Firms relying on this code path
+    must self-certify Art. 199(6)(a)–(d) compliance for each collateral type
+    before submission.
+
 ### Overcollateralisation Ratios
 
 The code implements overcollateralisation ratios (1.25x receivables, 1.4x RE/physical) and 30% minimum thresholds for RE and other physical collateral. These ratios divide the haircut-adjusted collateral value before it enters the LGD* waterfall, effectively reducing the recognised secured portion.
