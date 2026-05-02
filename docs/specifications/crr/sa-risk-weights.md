@@ -553,6 +553,55 @@ Covered bonds must meet the following to qualify for preferential treatment:
 - Bond holders have priority claim in the event of issuer default
 - Collateral meets Art. 208 valuation requirements and Art. 229(1) valuation rules (Art. 129(3))
 
+### Pre-2007 Grandfathering (Art. 129(6))
+
+CRR Art. 129(6) grandfathers covered bonds issued before 31 December 2007: they
+retain access to the preferential rated and unrated risk weights in Art. 129(4)/(5)
+**without** having to meet the eligible-collateral requirements of Art. 129(1)
+or the Art. 208 / Art. 229(1) valuation requirements of Art. 129(3). The
+grandfathering runs **until the bond's contractual maturity** — there is no sunset
+date and no re-eligibility test on amendment.
+
+This is an **eligibility carve-out only**: the risk weights themselves come from
+the same Art. 129(4) Table 6A (rated) and Art. 129(5) derivation table (unrated)
+that apply to post-2007 bonds. A grandfathered CRR covered bond at CQS 2 still
+attracts 20%; a grandfathered unrated bond issued by a 50%-RW institution still
+attracts 20%.
+
+!!! quote "CRR Art. 129(6) — verbatim"
+    "[CRR covered bonds] issued before 31 December 2007 are not subject to the
+    requirements of paragraphs 1 and 3. They are eligible for the preferential
+    treatment under paragraphs 4 and 5 until their maturity."
+
+    *Source: CRR Art. 129(6), as onshored — see `docs/assets/crr.pdf` p.129.*
+
+**Operational implication.** Pre-2007 bonds in run-off are common in legacy UK
+covered bond programmes. Where the bond cannot be re-evidenced against modern
+Art. 129(1)(a)–(g) cover-pool eligibility — for example, because the cover pool
+includes asset types that pre-date the current eligible-asset list, or because
+LTV / valuation evidence to Art. 208 standards is unavailable — the firm should
+flag the issue date and rely on Art. 129(6) rather than re-classifying the bond
+out of the covered bond class. The Art. 129(7) portfolio-information /
+semi-annual disclosure conditions are **not** disapplied by para (6) and remain
+required for ongoing preferential treatment.
+
+!!! info "Basel 3.1 delta — grandfathering retained, scope tightened"
+    PRA PS1/26 Art. 129(6) **retains** the pre-2007 grandfathering on the same
+    "until maturity" basis, but narrows it: the grandfathered bond must still
+    meet the Art. 129(7) portfolio-information requirements, and the carve-out
+    is now drafted as disapplying paragraphs 1 and 3 only (eligible assets and
+    valuation), not paragraph 7. PS1/26 wording: *"CRR covered bonds issued
+    before 31 December 2007 which meet the requirements of paragraph 7 shall be
+    eligible covered bonds until their maturity and shall not be subject to the
+    requirements of paragraphs 1 and 3."* (PRA PS1/26 Art. 129(6),
+    `docs/assets/ps126app1.pdf` p.62.)
+
+    Net effect: a pre-2007 bond that was already meeting Art. 129(7) under CRR
+    transitions into the Basel 3.1 regime without re-papering. A pre-2007 bond
+    that has *not* been meeting Art. 129(7) loses preferential treatment from
+    1 January 2027 — even though it would have remained eligible under CRR
+    Art. 129(6) (which made no explicit reference to para 7).
+
 ### Basel 3.1 Covered Bond Changes (Art. 129)
 
 PRA PS1/26 modifies Art. 129 in-place — there is no separate "Art. 129A".
@@ -1093,6 +1142,7 @@ This mapping is used for sovereign exposures (Art. 114) where an ECA assessment 
 - **Default exposures** (Art. 127): Provision-based 100%/150% with RESI RE always-100% exception — Done
 - **Other items** (Art. 134): Cash=0%, gold=0%, collection=20%, tangible=100% — Done
 - **Covered bonds** (Art. 129): CQS-based risk weights, eligibility criteria, unrated derivation, PRA deviation — Added
+- **Pre-2007 covered bond grandfathering** (Art. 129(6)): CRR carve-out from Art. 129(1)/(3) eligibility tests retained until maturity; PRA PS1/26 Art. 129(6) retains the carve-out but additionally requires Art. 129(7) disclosure conditions — Added
 - **RGLA/PSE/MDB/Int'l Org tables** (Art. 115-118): Missing from original spec — Added
 - **ECA / MEIP scores** (Art. 137 Table 9): direct MEIP-score-to-risk-weight mapping (0–7 → 0%/0%/20%/50%/100%/100%/100%/150%) for sovereigns rated by an Export Credit Agency — Added
 - **Short-term assessments** (Art. 131 Table 7): Short-term ECAI CQS mapping — Added
