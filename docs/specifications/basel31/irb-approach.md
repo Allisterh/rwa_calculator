@@ -3,7 +3,7 @@
 Basel 3.1 IRB Approach scope, entry conditions, roll-out classes, and approach-routing
 rules introduced by PRA PS1/26.
 
-This page is the canonical home for two distinct topics:
+This page is the canonical home for three distinct topics:
 
 1. **Art. 144 entry conditions** — the high-level minimum requirements an institution
    must meet to obtain and retain IRB permission, including rating system coverage,
@@ -12,13 +12,20 @@ This page is the canonical home for two distinct topics:
 2. **Art. 147B roll-out class enumeration** — the eight roll-out classes plus the
    non-Retail AIRB Modelling category that govern IRB scope-of-use reporting (COREP
    **OF 08.07**) and disclosure (Pillar 3 **UKB CR6-A**).
+3. **Art. 179–184 risk parameter estimation standards** — the Section 6 Sub-Section 2
+   minimum requirements that govern how an institution must estimate the PD, LGD and
+   conversion factor / EAD inputs that the calculator engine then consumes. These are
+   model-governance requirements: the calculator does not perform estimation, but
+   applies regulatory floors and multipliers to the resulting model outputs.
 
 Other reporting/disclosure pages cross-reference these enumerations; do not duplicate
 the class list elsewhere.
 
 **Regulatory Reference:** PRA PS1/26 Art. 143–143E, 144, 145, 147, 147A, 147B, 147C,
-148, 150 (Annex E, Credit Risk: Internal Ratings Based Approach (CRR) Part).
-**Source PDF:** `docs/assets/ps126app1.pdf`, pp. 84–94.
+148, 150, 179, 180, 181, 181A–C, 182, 183, 184 (Annex E, Credit Risk: Internal
+Ratings Based Approach (CRR) Part).
+**Source PDF:** `docs/assets/ps126app1.pdf`, pp. 84–94 (entry conditions / roll-out)
+and pp. 131–141 (risk parameter estimation).
 
 ---
 
@@ -153,8 +160,11 @@ IRB permission:
   **Art. 147B — IRB Roll-Out Classes and Categories** section below on this page.
 - **Approach restrictions (which exposures can use IRB at all):** see
   [Model Permissions](model-permissions.md).
-- **Detailed rating system minimum requirements (Art. 174–191):** Section 6 of the
-  IRB Part — currently a forward reference; not yet fully expanded in this docs site.
+- **Risk parameter estimation standards (Art. 179–184):** see the
+  **Risk Parameter Estimation Standards (Art. 179–184)** section below on this page.
+- **Detailed rating system minimum requirements (Art. 174–178, Art. 185–191):**
+  the remainder of Section 6 of the IRB Part — partially covered (Arts. 179–184
+  expanded below; Arts. 174–178 and Arts. 185–191 currently forward references).
 - **COREP back-testing of rating systems:** see
   [C 08.05 / OF 08.05](../../features/corep-reporting.md#c-0805-of-0805-cr-irb-pd-back-testing).
 
@@ -343,6 +353,266 @@ under Art. 148(1A).
 
 ---
 
+## Risk Parameter Estimation Standards (Art. 179–184)
+
+PRA PS1/26 Section 6 Sub-Section 2 (ps126app1.pdf pp. 131–141) sets out the minimum
+requirements an institution must satisfy when **estimating** the PD, LGD, conversion
+factor and EAD inputs that drive the IRB risk-weight formulas. These are
+**model-governance** requirements imposed on the institution; they are not
+calculation steps performed by the engine. The calculator consumes the resulting
+model outputs and then applies regulatory floors, multipliers and downturn /
+conservatism overlays at the relevant pipeline stage.
+
+!!! info "Estimation lives in the institution's model framework, not the calculator"
+    Articles 179–184 govern how an institution must derive its own estimates of PD,
+    LGD, conversion factor and EAD: data length, long-run averaging, conservatism
+    margins, downturn treatment, dilution adjustments for purchased receivables.
+    The calculator is downstream of this — `loan.pd`, `loan.lgd` and
+    `facility.ccf` arrive on the input bundle as already-estimated values produced
+    by the firm's rating systems. The calculator's job is then to apply the
+    regulatory floors and multipliers in
+    `engine/irb/adjustments.py` and `engine/irb/formulas.py` (PD floors per
+    Art. 163(1), LGD floors per Art. 161(5)/164(4), FI correlation multiplier per
+    Art. 153(2), CCF floor per CRE32.27).
+
+### Article 179 — Overall Requirements for Estimates
+
+> Quantification of risk parameters PD, LGD, conversion factor / EAD and EL —
+> general standards applicable to all rating systems and all exposure classes.
+
+| Limb | Requirement | Operational obligation |
+|------|-------------|------------------------|
+| 1(a) | Estimates shall incorporate all relevant data, information and methods, derived using both historical experience and empirical evidence — not based purely on judgement. | Estimates must be plausible, intuitive, driven by material risk parameters; **the less data, the more conservative** the estimation. |
+| 1(aa) | LGD estimates **shall not** take account of recoveries from guarantees, credit derivatives or other support arrangements **except** where recognised under the LGD Adjustment Method (Art. 183). | Guarantee/CD recoveries are routed through the LGD Adjustment Method (LGD-AM) only — see Art. 183 below. |
+| 1(ab) | Existence of collateral shall not be taken into account except where recognised when applying the **LGD Modelling Collateral Method** (LGD-MCM). | Collateral effect on LGD requires LGD-MCM permission (Art. 169B). |
+| 1(b) | Institution shall be able to provide a breakdown of loss experience by drivers; estimates shall be **representative of long-run experience**. | Long-run representativeness of all estimates (PD, LGD, CF/EAD). |
+| 1(c) | Changes in lending practice or recovery process over the observation period shall be reflected; estimates shall reflect technical advances and new data; **annual review minimum**. | Annual estimate review obligation. |
+| 1(d) | Population, lending standards and economic / market conditions in the data shall be **comparable** with the institution's exposures and standards. Sample size and data period shall be sufficient for accuracy. | Representativeness of the data set against the institution's current portfolio. |
+| 1(e) | For purchased receivables, estimates shall reflect **all relevant information** available to the purchasing institution, including data from the seller, the institution itself, or external sources. | Purchaser must independently evaluate seller-provided data — see Art. 184. |
+| 1(f) | Institution shall add a **margin of conservatism** related to the expected range of estimation errors. The larger the expected error or the less satisfactory the data/methods, the larger the margin. | Margin of Conservatism (MoC) — sized to data quality and methodological uncertainty. |
+| 1A | Pre-2007 data: with PRA permission and demonstrated equivalence to the Art. 178 default definition, the data-standards requirements may be disapplied for the legacy data only. | Specific permission under FSMA s. 144G / 192XC. |
+| 2(a)–(e) | Pooled-data requirements: similar rating systems and criteria across the pool; pool representative of the portfolio; consistent use over time; institution remains responsible for system integrity; sufficient in-house understanding to monitor and audit. | Governance overlay when external pooled data is used. |
+
+**Calculator handover:** the calculator does not enforce Art. 179 directly. Pipeline
+inputs (`loan.pd`, `loan.lgd`, `facility.ccf`) are produced by the institution's
+rating systems and arrive already-MoC-loaded. The calculator applies regulatory
+floors at the IRB stage — see `engine/irb/adjustments.py`.
+
+**PDF citation:** ps126app1.pdf p. 131–132.
+
+### Article 180 — Requirements Specific to PD Estimates
+
+> PD-specific estimation requirements, split between **corporate and institution**
+> exposures (Art. 180(1)(a)–(h)) and **retail** exposures (Art. 180(2)(a)–(f)).
+
+#### Art. 180(1) — Corporate / Institution PD
+
+| Limb | Requirement |
+|------|-------------|
+| 1(a) | Estimate PDs by obligor grade from **long-run averages of one-year default rates** over a representative mix of good and bad economic periods. Highly-leveraged or traded-asset-heavy obligor PDs shall reflect **stressed-volatility** asset performance. |
+| 1(b) | For **purchased corporate receivables**, EL by obligor grade may be estimated from long-run averages of realised default rates. |
+| 1(c) | Where long-run PD/LGD for purchased corporate receivables is derived from EL plus a separate PD or LGD estimate, the total-loss process shall meet PD/LGD overall standards and be consistent with the LGD concept in Art. 181(1)(a). |
+| 1(d) | PD techniques may only be used **with supporting analysis**; judgement is required when combining techniques and adjusting for limitations. |
+| 1(e) | Internal-default-experience-based PDs shall reflect underwriting standards and rating-system differences vs. the data; **changes in underwriting or the rating system trigger an additional MoC**. |
+| 1(f) | Mapping internal grades to ECAI scales requires a comparison of internal vs. external rating criteria and common-obligor ratings. Biases or inconsistencies shall be avoided. The external scale shall be oriented to **default risk only** (not transaction characteristics). The mapping basis shall be documented. |
+| 1(g) | Statistical default-prediction PDs may be estimated as the **count-weighted average** of default-probability estimates within a grade; the model shall meet Art. 174 standards. |
+| **1(h)** | **Minimum 5-year historical observation period** for at least one source. Longer periods shall be used if available and relevant. The data shall include **a representative mix of good and bad years** from the relevant economic cycle. |
+
+#### Art. 180(2) — Retail PD
+
+| Limb | Requirement |
+|------|-------------|
+| 2(a) | Estimate PDs by obligor grade, facility grade or pool from **long-run averages of one-year default rates** over a representative mix of good and bad economic periods. |
+| 2(b) | PD estimates may also be derived from a total-loss estimate and an appropriate LGD estimate. |
+| 2(c) | Internal data shall be the **primary source**. External / pooled data or statistical models may be used only if there are strong links between (i) the institution's grade-assignment process and the external source's process, **and** (ii) the institution's internal risk profile and the external data composition. |
+| 2(d) | If long-run PD/LGD is derived from total losses + an appropriate PD or LGD, the total-loss process shall meet PD/LGD standards and be consistent with the LGD concept in Art. 181(1)(a). |
+| **2(e)** | **Minimum 5-year historical observation period** for at least one source. Longer periods shall be used if available and relevant. The data shall include a representative mix of good and bad years. |
+| 2(f) | Institution shall identify and analyse **seasoning effects** — expected changes in risk parameters over the life of the credit exposure. |
+| 2 (final) | For **purchased retail receivables**, external and internal reference data may be used; the institution shall use all relevant data sources as points of comparison. |
+
+!!! info "Five-year minimum is the floor, not the target"
+    Art. 180(1)(h) and 180(2)(e) require a **minimum** of 5 years of data for at
+    least one source. If a longer relevant data period is available, it **must** be
+    used — there is no permission to truncate. This contrasts with Art. 181(1)(j)
+    and Art. 182(2) for non-retail LGD/CF/EAD, which start at 5 years and **ramp
+    to 7 years** post-implementation.
+
+**Calculator handover:** PDs supplied to the calculator are downstream of Art. 180.
+The calculator then applies the **differentiated PD floors** introduced by Basel
+3.1 — Art. 163(1) (corporate 0.05%, retail mortgage 0.10%, retail other 0.05%, QRRE
+revolvers 0.10%, QRRE transactors 0.05%) — implemented in
+`engine/irb/adjustments.py`.
+
+**PDF citation:** ps126app1.pdf p. 132–134.
+
+### Article 181 — Requirements Specific to LGD Estimates
+
+> LGD-specific estimation requirements, including **downturn LGD** (Art. 181(1)(b))
+> and the LGD-in-default treatment for already-defaulted exposures (Art. 181(1)(h)).
+
+#### Art. 181(1) — General LGD Requirements
+
+| Limb | Requirement |
+|------|-------------|
+| 1(a) | Estimate LGDs by facility grade or pool on the basis of the **default-weighted average of realised LGDs** by facility grade or pool, using all observed defaults within the data sources. |
+| **1(b)(i)** | Institution shall use LGD estimates **appropriate for an economic downturn** if those are more conservative than the long-run average. |
+| 1(b)(ii) | If a rating system uses risk drivers sensitive to the economic cycle, the institution shall (1) analyse the difference in exposure distribution over facility grades / pools / continuous-scale intervals between the current portfolio before and during the downturn period, and (2) where a substantial difference is identified, apply **non-negative adjustments** to its downturn LGD estimates to limit the cycle impact on RWA. |
+| 1(c) | The institution shall consider **interdependence between obligor risk and collateral / collateral-provider risk**; significant dependence is treated conservatively. |
+| 1(d) | **Currency mismatches** between the underlying obligation and the collateral shall be treated conservatively in the LGD assessment. |
+| 1(e) | Where LGD estimates take account of collateral under the **LGD-MCM** (and the institution is not applying Art. 169B), estimates shall not rely solely on collateral market value. They shall reflect the institution's potential **inability to expeditiously gain control and liquidate** the collateral. |
+| 1(h)(i) | For exposures **already in default**, the LGD-in-default shall reflect downturn conditions where downturn LGD-in-default estimates are more conservative than the long-run average defaulted LGD. |
+| 1(h)(ii) | LGD-in-default shall be **further increased** above the level in 1(h)(i) where necessary to ensure that, for each exposure, the difference between the LGD estimate and Best-Estimate Expected Loss (BEEL) covers the institution's estimate of additional unexpected losses during the **recovery period** (default date to final liquidation). |
+| 1(i) | Capitalised unpaid late fees shall be added to both the exposure measure and the loss measure. |
+| **1(j)** | **Corporate LGD** estimates shall be based on **a minimum of 5 years**, **increasing by one year each year after implementation until a minimum of 7 years is reached**, for at least one source. Longer relevant periods shall be used. |
+| 1 (final) | Institution may reflect **additional drawings post-default** in its LGD estimates. |
+
+#### Art. 181(2) — Retail LGD
+
+| Limb | Requirement |
+|------|-------------|
+| 2(a) | Retail LGDs may be derived from realised losses and appropriate PD estimates. |
+| 2(c) | For **purchased retail receivables**, external and internal reference data may be used to estimate LGDs. |
+| **2 (final)** | **Retail LGD** estimates shall be based on **a minimum of 5 years** of data. (No ramp to 7 years.) |
+
+#### Art. 181A–C — Economic Downturn Specification
+
+Art. 181A–C (ps126app1.pdf pp. 135–138) operationalises the "economic downturn"
+concept used in Art. 181(1)(b) and Art. 182(1)(b):
+
+| Article | Topic | Key requirement |
+|---------|-------|-----------------|
+| **Art. 181A** | Nature, severity and duration of an economic downturn | Identify a downturn for **each type of exposures**, characterised by a **relevant indicator set** (per 181B). Severity = **most severe 12-month value** observed within the **applicable time-span** (per 181C(1)). Duration = peaks/troughs covering that severity (per 181C(2)). |
+| **Art. 181B** | Relevant indicator set | Mandatory base set: **GDP**, **unemployment rate**, externally-provided aggregate default rates and credit losses (where available). Additional sector-specific indicators by exposure type (corporates, SME retail, RRE/CRE-secured, retail other, specialised lending sub-types, institutions). |
+| **Art. 181C** | Applicable time-span and downturn duration | Historical time-span shall be sufficient to be representative of likely future variability and **at any rate at least 20 years**. Duration determined by peak/trough coverage rules in 181C(2)(a)–(d). |
+
+!!! warning "20-year time-span is a hard minimum for downturn analysis"
+    Art. 181C(1) requires the historical time-span used to identify the **most
+    severe 12-month value** of each economic indicator to be **at least 20 years**,
+    independent of the 5-year / 7-year LGD data-history requirement in
+    Art. 181(1)(j). The two horizons serve different purposes: the 5/7-year
+    horizon governs the loss data underpinning the LGD estimate itself; the
+    20-year horizon governs the macroeconomic indicator series used to identify
+    when a downturn occurred.
+
+**Calculator handover:** downturn LGD outputs from the institution's model framework
+arrive on the input bundle as `loan.lgd`. The calculator then applies the Basel 3.1
+**A-IRB LGD floors** at the relevant pipeline stage — Art. 161(5) / 164(4),
+implemented in `engine/irb/adjustments.py`.
+
+**PDF citation:** ps126app1.pdf p. 134–138.
+
+### Article 182 — Requirements Specific to Conversion Factor and EAD Estimates
+
+> CCF / EAD estimation requirements, structured similarly to Art. 181 with a
+> downturn overlay and asymmetric data-history requirements (corporate vs. retail).
+
+| Limb | Requirement |
+|------|-------------|
+| 1(a) | Estimate conversion factors / EADs by facility grade or pool on the basis of the **default-weighted average of realised CFs/EADs at default**, using all observed defaults within the data sources. |
+| 1(b)(i) | Use CF/EAD estimates **appropriate for an economic downturn** where they are more conservative than the long-run average. |
+| 1(b)(ii) | If a rating system uses cycle-sensitive risk drivers, the institution shall analyse pre-downturn vs. downturn distribution shifts and apply **non-negative adjustments** to downturn CF/EAD estimates to limit the cycle impact. |
+| 1(c) | A **larger MoC** shall be incorporated where stronger positive correlation can reasonably be expected between default frequency and the magnitude of the CF/EAD. |
+| 1(ca) | CF/EAD estimates shall reflect the **possibility of additional drawings**: (i) up to default-event trigger and (ii) post-default where not already reflected in LGD estimates. |
+| 1(d) | The institution shall consider its policies on **account monitoring and payment processing**, and its ability/willingness to prevent further drawings on covenant violations or technical default. |
+| 1(e) | Adequate systems and procedures shall monitor facility amounts, current outstandings vs. committed lines and changes in outstandings per obligor and per grade. **Daily** monitoring of outstanding balances. |
+| 1(f) | Different CF/EAD estimates for risk-weight calculation vs. internal purposes shall be documented and reasonable. |
+| 1(g) | Where the institution estimates **CFs**, these shall reflect realised CFs **measured 12 months prior to the month of default**; estimates shall use observed obligor and facility characteristics available 12 months pre-default. |
+| **2** | **Corporate / institution CF/EAD**: minimum **5 years**, **increasing by one year each year after implementation until a minimum of 7 years is reached**, for at least one source. |
+| **3** | **Retail CF/EAD**: minimum **5 years**. (No ramp.) |
+
+**Calculator handover:** own-estimate CCFs supplied to the calculator are subject to
+the **CCF floor of 50% of the SA CCF** (CRE32.27 / Basel 3.1 A-IRB floor),
+implemented in `engine/irb/adjustments.py`. Own-estimate CCFs are permitted only
+for **revolving facilities** under Basel 3.1; all other items use SA CCFs (see
+[Credit Conversion Factors](../../framework-comparison/key-differences.md#credit-conversion-factors)
+for the cross-reference).
+
+**PDF citation:** ps126app1.pdf p. 138–139.
+
+### Article 183 — Requirements for Applying the LGD Adjustment Method (LGD-AM) for Unfunded Credit Protection
+
+> Standards for using guarantees and single-name credit derivatives as eligible
+> unfunded credit protection under the LGD-AM (the alternative to A-IRB own-LGD-
+> through-modelling under the LGD-MCM).
+
+| Paragraph | Requirement |
+|-----------|-------------|
+| 1 | LGD-AM may take account of unfunded credit protection only where 1A is met **and** for guarantees / single-name credit derivatives the following requirements are satisfied: (a) clearly specified guarantor-eligibility criteria; (b) **non-retail guarantors assigned to obligor grades** under Arts. 171–173; (c) **retail guarantors assigned to grades / pools** as part of credit approval under Arts. 171–173. |
+| 1A | Eligibility of guarantees / credit derivatives (including first-to-default CDs): (a) credit protection evidenced **in writing**; (b) no clause permitting the protection provider to **unilaterally cancel or modify** the protection adversely to the lender; (c) protection is not a **second-to-default or higher nth-to-default** credit derivative. |
+| 2 | LGD-AM users shall have clearly specified criteria for adjusting facility grades or LGD estimates. Criteria shall be plausible and intuitive and shall address: protection provider's **ability and willingness to perform**, **likely timing** of payments, the **degree of correlation** between provider performance and obligor repayment ability, and the **residual risk** to the obligor. |
+| 2A | Where an exposure is covered by unfunded credit protection that is itself collateralised, and the institution uses both LGD-AM and LGD-MCM under CRR Art. 191A(2), the adjustments under paragraph 2 may also reflect the collateral effect under Art. 169A(3). |
+| 3 | **Asset mismatch** between underlying obligation and the credit derivative reference / credit-event obligation: usable as eligible unfunded credit protection only if CRR Art. 216(2) requirements are met. CDs require LGD-adjustment criteria addressing **payout structure**, conservative timing/level-of-recovery assessment and residual-risk consideration. |
+
+!!! info "LGD-AM vs. LGD-MCM — two distinct A-IRB methods"
+    Art. 183 (LGD-AM) is the **adjustment** method — guarantees and credit
+    derivatives are recognised by adjusting LGD estimates or facility grades.
+    Art. 169B (LGD-MCM) is the **modelling** method — collateral and (where
+    permitted under Art. 191A) unfunded credit protection are recognised through
+    the LGD model itself. Art. 191A is the single decision tree governing which
+    method applies for each exposure / protection combination.
+
+**Calculator handover:** guarantee recognition under LGD-AM is implemented in
+`engine/irb/guarantee.py`. The calculator does not validate Art. 183(1A)(a)–(c)
+contractual eligibility — that is an upstream model-governance / CRM-validation
+responsibility.
+
+**PDF citation:** ps126app1.pdf p. 139–140.
+
+### Article 184 — Requirements for Purchased Receivables
+
+> Estimation standards specific to purchased receivables — applies to both corporate
+> (Art. 154(5)) and retail purchased receivables, layered on top of the general
+> requirements in Arts. 179–182.
+
+| Paragraph | Requirement |
+|-----------|-------------|
+| 1 | Quantify risk parameters by rating grade or pool subject to all of paragraphs 2–6. |
+| 2 | **Effective ownership and control of cash remittances** under all foreseeable circumstances. Where the obligor pays seller / servicer directly, **regular verification** that payments are forwarded completely and on time. Procedures protecting ownership and cash receipts against bankruptcy stays / legal challenges that could delay liquidation or assignment. |
+| 3 | **Monitor both the receivables quality and the financial condition of the seller and servicer**: (a) assess correlation between receivables quality and seller/servicer condition; **assign internal risk rating to each seller and servicer**; (b) clear seller/servicer-eligibility policies; **periodic reviews** of sellers/servicers to verify accuracy of reports, detect fraud, verify credit and collection policies; (c) assess characteristics of receivables pools (over-advances, arrears history, bad debts and allowances, payment terms, contra accounts); (d) policies and procedures monitoring **single-obligor concentrations** within and across pools; (e) timely and detailed servicer reports of **receivables ageings and dilutions**. |
+| 4 | Systems and procedures for **early detection** of seller-condition deterioration and receivables-quality deterioration, with proactive remediation; covenant-violation monitoring; clear policies for legal action and problem-receivables management. |
+| 5 | Written internal policies covering all material elements of the receivables-purchase programme: **advancing rates, eligible collateral, documentation, concentration limits, cash-receipts handling**. Funds advanced only against specified supporting collateral and documentation. |
+| 6 | Effective internal compliance process including **regular audits** of all critical phases of the programme, verification of **separation of duties** (seller/servicer assessment vs. obligor assessment vs. field audit), and back-office evaluation focused on qualifications, experience, staffing and supporting automation. |
+
+**Calculator handover:** purchased receivables flow through the same IRB engine as
+direct corporate / retail exposures; their treatment is governed by
+[Roll-Out Class (c) — Corporate Purchased Receivables](#art-147b1--roll-out-classes-eight-classes)
+and Roll-Out Class (g) — Retail Purchased Receivables. The Art. 184 controls are
+not engine logic; they are an upstream model-governance precondition for using
+the purchased-receivables population under IRB.
+
+**PDF citation:** ps126app1.pdf p. 140–141.
+
+### Cross-Reference: Estimation vs. Calculator Application
+
+The boundary between **what the institution estimates** (Arts. 179–184) and
+**what the calculator applies** (regulatory floors, multipliers and downturn
+overlays) is summarised below:
+
+| Risk parameter | Estimated by institution under | Floor / multiplier applied by calculator |
+|----------------|-------------------------------|------------------------------------------|
+| **PD** (corporate / institution) | Art. 180(1) — long-run average, ≥ 5y data, MoC under 179(1)(f) | **Art. 163(1)** PD floor: corporate 0.05% (Basel 3.1) — `engine/irb/adjustments.py` |
+| **PD** (retail) | Art. 180(2) — long-run average, ≥ 5y data, seasoning under 180(2)(f) | **Art. 163(1)** PD floor: retail mortgage 0.10%, retail other / QRRE transactor 0.05%, QRRE revolver 0.10% — `engine/irb/adjustments.py` |
+| **LGD** (A-IRB corporate / institution) | Art. 181(1) — default-weighted, downturn under 181(1)(b), ≥ 5y ramping to 7y under 181(1)(j) | **Art. 161(5)** A-IRB LGD floors: unsecured 25%, financial collateral 0%, RE/receivables 10%, other physical 15% — `engine/irb/adjustments.py` |
+| **LGD** (A-IRB retail) | Art. 181(2) — ≥ 5y, downturn under 181(1)(b) (cross-applies) | **Art. 164(4)** retail LGD floors: secured RRE 5%, QRRE unsecured 50%, other unsecured retail 30%, secured LGDU 30% — `engine/irb/adjustments.py` |
+| **LGD-AM** unfunded credit protection | Art. 183 — guarantor grading (181/171–173), eligibility (1A), payout-structure analysis (3) | LGD adjustment via guarantor PD/LGD substitution — `engine/irb/guarantee.py` |
+| **CF / EAD** (A-IRB own-estimate) | Art. 182 — default-weighted, downturn under 182(1)(b), 12-month look-back under 182(1)(g), ≥ 5y ramping to 7y for non-retail | **CRE32.27** CCF floor: own CCF ≥ 50% of SA CCF; own CCFs only for revolving facilities — `engine/irb/adjustments.py` |
+| **Downturn period** | Art. 181A–C — relevant indicator set (181B), ≥ 20-year time-span (181C(1)) | None — downturn application is upstream of the calculator. |
+| **F-IRB LGD / CCF** | Not estimated by the institution — supervisory values apply | Art. 161 supervisory LGD; Art. 166C/D supervisory CCFs — `data/tables/firb_lgd.py` |
+
+!!! info "Why the calculator does not implement Arts. 179–184 directly"
+    The estimation requirements in Arts. 179–184 are model-governance obligations
+    that the institution discharges within its rating-system development and
+    validation framework. The calculator engine consumes the resulting model
+    outputs (PD, LGD, CCF) on the input bundle and applies regulatory downstream
+    controls — floors, multipliers, downturn overlays where mandated by formula
+    rather than by estimation. Validation of Arts. 179–184 compliance is the
+    subject of Art. 185 (validation of internal estimates, ps126app1.pdf p. 141)
+    and is verified through the rating-system back-testing reflected in COREP
+    template **C 08.05 / OF 08.05** — see
+    [COREP Reporting — C 08.05 / OF 08.05](../../features/corep-reporting.md#c-0805-of-0805-cr-irb-pd-back-testing).
+
+---
+
 ## Source Citations
 
 | Reference | Page (ps126app1.pdf) | Topic |
@@ -365,6 +635,18 @@ under Art. 148(1A).
 | Art. 148(1), (1A) | p. 94 | Sequenced roll-out permissions |
 | Roll-out class definition | p. 79 | Cross-reference to Art. 147B(1) |
 | Non-Retail AIRB Modelling roll-out category definition | p. 78 | Cross-reference to Art. 147B(2) |
+| **Art. 179(1)–(2), (1A)** | **p. 131–132** | **Overall requirements for risk-parameter estimates (data, MoC, pooled data)** |
+| **Art. 180(1)(a)–(h)** | **p. 132–133** | **PD estimation — corporate / institution (5-year minimum data, long-run average)** |
+| **Art. 180(2)(a)–(f)** | **p. 133–134** | **PD estimation — retail (5-year minimum data, seasoning)** |
+| **Art. 181(1)(a)–(j)** | **p. 134–135** | **LGD estimation — default-weighted, downturn LGD, LGD-in-default, 5y -> 7y ramp for corporates** |
+| **Art. 181(2)** | **p. 135** | **LGD estimation — retail (5-year minimum)** |
+| **Art. 181A** | **p. 135–136** | **Economic downturn — nature, severity, duration** |
+| **Art. 181B** | **p. 136–137** | **Economic downturn — relevant indicator set (GDP, unemployment, sector indices)** |
+| **Art. 181C** | **p. 137–138** | **Economic downturn — applicable time-span (≥ 20 years) and downturn duration** |
+| **Art. 182(1)–(3)** | **p. 138–139** | **CCF / EAD estimation — downturn, 12-month look-back, 5y -> 7y ramp for corporates / institutions, 5y for retail** |
+| **Art. 183(1)–(3)** | **p. 139–140** | **LGD-AM — eligibility of guarantees and credit derivatives, guarantor grading, payout-structure assessment** |
+| **Art. 184(1)–(6)** | **p. 140–141** | **Purchased receivables — cash control, seller/servicer monitoring, single-obligor concentration, internal audit** |
+| Art. 185 | p. 141 | Validation of internal estimates (cross-reference for Sub-Section 3) |
 
 ---
 
