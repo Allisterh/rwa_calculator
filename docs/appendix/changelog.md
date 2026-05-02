@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`use_investment_grade_assessment` config knob documented (`docs/api/configuration.md`)**: the PRA PS1/26 Art. 122(6)/(8) IG=65% / non-IG=135% election for unrated non-SME corporates is now a discoverable knob from the API docs — field name, type, default (`False`), the Basel-3.1-only scope (CRR factory does not expose it), the Art. 122(7) sound-processes obligation and Art. 122(8)(b) PRA notification requirement on adoption *and* cessation, the Art. 92(2A) S-TREA interaction, and a worked `CalculationConfig.basel_3_1(use_investment_grade_assessment=True)` snippet are all in place. The `basel_3_1()` factory signature in the same page is updated to surface the argument. Closes DOCS_IMPLEMENTATION_PLAN.md D3.51 (plan-item article citation corrected — the field is Art. 122(6)/(8), not Art. 153(3) as the plan text said).
 
 ### Changed
+- **`supporting_factor_applied` column documented in canonical name (`docs/data-model/output-schemas.md`)**: the SA supporting-factor stage at `engine/sa/supporting_factors.py` and the aggregator at `engine/aggregator/_supporting_factors.py` emit a generic `supporting_factor_applied` Boolean covering both Art. 501 (SME, blended at the EUR 2.5m / GBP 2.2m threshold) and Art. 501a (infrastructure, flat 0.75) supporting factors, but the schema docs still showed the legacy `sme_supporting_factor_applied` name from before the infrastructure factor existed. The "Supporting factors (CRR only)" sub-table now lists all four pipeline-emitted columns (`supporting_factor`, `supporting_factor_applied`, `rwa_pre_factor`, `rwa_post_factor`) with broadened prose covering both factors, and a rename callout explains that `sme_supporting_factor_applied` survives in `CRR_OUTPUT_SCHEMA_ADDITIONS` only as a legacy COREP alias. Closes DOCS_IMPLEMENTATION_PLAN.md D3.54.
+
+### Cross-references
+- **Art. 179–184 estimation standards cross-link added (`docs/appendix/regulatory-references.md`)**: the bare Art. 178–180 / Art. 181 rows in the IRB Approach articles table are replaced with cross-link rows pointing at the existing verbatim Art. 179–184 spec section in `basel31/irb-approach.md` and the Art. 181A–C economic-downturn anchor — implementers can now navigate the appendix index straight into the PD/LGD/EAD estimation rules without scanning the IRB spec page. Companion to D3.49 (above).
+
+### Changed
 - (Next release changes will go here)
 
 ### Fixed
