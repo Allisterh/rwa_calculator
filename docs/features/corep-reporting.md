@@ -782,6 +782,37 @@ value, LGD, maturity, RWEA, and memorandum items (expected loss, provisions, obl
     | ==0190== | ==Corporates without ECAI== | ==**New**== |
     | ==0200== | ==&emsp;of which: investment grade== | ==**New**== |
 
+    !!! info "Why rows 0190 / 0200 exist — output floor only (Art. 122(6)–(8))"
+        These rows are **not** a general SA reporting requirement. They exist solely to
+        enable the **output-floor S-TREA leg** for IRB firms that have unrated exposures
+        in the *financial corporates and large corporates* exposure subclass (Art. 147(2)(c)(ii),
+        cross-ref Art. 147A(1)(e); the "large corporate" definition is annual revenue above
+        GBP 440 million per Art. 147(4C)(b)(ii)).
+
+        Under PRA PS1/26 Art. 122(8), an IRB firm computing the output floor must, for IRB
+        exposures within the corporate exposure class without an ECAI assessment, **either**:
+
+        - **(a)** assign a flat **100%** SA risk weight (the Art. 122(5) default), or
+        - **(b)** apply the Art. 122(6) split — provided the firm has the prior PRA permission
+          required by Art. 122(6) and gives notice to the PRA before electing this option:
+            - **65%** for exposures the firm has assessed as *investment grade*
+              (Art. 122(6)(a), conditions in Art. 122(9)–(10))
+            - **135%** for exposures assessed as *not investment grade* (Art. 122(6)(b))
+
+        Row **0190** captures the total IRB carrying value of unrated corporates routed
+        into the SA leg of the floor; row **0200** ("of which: investment grade") isolates
+        the 65%-weighted subset so supervisors can verify the `0.65 × IG + 1.35 × non-IG`
+        split versus the flat-100% alternative.
+
+        These rows feed the S-TREA term in the output floor formula
+        `max(U-TREA, x · S-TREA + OF-ADJ)` (see
+        [OF 02.01 — Output Floor Comparison](#of-0201-output-floor-comparison-basel-31-only)),
+        where `x` phases from 60% in 2027 to 72.5% from 2030 per Art. 92(5).
+
+        > **Details:** Risk-weight values are sourced from the canonical
+        > [SA risk weights — additional Basel 3.1 corporate treatments](../specifications/crr/sa-risk-weights.md#additional-basel-31-corporate-treatments).
+        > Do not duplicate the table here.
+
     !!! warning "Removed Rows"
         Rows **0015** (SME factor), **0016** (infrastructure factor), and **0160** (alternative
         RE treatment) are removed under Basel 3.1.
