@@ -77,13 +77,16 @@ The `entity_type` field is the **authoritative source** for determining both SA 
 | `pse_sovereign` | PSE | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 116 - govt guaranteed |
 | `pse_institution` | PSE | INSTITUTION | CRR Art. 116 - commercial PSE |
 | **MDB/International Org Class** |
-| `mdb` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 117 - 0% RW if on eligible list |
-| `international_org` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 118 |
+| `mdb` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 117(1) — non-named MDB; institution table (CRR) / dedicated Table 2B (PS1/26 Art. 117(1)(a)) |
+| `mdb_named` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 117(2) / PS1/26 Art. 117(2) — named MDBs on the eligible list (e.g. IBRD, IFC, EIB, EBRD) qualify for **0% RW**. Use `mdb` for non-named MDBs that fall back to the institution / Table 2B treatment |
+| `international_org` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 118 — international organisations (e.g. IMF, BIS); 0% RW |
 | **Institution Class** |
 | `institution` | INSTITUTION | INSTITUTION | CRR Art. 112(d) |
 | `bank` | INSTITUTION | INSTITUTION | CRR Art. 112(d) |
 | `ccp` | INSTITUTION | INSTITUTION | CRR Art. 300-311 (CCP treatment) |
 | `financial_institution` | INSTITUTION | INSTITUTION | CRR Art. 112(d) |
+| **Covered Bond Class** |
+| `covered_bond` | COVERED_BOND | COVERED_BOND | CRR Art. 129 / PS1/26 Art. 129 — eligible covered bonds. Rated: CQS lookup against Table 6A (CRR) / Table 7 (B31). Unrated: derived from issuing institution's senior unsecured RW per Art. 129(5). B31 adds new due-diligence requirement (Art. 129(4A)) and expands the unrated derivation table from 4 to 7 entries |
 | **Corporate Class** |
 | `corporate` | CORPORATE | CORPORATE | CRR Art. 112(g) |
 | `company` | CORPORATE | CORPORATE | CRR Art. 112(g) |
@@ -94,6 +97,20 @@ The `entity_type` field is the **authoritative source** for determining both SA 
 | `specialised_lending` | SPECIALISED_LENDING | SPECIALISED_LENDING | CRR Art. 147(8) |
 | **Equity Class** |
 | `equity` | EQUITY | EQUITY | CRR Art. 133 |
+| **High-Risk Class (Basel 3.1 only — see warning below)** |
+| `high_risk` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — generic "items associated with particularly high risk"; **150% RW**. Assessment criteria per Art. 128(3): high risk of loss from obligor default; impossible to assess on standard data |
+| `high_risk_venture_capital` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — venture capital exposures held outside the equity exposure class (priority 3 equity takes precedence; this bucket is for non-equity VC exposures only). 150% RW |
+| `high_risk_private_equity` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — private-equity exposures held outside the equity exposure class. 150% RW |
+| `high_risk_speculative_re` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — speculative immovable property financing (e.g. land acquisition with uncertain end use). 150% RW. Distinct from ADC (Art. 124K) which has its own loan-splitter treatment |
+| **Other Items Class (CRR Art. 134 / PS1/26 Art. 134)** |
+| `other_cash` | OTHER | OTHER | CRR Art. 134(3) / PS1/26 Art. 134(3) — cash in hand and equivalent items; **0% RW** |
+| `other_gold` | OTHER | OTHER | CRR Art. 134(4) / PS1/26 Art. 134(4) — gold bullion held in own vaults or on an allocated basis (backed by bullion liabilities); **0% RW** |
+| `other_items_in_collection` | OTHER | OTHER | CRR Art. 134(2) / PS1/26 Art. 134(2) — cash items in the process of collection; **20% RW** |
+| `other_tangible` | OTHER | OTHER | CRR Art. 134(7) / PS1/26 Art. 134(7) — other tangible assets, prepayments, and accrued income (where the counterparty cannot be identified); **100% RW** |
+| `other_residual_lease` | OTHER | OTHER | CRR Art. 134(7) / PS1/26 Art. 134(7) — residual value of leasing exposures (i.e. the portion not captured as a lease receivable on the obligor); **100% RW** |
+
+!!! warning "Art. 128 (high-risk items) is omitted from current UK CRR"
+    Art. 128 was **omitted from UK onshored CRR by SI 2021/1078** (the Capital Requirements Regulation (Amendment) Regulations 2021). The high-risk exposure class is therefore a **dead letter under current UK CRR (pre-2027)** — exposures tagged with any `high_risk*` `entity_type` will fall through to other classes under a CRR-mode run. The class is **re-introduced under PRA PS1/26 Art. 128** with effect 1 January 2027. Use the `high_risk*` entity types only when running in Basel 3.1 mode, or accept that the row will be reclassified under CRR. See [SA risk weights spec - High-risk exposures](../specifications/crr/sa-risk-weights.md#high-risk-exposures-art-128).
 
 ### Why SA and IRB Classes Can Differ
 
