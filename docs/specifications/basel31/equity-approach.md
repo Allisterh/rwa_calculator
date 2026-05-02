@@ -461,6 +461,156 @@ The approach is determined by the `ciu_approach` input column:
 
 ---
 
+## PRA Notification — Third-Country "Relevant CIU" Exposures (Art. 132(8))
+
+PS1/26 introduces a new UK-specific notification regime for institutions whose
+CIU exposures are managed from outside the UK. It is **not** a risk-weight rule —
+it is a firm-governance reporting obligation that sits alongside the SA equity /
+CIU calculations and feeds into PRA supervisory oversight of third-country
+fund-management concentrations.
+
+!!! warning "Plan-item misattribution: Art. 132(3A)/(3B) and Art. 132(4A) do not exist"
+    `DOCS_IMPLEMENTATION_PLAN.md` items **D4.58** and **D4.66** describe this
+    notification regime as "Art. 132(3A)/(3B)" (AML/CFT-deficient third countries,
+    ≥2% of own funds) and "Art. 132(4A)" (GBP 2 billion RWA / GBP 500 million
+    exposure). Neither sub-paragraph exists in PS1/26 Appendix 1, and PS1/26
+    contains **no AML/CFT-based** CIU notification trigger. The actual provision
+    is **Art. 132(8)**, with thresholds of **0.5% of total credit-risk + dilution-risk
+    RWA** (not 2% of own funds, not GBP 2bn RWA) **and GBP 500 million exposure
+    value**, triggered by the firm's use of look-through or mandate-based
+    approaches for **third-country-managed** CIUs (the "relevant CIU" definition
+    in PS1/26 Art. 1.2 Glossary), **not** by AML/CFT deficiency of the CIU's
+    establishment country. This page documents the verbatim Art. 132(8) text;
+    D4.58 and D4.66 should be reconciled into a single resolved item.
+
+### Definition — "Relevant CIU" (PS1/26 Art. 1.2 Glossary, p.27)
+
+> "**relevant CIU** means a CIU:
+>
+> (1) that is managed by a company which is registered in a third country; and
+>
+> (2) for which an institution applies the look-through approach in accordance
+> with Article 132A(1) or the mandate-based approach in accordance with Article
+> 132A(2) to calculate the risk-weighted exposure amount for their exposures in
+> the form of units or shares in the CIU."
+
+The definition is **scope-limited to third-country-managed CIUs** for which the
+institution actually uses look-through or mandate-based. CIUs falling back to
+the 1,250% Art. 132(2) treatment are outside the "relevant CIU" perimeter and
+do not contribute to the Art. 132(8) thresholds. The trigger is **third-country
+fund-management domicile**, not the CIU's country of establishment, and not any
+AML/CFT assessment of either jurisdiction.
+
+### Verbatim Art. 132(8) (PS1/26 App 1, pp. 64–65)
+
+> "8.
+>
+> (a) An institution shall notify the PRA if either:
+>
+> (i) the total risk-weighted exposure amounts for all of its exposures in the
+> form of units or shares in relevant CIUs exceed 0.5% of the institution's total
+> risk-weighted exposures for credit risk and dilution risk calculated in
+> accordance with Title II of Part Three of CRR and the Credit Risk: General
+> Provisions (CRR) Part, the Credit Risk: Standardised Approach (CRR) Part, the
+> Credit Risk: Internal Ratings Based Approach (CRR) Part, the Credit Risk
+> Mitigation (CRR) Part and the Counterparty Credit Risk (CRR) Part; or
+>
+> (ii) the total exposure values for all of its exposures in the form of units
+> or shares in relevant CIUs exceed GBP 500 million;
+>
+> in each case calculated on an individual or consolidated basis.
+>
+> (b) An institution shall make the notification in point (a) of this paragraph
+> promptly if:
+>
+> (i) at any time either of the thresholds in point (a)(i) or (ii) of this
+> paragraph is reached; and
+>
+> (ii) until such time as it makes a notification under point (c) of this
+> paragraph, on an annual basis thereafter.
+>
+> (c) An institution which has made or is required to have made a notification
+> under point (a) of this paragraph shall also notify the PRA promptly when both
+> the total risk-weighted exposure amounts and total exposure values are below
+> the relevant thresholds set out in point (a)(i) and (ii) of this paragraph.
+>
+> (d) An institution shall include in the notification made under point (a) of
+> this paragraph:
+>
+> (i) a list of the countries in which fund managers of all relevant CIUs to
+> which it is exposed are located; and
+>
+> (ii) the total exposure values and total risk-weighted exposure amounts in
+> respect of its exposures in the form of units or shares in relevant CIUs for
+> each of those countries."
+
+### Plain-English Summary
+
+| Element | Position |
+|---------|----------|
+| Who is in scope | Institutions using **look-through (Art. 132A(1))** or **mandate-based (Art. 132A(2))** for CIUs **managed by a company registered in a third country**. Fallback (1,250%) CIUs are out of scope. |
+| Trigger 1 — relative limb | Total RWA on relevant-CIU exposures > **0.5% of total credit-risk + dilution-risk RWA** (Art. 132(8)(a)(i)) |
+| Trigger 2 — absolute limb | Total exposure value on relevant-CIU exposures > **GBP 500 million** (Art. 132(8)(a)(ii)) |
+| Trigger logic | **Either** limb breach is sufficient ("if either"). The 0.5% RWA limb and the GBP 500m exposure-value limb are **independent**, not cumulative. |
+| Calculation basis | Individual **or** consolidated basis (Art. 132(8)(a) closing words). |
+| Initial notification | "Promptly" once either threshold is reached (Art. 132(8)(b)(i)). |
+| Recurring notification | **Annually** thereafter, until the firm makes a "below threshold" notification (Art. 132(8)(b)(ii)). |
+| Stand-down notification | Promptly, once **both** measures fall below the thresholds (Art. 132(8)(c) — note the conjunctive "both"). |
+| Scope of disclosure | List of countries hosting fund managers of all relevant CIUs **plus** per-country exposure value and RWA (Art. 132(8)(d)). |
+
+!!! info "Trigger asymmetry: 'either' to enter, 'both' to exit"
+    The institution enters the notification regime as soon as **either** limb
+    (a)(i) or (a)(ii) is breached, but only exits when **both** measures fall
+    below their respective thresholds (Art. 132(8)(c)). A firm that is below the
+    0.5% RWA limb but above the GBP 500m exposure-value limb (or vice versa)
+    remains inside the notification regime.
+
+### Distinction from Other PRA Notification Triggers
+
+There is **only one** Art. 132 PRA notification regime in PS1/26 — Art. 132(8).
+Plan items D4.58 ("AML/CFT, ≥2% of own funds") and D4.66 ("GBP 2 billion RWA")
+both refer to the same underlying Art. 132(8) provision but with **incorrect
+attributions, incorrect thresholds, and an incorrect AML/CFT trigger that is not
+in PS1/26 at all**. The genuine Art. 132(8) provision is summarised above.
+
+The output-floor disclosure (Art. 92(5)) and the IRB equity opt-out notice
+(Rule 4.10) are unrelated notification regimes that operate on different
+triggers and are not within Art. 132's scope.
+
+### CRR Comparison
+
+!!! info "CRR Art. 132 omitted from UK CRR"
+    Under UK-onshored CRR (in force until 31 December 2026), **CRR Art. 132 was
+    omitted by SI 2021/1078** and CIU treatment was instead governed by PRA
+    Rulebook Articles 132a–132c without an explicit relevant-CIU notification
+    regime. The Art. 132(8) third-country notification regime is therefore a
+    **Basel 3.1 / PS1/26-only addition** with no CRR predecessor — there is no
+    transitional treatment because there is no legacy provision to transition
+    from.
+
+| Aspect | CRR (UK Rulebook, to 31 Dec 2026) | Basel 3.1 (PS1/26, from 1 Jan 2027) |
+|--------|------------------------------------|--------------------------------------|
+| Third-country fund-manager notification | None | **Art. 132(8)** (0.5% RWA / GBP 500m) |
+| "Relevant CIU" Glossary definition | Not defined | **Defined** (third-country manager + look-through / mandate-based) |
+| Reporting cadence | n/a | Prompt + annual until cleared |
+| Country-level exposure breakdown | Not required | **Required** (Art. 132(8)(d)) |
+
+### Operational Implementation
+
+The Art. 132(8) regime is a **firm-governance and reporting obligation** that
+sits outside the RWA calculator's scope. The calculator may still flag exposures
+as `is_relevant_ciu = True` for downstream COREP / firm-level aggregation, but
+the calculation of whether either threshold is breached, and the production of
+the per-country breakdown, are operational tasks owned by the firm's CIU
+inventory and PRA-reporting workflow.
+
+For the matching COREP changes — including the new "of which: exposures to
+relevant CIUs" rows in the relevant template — see
+[COREP reporting changes](../../framework-comparison/reporting-differences.md#section-4-ciu-approach)
+and the [CIU user-guide page](../../user-guide/exposure-classes/cius.md#pra-notification-threshold-relevant-cius-art-1328).
+
+---
+
 ## Waterfall Precedence
 
 When classifying equity exposures, the following priority order applies:
