@@ -119,6 +119,7 @@ class CalculationConfig:
         cls,
         reporting_date: date,
         permission_mode: PermissionMode = PermissionMode.STANDARDISED,
+        use_investment_grade_assessment: bool = False,
         collect_engine: PolarsEngine = "cpu",
         spill_dir: Path | None = None,
     ) -> CalculationConfig:
@@ -136,6 +137,13 @@ class CalculationConfig:
             reporting_date: As-of date for calculation.
             permission_mode: STANDARDISED (all SA) or IRB (model permissions
                 drive routing).
+            use_investment_grade_assessment: Art. 122(6)/(8) election. When
+                True, unrated non-SME corporates get 65% (IG) / 135% (non-IG);
+                when False (default), all unrated non-SME corporates get the
+                Art. 122(5) flat 100%. Also drives the SA-equivalent risk
+                weight in the output floor S-TREA leg under Art. 122(8).
+                Requires prior PRA permission. See
+                [`use_investment_grade_assessment`](#use_investment_grade_assessment).
             collect_engine: Polars collection engine.
             spill_dir: Directory for temp files during streaming (None = system temp).
 
@@ -416,6 +424,69 @@ worked example, see:
 
 - [User guide — CRM Double Default](../user-guide/methodology/crm.md#double-default-crr-only)
 - [CRR Specification — Credit Risk Mitigation](../specifications/crr/credit-risk-mitigation.md)
+
+### `use_investment_grade_assessment`
+
+| Field | Type | Default | Defined on |
+|-------|------|---------|-----------|
+| `use_investment_grade_assessment` | `bool` | `False` | `CalculationConfig` (`contracts/config.py:833`) |
+
+Enables the PRA PS1/26 **Art. 122(6)** investment-grade / non-investment-grade
+split for unrated non-SME corporate exposures under the Basel 3.1 SA. When
+`True`, an unrated corporate that the firm has internally assessed as
+investment grade (`cp_is_investment_grade = True` on the counterparty input
+table) attracts a **65%** risk weight (Art. 122(6)(a)); an unrated corporate
+assessed as non-investment grade attracts **135%** (Art. 122(6)(b)). When
+`False` (default) every unrated non-SME corporate attracts the Art. 122(5)
+default of **100%**.
+
+Under **Art. 122(8)** the same election also drives the SA-equivalent risk
+weight used in the *S-TREA leg* of the Art. 92(2A) output floor. An IRB
+firm that has set `use_investment_grade_assessment=True` automatically uses
+the 65%/135% split in S-TREA (Art. 122(8)(b)); an IRB firm that has left it
+`False` uses the flat 100% S-TREA treatment (Art. 122(8)(a)). The Art. 122(11)
+SME carve-out (85%) overrides both branches regardless of the flag.
+
+!!! warning "Basel 3.1 only — flag absent from `CalculationConfig.crr()`"
+    The factory `CalculationConfig.crr(...)` does **not** expose
+    `use_investment_grade_assessment`; the Art. 122(6)/(8) sub-categories are
+    Basel 3.1 additions that have no analogue in the CRR Art. 122 corporate
+    table (CQS-only, with unrated = 100%). The field exists on the underlying
+    `CalculationConfig` dataclass for both frameworks, but is silently inert
+    under the CRR SA path — only the Basel 3.1 SA namespace consumes it
+    (`engine/sa/namespace.py:907-920`).
+
+!!! note "PRA permission and notification obligations"
+    Branch (b) — i.e. setting this flag to `True` — requires **prior PRA
+    permission** under Art. 122(6) plus the sound-processes obligation in
+    Art. 122(7). For an IRB firm the additional Art. 122(8)(b) final sentence
+    requires the firm to **give notice to the PRA** both when it starts and
+    when it ceases applying the (b) treatment to S-TREA. The calculator does
+    not enforce either obligation — it is the operator's responsibility to
+    confirm permission before flipping the flag.
+
+The factory method `CalculationConfig.basel_3_1()` accepts this knob directly:
+
+```python
+from datetime import date
+from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.domain.enums import PermissionMode
+
+config = CalculationConfig.basel_3_1(
+    reporting_date=date(2027, 6, 30),
+    permission_mode=PermissionMode.IRB,
+    use_investment_grade_assessment=True,  # Art. 122(6)/(8) IG=65% / non-IG=135%
+)
+
+assert config.use_investment_grade_assessment is True
+```
+
+For the regulatory derivation, S-TREA interaction, scope of the election,
+and worked examples, see:
+
+- [Basel 3.1 SA Risk Weights — Corporate Sub-Categories (Art. 122(4)–(11))](../specifications/basel31/sa-risk-weights.md#corporate-sub-categories-art-122411)
+- [Basel 3.1 SA Risk Weights — Output-Floor Election for Unrated Corporates (Art. 122(7)–(8))](../specifications/basel31/sa-risk-weights.md#output-floor-election-for-unrated-corporates-art-12278)
+- [Blog — The Output Floor and Why Basel 3.1 Bites](../blog/2026-06-23-the-output-floor-and-why-basel-31-bites.md#the-art-1228-election)
 
 ## Usage Examples
 
