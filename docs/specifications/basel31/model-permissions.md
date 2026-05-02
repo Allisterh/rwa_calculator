@@ -369,6 +369,149 @@ F-IRB by default for other general corporates, A-IRB only with explicit permissi
 > [`hierarchy-classification.md`](../common/hierarchy-classification.md#basel-31-approach-restrictions-art-147a)
 > for the runtime routing logic.
 
+## Art. 143(6)–(8) — Overseas Model Approach
+
+Basel 3.1 introduces a structured **Overseas Model Approach** at Art. 143(6), with a
+transitional grandfathering rule at Art. 143(7) for firms that already had a CRR
+Art. 143 permission for the same approach as at 31 December 2026, and an ongoing
+compliance requirement at Art. 143(8). This is a UK-specific addition — **CRR
+Art. 143 contained no equivalent structured Overseas Model Approach**; PS1/26
+codifies the substantive conditions and the eligible scope.
+
+The "Overseas Model Approach" is defined in PS1/26 Glossary p. 79 as:
+
+> "the use of non-UK rating systems developed to meet non-UK IRB requirements, in
+> the calculation of UK consolidated capital requirements in accordance with a
+> permission granted under Article 143(6)."
+>
+> — PRA PS1/26 Appendix 1, p. 79 (Glossary, "Overseas Model Approach")
+
+!!! warning "Plan paraphrase correction"
+    `DOCS_IMPLEMENTATION_PLAN.md` item D4.60 paraphrased Art. 143(7) as "institutions
+    may continue using IRB approaches previously approved by an overseas regulator,
+    subject to PRA notification". The actual rule is narrower: Art. 143(7) is a
+    **transitional grandfathering** for firms that **already held a PRA permission**
+    under CRR Art. 143 (as it stood on 31 December 2026) to use the Overseas Model
+    Approach. After 31 December 2026 those firms are deemed to hold a permission
+    under the new Art. 143(6); a fresh PRA application is **not** required, and the
+    mechanism is **not** a unilateral notification by the firm. The substantive
+    permission framework for the Overseas Model Approach itself sits in Art. 143(6),
+    and the eligible scope is restricted to retail and SME corporate exposures of
+    overseas subsidiaries in equivalent jurisdictions, capped at 7.5% of group RWA
+    and 7.5% of group exposure value.
+
+### Art. 143(6) — Substantive Permission to Use the Overseas Model Approach
+
+Verbatim opening of Art. 143(6) (PS1/26 Appendix 1, p. 83):
+
+> "An institution may, with the prior permission of the PRA, use the Overseas Model
+> Approach, if it can demonstrate to the satisfaction of the PRA that its use of
+> the Overseas Model Approach complies with the following conditions: …"
+
+Conditions (a)–(k) (paraphrased; verbatim text on p. 83):
+
+| Condition | Requirement |
+|-----------|-------------|
+| **(a) Aggregate cap** | Risk-weighted exposure amounts calculated under the Overseas Model Approach must be **≤ 7.5% of group credit-risk RWA** *and* the aggregate exposure value must be **≤ 7.5% of the group's total exposure value**, both measured on a consolidated basis **before** the output floor. |
+| **(b) Equivalent-jurisdiction subsidiary** | The rating system's scope is limited to exposures **located within a subsidiary in an equivalent jurisdiction** (as determined under CRR Art. 114(7)); the model has been **reviewed and approved by the relevant overseas regulator** for the institution to calculate its **local** capital requirements; and the institution actually uses that model to calculate local capital requirements in that jurisdiction. |
+| **(c) Eligible exposure types** | Only one or both of: (i) **retail exposures**; or (ii) **exposures to SMEs in the corporate exposure class** (Art. 147(5)(a)(ii)). |
+| **(d) Empirical estimation** | PD / LGD / CCF / EAD outputs are derived using historical experience and empirical evidence, not purely judgement; estimates plausible, intuitive, and based on material drivers. |
+| **(e) Comparable population** | Estimation data population, lending standards, and other relevant characteristics are comparable with the institution's exposures. |
+| **(f) Sufficient sample / data period** | Sample size and data history sufficient to give confidence in accuracy and robustness. |
+| **(g) Risk differentiation** | Rating system gives meaningful differentiation of risk and produces accurate, consistent quantitative estimates. |
+| **(h) Compensating adjustments** | Material weaknesses adequately compensated by parameter-estimate adjustments. |
+| **(i) Internal governance** | Appropriate internal governance, with overseas-subsidiary senior management possessing a general understanding of the rating system and detailed comprehension of its management reports. |
+| **(j) Validation** | Subject to an objective, consistent, accurate validation-of-internal-estimates process. |
+| **(k) Use** | Used to inform credit-risk decisions. |
+
+> Art. 143(6) is flagged in the PS1/26 note as "a permission under sections 144G
+> and 192XC of FSMA to which Part 8 of the Capital Requirements Regulations
+> applies" — i.e. the same FSMA / Capital Requirements Regulations Part 8
+> permission framework that governs Art. 143(1) and Art. 143(2A)/(2B) applications
+> (see [Art. 143(2A)/(2B) — Application Process](#application-process-ps126--fsma-framework)).
+
+### Art. 143(7) — Transitional Grandfathering
+
+Verbatim text (PS1/26 Appendix 1, p. 84):
+
+> "Where, on 31 December 2026, an institution had PRA permission to use the
+> Overseas Model Approach as part of its IRB permission under Article 143 of CRR,
+> as that provision existed on 31 December 2026, the institution shall, after
+> 31 December 2026, be treated as having permission under paragraph 6."
+>
+> — PRA PS1/26 Appendix 1, p. 84 (Article 143(7))
+
+Plain-English summary:
+
+- **Trigger**: the firm already held a **PRA-granted** permission under CRR
+  Art. 143 (as that article stood at 31 December 2026) for use of the Overseas
+  Model Approach as **part of its IRB permission**. The grandfathering pivots on
+  an existing **PRA** permission, not on a standalone overseas-regulator approval.
+- **Effect**: from 1 January 2027 onwards the firm is **automatically treated as
+  having permission under Art. 143(6)**. No fresh application or PRA decision is
+  required for continuity; the existing CRR permission is mapped across.
+- **No firm-side notification step**: Art. 143(7) does **not** itself impose a
+  notification obligation on the firm. The plan-item paraphrase ("subject to PRA
+  notification") was incorrect — the rule is a deeming provision, not a
+  notification gate.
+- **Time-limit**: Art. 143(7) does not impose a sunset on the grandfathering. The
+  firm continues to hold the deemed permission indefinitely, **provided** it
+  satisfies the ongoing-compliance test in Art. 143(8) below. Material changes to
+  the grandfathered rating system would still trigger Art. 143(3) / Art. 143C in
+  the normal way.
+
+### Art. 143(8) — Ongoing Compliance
+
+Verbatim text (PS1/26 Appendix 1, p. 84):
+
+> "An institution with PRA permission to use the Overseas Model Approach shall
+> ensure that its use of the Overseas Model Approach complies with each of the
+> conditions in paragraph 6 on an ongoing basis."
+>
+> — PRA PS1/26 Appendix 1, p. 84 (Article 143(8))
+
+Art. 143(8) applies to **all** holders of an Overseas Model Approach permission —
+both fresh Art. 143(6) permissions and Art. 143(7) grandfathered permissions. If
+the firm ceases to comply with any of the (a)–(k) conditions (e.g. the aggregate
+breaches the 7.5% cap, the overseas regulator withdraws its approval, the
+subsidiary's jurisdiction loses CRR Art. 114(7) equivalence, the rating system
+extends beyond retail / SME corporate scope), the firm is in breach of Art. 143(8)
+and Art. 146 (cessation of compliance) is engaged — see the
+[Ongoing Obligations](#ongoing-obligations-after-permission-is-granted) section
+above for Art. 146 mechanics.
+
+### Interaction With Other Articles
+
+| Other rule | Interaction |
+|------------|-------------|
+| **Art. 143(1) / (2A) / (2B)** | The Overseas Model Approach is a **distinct** permission track. A firm without a UK Art. 143(2A)/(2B) IRB permission for the underlying exposure class can still hold an Art. 143(6) permission, provided the exposures sit in an equivalent-jurisdiction overseas subsidiary and fall within the retail / SME-corporate scope. The aggregate cap (7.5% of group RWA / 7.5% of group exposure value) is measured at the consolidated UK level. |
+| **Art. 147A approach restrictions** | Art. 147A routes **UK-level** exposures by class. The Overseas Model Approach addresses overseas-subsidiary exposures consolidated up to the UK parent. Where Art. 147A would restrict an exposure class to F-IRB / SA at the UK level (e.g. institutions, FSEs, large corporates), the Overseas Model Approach does **not** override that restriction — Art. 143(6)(c) limits eligible scope to retail and SME corporate, which are unaffected by the headline Art. 147A(1)(b)/(e) F-IRB-only restrictions. |
+| **Art. 150(1A) materiality / PPU** | The Art. 143(6)(a) **7.5% cap** is a separate ceiling specifically on the Overseas Model Approach, measured before the output floor. It is **not** the same as the Art. 150(1A) Permanent Partial Use materiality thresholds (which gate permanent SA use of an IRB-eligible class) — see [Permanent Partial Use Materiality Thresholds (Art. 150(1A))](#permanent-partial-use-materiality-thresholds-art-1501a) below. A firm could in principle be subject to both ceilings simultaneously. |
+| **Output floor (Art. 92(5))** | The Art. 143(6)(a) 7.5% cap is measured **before** the output floor. The Overseas Model Approach RWAs themselves still feed into the IRB-RWA leg of the output-floor comparison. |
+
+### CRR vs Basel 3.1 Delta
+
+| Aspect | CRR Art. 143 (pre-1 Jan 2027) | PS1/26 Art. 143(6)–(8) |
+|--------|-------------------------------|-------------------------|
+| Concept of "Overseas Model Approach" | Not a defined / structured concept in the Article. Use of overseas-regulator-approved rating systems was negotiated case-by-case as part of a CRR Art. 143(2) IRB permission. | New, defined Glossary term; structured permission framework. |
+| Eligible scope | Not codified | Retail + SME corporate only (Art. 143(6)(c)) |
+| Aggregate cap | Not codified | 7.5% of group RWA *and* 7.5% of group exposure value, pre-output-floor (Art. 143(6)(a)) |
+| Equivalent-jurisdiction subsidiary | Not codified | Required (Art. 143(6)(b)) |
+| Substantive conditions | None codified | Eleven conditions (a)–(k) |
+| Grandfathering | n/a | Art. 143(7) deems pre-existing CRR Art. 143 permissions across to Art. 143(6) automatically |
+| Ongoing compliance test | Implicit via general Art. 144 / Art. 146 | Explicit at Art. 143(8) |
+
+> **Implementation note.** The calculator does **not** currently model the
+> Overseas Model Approach as a distinct approach type. Exposures of UK firms'
+> overseas subsidiaries that are in scope of an Art. 143(6) / 143(7) permission
+> are expected to be loaded through the standard `model_permissions` data
+> source with the underlying retail / SME-corporate IRB approach
+> (typically A-IRB for retail, A-IRB or F-IRB for SME corporate). The
+> aggregate 7.5% cap in Art. 143(6)(a) and the Art. 143(8) ongoing-compliance
+> test are **not** validated by the engine — they are firm-level governance
+> obligations outside the per-exposure RWA pipeline. See [Permission
+> Configuration](#permission-configuration).
+
 ## Permanent Partial Use Materiality Thresholds (Art. 150(1A))
 
 Art. 150(1A) permits firms to use the Standardised Approach permanently for certain exposure
