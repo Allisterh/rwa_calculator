@@ -69,14 +69,25 @@ Factor = [2.2m × 0.7619 + 2.8m × 0.85] / 5.0m
 
 A 0.75 factor (25% reduction) applies to qualifying infrastructure project finance:
 
-**Eligibility Criteria:**
+**Eligibility Criteria (Art. 501a):**
 - Project finance exposure
 - Exposure to an infrastructure project entity
-- Revenues predominantly in EUR/GBP or hedged
+- Revenues predominantly in EUR/GBP or hedged (Art. 501a(1)(d))
 
 ```
 RWA_adjusted = RWA × 0.75
 ```
+
+!!! warning "Not validated in calculator"
+    The calculator applies the 0.75 factor when an exposure is flagged with
+    `is_infrastructure = true`. The detailed Art. 501a(1) eligibility conditions —
+    including the revenue-currency requirement (Art. 501a(1)(d)), the cash-flow
+    predictability test, the contractual framework requirements, and the credit
+    quality of the obligor — are **not** enforced by the engine or the input
+    schema. Firms remain responsible for ensuring the flag is only set for
+    exposures that genuinely meet the full Art. 501a criteria. See the
+    [supporting factors specification](../../specifications/crr/supporting-factors.md)
+    for the implemented scope.
 
 ### Uniform PD Floor
 
