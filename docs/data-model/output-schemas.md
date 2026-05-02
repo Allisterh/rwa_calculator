@@ -178,6 +178,45 @@ from the output data alone.
 | `maturity_mismatch_adjustment` | `Float64` | Adjustment for maturity mismatch |
 | `collateral_adjusted_value` | `Float64` | Net collateral value after haircuts |
 
+### CRM — life insurance collateral (Art. 232)
+
+Captures life-insurance-policy collateral recognised under the **Other Funded Credit
+Protection Method** (PS1/26 Art. 232 / CRR Art. 232). Unlike financial collateral,
+life-insurance policies do not reduce EAD on the SA side — they map the secured portion
+to a preferential risk weight via the Art. 232(3) insurer-RW table:
+
+| Insurer SA RW | Mapped secured-portion RW |
+|---------------|---------------------------|
+| 20%           | 20%                       |
+| 30% / 50%     | 35%                       |
+| 65% / 100% / 135% | 70%                   |
+| 150%          | 150%                      |
+
+The SA calculator then blends the mapped RW across the secured / unsecured portions of
+the exposure (no Art. 222 floor applies, unlike FCSM). On the IRB side, life-insurance
+collateral feeds the LGD waterfall with `LGD_S = 40%` (Art. 232(2)(b)) — the columns
+below describe the SA-side mechanic only.
+
+**References**: PRA PS1/26 Art. 232 (Other Funded Credit Protection Method, including
+the new 7-tier mapping with 30% / 65% / 135% bands); CRR Art. 232 (4-tier 20% / 50%
+/ 100% / 150% mapping); Art. 200(b) (eligibility); Art. 212(2) (operational
+requirements). Source: `engine/crm/life_insurance.py::compute_life_insurance_columns`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `life_ins_collateral_value` | `Float64` | Total surrender value (sum of `market_value` across eligible life-insurance policies pledged to the exposure), capped at `ead_gross`. Defaults to `0.0` when no life-insurance collateral is present. |
+| `life_ins_secured_rw` | `Float64` | Value-weighted Art. 232(3) mapped risk weight across the pledged policies. Defaults to `0.0` when no life-insurance collateral is present. Consumed by `lf.sa.apply_life_insurance_rw_mapping()` during SA risk-weight blending. |
+
+!!! note "Single source of truth — CRM methodology"
+    The Art. 232 derivation table, eligibility gates, and CRR vs PS1/26 differences
+    (4-tier vs 7-tier insurer-RW mapping, OFCP scope gate, mandatory maturity-mismatch
+    adjustment) are documented in
+    [Basel 3.1 CRM — Other Funded Credit Protection Method (Art. 232)](../specifications/basel31/credit-risk-mitigation.md#paragraph-3--mapping-table-art-2323-revised).
+    These two columns are emitted on the exposure frame by the CRM processor and
+    survive through to the SA result frame as auxiliary columns (they are not part of
+    the canonical `SA_RESULT_SCHEMA` dict but are present whenever life-insurance
+    collateral exists in the input bundle).
+
 ### CRM — guarantee impact (substitution approach)
 
 | Column | Type | Description |
