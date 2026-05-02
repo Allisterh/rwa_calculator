@@ -226,84 +226,274 @@ values and the blended LGD formula.
 
 ### Overview
 
-Basel 3.1 replaces the CRR double default treatment with **PD parameter substitution** for
-IRB-rated guarantors. This is a new mechanism where the guarantor's PD is substituted into
-the IRB capital formula for the guaranteed portion.
+Basel 3.1 replaces the CRR double default treatment with the **Parameter Substitution
+Method** (PSM) for IRB-rated guarantors. PSM is one of the six CRM methods listed in
+Art. 191A and is applied per Art. 236 to the *covered* portion of an exposure.
+
+The substitution is a four-parameter swap: PD, LGD, correlation R, and maturity M are
+each replaced (where appropriate) with the value that would apply to a *comparable
+direct exposure to the protection provider*. The covered portion's risk weight is then
+re-computed via the standard IRB capital formula at Art. 153 (corporate / institution /
+sovereign) or Art. 154 (retail).
+
+**Regulatory anchor:** PRA PS1/26 Art. 236(1)(a) (BCBS CRE22.70–85), with
+parameter-specific cross-references to Art. 160, Art. 161, Art. 162, Art. 163 and
+Art. 164. Verified against `ps126app1.pdf` pp.215–216 (17 Apr 2026).
 
 ### Trigger Conditions
 
-Parameter substitution activates when **all** of the following hold:
+Per `engine/irb/guarantee.py::_apply_parameter_substitution`, PSM activates row-wise
+when **all** of the following hold:
 
-1. Framework is Basel 3.1
-2. Guarantor has an **internal PD** (rated under the firm's IRB model)
-3. Guarantee is eligible per Art. 213–217
+1. The exposure carries a non-zero `guaranteed_portion` (Art. 236(1)(a) covered part);
+2. `guarantor_approach == "irb"` and the guarantor has a non-null `guarantor_pd`
+   (i.e. the guarantor is rated under an IRB model rather than only externally rated);
+3. The guarantee is eligible per Art. 213–217 (gating performed upstream in
+   `engine/crm/guarantees.py`).
 
-If the guarantor has only an external rating (SA guarantor), the standard SA risk weight
-substitution applies regardless of framework.
+If only `guarantor_pd` is missing — i.e. the guarantor is on the SA — the row falls
+back to the SA Risk-Weight Substitution Method (RWSM, Art. 235), with `guarantor_rw`
+sourced from `_compute_guarantor_rw_sa` instead.
 
-### Calculation Method
+The PSM branch fires under both CRR and Basel 3.1 whenever an internal `guarantor_pd`
+exists, but the framework selects the F-IRB LGD table used (CRR 0.45 senior unsecured
+vs Basel 3.1 0.40 non-FSE / 0.45 FSE under Art. 161(1)(aa)). Under CRR, the optional
+double-default overlay (Art. 153(3) / Art. 202–203) can sit on top — see
+[Double Default Overlay](#double-default-overlay-crr-only-art-1533) below.
 
-For the guaranteed (covered) portion of the exposure Art. 236(1)(a) applies the
-IRB capital formula using the **guarantor's** PD together with an LGD drawn from
-one of two options (ps126app1.pdf p.215–216, 17 Apr 2026):
+### Step 1 — PD Substitution (Art. 202 / CRE22.72)
+
+The PD on the covered portion is substituted with the PD that would apply to a
+comparable direct exposure to the protection provider (PRA PS1/26 Art. 236(1)(a)(i),
+"PD = ..."; BCBS CRE22.72):
 
 ```
-guarantor_rw = IRB_formula(PD=guarantor_pd_floored, LGD=LGD_covered, MA=MA_original, scaling=1.0)
+PD_substituted = max(guarantor_pd, PD_floor)
 ```
 
 Where:
 
-- `guarantor_pd_floored` = the PD that would be assigned to a comparable direct exposure
-  to the protection provider, after the Art. 160 PD floor and the Art. 160(4) "no better
-  than direct" uplift.
-- `LGD_covered` is one of:
-    1. **Borrower LGD, unprotected** — the LGD the exposure would carry if no unfunded
-       credit protection existed, after the Art. 161(5) input floor and the Art. 161(6)
-       uplift; or
-    2. **Guarantor F-IRB LGD** — the LGD that would apply to the guarantee if it were a
-       direct exposure to the protection provider under the F-IRB Approach, taking
-       seniority into account (Art. 161(1): 40% senior non-FSE, 45% senior FSE, 75%
-       subordinated, etc.), with the same Art. 160(4) / 161(6) uplifts.
-- Scaling factor = 1.0 (no 1.06).
+- `guarantor_pd` is the firm's internal PD estimate for the protection provider on
+  the rating system the protection provider sits on.
+- `PD_floor` is the Art. 160(1) input floor (corporate / institution / sovereign) or
+  Art. 163(1) input floor (retail) appropriate to the **guarantor's** exposure class —
+  evaluated via `_pd_floor_expression(config, has_transactor_col=...)` in the engine.
+- The Art. 160(4) (or Art. 163(4)) "no better than direct" uplift is implicit in the
+  way PSM is applied: PSM is recognised only when the resulting `guarantor_rw <
+  risk_weight_irb_original` (the `is_guarantee_beneficial` gate); a non-beneficial
+  PSM result is simply not applied (Art. 236(1)(c) blended formula collapses to
+  `rn × E / E`).
 
-!!! note "Change log — Art. 236 LGD source clarified (17 Apr 2026)"
-    Earlier drafts of this spec stated `LGD = 40% (F-IRB senior unsecured non-FSE)`
-    as a fixed value. Art. 236(1)(a) does not fix LGD at 40% — the institution may
-    either retain the borrower's unprotected LGD or substitute the guarantor's F-IRB
-    LGD. In the common case of a non-FSE senior guarantor the substituted value is
-    40% under Art. 161(1)(aa), which is why the simplification was previously shown,
-    but for FSE guarantors the substituted LGD is 45% and for subordinated guarantees
-    it is 75%.
+The same floored PD is used in the correlation and maturity-adjustment formulas
+below — it is *not* re-floored separately at each step.
 
-### Blended RWA
+### Step 2 — LGD Adjustment by Guarantor Seniority (Art. 161 / CRE22.73)
+
+PRA PS1/26 Art. 236(1)(a)(i) gives the firm a **choice** of LGD source for the
+covered portion:
+
+1. **Option (i): Borrower LGD, unprotected** — the LGD the borrower exposure would
+   carry under Art. 161 (F-IRB) or Art. 161 + Art. 164(4)/(4A) (A-IRB) **as if no
+   unfunded credit protection existed**, with the Art. 161(5) input floor and the
+   Art. 161(6) uplift applied; or
+2. **Option (ii): Guarantor F-IRB LGD** — the LGD that would apply to the guarantee
+   if it were a direct exposure to the protection provider under the **Foundation
+   IRB Approach**, "taking into account the seniority of the guarantee" (Art.
+   236(1)(a)(i), verbatim). Under Art. 161(1)(aa) (Basel 3.1):
+    - **40%** — senior unsecured, non-FSE counterparty
+    - **45%** — senior unsecured, FSE counterparty (Art. 142(1)(4))
+    - **75%** — subordinated guarantee
+    - Art. 161(1)(d) covered-bond LGDs (e.g. 11.25%) where the guarantee is itself
+      a covered-bond claim.
+
+Either choice is then "increased as necessary" to comply with the Art. 161(3) /
+Art. 160(4) "no better than direct" obligation (Art. 236(1)(a)(i), final
+sub-paragraph).
+
+The implementation in `_apply_parameter_substitution` defaults to option (ii) — it
+sources the F-IRB senior unsecured LGD via `get_firb_lgd_table_for_framework` and
+plugs it into `_parametric_irb_risk_weight_expr(lgd=firb_lgd_senior, ...)`. Option (i)
+(borrower-LGD retention) is not currently surfaced as a config switch.
+
+| Framework | F-IRB senior unsecured LGD used | Source |
+|-----------|---------------------------------|--------|
+| CRR | 45% | `firb_lgd.crr["unsecured_senior"]` |
+| Basel 3.1 | **40%** (non-FSE) / 45% (FSE) | Art. 161(1)(aa); `firb_lgd.basel_31["unsecured_senior"]` |
+
+!!! note "Code-side gating — LGD seniority not modelled per row"
+    The engine looks up a single `firb_lgd_senior` scalar per framework rather than
+    deriving the seniority from each guarantee individually. Subordinated guarantees
+    (Art. 161(1)(b), 75%) and covered-bond guarantees (Art. 161(1)(d)) are therefore
+    not differentiated at the row level — both currently route through the
+    senior-unsecured entry. This is a known simplification of Art. 236(1)(a)(i) /
+    Art. 161(1) and is tracked in `IMPLEMENTATION_PLAN.md`.
+
+### Step 3 — Correlation Re-Derivation (CRE22.74)
+
+PRA PS1/26 Art. 236(1)(a)(i) defines:
+
+> R = the correlation coefficient that would be assigned to a comparable direct
+> exposure to the protection provider.
+
+Under Art. 153(2)–(4), R depends on the guarantor's **exposure class** (and, for
+SME corporates, the guarantor's turnover and the firm-size adjustment). The
+Basel 3.1 correlation formulas reused for the substitution step are documented in
+[Asset Correlation (Art. 153(2)–(4))](firb-calculation.md#asset-correlation-art-15324)
+and [Step 2 from F-IRB Capital Formula](firb-calculation.md#capital-formula-art-153);
+for retail guarantors the Art. 154(1) fixed / decay correlations apply (R = 0.15
+mortgage, R = 0.04 QRRE, decay form for retail-other).
+
+The FI scalar (Art. 153(2), 1.25× correlation multiplier) re-applies if the
+guarantor is itself a large or unregulated FSE — see
+[FI Scalar (Art. 153(2))](firb-calculation.md#fi-scalar-art-1532).
+
+!!! warning "Code-side gating — correlation read from borrower's class, not guarantor's"
+    `_parametric_irb_risk_weight_expr` (in `engine/irb/formulas.py`) computes the
+    substituted correlation by reading the **borrower's** `exposure_class`,
+    `turnover_m` and `requires_fi_scalar` columns rather than the guarantor's. This
+    is a known engine deviation from the strict Art. 236(1)(a)(i) reading: in the
+    common case where guarantor and borrower share an exposure class (e.g.
+    corporate-to-corporate guarantee) it is harmless, but cross-class guarantees
+    (e.g. an institution guaranteeing a corporate exposure, or a retail guarantor)
+    will currently use the borrower's correlation curve. Tracked in
+    `IMPLEMENTATION_PLAN.md` for a future engine fix; do not assume the spec text
+    of Step 3 is currently fully realised.
+
+### Step 4 — Maturity Adjustment (Art. 162 / CRE22.80)
+
+For non-retail substitutions, Art. 236(1)(a)(i) reads:
+
+> M = the maturity of the exposure calculated in accordance with Credit Risk:
+> Internal Ratings Based Approach (CRR) Part Article 162.
+
+The maturity used in the substitution is therefore **the maturity of the
+underlying exposure** measured under Art. 162 (Art. 162(2A) calculation methods,
+floored at 1.0 year, capped at 5.0 years), **not** a separate maturity for the
+guarantor. The Art. 162(2A) machinery is documented in
+[Effective Maturity (Art. 162)](firb-calculation.md#effective-maturity-art-162); the
+Art. 162(3) one-day floor exceptions for short-term / daily-margined exposures are
+preserved.
+
+The MA factor itself reuses the Art. 153(1) form documented in
+[Maturity Adjustment Formula](firb-calculation.md#maturity-adjustment-formula),
+evaluated with the **substituted PD** from Step 1:
 
 ```
-RWA = RWA_borrower x (unguaranteed / EAD) + guaranteed_portion x guarantor_rw x 12.5
+b = (0.11852 - 0.05478 * ln(PD_substituted))^2
+MA = (1 + (M - 2.5) * b) / (1 - 1.5 * b)
 ```
 
-Parameter substitution is only applied when **beneficial** (guarantor RW < borrower's
-original IRB RW).
+For retail guarantees (`exposure_class` ∈ {`RETAIL`, `RETAIL_MORTGAGE`, `QRRE`,
+`RETAIL_OTHER`, `RETAIL_SME`}), MA = 1.0 — this matches Art. 154 (retail formula
+omits the maturity adjustment) and the explicit override in
+`_parametric_irb_risk_weight_expr` (`is_retail` branch).
 
-### Expected Loss Under Parameter Substitution
+A separate maturity-mismatch adjustment (Art. 236A / Art. 237–239) applies *before*
+this step when the protection's residual maturity is shorter than the underlying
+exposure's. The `G* → GA` reduction is documented in
+[Maturity Mismatch (Art. 237–239)](#maturity-mismatch-art-237-239); the
+Art. 237(1) / 237(2) eligibility gates can disqualify the protection entirely (e.g.
+protection with residual maturity < 3 months and < exposure maturity).
+
+!!! info "Art. 236A is folded into Art. 239 in PS1/26"
+    BCBS CRE22.80–85 distinguishes a "maturity adjustment" treatment for guarantees
+    (CRE22.80) from the maturity-mismatch GA formula (CRE22.83). PRA PS1/26
+    consolidates both into Section 5 (Art. 237–239); there is no standalone
+    Art. 236A in the UK rule instrument. The substantive outcome is unchanged — the
+    GA reduction is applied to the protection amount before Step 1's PD substitution
+    sees it (the engine consumes `GA` as `guaranteed_portion`).
+
+### Composing the Four Steps — Covered-Portion Risk Weight
+
+The covered portion's risk weight `r_g` (Art. 236(1)(a)(i)) is the IRB capital
+formula evaluated with the substituted parameters:
 
 ```
-EL_blended = EL_original x (unguaranteed / EAD)
-           + guarantor_pd_floored x LGD_covered x guaranteed_portion
+K_g = LGD_covered * N[(1 - R_g)^(-0.5) * G(PD_g) + (R_g / (1 - R_g))^(0.5) * G(0.999)]
+       - PD_g * LGD_covered
+r_g = K_g * 12.5 * scaling * MA_g
 ```
 
-`LGD_covered` is the same value used in the risk-weight calculation above
-(Art. 236(1A)(b)) — either the unprotected borrower LGD or the substituted
-guarantor F-IRB LGD.
+Where `PD_g`, `LGD_covered`, `R_g` and `MA_g` are the Step 1–4 substituted values,
+and `scaling` is **1.0** under Basel 3.1 (Art. 153(1) — 1.06 removed), retained at
+**1.06** under CRR.
+
+The implementation lives in
+[`_parametric_irb_risk_weight_expr`](https://github.com/OpenAfterHours/rwa_calculator/blob/master/src/rwa_calc/engine/irb/formulas.py)
+(`engine/irb/formulas.py:756`).
+
+### Composing the Four Steps — Blended RWA (Art. 236(1)(c))
+
+The whole-exposure risk weight blends the covered and uncovered portions per
+Art. 236(1)(c):
+
+```
+RW_blended = (E_n * r_n + E_g * r_g) / E
+RWA_blended = RWA_borrower * (E_n / E) + E_g * r_g * 12.5_via_K
+```
+
+With:
+
+- `E_n` (uncovered) = `unguaranteed_portion`
+- `E_g` (covered) = `guaranteed_portion = min(GA, E)`
+- `r_n` = the borrower's pre-CRM IRB risk weight (`risk_weight_irb_original`)
+- `r_g` = the Step 1–4 result above (`guarantor_rw` post-substitution)
+
+The benefit gate (`is_guarantee_beneficial = guarantor_rw < risk_weight_irb_original`)
+disapplies PSM when it would *worsen* the capital outcome, in line with the implicit
+Art. 213 economic-substance test and the explicit Art. 160(4) "no better than
+direct" floor.
+
+### Expected Loss Under PSM (Art. 236(1A))
+
+Art. 236(1A) blends EL by the same covered/uncovered split:
+
+```
+EL_blended = EL_original * (E_n / E) + PD_g * LGD_covered * E_g
+```
+
+Where `PD_g` and `LGD_covered` are the **same values** used in `r_g` at Step 1 and
+Step 2 respectively (Art. 236(1A)(b) verbatim). The implementation (`_adjust_expected_loss`
+in `engine/irb/guarantee.py`) uses `guarantor_pd_floored * firb_lgd_senior * guaranteed_portion`
+for the covered-portion EL when `_is_pd_substitution` is set and the row is not also on
+the CRR double-default branch.
+
+### Double Default Overlay (CRR Only, Art. 153(3))
+
+Under CRR, A-IRB firms with a corporate underlying and an eligible institution /
+MDB / sovereign / rated-corporate guarantor may, in addition to PSM, apply the
+**double-default multiplier** of Art. 153(3) / Art. 202–203:
+
+```
+RW_dd = RW_obligor * (0.15 + 160 * PD_g_floored)
+```
+
+floored by `RW_g` (the substituted PSM RW from Steps 1–4). The Basel 3.1 rule
+instrument leaves Art. 153(3) "Provision left blank" — double default is not
+available under PS1/26. The CRR overlay is therefore gated in the engine on
+`config.is_crr and config.enable_double_default and has_guarantor_pd`
+(`_apply_double_default`). See
+[Double Default Removal](airb-calculation.md#double-default-removal) on the
+Basel 3.1 A-IRB page for the framework-level rationale.
 
 ### Audit Trail
 
-The `guarantee_method_used` output column indicates the method applied:
+The `guarantee_method_used` output column indicates the method applied per row:
 
 | Value | Meaning |
 |-------|---------|
-| `PD_SUBSTITUTION` | IRB guarantor under Basel 3.1 |
-| `SA_RW_SUBSTITUTION` | SA guarantor, or any guarantor under CRR |
-| `NO_GUARANTEE` | No guarantee applied |
+| `PD_PARAMETER_SUBSTITUTION` | IRB guarantor — Steps 1–4 above (PSM, Art. 236) |
+| `SA_RW_SUBSTITUTION` | SA guarantor — RWSM (Art. 235) instead |
+| `DOUBLE_DEFAULT` | CRR-only — Art. 153(3) overlay applied on top of PSM |
+| `NO_SUBSTITUTION` | Beneficial gate failed; protection ignored |
+
+### Worked Example
+
+See acceptance scenarios **B31-D7** (single IRB guarantor, full coverage) and
+**B31-D7b** (partial coverage blending) in
+[`tests/acceptance/`](https://github.com/OpenAfterHours/rwa_calculator/tree/master/tests/acceptance)
+for end-to-end PSM walk-throughs with verified PD / LGD / R / MA inputs and the
+Art. 236(1)(c) blended-RWA output.
 
 ---
 
