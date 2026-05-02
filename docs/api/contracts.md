@@ -365,6 +365,8 @@ Error codes are prefixed by domain and numbered sequentially:
 | `CLS001` | `ERROR_UNKNOWN_EXPOSURE_CLASS` | Classification | Cannot determine exposure class |
 | `CLS002` | `ERROR_APPROACH_NOT_PERMITTED` | Classification | Requested approach not permitted by config |
 | `CLS003` | `ERROR_MISSING_RATING` | Classification | No rating available for rated class |
+| `CLS004` | `ERROR_QRRE_COLUMNS_MISSING` | Classification | QRRE-specific input columns missing for retail revolving classification |
+| `CLS005` | `ERROR_RETAIL_POOL_MGMT_MISSING` | Classification | Retail pool-management columns required for retail-pool aggregation are missing |
 | `CRM001` | `ERROR_INELIGIBLE_COLLATERAL` | CRM | Collateral type not eligible for CRM |
 | `CRM002` | `ERROR_MATURITY_MISMATCH` | CRM | Collateral maturity < exposure maturity |
 | `CRM003` | `ERROR_CURRENCY_MISMATCH` | CRM | Collateral currency ≠ exposure currency |
@@ -375,9 +377,12 @@ Error codes are prefixed by domain and numbered sequentially:
 | `IRB003` | `ERROR_MATURITY_INVALID` | IRB | Effective maturity outside [1, 5] range |
 | `IRB004` | `ERROR_MISSING_PD` | IRB | No PD value available for IRB exposure |
 | `IRB005` | `ERROR_MISSING_LGD` | IRB | No LGD value available for A-IRB exposure |
+| `IRB006` | `ERROR_MISSING_EXPECTED_LOSS` | IRB | Expected-loss value missing on an IRB exposure where EL is required |
 | `SA001` | `ERROR_INVALID_CQS` | SA | CQS value not in valid range |
 | `SA002` | `ERROR_MISSING_RISK_WEIGHT` | SA | Cannot determine risk weight |
 | `SA003` | `ERROR_INVALID_LTV` | SA | LTV ratio invalid for property class |
+| `SA005` | `ERROR_EQUITY_IN_MAIN_TABLE` | SA | Equity exposure incorrectly present in the main SA exposure table (must route through the equity calculator) |
+| `SF001` | `ERROR_SME_MISSING_COUNTERPARTY_REF` | Supporting Factors | SME supporting-factor application requires a `counterparty_reference` and none was supplied |
 | `CFG001` | `ERROR_INVALID_CONFIG` | Configuration | Invalid configuration parameter |
 | `CFG002` | `ERROR_MISSING_PERMISSION` | Configuration | Required IRB permission not granted |
 
