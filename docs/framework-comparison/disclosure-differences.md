@@ -132,10 +132,50 @@ Column structure unchanged (a-f).
 
 ## CR6-A — Scope of IRB/SA Use
 
+### Row Changes
+
 | Change | Description |
 |--------|-------------|
 | **Changed** | Row structure based on **roll-out classes** (Art. 147B) instead of exposure classes |
 | **Changed** | IRB approach column includes F-IRB, A-IRB, and slotting (no longer includes equity simple RW) |
+
+### Column Definitions (UKB CR6-A, cols a–e)
+
+The 5-column structure is fixed; column labels match the legacy CRR template, but
+the underlying definitions differ. Definitions below are taken verbatim from PRA
+PS1/26 Annex XXII (Pillar III IRB disclosure instructions), pages 7–9.
+
+| Col | Column | Definition (UKB CR6-A) |
+|-----|--------|------------------------|
+| **a** | IRB exposure value | Exposure value as defined in **Article 166A to 166D** of the Credit Risk: Internal Ratings Based Approach (CRR) Part for exposures subject to the Internal Ratings Based Approach. Disclosed per roll-out class. |
+| **b** | Total exposure value (SA + IRB) | Total exposure value in accordance with **Article 429(4)** of the Leverage Ratio (CRR) Part, including exposures under both the SA and the IRB approach, for each roll-out class. |
+| **c** | % subject to permanent partial use of SA | Percentage of the total exposure value for each roll-out class that is subject to the SA in accordance with a permission granted under **Article 150(1)** of the Credit Risk: Internal Ratings Based Approach (CRR) Part. Calculated as (SA exposure value for the roll-out class) ÷ (col b). |
+| **d** | % subject to IRB approach | Percentage of the total exposure value for each roll-out class that is subject to the IRB approach (under permission granted under Rule 1.1 and **Article 143(1)**). Includes A-IRB, F-IRB and **slotting** exposures. Calculated as (IRB exposure value for the roll-out class) ÷ (col b). |
+| **e** | % subject to a roll-out plan | Percentage of the total exposure value for each roll-out class subject to an IRB roll-out plan in accordance with **Article 148(1)**. Numerator includes exposures **currently subject to the SA** where the institution's roll-out plan states it intends to apply the A-IRB, F-IRB or slotting approach. Calculated as (roll-out plan exposure value for the roll-out class) ÷ (col b). |
+
+Source: PRA PS1/26 Annex XXII — Credit Risk IRB Disclosure Instructions
+(`docs/assets/ps1-26-annex-xxii-credit-risk-irb-disclosure-instructions.pdf`),
+paragraphs 3–6 and column-reference table, pp. 7–9.
+
+!!! warning "Column labels are stable, definitions are not"
+
+    Readers comparing legacy **UK CR6-A** (CRR) to **UKB CR6-A** (Basel 3.1) must
+    not assume column-by-column equivalence. Specifically:
+
+    - **Col a** — CRR cited *Article 166* (single article, F-IRB exposure value);
+      Basel 3.1 cites the new *Articles 166A–166D* sub-divisions covering F-IRB
+      exposure value, A-IRB EAD, F-IRB CCFs, and A-IRB CCFs respectively.
+    - **Col d** — CRR's "% subject to IRB" included **equity under the simple
+      risk-weighted approach**; Basel 3.1 removes equity IRB entirely (equity is
+      SA-only at 250%/400% — see [Key Differences](key-differences.md)) and
+      instead includes **slotting** exposures alongside F-IRB / A-IRB.
+    - **Cols c, d, e denominators** — both versions use col b, but col b's
+      population in Basel 3.1 is bucketed by **roll-out class** (Art. 147B), not
+      by exposure class (Art. 147), so the same numerical percentage describes
+      a different sub-population.
+
+    Cross-mapping a CRR CR6-A row directly into a UKB CR6-A row by column
+    position will produce mis-stated percentages.
 
 ---
 
