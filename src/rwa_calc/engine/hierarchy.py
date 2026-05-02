@@ -36,6 +36,7 @@ from rwa_calc.contracts.bundles import (
 )
 from rwa_calc.contracts.errors import CalculationError
 from rwa_calc.data.column_spec import ColumnSpec, ensure_columns
+from rwa_calc.data.schemas import FACILITY_MAPPING_SCHEMA
 from rwa_calc.data.tables.crr_risk_weights import (
     CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS,
     CORPORATE_RISK_WEIGHTS,
@@ -48,7 +49,7 @@ from rwa_calc.data.tables.crr_risk_weights import (
 from rwa_calc.domain.enums import CQS, ExposureClass
 from rwa_calc.engine.classifier import ENTITY_TYPES_BY_SA_CLASS
 from rwa_calc.engine.fx_converter import FXConverter
-from rwa_calc.engine.utils import has_required_columns
+from rwa_calc.engine.utils import has_required_columns, partition_by_nullable
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
@@ -93,11 +94,16 @@ class HierarchyResolver:
         )
         errors.extend(cp_errors)
 
+        # Normalise facility_mappings to the canonical child_type form once at
+        # the resolver boundary; downstream stages can rely on the column
+        # always existing. RawDataBundle is frozen, so we rebind a local.
+        facility_mappings = _normalise_facility_mappings(data.facility_mappings)
+
         exposures, exp_errors = self._unify_exposures(
             data.loans,
             data.contingents,
             data.facilities,
-            data.facility_mappings,
+            facility_mappings,
             counterparty_lookup,
             config,
         )
@@ -313,6 +319,17 @@ class HierarchyResolver:
         - external_cqs: Art. 138-resolved external CQS (own only — not inherited)
         - cqs: Alias of external_cqs
         - pd: Alias of internal_pd
+
+        REVIEWER NOTE: the dual coalesce on internal_pd / internal_model_id
+        below (paired ``own → parent`` joins followed by independent
+        ``pl.coalesce`` per column) is deliberate per CRR Art. 171(1) and
+        Art. 175(3). The asymmetry between internal-inherits and
+        external-does-not-inherit is encoded by the *presence* of the
+        parent-internal join versus the *absence* of a parent-external one.
+        See ``tests/unit/test_hierarchy.py::TestInheritanceTruthTable``
+        rows 4, 6, 7 for the behavioural lock — simplification proposals
+        (e.g. fusing into a single struct-coalesce, or collapsing the two
+        joins into one) must update those rows; do not delete them.
         """
         sort_cols = ["rating_date", "rating_reference"]
 
@@ -339,8 +356,16 @@ class HierarchyResolver:
 
         # Art. 138: per-agency dedup to most recent, then resolve across agencies.
         # Rows without a CQS are ignored (only rated assessments count).
+        # The counterparty_reference.is_not_null filter is defence-in-depth
+        # against a downstream .over("counterparty_reference") collapsing all
+        # null-keyed ratings into one bucket — the loader contract should
+        # already guarantee non-null counterparty_reference on ratings.
         per_agency_latest = (
-            ratings.filter((pl.col("rating_type") == "external") & pl.col("cqs").is_not_null())
+            ratings.filter(
+                (pl.col("rating_type") == "external")
+                & pl.col("cqs").is_not_null()
+                & pl.col("counterparty_reference").is_not_null()
+            )
             .sort(sort_cols, descending=[True, True])
             .group_by(["counterparty_reference", "rating_agency"])
             .first()
@@ -455,8 +480,10 @@ class HierarchyResolver:
         via dict traversal, and returns the result as a LazyFrame.
 
         Args:
-            facility_mappings: Facility mappings with parent_facility_reference,
-                             child_reference, and child_type/node_type columns
+            facility_mappings: Facility mappings with ``parent_facility_reference``,
+                             ``child_reference``, and ``child_type`` columns.
+                             Caller must have passed the frame through
+                             ``_normalise_facility_mappings`` so ``child_type`` exists.
             max_depth: Maximum hierarchy depth to traverse
 
         Returns:
@@ -473,14 +500,21 @@ class HierarchyResolver:
             }
         )
 
-        type_col = _detect_type_column(set(facility_mappings.collect_schema().names()))
-        if type_col is None:
+        # Defensive idempotent normalisation: the resolver boundary normalises
+        # but unit-test callers may invoke this method directly with a non-
+        # normalised frame.
+        if not has_required_columns(
+            facility_mappings, {"parent_facility_reference", "child_reference"}
+        ):
             return empty_result
+        facility_mappings = _normalise_facility_mappings(facility_mappings)
 
-        # Filter to facility→facility relationships and collect (small data)
+        # Filter to facility→facility relationships and collect (small data).
+        # Synthesised null child_type (legacy mappings) yields no facility-typed
+        # rows — facility_edges is empty and the height==0 short-circuit fires.
         facility_edges = (
             facility_mappings.filter(
-                pl.col(type_col).fill_null("").str.to_lowercase() == "facility"
+                pl.col("child_type").fill_null("").str.to_lowercase() == "facility"
             )
             .select(
                 [
@@ -649,7 +683,10 @@ class HierarchyResolver:
                 }
             )
 
-        type_col = _detect_type_column(set(facility_mappings.collect_schema().names()))
+        # Defensive idempotent normalisation: the resolver boundary normalises
+        # but unit-test callers may invoke this method directly with a non-
+        # normalised frame.
+        facility_mappings = _normalise_facility_mappings(facility_mappings)
 
         # Root lookup for multi-level hierarchies (used by both loan and contingent
         # aggregations). Left join with empty lookup naturally produces nulls; coalesce
@@ -666,10 +703,10 @@ class HierarchyResolver:
         )
 
         loan_drawn_totals = self._aggregate_loan_drawn_per_facility(
-            loans, facility_mappings, root_lookup, type_col
+            loans, facility_mappings, root_lookup
         )
         contingent_totals = self._aggregate_contingent_per_facility(
-            contingents, facility_mappings, root_lookup, type_col
+            contingents, facility_mappings, root_lookup
         )
 
         facility_with_drawn = self._compute_facility_undrawn_per_root(
@@ -775,7 +812,6 @@ class HierarchyResolver:
         loans: pl.LazyFrame,
         facility_mappings: pl.LazyFrame,
         root_lookup: pl.LazyFrame,
-        type_col: str | None,
     ) -> pl.LazyFrame:
         """Sum positive drawn amounts per (root or standalone) facility.
 
@@ -793,7 +829,7 @@ class HierarchyResolver:
                 }
             )
 
-        loan_mappings = _filter_mappings_by_child_type(facility_mappings, "loan", type_col)
+        loan_mappings = _filter_mappings_by_child_type(facility_mappings, "loan")
 
         loan_with_parent = loans.join(
             loan_mappings,
@@ -815,7 +851,6 @@ class HierarchyResolver:
         contingents: pl.LazyFrame | None,
         facility_mappings: pl.LazyFrame,
         root_lookup: pl.LazyFrame,
-        type_col: str | None,
     ) -> pl.LazyFrame:
         """Sum positive contingent nominal amounts per (root or standalone) facility.
 
@@ -840,9 +875,7 @@ class HierarchyResolver:
                 }
             )
 
-        contingent_mappings = _filter_mappings_by_child_type(
-            facility_mappings, "contingent", type_col
-        )
+        contingent_mappings = _filter_mappings_by_child_type(facility_mappings, "contingent")
 
         contingent_with_parent = contingents.join(
             contingent_mappings,
@@ -1203,7 +1236,6 @@ class HierarchyResolver:
         # Per-sub netting: aggregate loans/contingents at the directly-mapped
         # facility level (NOT rolled up to root). This is what lets the waterfall
         # reflect actual sub-level utilisation rather than parent-level totals.
-        type_col = _detect_type_column(set(facility_mappings.collect_schema().names()))
 
         def _per_sub_drawn(
             frame: pl.LazyFrame | None,
@@ -1218,7 +1250,7 @@ class HierarchyResolver:
             cols = set(frame.collect_schema().names())
             if ref_col not in cols or amount_col not in cols:
                 return empty
-            child_mappings = _filter_mappings_by_child_type(facility_mappings, child_type, type_col)
+            child_mappings = _filter_mappings_by_child_type(facility_mappings, child_type)
             return (
                 frame.select([pl.col(ref_col), pl.col(amount_col)])
                 .join(
@@ -1443,8 +1475,6 @@ class HierarchyResolver:
         ):
             return empty
 
-        type_col = _detect_type_column(set(facility_mappings.collect_schema().names()))
-
         # Gather descendant (root_facility_reference, counterparty_reference) pairs
         # from loans, contingents, and sub-facilities that map to a facility.
         candidate_frames: list[pl.LazyFrame] = []
@@ -1478,7 +1508,7 @@ class HierarchyResolver:
 
         loan_cols = set(loans.collect_schema().names())
         if "loan_reference" in loan_cols and "counterparty_reference" in loan_cols:
-            loan_mappings = _filter_mappings_by_child_type(facility_mappings, "loan", type_col)
+            loan_mappings = _filter_mappings_by_child_type(facility_mappings, "loan")
 
             loan_with_parent = loans.select(
                 [pl.col("loan_reference"), pl.col("counterparty_reference")]
@@ -1503,9 +1533,7 @@ class HierarchyResolver:
         if contingents is not None:
             cont_cols = set(contingents.collect_schema().names())
             if "contingent_reference" in cont_cols and "counterparty_reference" in cont_cols:
-                cont_mappings = _filter_mappings_by_child_type(
-                    facility_mappings, "contingent", type_col
-                )
+                cont_mappings = _filter_mappings_by_child_type(facility_mappings, "contingent")
 
                 cont_with_parent = contingents.select(
                     [pl.col("contingent_reference"), pl.col("counterparty_reference")]
@@ -1862,33 +1890,29 @@ class HierarchyResolver:
         root resolution. Single-level cases (no entry in the lookup) collapse to
         parent-as-root with depth = 1.
         """
+        # Defensive idempotent normalisation: the resolver boundary normalises
+        # but unit-test callers may invoke this method directly with a non-
+        # normalised frame.
+        facility_mappings = _normalise_facility_mappings(facility_mappings)
+
         # Filter out child_type="facility" entries since unified exposures contain only
         # loans, contingents, and facility_undrawn (never raw facilities).
         # Without this filter, when facility_reference = loan_reference AND the facility
         # is a sub-facility, child_reference has duplicate values causing row duplication.
-        type_col = _detect_type_column(set(facility_mappings.collect_schema().names()))
-
-        if type_col is not None:
-            exposure_level_mappings = (
-                facility_mappings.filter(
-                    pl.col(type_col).fill_null("").str.to_lowercase() != "facility"
-                )
-                .select(
-                    [
-                        pl.col("child_reference"),
-                        pl.col("parent_facility_reference").alias("mapped_parent_facility"),
-                    ]
-                )
-                .unique(subset=["child_reference"], keep="first")
+        # Synthesised null child_type (legacy mappings) fills to "" and naturally
+        # passes through the != "facility" filter, preserving today's behaviour.
+        exposure_level_mappings = (
+            facility_mappings.filter(
+                pl.col("child_type").fill_null("").str.to_lowercase() != "facility"
             )
-        else:
-            # No type column available - use all mappings as-is
-            exposure_level_mappings = facility_mappings.select(
+            .select(
                 [
                     pl.col("child_reference"),
                     pl.col("parent_facility_reference").alias("mapped_parent_facility"),
                 ]
-            ).unique(subset=["child_reference"], keep="first")
+            )
+            .unique(subset=["child_reference"], keep="first")
+        )
 
         exposures = exposures.join(
             exposure_level_mappings,
@@ -2298,17 +2322,23 @@ class HierarchyResolver:
             .rename({"_res": "_res_c", "_prop": "_prop_c"})
         )
 
-        # .over() window functions for allocation weights (no self-join!)
+        # .over() window functions for allocation weights (no self-join!).
+        # Both partition keys are nullable in this frame: direct exposures
+        # (no facility) have null parent_facility_reference; null
+        # counterparty_reference can arise from upstream join misses. The
+        # null-partition guard prevents pooling unrelated rows.
         exposures = exposures.with_columns(
             [
-                pl.when(pl.col("parent_facility_reference").is_not_null())
-                .then(pl.col("total_exposure_amount").sum().over("parent_facility_reference"))
-                .otherwise(pl.col("total_exposure_amount"))
-                .alias("facility_total"),
-                pl.when(pl.col("counterparty_reference").is_not_null())
-                .then(pl.col("total_exposure_amount").sum().over("counterparty_reference"))
-                .otherwise(pl.col("total_exposure_amount"))
-                .alias("cp_total"),
+                partition_by_nullable(
+                    pl.col("total_exposure_amount").sum().over("parent_facility_reference"),
+                    "parent_facility_reference",
+                    pl.col("total_exposure_amount"),
+                ).alias("facility_total"),
+                partition_by_nullable(
+                    pl.col("total_exposure_amount").sum().over("counterparty_reference"),
+                    "counterparty_reference",
+                    pl.col("total_exposure_amount"),
+                ).alias("cp_total"),
             ]
         )
 
@@ -2437,33 +2467,31 @@ class HierarchyResolver:
             how="left",
         )
 
-        # .over() window functions for group totals (no self-join!)
+        # .over() window functions for group totals (no self-join!).
         # When no lending group, aggregate over counterparty_reference so the
-        # retail threshold test sees the obligor's full exposure, not a single line.
+        # retail threshold test sees the obligor's full exposure, not a single
+        # line. lending_group_reference is left-join nullable, so the null-
+        # partition guard prevents pooling unrelated unmapped rows.
         exposures = exposures.with_columns(
             [
-                pl.when(pl.col("lending_group_reference").is_not_null())
-                .then(
+                partition_by_nullable(
                     pl.col("drawn_amount")
                     .clip(lower_bound=0.0)
                     .sum()
                     .over("lending_group_reference")
-                    + pl.col("nominal_amount").sum().over("lending_group_reference")
-                )
-                .otherwise(
+                    + pl.col("nominal_amount").sum().over("lending_group_reference"),
+                    "lending_group_reference",
                     pl.col("drawn_amount")
                     .clip(lower_bound=0.0)
                     .sum()
                     .over("counterparty_reference")
-                    + pl.col("nominal_amount").sum().over("counterparty_reference")
-                )
-                .alias("lending_group_total_exposure"),
-                pl.when(pl.col("lending_group_reference").is_not_null())
-                .then(pl.col("exposure_for_retail_threshold").sum().over("lending_group_reference"))
-                .otherwise(
-                    pl.col("exposure_for_retail_threshold").sum().over("counterparty_reference")
-                )
-                .alias("lending_group_adjusted_exposure"),
+                    + pl.col("nominal_amount").sum().over("counterparty_reference"),
+                ).alias("lending_group_total_exposure"),
+                partition_by_nullable(
+                    pl.col("exposure_for_retail_threshold").sum().over("lending_group_reference"),
+                    "lending_group_reference",
+                    pl.col("exposure_for_retail_threshold").sum().over("counterparty_reference"),
+                ).alias("lending_group_adjusted_exposure"),
             ]
         )
 
@@ -2717,30 +2745,62 @@ def _resolve_to_root_facility(
     )
 
 
-def _detect_type_column(schema_names: set[str]) -> str | None:
-    """Return the child-type column name if present, else None."""
-    if "child_type" in schema_names:
-        return "child_type"
-    if "node_type" in schema_names:
-        return "node_type"
-    return None
+def _normalise_facility_mappings(facility_mappings: pl.LazyFrame) -> pl.LazyFrame:
+    """Normalise the facility-mappings schema to the canonical ``child_type`` form.
+
+    The engine's contract is a single discriminator column ``child_type``. Two
+    legacy input shapes are accepted at the resolver boundary:
+
+    1. ``child_type`` already present — pass through unchanged.
+    2. ``node_type`` present, ``child_type`` absent — rename to ``child_type``.
+       (Vestigial alias retained as a one-PR safety net for any out-of-tree
+       producers; new producers MUST emit ``child_type``.)
+    3. Neither present — synthesise a null ``child_type`` column via
+       ``ensure_columns``. The downstream ``unique → filter`` chain treats
+       a null discriminator as "no facility-typed children", which is the
+       correct fallback for legacy single-level mappings.
+
+    Idempotent on already-normalised input. Calling twice is a no-op:
+    ``node_type`` is no longer present, ``child_type`` already exists, and
+    ``ensure_columns`` adds nothing.
+
+    Raises ``ValueError`` on the ambiguous shape where both ``child_type`` and
+    ``node_type`` are present — the loader contract should prevent this.
+    """
+    cols = set(facility_mappings.collect_schema().names())
+    if "node_type" in cols:
+        if "child_type" in cols:
+            raise ValueError(
+                "facility_mappings has both 'child_type' and 'node_type' columns; "
+                "ambiguous discriminator. Drop 'node_type' (legacy alias) and emit "
+                "'child_type' only."
+            )
+        facility_mappings = facility_mappings.rename({"node_type": "child_type"})
+    return ensure_columns(facility_mappings, FACILITY_MAPPING_SCHEMA)
 
 
 def _filter_mappings_by_child_type(
     facility_mappings: pl.LazyFrame,
     child_type: str,
-    type_col: str | None,
 ) -> pl.LazyFrame:
     """Return facility_mappings filtered to a single child_type, deduped on child+parent.
 
-    When ``type_col`` is None (legacy mappings without a type column), the input
-    is passed through with the same uniqueness guarantee — the caller is
-    responsible for any further filtering.
+    Order is load-bearing: ``unique`` runs *before* ``filter`` so duplicate
+    ``(child_reference, parent_facility_reference)`` pairs that differ only in
+    ``child_type`` (e.g. when ``facility_reference == loan_reference``) are
+    absorbed by the dedup; reversing to ``filter → unique`` would silently
+    diverge on dirty inputs.
+
+    Assumes ``facility_mappings`` has been passed through
+    ``_normalise_facility_mappings`` upstream so that ``child_type`` always
+    exists. A null ``child_type`` value (synthesised for legacy inputs)
+    fills to "" via ``fill_null`` and never matches a real type — yielding an
+    empty filtered frame, which is the correct "no children of this type"
+    semantic.
     """
-    deduped = facility_mappings.unique(subset=["child_reference", "parent_facility_reference"])
-    if type_col is None:
-        return deduped
-    return deduped.filter(pl.col(type_col).fill_null("").str.to_lowercase() == child_type)
+    return facility_mappings.unique(subset=["child_reference", "parent_facility_reference"]).filter(
+        pl.col("child_type").fill_null("").str.to_lowercase() == child_type
+    )
 
 
 def _resolve_graph_eager(
