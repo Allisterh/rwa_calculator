@@ -117,7 +117,7 @@ OF-ADJ = 12.5 x (IRB_T2 - IRB_CET1 - GCRA + SA_T2)
 | Component | Description | Regulatory Ref |
 |-----------|-------------|----------------|
 | IRB_T2 | IRB excess provisions T2 **credit** (provisions > EL): Art. 62(d) excess, i.e., where provisions exceed EL amounts | Art. 62(d) |
-| IRB_CET1 | IRB EL shortfall CET1 deduction (EL > provisions) per Art. 36(1)(d), plus any supervisory deductions under Art. 40 | Art. 36(1)(d), Art. 40 |
+| IRB_CET1 | IRB EL shortfall CET1 deduction (EL > provisions) per Art. 36(1)(d). Art. 40 is the technical clarifier — see [Art. 40 — no DTA grossing-up](#art-40-no-deferred-tax-grossing-up-of-the-el-shortfall-deduction). | Art. 36(1)(d), Art. 40 |
 | GCRA | General credit risk adjustments included in T2, gross of tax effects. **Capped at 1.25% of S-TREA** (the standardised total risk exposure amount). | Art. 62(c), Art. 92(2A) |
 | SA_T2 | SA general credit risk adjustments recognised as T2 capital under Art. 62(c) | Art. 62(c) |
 
@@ -131,6 +131,62 @@ minimum capital ratio). Under IRB, EL shortfall adds to capital requirements (vi
 while excess provisions provide T2 relief. Under SA, general credit risk adjustments provide T2
 relief directly. Without OF-ADJ, switching from IRB to SA in the floor comparison would change
 the own-funds base, making the TREA comparison inconsistent.
+
+### Art. 40 — no deferred-tax grossing-up of the EL-shortfall deduction
+
+PRA PS1/26 Art. 92(2A) defines the `IRB CET1` input to OF-ADJ as "amounts calculated in
+accordance with point (d) of paragraph 1 of Article 36 **and Article 40** of Own Funds (CRR)
+Part" (PS1/26 App 1, p. 13). Art. 40 is **not** a separate prudential filter or supervisory
+deduction — it is a one-line technical clarifier that ring-fences how the Art. 36(1)(d) EL-
+shortfall deduction is measured.
+
+!!! quote "CRR Art. 40 — verbatim (legislation.gov.uk, eur/2013/575)"
+    "**Article 40 — Deduction of negative amounts resulting from the calculation of expected
+    loss amounts.**
+
+    The amount to be deducted in accordance with point (d) of Article 36(1) shall not be
+    reduced by a rise in the level of deferred tax assets that rely on future profitability,
+    or other additional tax effects, that could occur if provisions were to rise to the level
+    of expected losses referred to in Section 3 of Chapter 3 of Title II of Part Three."
+
+In practical terms, Art. 40 forbids the firm from netting a hypothetical deferred-tax benefit
+against the EL-shortfall CET1 deduction. The deduction is the **gross** EL-minus-provisions
+amount; the firm cannot argue that "if we had topped provisions up to EL, we would have
+recognised a DTA, so the net CET1 hit is smaller" — that DTA does not exist and Art. 40
+prevents it from being imputed.
+
+#### Effect on the OF-ADJ denominator
+
+The PS1/26 Art. 92(2A) cross-reference to Art. 40 ensures the `IRB CET1` term in OF-ADJ is the
+same gross figure that would be deducted from CET1 under the Own Funds Part:
+
+```
+IRB CET1 (in OF-ADJ) = Art. 36(1)(d) EL-shortfall deduction (gross of imputed DTA per Art. 40)
+                     = max(0, EL - eligible provisions)        # Art. 159 Pool A/B/C/D outcome
+```
+
+Because OF-ADJ enters the floor formula as `12.5 × (IRB T2 − IRB CET1 − GCRA + SA T2)`, any
+under-statement of `IRB CET1` (for example, by netting a hypothetical DTA) would understate
+the CET1 add-back and inflate the floored TREA. Art. 40 closes that arbitrage: the same gross
+EL-shortfall figure that hits CET1 under Art. 36(1)(d) is the figure that flows into the
+OF-ADJ denominator.
+
+!!! note "Engine inputs"
+    The `IRB CET1` term is assembled inside the aggregator
+    (`src/rwa_calc/engine/aggregator/aggregator.py`) from two sources:
+
+    - **Art. 36(1)(d) deduction** — derived from the Art. 159 EL-vs-provisions comparison
+      (`ELPortfolioSummary.cet1_deduction`, computed in
+      `src/rwa_calc/engine/aggregator/_el_summary.py`). This is the gross EL-shortfall figure
+      that Art. 40 protects from DTA grossing-up.
+    - **`OutputFloorConfig.art_40_deductions`** (`src/rwa_calc/contracts/config.py`) — an
+      institution-supplied scalar, defaulting to `0.0`. This slot is provided to let firms
+      pass through any additional Art. 36(1)(d)/Art. 40 amount that the engine has not
+      derived from exposure-level Pool A/B/C/D data (for example, when the EL summary is
+      computed outside the engine and only the residual is supplied). Reconciliation between
+      the engine-derived figure, this override, and the firm's Own Funds Art. 36(1)(d) line
+      is an upstream control — the calculator does not re-derive the deduction from
+      first principles when this field is set.
 
 ### T2 Component Caps — Art. 62(c) and Art. 62(d)
 
