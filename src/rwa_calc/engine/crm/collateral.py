@@ -157,13 +157,14 @@ def generate_netting_collateral(
     2. root_facility_reference (top-level facility in hierarchy)
     3. parent_facility_reference (direct parent, fallback)
 
-    The synthetic collateral rows are allocated pro-rata by ead_gross to positive-drawn
-    siblings within the netting facility. Netting pools are grouped by
-    (netting_facility, currency) so the haircut pipeline can apply FX haircuts when
-    the pool currency differs from the sibling's currency.
+    The synthetic collateral rows are allocated pro-rata by ead_for_crm to positive
+    siblings within the netting facility (CRR Art. 223(4): off-BS items at CCF=100%
+    for CRM purposes). Netting pools are grouped by (netting_facility, currency) so
+    the haircut pipeline can apply FX haircuts when the pool currency differs from
+    the sibling's currency.
 
     Args:
-        exposures: Exposures with ead_gross initialised
+        exposures: Exposures with ead_for_crm and ead_gross initialised
 
     Returns:
         LazyFrame of synthetic collateral rows, or None if no netting applies
@@ -173,6 +174,11 @@ def generate_netting_collateral(
         return None
     if "parent_facility_reference" not in schema.names():
         return None
+
+    # Graceful fallback for direct unit-test callers (production always
+    # supplies ead_for_crm via _initialize_ead).
+    if "ead_for_crm" not in schema.names():
+        exposures = exposures.with_columns(pl.col("ead_gross").alias("ead_for_crm"))
 
     has_root = "root_facility_reference" in schema.names()
     has_netting_ref = "netting_facility_reference" in schema.names()
@@ -208,14 +214,14 @@ def generate_netting_collateral(
     # A sibling matches a pool if the pool's netting group equals its
     # parent_facility_reference OR root_facility_reference.
     positive_siblings = exposures.filter(
-        (pl.col("ead_gross") > 0) & pl.col("parent_facility_reference").is_not_null()
+        (pl.col("ead_for_crm") > 0) & pl.col("parent_facility_reference").is_not_null()
     )
 
     sibling_cols = [
         "exposure_reference",
         "parent_facility_reference",
         "currency",
-        "ead_gross",
+        "ead_for_crm",
         "maturity_date",
     ]
     if has_root:
@@ -244,9 +250,10 @@ def generate_netting_collateral(
     else:
         matched = match_parent
 
-    # Total EAD per pool for pro-rata allocation (recompute after matching)
+    # Total EAD per pool for pro-rata allocation (recompute after matching).
+    # Uses ead_for_crm (CCF=100% per Art. 223(4)) to mirror the rest of CRM.
     facility_totals = matched.group_by("_pool_currency", "netting_pool").agg(
-        pl.col("ead_gross").sum().alias("_facility_total_ead"),
+        pl.col("ead_for_crm").sum().alias("_facility_total_ead"),
     )
 
     # Join totals back for pro-rata
@@ -256,9 +263,9 @@ def generate_netting_collateral(
         how="left",
     ).filter(pl.col("_facility_total_ead") > 0)
 
-    # Pro-rata market_value per sibling
+    # Pro-rata market_value per sibling (CCF=100% basis per Art. 223(4))
     allocated = allocated.with_columns(
-        (pl.col("netting_pool") * pl.col("ead_gross") / pl.col("_facility_total_ead")).alias(
+        (pl.col("netting_pool") * pl.col("ead_for_crm") / pl.col("_facility_total_ead")).alias(
             "market_value"
         ),
     )
@@ -328,6 +335,21 @@ def apply_collateral(
     # incorporated in the model must not also be allocated to non-AIRB
     # exposures of the same counterparty.
     schema_names = set(exposures.collect_schema().names())
+
+    # Graceful fallback for direct unit-test callers that hand-build the
+    # exposures frame without going through _initialize_ead.  In production
+    # both columns are always present.  For pure on-BS rows the defaults
+    # produce identical behaviour to the explicit columns, so existing
+    # tests stay green without modification.
+    fallback_cols: list[pl.Expr] = []
+    if "ead_for_crm" not in schema_names:
+        fallback_cols.append(pl.col("ead_gross").alias("ead_for_crm"))
+    if "effective_ccf" not in schema_names:
+        fallback_cols.append(pl.lit(1.0).alias("effective_ccf"))
+    if fallback_cols:
+        exposures = exposures.with_columns(fallback_cols)
+        schema_names |= {expr.meta.output_name() for expr in fallback_cols}
+
     exposures = exposures.with_columns(
         airb_lgd_preserved_expr(config, is_basel_3_1, schema_names).alias("_is_airb_pool")
     )
@@ -545,6 +567,15 @@ def _apply_collateral_unified(
     if "_is_airb_pool" not in exposure_schema.names():
         exposures = exposures.with_columns(pl.lit(False).alias("_is_airb_pool"))
 
+    # CRR Art. 223(4) override: ead_for_crm is the CCF=100% basis. Production
+    # always supplies it via _initialize_ead; direct unit-test callers may
+    # not, in which case we fall back to ead_gross (correct for pure on-BS
+    # rows where the two are equal by construction).
+    if "ead_for_crm" not in exposure_schema.names():
+        exposures = exposures.with_columns(pl.col("ead_gross").alias("ead_for_crm"))
+    if "effective_ccf" not in exposure_schema.names():
+        exposures = exposures.with_columns(pl.lit(1.0).alias("effective_ccf"))
+
     fac_totals_schema = facility_ead_totals.collect_schema().names()
     fac_total_fills: list[pl.Expr] = []
     if "_fac_ead_total_non_airb" not in fac_totals_schema:
@@ -747,22 +778,26 @@ def _apply_collateral_unified(
     # pool-match gate so non-matching pools always contribute zero.
     in_airb = pl.col("_is_airb_pool").fill_null(False)
     in_non_airb = ~in_airb
+    # Pro-rata weights use ead_for_crm (CRR Art. 223(4) / PS1/26 Art. 223(4):
+    # off-BS items at CCF=100% for CRM allocation purposes), so the share
+    # an exposure receives of a facility/CP collateral pool is proportional
+    # to its full pre-CCF basis rather than its post-CCF EAD.
     exposures = exposures.with_columns(
         [
             pl.when(in_non_airb & (pl.col("_fac_ead_total_non_airb") > 0))
-            .then(pl.col("ead_gross") / pl.col("_fac_ead_total_non_airb"))
+            .then(pl.col("ead_for_crm") / pl.col("_fac_ead_total_non_airb"))
             .otherwise(pl.lit(0.0))
             .alias("_fw_n"),
             pl.when(in_airb & (pl.col("_fac_ead_total_airb") > 0))
-            .then(pl.col("ead_gross") / pl.col("_fac_ead_total_airb"))
+            .then(pl.col("ead_for_crm") / pl.col("_fac_ead_total_airb"))
             .otherwise(pl.lit(0.0))
             .alias("_fw_a"),
             pl.when(in_non_airb & (pl.col("_cp_ead_total_non_airb") > 0))
-            .then(pl.col("ead_gross") / pl.col("_cp_ead_total_non_airb"))
+            .then(pl.col("ead_for_crm") / pl.col("_cp_ead_total_non_airb"))
             .otherwise(pl.lit(0.0))
             .alias("_cw_n"),
             pl.when(in_airb & (pl.col("_cp_ead_total_airb") > 0))
-            .then(pl.col("ead_gross") / pl.col("_cp_ead_total_airb"))
+            .then(pl.col("ead_for_crm") / pl.col("_cp_ead_total_airb"))
             .otherwise(pl.lit(0.0))
             .alias("_cw_a"),
             in_airb.cast(pl.Float64).alias("_airb_match"),
@@ -822,8 +857,10 @@ def _apply_collateral_unified(
         if threshold <= 0:
             continue
         col_name = f"_eff_{suffix}_a"
+        # Art. 230 minimum-collateralisation threshold uses E with CCF=100%
+        # per Art. 223(4) — the threshold is a fraction of the pre-CCF basis.
         nf_threshold_exprs.append(
-            pl.when(pl.col(raw_col) >= threshold * pl.col("ead_gross"))
+            pl.when(pl.col(raw_col) >= threshold * pl.col("ead_for_crm"))
             .then(pl.col(col_name))
             .otherwise(pl.lit(0.0))
             .alias(col_name)
@@ -835,7 +872,9 @@ def _apply_collateral_unified(
     # Allocate from lowest LGDS to highest. Each category absorbs up to
     # min(category_total, remaining_exposure). Uses the cumulative-cap
     # trick: es_i = min(cum_through_i, EAD) - min(cum_through_i-1, EAD).
-    ead = pl.col("ead_gross")
+    # EAD here is ead_for_crm (CCF=100% basis per Art. 223(4)) — the
+    # actual post-CCF EAD is recoupled later for SA via effective_ccf.
+    ead = pl.col("ead_for_crm")
     cum = pl.lit(0.0)
     es_exprs: list[pl.Expr] = []
     for suffix in _wf_suffixes:
@@ -962,10 +1001,21 @@ def _apply_collateral_unified(
     else:
         lgdu_expr = pl.when(is_subordinated).then(pl.lit(0.75)).otherwise(supervisory_lgdu_expr)
 
+    # SA EAD reduction (CRR Art. 228(1) / PS1/26 Art. 228(1)):
+    #   E*  = max(0, ead_for_crm − collateral_adjusted_value)
+    #   EAD = E* × CCF_actual   (i.e. × effective_ccf for blended rows)
+    # The CCF is applied to E*, not to the pre-collateral nominal — this is
+    # the regulatorily mandated ordering and reverses the previous
+    # implementation (which netted collateral against post-CCF ead_gross).
+    # FIRB / Slotting / AIRB keep ead_gross because under those approaches
+    # collateral modifies LGD (via lgd_post_crm), not EAD.
     exposures = exposures.with_columns(
         [
             pl.when(pl.col("approach") == ApproachType.SA.value)
-            .then((pl.col("ead_gross") - pl.col("collateral_adjusted_value")).clip(lower_bound=0))
+            .then(
+                (pl.col("ead_for_crm") - pl.col("collateral_adjusted_value")).clip(lower_bound=0)
+                * pl.col("effective_ccf")
+            )
             .otherwise(pl.col("ead_gross"))
             .alias("ead_after_collateral"),
             lgdu_expr.alias("lgd_unsecured"),
@@ -975,31 +1025,40 @@ def _apply_collateral_unified(
     # --- Calculate LGD post-CRM + audit ---
     # LGD* formula (Art. 230/231) applies to FIRB and qualifying AIRB exposures.
     # Non-qualifying AIRB and SA keep lgd_pre_crm.
+    #
+    # CRR Art. 223(4) / PS1/26 Art. 223(4): the exposure value E used in
+    #   LGD* = (LGDS · min(C, E) + LGDU · max(0, E - C)) / E
+    # is the CCF=100% basis (ead_for_crm) for off-balance-sheet items, NOT
+    # the post-CCF EAD.  For pure on-BS rows ead_for_crm == ead_gross.
     lgd_star_expr = (
         (
             pl.col("lgd_secured")
-            * pl.col("total_collateral_for_lgd").clip(upper_bound=pl.col("ead_gross"))
+            * pl.col("total_collateral_for_lgd").clip(upper_bound=pl.col("ead_for_crm"))
         )
         + (
             pl.col("lgd_unsecured")
-            * (pl.col("ead_gross") - pl.col("total_collateral_for_lgd")).clip(lower_bound=0)
+            * (pl.col("ead_for_crm") - pl.col("total_collateral_for_lgd")).clip(lower_bound=0)
         )
-    ) / pl.col("ead_gross")
+    ) / pl.col("ead_for_crm")
 
     exposures = exposures.with_columns(
         [
             pl.when(
-                _uses_formula & (pl.col("ead_gross") > 0) & (pl.col("total_collateral_for_lgd") > 0)
+                _uses_formula
+                & (pl.col("ead_for_crm") > 0)
+                & (pl.col("total_collateral_for_lgd") > 0)
             )
             .then(lgd_star_expr)
-            .when(_uses_formula & (pl.col("ead_gross") > 0))
+            .when(_uses_formula & (pl.col("ead_for_crm") > 0))
             .then(pl.col("lgd_unsecured"))
             .otherwise(pl.col("lgd_pre_crm"))
             .alias("lgd_post_crm"),
-            pl.when(pl.col("ead_gross") > 0)
+            # collateral_coverage_pct is the C/E ratio used for the Art. 230
+            # threshold tests, so it also uses ead_for_crm.
+            pl.when(pl.col("ead_for_crm") > 0)
             .then(
-                pl.col("total_collateral_for_lgd").clip(upper_bound=pl.col("ead_gross"))
-                / pl.col("ead_gross")
+                pl.col("total_collateral_for_lgd").clip(upper_bound=pl.col("ead_for_crm"))
+                / pl.col("ead_for_crm")
                 * 100
             )
             .otherwise(pl.lit(0.0))

@@ -305,10 +305,12 @@ Provisions are resolved **before** CCF application so that the nominal amount is
 
 1. **Resolve provisions** — drawn-first deduction (SA only); IRB tracks but does not deduct
 2. **Apply CCFs** — uses `nominal_after_provision` for off-balance sheet conversion
-3. **Initialize EAD waterfall** — set `ead_pre_crm` from drawn + interest + CCF contribution
-4. **Apply collateral** with haircuts and overcollateralisation
+3. **Initialize EAD waterfall** — set `ead_pre_crm` from drawn + interest + CCF contribution. Also sets `ead_for_crm = on_bs_for_ead + nominal_after_provision` (CCF=100% basis per CRR Art. 223(4) / PS1/26 Art. 223(4)) and `effective_ccf` (used to recouple the actual CCF in the SA post-collateral EAD per Art. 228(1))
+4. **Apply collateral** — collateral is netted against `ead_for_crm` (full nominal) for FCCM and FCM purposes; under SA the resulting `E*` is then multiplied by `effective_ccf` to give `ead_after_collateral`; under FIRB / Slotting the LGD\* formula uses `ead_for_crm` as `E` and `ead_gross` (post-CCF) flows through unchanged as the EAD basis
 5. **Apply guarantees** (substitution approach, cross-approach CCF substitution)
 6. **Finalize EAD** — floor at zero; provisions already baked into `ead_pre_crm`
+
+> **Why two EAD bases?** CRR Art. 223(4) and PS1/26 Art. 223(4) both require off-balance-sheet items to be valued at 100% of nominal when computing the exposure value `E` used for CRM, overriding the regulatory CCF. The actual CCF re-couples afterwards: under SA per Art. 228(1) the CCF is applied to `E*`, while under FIRB the actual CCF stays in EAD but is absent from the LGD\* ratio. The pipeline therefore carries `ead_gross` (post-CCF, the actual EAD that feeds RWA) and `ead_for_crm` (the CCF=100% basis used to net collateral). For pure on-balance-sheet rows the two are equal.
 
 ```python
 class CRMProcessor:

@@ -299,11 +299,14 @@ class CCFCalculator:
                 added.append(col_name)
 
         # Provision columns are paired (set by resolve_provisions together).
-        # Only add defaults when both are absent.
+        # Only add defaults when both are absent.  nominal_after_provision is
+        # not tracked in added_cols because the CRM stage needs it downstream
+        # (CRR Art. 223(4) ead_for_crm); when no provision data is supplied
+        # the default value (= nominal_amount) is the regulatorily correct
+        # "no provision" baseline.
         if not has_provision_cols:
             if "nominal_after_provision" not in names:
                 missing.append(pl.col("nominal_amount").alias("nominal_after_provision"))
-                added.append("nominal_after_provision")
             if "provision_on_drawn" not in names:
                 missing.append(pl.lit(0.0).alias("provision_on_drawn"))
                 added.append("provision_on_drawn")
@@ -446,10 +449,14 @@ class CCFCalculator:
             on_bal = drawn_for_ead()
         on_bal = on_bal + interest_for_ead()
 
+        # Persist the on-BS portion of EAD so the CRM stage can compose
+        # ead_for_crm = on_bs_for_ead + nominal_after_provision (CCF=100% basis,
+        # CRR Art. 223(4) / PS1/26 Art. 223(4)).
         exposures = exposures.with_columns(
+            on_bal.alias("on_bs_for_ead"),
             (pl.col("nominal_after_provision") * pl.col("ccf")).alias("ead_from_ccf"),
         ).with_columns(
-            (on_bal + pl.col("ead_from_ccf")).alias("ead_pre_crm"),
+            (pl.col("on_bs_for_ead") + pl.col("ead_from_ccf")).alias("ead_pre_crm"),
         )
 
         # Art. 166D(5) EAD floors — Basel 3.1 A-IRB only
@@ -461,12 +468,13 @@ class CCFCalculator:
             # EAD >= on-BS EAD + 50% x (nominal x SA_CCF)
             # Under B31, F-IRB CCFs = SA CCFs (Art. 166C)
             floor_b = (
-                on_bal + pl.col("nominal_after_provision") * pl.col("_sa_ccf_from_risk_type") * 0.5
+                pl.col("on_bs_for_ead")
+                + pl.col("nominal_after_provision") * pl.col("_sa_ccf_from_risk_type") * 0.5
             )
 
             # Floor (c): fully-drawn EAD floor — Art. 166D(5)(c)
             # EAD >= on-balance-sheet EAD (ignoring Art. 166D)
-            floor_c = on_bal
+            floor_c = pl.col("on_bs_for_ead")
 
             exposures = exposures.with_columns(
                 pl.when(is_airb & has_modelled_ead)

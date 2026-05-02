@@ -90,6 +90,13 @@ def _build_exposure_lookups(
     has_pool_col = "_is_airb_pool" in exp_schema.names()
     pool_expr = pl.col("_is_airb_pool").fill_null(False) if has_pool_col else pl.lit(False)
 
+    # Graceful fallback for direct unit-test callers that hand-build the
+    # exposures frame without going through _initialize_ead.  Production
+    # always supplies ead_for_crm; test fixtures with pure on-BS rows can
+    # fall back to ead_gross with no semantic change.
+    if "ead_for_crm" not in exp_schema.names():  # arch-exempt: test-fallback default
+        exposures = exposures.with_columns(pl.col("ead_gross").alias("ead_for_crm"))
+
     # Use pre-FX-conversion currency for downstream Art. 224 H_fx mismatch check.
     # After FX conversion the `currency` column holds the reporting currency, so a
     # raw `currency` join would silently zero the collateral FX haircut (P1.135).
@@ -97,10 +104,12 @@ def _build_exposure_lookups(
         "original_currency" if "original_currency" in exp_schema.names() else "currency"
     )
 
-    # Direct: one row per exposure
+    # Direct: one row per exposure.  CRR Art. 223(4) / PS1/26 Art. 223(4):
+    # off-BS items must be valued at 100% of nominal for CRM purposes, so
+    # all pro-rata bases use ead_for_crm rather than the post-CCF ead_gross.
     direct_cols = [
         pl.col("exposure_reference").alias("_ben_ref_direct"),
-        pl.col("ead_gross").alias("_ead_direct"),
+        pl.col("ead_for_crm").alias("_ead_direct"),
         pl.col(exposure_ccy_col).alias("_currency_direct"),
         pl.col("maturity_date").alias("_maturity_direct"),
     ]
@@ -115,9 +124,9 @@ def _build_exposure_lookups(
     # Facility: aggregated per parent_facility_reference
     if "parent_facility_reference" in exp_schema.names():
         facility_agg = [
-            pl.col("ead_gross").sum().alias("_ead_facility"),
-            pl.col("ead_gross").filter(pool_expr).sum().alias("_ead_facility_airb"),
-            pl.col("ead_gross").filter(~pool_expr).sum().alias("_ead_facility_non_airb"),
+            pl.col("ead_for_crm").sum().alias("_ead_facility"),
+            pl.col("ead_for_crm").filter(pool_expr).sum().alias("_ead_facility_airb"),
+            pl.col("ead_for_crm").filter(~pool_expr).sum().alias("_ead_facility_non_airb"),
             pl.col(exposure_ccy_col).first().alias("_currency_facility"),
             pl.col("maturity_date").first().alias("_maturity_facility"),
         ]
@@ -152,9 +161,9 @@ def _build_exposure_lookups(
 
     # Counterparty: aggregated per counterparty_reference
     cp_agg = [
-        pl.col("ead_gross").sum().alias("_ead_cp"),
-        pl.col("ead_gross").filter(pool_expr).sum().alias("_ead_cp_airb"),
-        pl.col("ead_gross").filter(~pool_expr).sum().alias("_ead_cp_non_airb"),
+        pl.col("ead_for_crm").sum().alias("_ead_cp"),
+        pl.col("ead_for_crm").filter(pool_expr).sum().alias("_ead_cp_airb"),
+        pl.col("ead_for_crm").filter(~pool_expr).sum().alias("_ead_cp_non_airb"),
         pl.col(exposure_ccy_col).first().alias("_currency_cp"),
         pl.col("maturity_date").first().alias("_maturity_cp"),
     ]
@@ -875,13 +884,31 @@ class CRMProcessor:
             ),
         ]
 
+        # Exposure value used for CRM (CRR Art. 223(4) / PS1/26 Art. 223(4)):
+        # off-balance-sheet items enter CRM at 100% of nominal (CCF override).
+        # ead_for_crm composes the on-BS portion with the unconverted nominal,
+        # so any row computes correctly whether it's pure on-BS, pure off-BS,
+        # or mixed.  effective_ccf re-couples the actual CCF in SA's
+        # post-collateral EAD per Art. 228(1).
+        ead_for_crm_expr = pl.col("on_bs_for_ead").fill_null(0.0) + pl.col(
+            "nominal_after_provision"
+        ).fill_null(0.0)
+        effective_ccf_expr = (
+            pl.when(ead_for_crm_expr > 0)
+            .then(pl.col("ead_pre_crm") / ead_for_crm_expr)
+            .otherwise(pl.lit(1.0))
+        )
+
         return exposures.with_columns(
             [
                 # Pre-CRM attributes for regulatory reporting
                 pl.col("counterparty_reference").alias("pre_crm_counterparty_reference"),
                 pl.col("exposure_class").alias("pre_crm_exposure_class"),
-                # Gross EAD = drawn + CCF-adjusted contingent
+                # Gross EAD = drawn + CCF-adjusted contingent (post-CCF; actual EAD basis)
                 pl.col("ead_pre_crm").alias("ead_gross"),
+                # CRR Art. 223(4) / PS1/26 Art. 223(4) override: CCF=100% basis for CRM
+                ead_for_crm_expr.alias("ead_for_crm"),
+                effective_ccf_expr.alias("effective_ccf"),
                 # Initialize subsequent EAD columns (will be adjusted by CRM)
                 pl.col("ead_pre_crm").alias("ead_after_collateral"),
                 pl.col("ead_pre_crm").alias("ead_after_guarantee"),

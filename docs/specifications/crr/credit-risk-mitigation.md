@@ -18,6 +18,51 @@ Collateral haircuts, overcollateralisation, FX mismatch, maturity mismatch, and 
 | FR-2.4 | Multi-level collateral allocation | P0 | Done |
 | FR-2.5 | Guarantee substitution | P0 | Done |
 | FR-2.6 | Cross-approach CCF substitution | P0 | Done |
+| FR-2.7 | CCF=100% override for CRM exposure value (Art. 223(4)) | P0 | Done |
+
+---
+
+## Exposure value for CRM purposes (Art. 223(4))
+
+**CRR Art. 223(4)** and **PRA PS1/26 Art. 223(4)** both require that, when computing the exposure value `E` used for credit risk mitigation, off-balance-sheet items shall be valued at **100% of nominal**, overriding the regulatory CCF. The actual CCF only re-couples afterwards.
+
+> "(b) for institutions calculating risk-weighted exposure amounts under the IRB Approach, they shall calculate the exposure value of the items listed in Article 166(8) to (10) by **using a conversion factor of 100% rather than the conversion factors or percentages indicated in those paragraphs**."
+
+The pipeline implements this with two parallel EAD bases on the exposures frame:
+
+| Column | Definition | Used by |
+|---|---|---|
+| `ead_gross` | `on_bs_for_ead + nominal_after_provision × ccf` (post-CCF, the actual EAD that feeds RWA) | Audit, reporting, FIRB / Slotting RWA via `ead_final` |
+| `ead_for_crm` | `on_bs_for_ead + nominal_after_provision` (CCF=100% basis) | Collateral pro-rata weights, FIRB LGD\* formula, Art. 230 thresholds, SA E\* netting |
+| `effective_ccf` | `ead_pre_crm / ead_for_crm` | SA `ead_after_collateral` re-couples the actual CCF after collateral netting per Art. 228(1) |
+
+For pure on-balance-sheet rows the two EAD bases are equal by construction.
+
+### Worked example (FIRB cash collateral)
+
+100m off-BS FIRB exposure, 75% CCF (Art. 166(8)(d) medium-risk commitment), 50m cash collateral; senior unsecured (LGDU=45%), cash LGDS=0%:
+
+```
+ead_for_crm    = 100m         (CCF=100% override)
+ead_gross      =  75m         (post-CCF, used for RWA)
+collateral     =  50m         (cash, 0% haircut)
+LGD*           = (0% × 50 + 45% × (100−50)) / 100 = 22.5%
+RWA            = ead_gross × K(PD, LGD*=22.5%, M) × 1.06
+```
+
+Pre-fix code netted collateral against the post-CCF `ead_gross` and produced LGD\* = 15%, under-stating FIRB LGD by 7.5pp on this exposure.
+
+### Worked example (SA off-BS cash collateral)
+
+100m off-BS, 50% CCF (medium-risk), 30m cash:
+
+```
+ead_for_crm           = 100m
+E*                    = max(0, 100 − 30) = 70m       (Art. 223(5))
+ead_after_collateral  = E* × CCF = 70 × 0.5 = 35m    (Art. 228(1))
+```
+
+Pre-fix code returned `ead_after_collateral = max(0, 50 − 30) = 20m`, under-stating EAD by 15m and therefore SA RWA.
 
 ---
 
