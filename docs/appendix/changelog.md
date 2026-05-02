@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (Next release changes will go here)
+- **IRB Risk Parameter Estimation Standards (PS1/26 Art. 179–184) documented (`docs/specifications/basel31/irb-approach.md`)**: previously the spec stub-cited Art. 179–184 with no content, leaving implementers without a documented contract for what the calculator's PD / LGD / EAD inputs must represent. New "Risk Parameter Estimation Standards" section now covers Art. 179 (general estimation, MoC, pooled data), Art. 180(1)(a)–(h) corporate / institution PD plus Art. 180(2)(a)–(f) retail PD with the 5-year minimum data history, Art. 181 LGD (downturn LGD, LGD-in-default, 5y → 7y data ramp), Art. 181A–C downturn nature/severity/duration (incl. ≥ 20-year time-span at Art. 181C(1)), Art. 182 EAD/CCF, Art. 183 LGD-AM under A-IRB, and Art. 184 purchased receivables — all with verbatim PS1/26 Appendix 1 page citations (pp. 131–141). Closes DOCS_IMPLEMENTATION_PLAN.md D3.49.
+- **`enable_double_default` config knob documented (`docs/api/configuration.md`)**: the CRR Art. 153(3) double-default RW formula is now a discoverable knob from the API docs alone — field name, type, default (`False`), formula reference, Art. 202 / 217 eligibility, the PS1/26 B31-removal note, and a worked `CalculationConfig.crr(enable_double_default=True)` snippet are all in place. Practitioners no longer have to read source to find the toggle. Closes DOCS_IMPLEMENTATION_PLAN.md D3.50.
 
 ### Changed
 - (Next release changes will go here)
