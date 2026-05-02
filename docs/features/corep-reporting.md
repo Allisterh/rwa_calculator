@@ -31,6 +31,8 @@ flowchart TD
 
     SPLIT -->|IRB exposures| C0804["<b>C 08.04 / OF 08.04</b><br/>RWEA Flow Statements<br/><i>Period-over-period movements</i>"]
 
+    SPLIT -->|IRB exposures| C0805["<b>C 08.05 / OF 08.05</b><br/>PD Back-Testing<br/><i>One submission per<br/>IRB exposure class</i>"]
+
     SPLIT -->|Slotting exposures| C0806["<b>C 08.06 / OF 08.06</b><br/>Specialised Lending Slotting<br/><i>By SL type</i>"]
 
     SPLIT -->|All IRB| C0807["<b>C 08.07 / OF 08.07</b><br/>Scope of Use<br/><i>SA vs IRB coverage</i>"]
@@ -48,6 +50,7 @@ flowchart TD
     style C0802 fill:#e3f2fd,stroke:#1e88e5
     style C0803 fill:#e3f2fd,stroke:#1e88e5
     style C0804 fill:#e3f2fd,stroke:#1e88e5
+    style C0805 fill:#e3f2fd,stroke:#1e88e5
     style C0806 fill:#e8f5e9,stroke:#43a047
     style C0807 fill:#f3e5f5,stroke:#8e24aa
     style C0901 fill:#fce4ec,stroke:#e53935
@@ -61,6 +64,7 @@ flowchart TD
 | **C 08.02** | CR IRB 2 | OF CR IRB 2 | IRB breakdown by obligor grade/pool — same columns as C 08.01, one row per internal rating grade |
 | **C 08.03** | CR IRB 3 | OF CR IRB 3 | IRB breakdown by fixed PD ranges — key parameters (PD, LGD, CCF, RWEA, EL) per PD bucket |
 | **C 08.04** | CR IRB 4 | OF CR IRB 4 | RWEA flow statements — period-over-period movement decomposition |
+| **C 08.05** | CR IRB 5 | OF CR IRB 5 | PD back-testing — average PD vs realised default rates per fixed PD range bucket |
 | **C 08.06** | CR IRB 6 | OF CR IRB 6 | Specialised lending slotting — by category and maturity |
 | **C 08.07** | CR IRB 7 | OF CR IRB 7 | Scope of use of IRB and SA approaches — coverage percentages and RWEA attribution |
 | **C 09.01** | CR GB 1 | OF CR GB 1 | Geographical breakdown of SA exposures by country of obligor residence |
@@ -1059,6 +1063,166 @@ and merge it with the generated template.
 
 ---
 
+## C 08.05 / OF 08.05 — CR IRB PD Back-Testing
+
+C 08.05 reports **PD model back-testing** per IRB exposure class — comparing
+model-assigned PDs against realised one-year default rates across the same 17 fixed
+PD range buckets used in C 08.03. This template is the supervisory back-testing view
+that supports IRB model validation under CRR Art. 180. One submission is filed per
+IRB exposure class. Slotting and CCR exposures are excluded.
+
+The B31 column 0010 label is explicit that the reported average PD is **after** the
+PD input floors (Art. 160(1) / 163(1)) and any exposure-level risk weight floors
+(Art. 161(3) / 164(5)). PD-bucket *allocation*, however, uses the **pre-input-floor**
+PD — the same convention as OF 08.03.
+
+!!! note "Pillar III equivalent"
+    UKB CR9 is the public-disclosure counterpart of C 08.05 / OF 08.05. They cover
+    the same back-testing concept but are **not column-for-column equivalent**:
+    UKB CR9 has 8 columns (a–h) including a PD-range column, an external rating
+    equivalent column, an obligor-weighted PD-at-disclosure-date column, and the
+    exposure-class designator; C 08.05 / OF 08.05 has 5 columns (0010–0050).
+    See [Disclosure Differences — CR9](../framework-comparison/disclosure-differences.md#cr9-irb-back-testing-of-pd-per-exposure-class)
+    for the full UKB CR9 column structure and the CR9 vs C 08.05 mapping.
+
+### Column Structure
+
+=== "CRR (C 08.05)"
+
+    | Ref | Column | Group |
+    |-----|--------|-------|
+    | 0010 | Arithmetic average PD (%) | PD |
+    | 0020 | Number of obligors at end of previous year | Obligors |
+    | 0030 | Of which: defaulted during the year | Defaults |
+    | 0040 | Observed average default rate (%) | Default Rate |
+    | 0050 | Average historical annual default rate (%) | Historical Rate |
+
+=== "Basel 3.1 (OF 08.05)"
+
+    | Ref | Column | Group | vs CRR |
+    |-----|--------|-------|--------|
+    | ==0010== | ==Arithmetic average PD (post-input floor) (%)== | ==PD== | ==**Renamed** — explicit "post-input floor"== |
+    | 0020 | Number of obligors at end of previous year | Obligors | |
+    | 0030 | Of which: defaulted during the year | Defaults | |
+    | 0040 | Observed average default rate (%) | Default Rate | |
+    | 0050 | Average historical annual default rate (%) | Historical Rate | |
+
+=== "Differences"
+
+    | Change | Ref(s) | Description |
+    |--------|--------|-------------|
+    | **Renamed** | 0010 | "Arithmetic average PD (post-input floor) (%)" — Basel 3.1 explicitly clarifies the average uses PD **after** Art. 160(1) / 163(1) input floors and Art. 161(3) / 164(5) RW floors |
+    | **Allocation rule** | rows | Basel 3.1 allocates exposures to PD-range rows using **pre-input-floor** PD (matches OF 08.03); CRR uses the floored PD |
+
+=== "Column Definitions (PRA PS1/26 Annex II §3.3.7)"
+
+    - **0010 Arithmetic average PD (%)** — arithmetic average (weighted by number of
+      obligors) of the PD at the beginning of the reporting period for obligors falling
+      within the bucket. Basel 3.1: post-input floor; CRR: pre any floor description.
+    - **0020 Number of obligors at end of previous year** — count of obligors with any
+      credit obligation. Joint-obligor treatment matches PD calibration; obligor count
+      method matches OF 08.01 col 0300.
+    - **0030 Of which: defaulted during the year** — count of obligors that defaulted
+      (per Art. 178) during the one-year observation period. Each defaulted obligor is
+      counted only once even if multiple defaults occurred.
+    - **0040 Observed average default rate (%)** — Art. 4(1)(78) one-year default rate.
+      Denominator: non-defaulted obligors with any credit obligation at the start of the
+      observation period. Numerator: those obligors that had at least one default event
+      during the period.
+    - **0050 Average historical annual default rate (%)** — simple average of the
+      five most recent annual default rates (or a longer period consistent with the
+      institution's risk-management practice).
+
+### Row Structure
+
+The 17 PD range buckets are **identical** to C 08.03 / OF 08.03. Defaulted exposures
+are assigned to the 100% bucket (row 0170).
+
+=== "CRR (C 08.05)"
+
+    | Ref | PD Range |
+    |-----|----------|
+    | 0010 | 0.00 to < 0.15 |
+    | 0020 | &emsp;0.00 to < 0.10 |
+    | 0030 | &emsp;0.10 to < 0.15 |
+    | 0040 | 0.15 to < 0.25 |
+    | 0050 | 0.25 to < 0.50 |
+    | 0060 | 0.50 to < 0.75 |
+    | 0070 | 0.75 to < 2.50 |
+    | 0080 | &emsp;0.75 to < 1.75 |
+    | 0090 | &emsp;1.75 to < 2.50 |
+    | 0100 | 2.50 to < 10.00 |
+    | 0110 | &emsp;2.50 to < 5.00 |
+    | 0120 | &emsp;5.00 to < 10.00 |
+    | 0130 | 10.00 to < 100.00 |
+    | 0140 | &emsp;10.00 to < 20.00 |
+    | 0150 | &emsp;20.00 to < 30.00 |
+    | 0160 | &emsp;30.00 to < 100.00 |
+    | 0170 | 100.00 (Default) |
+
+=== "Basel 3.1 (OF 08.05)"
+
+    Identical row structure (17 PD range buckets, 0010–0170). Allocation uses
+    **pre-input-floor** PD — see [PRA PS1/26 Annex II §3.3.7](https://www.bankofengland.co.uk/-/media/boe/files/prudential-regulation/policy-statement/2026/january/ps126app1.pdf)
+    "PD RANGE (PRE-INPUT FLOOR) (%)".
+
+    !!! info "Floor convention asymmetry"
+        Row allocation: **pre-input-floor** PD. Column 0010 reported value: **post-input-floor**
+        average PD. This asymmetry is deliberate: it lets supervisors back-test the model's
+        unfloored predictions while still showing the floored PD that drives capital.
+
+=== "Differences Summary"
+
+    | Area | CRR | Basel 3.1 |
+    |------|-----|-----------|
+    | **Columns** | 5 (0010–0050) | 5 (0010–0050) — col 0010 renamed |
+    | **PD column** | "Arithmetic average PD" | "Arithmetic average PD (post-input floor)" |
+    | **Bucket allocation** | Floored PD | Pre-input-floor PD (matches OF 08.03) |
+    | **Rows** | 17 PD range buckets | Identical |
+    | **Scope** | F-IRB and A-IRB; excludes slotting and CCR | Identical |
+
+### Implementation Notes
+
+C 08.05 / OF 08.05 is implemented in the generator. The template requires
+multi-year historical data that a single pipeline run cannot produce, so two columns
+fall back to current-period approximations when historical inputs are absent:
+
+- **Col 0010** (arithmetic average PD): populated from `irb_pd_floored` per PD bucket.
+  CRR uses the floored PD for both reporting and allocation; Basel 3.1 uses
+  `irb_pd_original` for allocation and `irb_pd_floored` for the col 0010 value.
+- **Col 0020** (prior-year obligor count): falls back to current-period obligor count
+  (`counterparty_reference.n_unique()`) when `prior_year_obligor_count` is not provided.
+- **Col 0030** (defaulted during year): obligor-level count from `is_defaulted`, falling
+  back to PD ≥ 1.0 when the default flag is absent.
+- **Col 0040** (observed default rate): col 0030 / col 0020.
+- **Col 0050** (historical annual default rate): falls back to col 0040 (current-period
+  observed rate) when `historical_annual_default_rate` is not provided.
+- Slotting exposures excluded (covered by C 08.06); CCR exposures excluded
+  (covered by C 34.07 / OF 34.07).
+- Template definitions: `CRR_C08_05_COLUMNS`, `B31_C08_05_COLUMNS` in
+  `src/rwa_calc/reporting/corep/templates.py`.
+- Generator: `_generate_all_c08_05()`, `_generate_c08_05_for_class()`,
+  `_compute_c08_05_values()` in `src/rwa_calc/reporting/corep/generator.py`.
+- Bundle field: `COREPTemplateBundle.c08_05: dict[str, pl.DataFrame]` (one entry per
+  IRB exposure class).
+- Excel sheet prefix: `C 08.05` (CRR) / `OF 08.05` (Basel 3.1), one sheet per exposure
+  class.
+
+To populate cols 0020 and 0050 with true multi-year data, callers can supply the
+optional `prior_year_obligor_count` and `historical_annual_default_rate` columns
+on the input LazyFrame; the generator will use them in preference to the
+single-period fallbacks.
+
+!!! warning "OF 08.05.1 (ECAI variant) not implemented"
+    PRA PS1/26 Annex II §3.3.8 defines a **second** back-testing template, OF 08.05.1
+    (CR IRB 5B), required where Art. 180(1)(f) ECAI-based PD estimation is used. It
+    extends OF 08.05 with col 0005 (firm-defined PD ranges instead of fixed buckets)
+    and col 0006 (one column per ECAI considered). This calculator does not currently
+    generate OF 08.05.1 — see [output-reporting.md](../specifications/output-reporting.md#missing-templates-not-yet-documented)
+    for the missing-templates list.
+
+---
+
 ## C 08.06 / OF 08.06 — CR IRB Specialised Lending Slotting
 
 C 08.06 reports specialised lending exposures subject to the supervisory slotting
@@ -1572,6 +1736,7 @@ bundle = generator.generate(response)
 print(bundle.c07_00)      # C 07.00 SA credit risk
 print(bundle.c08_01)      # C 08.01 IRB totals
 print(bundle.c08_02)      # C 08.02 IRB by PD grade
+print(bundle.c08_05)      # C 08.05 IRB PD back-testing (per exposure class)
 print(bundle.c07_rw_breakdown)  # C 07.00 risk weight breakdown
 ```
 
