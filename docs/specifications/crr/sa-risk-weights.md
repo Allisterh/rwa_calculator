@@ -257,6 +257,155 @@ sovereign's CQS:
 Unrated institutions with residual maturity ≤ 3 months receive **20%** regardless of
 sovereign CQS (Art. 121(3)).
 
+### Trade Finance Preferential Treatment for Unrated Institutions (CRR Art. 121(4))
+
+CRR Art. 121(4) carves out a dedicated preferential channel for **trade-finance**
+exposures to **unrated institutions**, overriding both the sovereign-derived Table 5
+weights for unrated-sovereign jurisdictions (Art. 121(2), 100%) and the general
+short-term unrated 20% (Art. 121(3)).
+
+!!! quote "Art. 121(4) — verbatim (CRR p. 120)"
+    "Notwithstanding paragraphs 2 and 3, for trade finance exposures referred to in
+    point (b) of the second subparagraph of Article 162(3) to unrated institutions,
+    the risk weight shall be 50 % and where the residual maturity of these trade
+    finance exposures to unrated institutions is three months or less, the risk
+    weight shall be 20 %."
+
+**Risk weights.** Two cases only — Art. 121(4) does **not** take a CQS input; the
+preferential weight is fixed at the article level:
+
+| Eligible trade-finance exposure | Risk Weight |
+|---|---|
+| Trade finance to unrated institution, residual maturity > 3 months but ≤ 1 year | **50%** |
+| Trade finance to unrated institution, residual maturity ≤ 3 months | **20%** |
+
+The 50% / 20% values **replace** what the exposure would otherwise receive under
+Art. 121(1) Table 5 (sovereign-derived 20%–150%), Art. 121(2) (unrated sovereign
+jurisdiction → 100%), and Art. 121(3) (unrated short-term flat 20%). The
+"notwithstanding paragraphs 2 and 3" head-clause ensures the Art. 121(4) result
+binds in priority over those subordinate paragraphs.
+
+**Eligibility — what counts as "trade finance" under Art. 121(4).**
+
+Art. 121(4) routes through Art. 162(3) second subparagraph point (b) — the AIRB
+maturity-floor list of *qualifying short-term exposures* — which describes:
+
+!!! quote "Art. 162(3) second subparagraph point (b) — verbatim (CRR p. 160)"
+    "self-liquidating short-term trade finance transactions connected to the
+    exchange of goods or services with a residual maturity of up to one year as
+    referred to in point (80) of Article 4(1);"
+
+That cross-reference further pulls in the Art. 4(1)(80) defined term:
+
+!!! quote "Art. 4(1)(80) — verbatim (CRR p. 39)"
+    "'trade finance' means financing, including guarantees, connected to the
+    exchange of goods and services through financial products of fixed
+    short-term maturity, generally of less than one year, without automatic
+    rollover."
+
+Cumulative eligibility — all five conditions must hold for the Art. 121(4)
+preferential to apply:
+
+1. **Counterparty type** — exposure is to an **unrated institution** (i.e. an
+   institution falling within Art. 121 because no nominated ECAI assessment is
+   available — Art. 119(1)). Rated institutions route through Art. 120 / Table 4
+   (general short-term) or Table 4A (Basel 3.1 short-term ECRA), not Art. 121(4).
+2. **Trade finance product** — financing or guarantees connected to the exchange
+   of goods and services (Art. 4(1)(80)).
+3. **Self-liquidating** — repayment funded by the underlying trade flow, not by
+   a refinancing facility (Art. 162(3) second subparagraph point (b)).
+4. **Connected to goods or services exchange** — the financing is documented as
+   trade-related, not a general working-capital facility branded as trade finance.
+5. **Residual maturity** — ≤ 1 year (the Art. 4(1)(80) "generally less than one
+   year" envelope, hard-edged in Art. 162(3) point (b) at "up to one year"). The
+   20% reduction below the 50% base further requires residual maturity **≤ 3
+   months**.
+
+**Sovereign linkage — none.** Despite sitting inside Art. 121 ("sovereign-derived
+approach for unrated institutions"), Art. 121(4) is **not** keyed on the
+sovereign's CQS. The 50%/20% weights apply uniformly regardless of whether the
+institution is incorporated in a CQS 1 (UK / equivalent) or CQS 6 jurisdiction.
+This contrasts with Art. 121(1) Table 5, which steps the unrated institution
+weight from 20% (sovereign CQS 1) up to 150% (sovereign CQS 6).
+
+**Distinction from Art. 122 / 121(3) short-term channels.** Three short-term
+windows can apply to an unrated institution exposure; the most favourable
+applicable weight wins:
+
+| Article | Eligibility key | Maturity test | Currency / sovereign condition | RW outcome |
+|---|---|---|---|---|
+| Art. 121(1) Table 5 | Unrated institution, all maturities | None (general path) | Uses sovereign CQS of jurisdiction of incorporation | 20%/50%/100%/100%/100%/150% |
+| Art. 121(3) | Unrated institution, **original** effective maturity ≤ 3 months | Original ≤ 3m | None | Flat **20%** |
+| Art. 121(4) (this section) | Unrated institution + self-liquidating trade finance per Art. 162(3)(b) | **Residual** ≤ 1y (50%) or **residual** ≤ 3m (20%) | None — uniform fixed weight | **50%** or **20%** |
+| Art. 119(2)/(3) | Any institution + national-currency denom & funding + residual ≤ 3m | Residual ≤ 3m | National-currency denom **and** funded | One step less favourable than Art. 114(4)–(7) sovereign preferential, floored at 20% |
+
+Note the maturity-test difference: Art. 121(3) uses **original** effective
+maturity (≤ 3 months); Art. 121(4) uses **residual** maturity (≤ 1 year for the
+50% weight, ≤ 3 months for the further-reduced 20% weight). A trade-finance
+exposure with original maturity 6 months but residual maturity 2 months at
+reporting date qualifies for the Art. 121(4) 20% under the residual test even
+though it fails the Art. 121(3) original-maturity test.
+
+**Worked example — UK trade finance to unrated foreign institution.**
+
+A 9-month £10m self-liquidating trade-finance facility (a confirmed letter of
+credit financing a goods import) extended to a Vietnam-incorporated bank without
+a nominated ECAI rating, residual maturity at reporting date 7 months. Vietnam
+sovereign sits at CQS 4 (Art. 114(2) Table 1 → 100% sovereign).
+
+1. Eligibility checks: counterparty = unrated institution (yes); product =
+   self-liquidating trade-related letter-of-credit financing (yes — Art. 162(3)
+   second subparagraph point (b)); residual maturity ≤ 1 year (yes, 7m); residual
+   maturity ≤ 3 months (no).
+2. Apply Art. 121(4): residual maturity > 3 months but ≤ 1 year → **50%**.
+3. Compare against alternative paths:
+    - Art. 121(1) Table 5 with sovereign CQS 4 → 100%. Worse, displaced by
+      Art. 121(4) "notwithstanding paragraph 2".
+    - Art. 121(3) requires *original* effective maturity ≤ 3 months — original
+      is 9 months, fails. Path closed.
+    - Art. 119(2)/(3) requires sterling denom **and** funding (the borrower's
+      national currency would be VND); a £-denominated facility fails the
+      "denominated and funded in the *national currency of the borrower*" test.
+      Path closed.
+4. Final risk weight: **50%**. RWA = £10m × 50% = £5m.
+
+Had residual maturity been 2 months at reporting date, Art. 121(4) would yield
+**20%** directly — RWA = £10m × 20% = £2m — beating the Art. 121(1) Table 5
+result (100%) by a factor of five.
+
+!!! warning "Removed under Basel 3.1 (PS1/26 Art. 121 restructured to SCRA grades)"
+    PRA PS1/26 Art. 121 (ps126app1.pdf pp. 41–44) replaces the entire CRR
+    sovereign-derived Table 5 framework with a **Standardised Credit Risk
+    Assessment (SCRA)** approach: unrated institutions are classified into
+    **Grade A / Grade B / Grade C** based on capital, leverage, and going-concern
+    criteria, and risk-weighted via Table 5 (40% / 75% / 150%) for general
+    maturities or Table 5A (20% / 50% / 150%) for short-term / movement-of-goods
+    exposures. There is **no direct successor** to CRR Art. 121(4)'s flat 50%
+    trade-finance weight. The economically closest provision is PS1/26
+    Art. 121(4): exposures to unrated institutions where the **original maturity
+    was six months or less and the exposure arose from the movement of goods**
+    receive Table 5A treatment (Grade A 20% / Grade B 50% / Grade C 150%) —
+    similar in spirit to the CRR carve-out but now SCRA-graded (not flat) and
+    keyed on *original* maturity ≤ 6 months (not residual ≤ 1 year). Additionally,
+    PS1/26 Art. 121(6)(b) excludes self-liquidating trade-related contingent
+    items with original maturity < 1 year from the foreign-currency sovereign
+    floor that otherwise applies under Art. 121(6).
+    See [Basel 3.1 SA Risk Weights — Institution Risk Weights (SCRA, Art. 121)](../basel31/sa-risk-weights.md#institution-risk-weights-ecra-art-120).
+
+!!! bug "Implementation Status — Not implemented in CRR calculator"
+    The CRR SA calculator branch (`engine/sa/calculator.py`) does **not**
+    evaluate Art. 121(4) trade finance preferential. The calculator routes all
+    unrated institution exposures through Art. 121(1) Table 5 with the
+    Art. 121(3) 20% short-term override only. There is no `is_trade_finance`
+    schema field, no Art. 162(3)(b) self-liquidating gate, and no flat 50%/20%
+    trade-finance constant in `data/tables/crr_risk_weights.py`. Firms with
+    material trade-finance books to unrated institutions in CQS 2–6 jurisdictions
+    must apply the Art. 121(4) override outside the engine — the gap overstates
+    RW versus the regulation in those cells. The CRR-only nature of the rule
+    means this gap will not affect Basel 3.1 calculations from 1 January 2027
+    (SCRA-based PS1/26 Art. 121 replaces the framework entirely; see warning
+    callout above).
+
 ### National-Currency Short-Term Preferential Treatment (CRR Art. 119(2), 119(3))
 
 CRR provides a **separate** sovereign-derived preferential path for institution exposures
