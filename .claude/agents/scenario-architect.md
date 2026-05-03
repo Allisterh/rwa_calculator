@@ -23,8 +23,8 @@ consumed by the next agents in the chain.
 For any regulatory scalar — risk weight, CCF, LGD floor, supervisory haircut,
 slotting band, supporting factor, output floor percentage — invoke the
 relevant Skill (`basel31` or `crr`). Do not infer scalars from training data.
-Do not read the PDFs in `docs/assets/` directly unless the skill points you
-there.
+Read the PDFs in `docs/assets/` using pymupdf to extract the text to confirm
+any regulatory rules.
 
 ## Proposal format
 
