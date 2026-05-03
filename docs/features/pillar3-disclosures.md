@@ -126,7 +126,14 @@ across all risk categories. It is the top-level disclosure from which credit ris
     | 2 | Of which: standardised approach (SA) |
     | 3 | Of which: FIRB approach |
     | 4 | Of which: slotting approach |
+    | **4a** | **Total RWEAs (pre-floor)** — all risk categories before the output floor adjustment |
     | 5 | Of which: AIRB approach |
+    | **5a** | **CET1 capital ratio (%)** |
+    | **5b** | **CET1 capital ratio pre-floor (%)** |
+    | **6a** | **Tier 1 capital ratio (%)** |
+    | **6b** | **Tier 1 capital ratio pre-floor (%)** |
+    | **7a** | **Total capital ratio (%)** |
+    | **7b** | **Total capital ratio pre-floor (%)** |
     | **11** | **Equity positions under the IRB Transitional Approach** |
     | **12** | **Equity investments in funds — look-through approach** |
     | **13** | **Equity investments in funds — mandate-based approach** |
@@ -136,14 +143,32 @@ across all risk categories. It is the top-level disclosure from which credit ris
     | **27** | **Output floor adjustment** |
     | 29 | **Total** |
 
-    Key Basel 3.1 additions (bold): equity transitional rows (11-14), output floor
-    rows (26-27). Row UK 4a (equities under simple RW) is removed — equity goes to
+    Key Basel 3.1 additions (bold): pre-floor RWEA and capital ratio rows
+    (4a, 5a-b, 6a-b, 7a-b), equity transitional rows (11-14), output floor rows
+    (26-27). Row UK 4a (equities under simple RW) is removed — equity goes to
     rows 11-14 or SA (row 2).
+
+    See [Disclosure Differences — OV1 row changes](../framework-comparison/disclosure-differences.md#ov1-overview-of-rweas)
+    for the complete CRR-vs-Basel 3.1 row delta (lines 31, 33, 63-64).
+
+!!! warning "Mandatory for output-floor-active institutions"
+    The pre-floor rows (4a, 5a-b, 6a-b, 7a-b) are mandatory under PRA PS1/26
+    Annex XX (Disclosure (CRR) Part, Art. 2 / Art. 438(d)) for institutions whose
+    actual RWEA total reflects the output floor adjustment (Art. 92(5)). They
+    allow market participants to see the firm's pre-floor capital position
+    alongside the post-floor figures, making the magnitude of the output floor
+    constraint transparent. See [Output floor mechanics](../framework-comparison/key-differences.md#output-floor)
+    for how the floor adjustment in row 27 feeds into the post-floor ratios in
+    rows 5a, 6a, 7a.
 
 !!! note "Scope"
     OV1 covers all risk categories (credit, CCR, CVA, market, operational).
     Only the credit risk rows (1-5, 11-14, 24) are directly populated from the
-    RWA calculator output.
+    RWA calculator output. Rows 4a and 5a-b/6a-b/7a-b require own funds figures
+    and post-floor RWA totals from upstream capital-summary processes — the
+    calculator surfaces the credit-risk pre-floor RWEA component (col `pre_floor_rwa`
+    in the OF 02.01 / UKB CMS1 outputs) but does not compute consolidated
+    capital ratios.
 
 ### Reference Documents
 
@@ -556,6 +581,25 @@ Single column — each row explains a driver of RWEA change.
 | 8 | Other (+/-) | Residual — must be explained in narrative |
 | 9 | RWEA at end of disclosure period | Closing balance |
 
+!!! warning "Sign convention — flow rows 2–8 are **signed**"
+    Flow-driver rows **2 through 8** report **signed** RWEA movements:
+
+    - **Increases** in RWEA are reported as **positive** values
+    - **Decreases** in RWEA are reported as **negative** values
+
+    Rows **1** and **9** (opening and closing RWEA balances) are reported as
+    non-negative absolute amounts.
+
+    For example, a £15m RWEA reduction from asset-quality improvement is
+    reported in row 3 as `-15` (in the firm's reporting unit), **not** `15`.
+    The closing balance in row 9 must equal `row 1 + sum(rows 2–8)` when the
+    signed convention is honoured.
+
+    Source: PRA PS1/26 Annex XXII §11. The convention is enumerated for all
+    Pillar III templates in
+    [Output Reporting — Sign Conventions in Pillar III](../specifications/output-reporting.md#pillar-iii-disclosure-templates)
+    (single source of truth).
+
 The structure is identical under CRR and Basel 3.1. The only difference is that
 Basel 3.1 RWEAs in rows 1 and 9 no longer include supporting factor adjustments
 (Art. 501, 501a removed).
@@ -589,25 +633,49 @@ with one template per exposure class within each approach.
 
 ### Row Structure — Exposure Class Breakdown
 
+CR9 follows the **same F-IRB and A-IRB sub-class breakdown as CR6** —
+see [CR6 — Row Structure — Exposure Class Breakdown](#cr6-irb-exposures-by-exposure-class-and-pd-range)
+above. PS1/26 Annex XXII para 12 directs institutions to disclose two separate
+sets of templates (one for F-IRB, one for A-IRB) with one template per exposure
+class, using the same sub-class definitions referenced in Article 147(2)(b)–(d)
+of the IRB CRR Part. The verbatim row definitions for column `a` are reproduced
+below for convenience.
+
 === "Basel 3.1 (UKB CR9) — A-IRB"
 
-    Separate template per exposure class:
+    Separate template per exposure class (Annex XXII column `a (AIRB)`):
 
-    1. **Corporates**: specialised lending, other general corporates (SME/non-SME)
-    2. **Retail**: secured by residential immovable property (SME/non-SME),
-       secured by commercial immovable property (SME/non-SME),
-       qualifying revolving, other (SME/non-SME)
+    1. **Corporates** (Art. 147(2)(c))
+        - 1.1 Specialised lending (Art. 147(2)(c)(i))
+        - 1.2 Other general corporates — SMEs (Art. 147(2)(c)(iii))
+        - 1.3 Other general corporates — non-SMEs (Art. 147(2)(c)(iii), not under 1.2)
+    2. **Retail** (Art. 147(2)(d))
+        - 2.1 Secured by residential immovable property — SMEs (Art. 147(2)(d)(ii))
+        - 2.2 Secured by residential immovable property — non-SMEs (Art. 147(2)(d)(ii), not under 2.1)
+        - 2.3 Secured by commercial immovable property — SMEs
+        - 2.4 Secured by commercial immovable property — non-SMEs
+        - 2.5 Qualifying revolving retail exposures (Art. 147(2)(d)(i))
+        - 2.6 Other — SMEs (Art. 147(2)(d))
+        - 2.7 Other — non-SMEs (Art. 147(2)(d)(iii), not under 2.6)
     3. **Total**
 
 === "Basel 3.1 (UKB CR9) — F-IRB"
 
-    Separate template per exposure class:
+    Separate template per exposure class (Annex XXII column `a (FIRB)`):
 
-    1. **Institutions**
-    2. **Corporates**: specialised lending (including slotting),
-       financial corporates and large corporates,
-       other general corporates (SME/non-SME)
+    1. **Institutions** (Art. 147(2)(b))
+    2. **Corporates** (Art. 147(2)(c))
+        - 2.1 Specialised lending — including exposures subject to the slotting
+          approach (Art. 147(2)(c)(i))
+        - 2.2 **Financial corporates and large corporates** (Art. 147(2)(c)(ii))
+        - 2.3 Other general corporates — SMEs (Art. 147(2)(c)(iii))
+        - 2.4 Other general corporates — non-SMEs (Art. 147(2)(c)(iii), not under 2.3)
     3. **Total**
+
+    Sub-class 2.2 mirrors the CR6 F-IRB addition: under PS1/26, A-IRB is
+    restricted for financial corporates and large corporates (Art. 147A), so
+    these counterparties are reported as a discrete F-IRB sub-class rather than
+    being lumped into "other general corporates".
 
 ### Key Differences from CR6
 
@@ -628,7 +696,13 @@ with one template per exposure class within each approach.
 
 ### Reference Documents
 
-- Basel 3.1: `docs/assets/ps1-26-annex-xxii-credit-risk-irb-disclosure-instructions.pdf` (paras 12-15)
+- Basel 3.1: `docs/assets/ps1-26-annex-xxii-credit-risk-irb-disclosure-instructions.pdf`
+  — paras 12-15 (template scope and disclosure rules) on p.18; column `a` row
+  definitions for A-IRB and F-IRB on pp.19-20; column `b`-`h` instructions on
+  pp.20-22.
+- PRA PS1/26 Appendix 1: `docs/assets/ps126app1.pdf` — Art. 147(2)(b)-(d) for
+  IRB exposure-class definitions; Art. 147A for the A-IRB restriction that
+  drives the F-IRB "financial corporates and large corporates" sub-class.
 
 ---
 
@@ -772,6 +846,56 @@ comparison between full standardised RWA and modelled RWA by risk type.
 - Col c: Sum of cols a and b
 - Col d: sa_rwa for all exposures (full SA recalculation)
 
+### Col d — pre-OF-ADJ S-TREA input (reconciles to OF 02.01 col 0040)
+
+Column d is the **S-TREA input to the output floor formula before the floor multiplier
+`x` is applied and before OF-ADJ is added** — not the post-floor RWA. It matches the
+S-TREA value reported in supervisory return **OF 02.01 col 0040** ("Standardised total
+RWA — multiplier not applied"). The full TREA formula is:
+
+```
+TREA = max{U-TREA; x · S-TREA + OF-ADJ}
+OF-ADJ = 12.5 · (IRB T2 − IRB CET1 − GCRA + SA T2)
+```
+
+Source: PRA PS1/26 Art. 92(2A), `docs/assets/ps126app1.pdf` page 13.
+
+!!! quote "PRA PS1/26 Art. 92(2A) — definition of GCRA (`docs/assets/ps126app1.pdf` p. 13)"
+    "**GCRA** = general credit risk adjustments, gross of tax effects, of up to 1.25%
+    of risk-weighted exposure amounts calculated in accordance with paragraph 3A;"
+
+    Paragraph 3A is the definition of S-TREA — the same value that populates CMS1
+    col d. The 1.25% cap on the GCRA component of OF-ADJ is therefore **gated by
+    the very figure CMS1 col d reports**.
+
+!!! info "Why this matters — GCRA T2 capacity is gated by CMS1 col d"
+    The `GCRA` term in OF-ADJ (Art. 92(2A)) and the SA Tier 2 credit (`SA T2` per
+    Own Funds (CRR) Part Art. 62(c)) are each capped against an RWA base. The
+    GCRA cap specifically references S-TREA, so CMS1 col d **directly determines**
+    the maximum GCRA amount that can flow into OF-ADJ:
+
+    `max GCRA in OF-ADJ = 1.25% × (CMS1 col d for credit risk row 0010, plus the
+    S-TREA contribution from non-credit risk types)`
+
+    For an IRB firm whose credit-risk S-TREA is the dominant component (as is
+    typical), increasing CMS1 col d row 0010 raises the GCRA T2 capacity in
+    OF-ADJ; a contraction in SA-equivalent credit RWA tightens it. This is the
+    mechanical link between the public CMS1 disclosure and the supervisory
+    OF-ADJ inputs reported in OF 02.00 row 0036.
+
+!!! note "Cross-references — single source of truth"
+    The OF-ADJ formula, the GCRA / SA T2 / IRB T2 / IRB CET1 components, the
+    Art. 62(c) / Art. 62(d) / Art. 92(2A) cap mechanics, and the
+    Reg (EU) 183/2014 GCRA qualifying criteria are documented once in the
+    output floor specification — do not duplicate the formula here.
+
+    - [Output Floor — OF-ADJ Capital Adjustment](../specifications/basel31/output-floor.md#of-adj-capital-adjustment)
+      — full formula derivation, T2 caps, Art. 40 DTA gross-up rule.
+    - [Output Floor — GCRA Qualifying Criteria](../specifications/basel31/output-floor.md#general-credit-risk-adjustments-gcra-qualifying-criteria)
+      — GCRA / SCRA boundary, IFRS 9 mapping, Art. 110(3) mixed-approach allocation.
+    - [Output Reporting — Output Floor Adjustment (OF-ADJ)](../specifications/output-reporting.md#output-floor-adjustment-of-adj)
+      — COREP OF 02.00 row 0036 / OF 02.01 col 0040 mapping.
+
 ---
 
 ## UKB CMS2 — Output Floor Comparison by Asset Class (Art. 456(1)(b))
@@ -820,6 +944,23 @@ Basel 3.1 only — no CRR equivalent. Breaks down the credit risk comparison at 
 - Sub-rows 0041/0042 filter by approach (F-IRB/A-IRB within corporates)
 - Sub-rows 0044, 0045, 0054 are null (require pipeline data not yet available)
 - Excludes CCR, CVA, and securitisation exposures
+
+### Col d — pre-OF-ADJ S-TREA at asset-class granularity
+
+CMS2 col d carries the **same pre-OF-ADJ S-TREA semantics as CMS1 col d**, broken down
+by asset class instead of by risk type. The vertical sum of CMS2 col d (row 0070
+"Total") equals the credit-risk component of CMS1 col d row 0010, which in turn
+equals the credit-risk slice of OF 02.01 col 0040 (S-TREA — multiplier not
+applied). Neither CMS1 col d nor CMS2 col d have the floor multiplier `x` or
+OF-ADJ applied; both feed the un-multiplied S-TREA leg of
+`TREA = max{U-TREA; x · S-TREA + OF-ADJ}` (Art. 92(2A), `docs/assets/ps126app1.pdf`
+p. 13).
+
+The 1.25% S-TREA cap on the GCRA component of OF-ADJ (Art. 92(2A)) is therefore
+also gated by **the sum of CMS2 col d across all asset classes** for the
+credit-risk portion of S-TREA. See the
+[CMS1 col d cross-reference admonition](#col-d--pre-of-adj-s-trea-input-reconciles-to-of-0201-col-0040)
+above for the full reconciliation and links to the OF-ADJ formula and GCRA cap.
 
 ---
 

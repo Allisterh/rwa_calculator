@@ -69,14 +69,25 @@ Factor = [2.2m × 0.7619 + 2.8m × 0.85] / 5.0m
 
 A 0.75 factor (25% reduction) applies to qualifying infrastructure project finance:
 
-**Eligibility Criteria:**
+**Eligibility Criteria (Art. 501a):**
 - Project finance exposure
 - Exposure to an infrastructure project entity
-- Revenues predominantly in EUR/GBP or hedged
+- Revenues predominantly in EUR/GBP or hedged (Art. 501a(1)(d))
 
 ```
 RWA_adjusted = RWA × 0.75
 ```
+
+!!! warning "Not validated in calculator"
+    The calculator applies the 0.75 factor when an exposure is flagged with
+    `is_infrastructure = true`. The detailed Art. 501a(1) eligibility conditions —
+    including the revenue-currency requirement (Art. 501a(1)(d)), the cash-flow
+    predictability test, the contractual framework requirements, and the credit
+    quality of the obligor — are **not** enforced by the engine or the input
+    schema. Firms remain responsible for ensuring the flag is only set for
+    exposures that genuinely meet the full Art. 501a criteria. See the
+    [supporting factors specification](../../specifications/crr/supporting-factors.md)
+    for the implemented scope.
 
 ### Uniform PD Floor
 
@@ -132,10 +143,28 @@ CRR does not apply an output floor. IRB RWA can be significantly lower than SA e
 
 | Type | Risk Weight |
 |------|-------------|
-| Retail - Residential Mortgage (LTV ≤ 80%) | 35% |
-| Retail - Residential Mortgage (LTV > 80%) | Risk-weight varies |
 | Retail - QRRE | 75% |
 | Retail - Other | 75% |
+| Retail - Residential Mortgage (Art. 125) | Proportion-based split — see below |
+
+#### Residential Mortgage Mechanism (Art. 125)
+
+Art. 125 is a **proportion-based split**, not an LTV-band lookup. The 35% risk
+weight applies to the **part of the loan up to 80% of property value**; the
+remainder receives the counterparty's unsecured risk weight (75% for a retail
+borrower under Art. 123, or the applicable counterparty weight where the
+borrower is non-retail). Where the entire loan is within 80% of property value
+(LTV ≤ 80%), the residual is zero and 35% applies to the whole exposure.
+
+```
+secured_share = min(1.0, 0.80 / LTV)
+avg_RW = 0.35 × secured_share + counterparty_unsecured_RW × (1.0 - secured_share)
+```
+
+!!! tip "Full mechanism, qualifying conditions, and worked example"
+    See [SA Risk Weights — Residential Mortgage Exposures (CRR Art. 125)](../../specifications/crr/sa-risk-weights.md#residential-mortgage-exposures-crr-art-125)
+    for the verbatim Art. 125(2)(d) text, Art. 124(1) residual rule, the
+    Art. 125(2)(a)–(d) qualifying conditions, and a worked LTV > 80% example.
 
 ### Defaulted Exposures (SA)
 

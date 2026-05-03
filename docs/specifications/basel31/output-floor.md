@@ -117,7 +117,7 @@ OF-ADJ = 12.5 x (IRB_T2 - IRB_CET1 - GCRA + SA_T2)
 | Component | Description | Regulatory Ref |
 |-----------|-------------|----------------|
 | IRB_T2 | IRB excess provisions T2 **credit** (provisions > EL): Art. 62(d) excess, i.e., where provisions exceed EL amounts | Art. 62(d) |
-| IRB_CET1 | IRB EL shortfall CET1 deduction (EL > provisions) per Art. 36(1)(d), plus any supervisory deductions under Art. 40 | Art. 36(1)(d), Art. 40 |
+| IRB_CET1 | IRB EL shortfall CET1 deduction (EL > provisions) per Art. 36(1)(d). Art. 40 is the technical clarifier — see [Art. 40 — no DTA grossing-up](#art-40-no-deferred-tax-grossing-up-of-the-el-shortfall-deduction). | Art. 36(1)(d), Art. 40 |
 | GCRA | General credit risk adjustments included in T2, gross of tax effects. **Capped at 1.25% of S-TREA** (the standardised total risk exposure amount). | Art. 62(c), Art. 92(2A) |
 | SA_T2 | SA general credit risk adjustments recognised as T2 capital under Art. 62(c) | Art. 62(c) |
 
@@ -131,6 +131,147 @@ minimum capital ratio). Under IRB, EL shortfall adds to capital requirements (vi
 while excess provisions provide T2 relief. Under SA, general credit risk adjustments provide T2
 relief directly. Without OF-ADJ, switching from IRB to SA in the floor comparison would change
 the own-funds base, making the TREA comparison inconsistent.
+
+### Art. 40 — no deferred-tax grossing-up of the EL-shortfall deduction
+
+PRA PS1/26 Art. 92(2A) defines the `IRB CET1` input to OF-ADJ as "amounts calculated in
+accordance with point (d) of paragraph 1 of Article 36 **and Article 40** of Own Funds (CRR)
+Part" (PS1/26 App 1, p. 13). Art. 40 is **not** a separate prudential filter or supervisory
+deduction — it is a one-line technical clarifier that ring-fences how the Art. 36(1)(d) EL-
+shortfall deduction is measured.
+
+!!! quote "CRR Art. 40 — verbatim (legislation.gov.uk, eur/2013/575)"
+    "**Article 40 — Deduction of negative amounts resulting from the calculation of expected
+    loss amounts.**
+
+    The amount to be deducted in accordance with point (d) of Article 36(1) shall not be
+    reduced by a rise in the level of deferred tax assets that rely on future profitability,
+    or other additional tax effects, that could occur if provisions were to rise to the level
+    of expected losses referred to in Section 3 of Chapter 3 of Title II of Part Three."
+
+In practical terms, Art. 40 forbids the firm from netting a hypothetical deferred-tax benefit
+against the EL-shortfall CET1 deduction. The deduction is the **gross** EL-minus-provisions
+amount; the firm cannot argue that "if we had topped provisions up to EL, we would have
+recognised a DTA, so the net CET1 hit is smaller" — that DTA does not exist and Art. 40
+prevents it from being imputed.
+
+#### Effect on the OF-ADJ denominator
+
+The PS1/26 Art. 92(2A) cross-reference to Art. 40 ensures the `IRB CET1` term in OF-ADJ is the
+same gross figure that would be deducted from CET1 under the Own Funds Part:
+
+```
+IRB CET1 (in OF-ADJ) = Art. 36(1)(d) EL-shortfall deduction (gross of imputed DTA per Art. 40)
+                     = max(0, EL - eligible provisions)        # Art. 159 Pool A/B/C/D outcome
+```
+
+Because OF-ADJ enters the floor formula as `12.5 × (IRB T2 − IRB CET1 − GCRA + SA T2)`, any
+under-statement of `IRB CET1` (for example, by netting a hypothetical DTA) would understate
+the CET1 add-back and inflate the floored TREA. Art. 40 closes that arbitrage: the same gross
+EL-shortfall figure that hits CET1 under Art. 36(1)(d) is the figure that flows into the
+OF-ADJ denominator.
+
+!!! note "Engine inputs"
+    The `IRB CET1` term is assembled inside the aggregator
+    (`src/rwa_calc/engine/aggregator/aggregator.py`) from two sources:
+
+    - **Art. 36(1)(d) deduction** — derived from the Art. 159 EL-vs-provisions comparison
+      (`ELPortfolioSummary.cet1_deduction`, computed in
+      `src/rwa_calc/engine/aggregator/_el_summary.py`). This is the gross EL-shortfall figure
+      that Art. 40 protects from DTA grossing-up.
+    - **`OutputFloorConfig.art_40_deductions`** (`src/rwa_calc/contracts/config.py`) — an
+      institution-supplied scalar, defaulting to `0.0`. This slot is provided to let firms
+      pass through any additional Art. 36(1)(d)/Art. 40 amount that the engine has not
+      derived from exposure-level Pool A/B/C/D data (for example, when the EL summary is
+      computed outside the engine and only the residual is supplied). Reconciliation between
+      the engine-derived figure, this override, and the firm's Own Funds Art. 36(1)(d) line
+      is an upstream control — the calculator does not re-derive the deduction from
+      first principles when this field is set.
+
+### T2 Component Caps — Art. 62(c) and Art. 62(d)
+
+!!! info "Clarification, not a new mechanic"
+    The OF-ADJ formula above is unchanged. This subsection makes explicit the
+    pre-existing Tier 2 caps that govern the `IRB T2` and `SA T2` inputs
+    **before** they are substituted into the OF-ADJ expression. These caps live
+    in Own Funds (CRR) Part Art. 62(c) and (d) — the same provisions that
+    Art. 92(2A) names in its OF-ADJ definition — and are applied by the firm
+    upstream of the calculator, alongside the GCRA cap that is applied inside
+    `compute_of_adj()`.
+
+`IRB T2`, `SA T2`, and `GCRA` are each capped relative to a different RWA base.
+The three caps interact but never reduce a positive OF-ADJ below itself by a
+single combined ceiling — each input is capped independently before the formula
+is evaluated:
+
+| Input | Cap | Reference | Applied where |
+|-------|-----|-----------|---------------|
+| `IRB T2` (excess provisions) | **0.6% of IRB credit-risk RWA** | Own Funds (CRR) Part Art. 62(d) | Upstream of the engine — the firm passes the post-cap amount via `OutputFloorConfig.irb_t2_credit`. |
+| `SA T2` (general credit risk adjustments admitted as Tier 2) | **1.25% of SA credit-risk RWA** | Own Funds (CRR) Part Art. 62(c) | Upstream of the engine — the firm passes the post-cap amount via `OutputFloorConfig.sa_t2_credit`. |
+| `GCRA` (general credit risk adjustments) | **1.25% of S-TREA** | PRA PS1/26 Art. 92(2A) | Inside `compute_of_adj()` (`src/rwa_calc/engine/aggregator/_floor.py`) — callers pass the **uncapped** amount. |
+
+!!! quote "PRA PS1/26 Art. 92(2A) — verbatim definitions of the OF-ADJ T2 inputs (PS1/26 App 1, p. 13)"
+    "**IRB T2** = amounts calculated in accordance with point (d) of Own Funds
+    (CRR) Part Article 62;
+    [...]
+    **SA T2** = amounts calculated in accordance with point (c) of Own Funds
+    (CRR) Part Article 62."
+
+#### Distinguishing `GCRA` from `SA T2`
+
+`GCRA` and `SA T2` both capture general credit risk adjustments, but they enter
+OF-ADJ at different points and under different caps:
+
+- **`SA T2`** is the Art. 62(c) Tier 2 credit — GCRAs that the firm admits to
+  Tier 2 capital, capped at 1.25% of SA credit-risk RWA. It enters OF-ADJ
+  with a positive sign (adding to the Tier 2 base on the SA side of the
+  reconciliation).
+- **`GCRA`** is the same population of general credit risk adjustments
+  measured **gross of tax effects** and capped at 1.25% of S-TREA — the
+  output-floor reference base. It enters OF-ADJ with a negative sign
+  (subtracting the GCRA element that would otherwise be double-counted on
+  the SA side).
+
+The two caps reference different RWA bases (SA credit-risk RWA vs S-TREA),
+so the input figures `sa_t2_credit` and `gcra_amount` will not in general be
+equal even when they describe the same provisions.
+
+#### Worked illustration
+
+```
+Inputs (post Art. 62 caps applied upstream):
+  irb_t2_credit       = £20m   (already capped at 0.6% of IRB RWA per Art. 62(d))
+  irb_cet1_deduction  = £15m
+  gcra_amount         = £40m   (uncapped — engine applies 1.25% of S-TREA)
+  sa_t2_credit        = £30m   (already capped at 1.25% of SA RWA per Art. 62(c))
+  s_trea              = £2,400m
+
+Engine GCRA cap (Art. 92(2A)):
+  gcra_cap     = 1.25% × £2,400m = £30m
+  gcra_capped  = min(£40m, £30m) = £30m
+
+OF-ADJ:
+  = 12.5 × (irb_t2_credit − irb_cet1_deduction − gcra_capped + sa_t2_credit)
+  = 12.5 × (20 − 15 − 30 + 30)
+  = 12.5 × 5
+  = £62.5m
+```
+
+If the firm passed an `irb_t2_credit` or `sa_t2_credit` that exceeded the
+Art. 62(d) / Art. 62(c) caps, the engine would not detect or correct it —
+the post-cap discipline is institution-side. Reconciliation between the OF-ADJ
+inputs and the Tier 2 line items in the firm's COREP own funds template is the
+audit gate; see the
+[output reporting spec](../output-reporting.md#output-floor-adjustment-of-adj)
+for the OF 02.00 / OF 02.01 mapping that consumes these post-cap values.
+
+!!! note "CRR has no equivalent"
+    CRR (the framework that applies until 31 December 2026) has no output
+    floor and therefore no OF-ADJ. The Art. 62(c) / Art. 62(d) Tier 2 caps
+    themselves exist under both CRR and the PRA PS1/26 Own Funds (CRR) Part
+    — they are own-funds rules independent of the floor — but the
+    cross-link between those caps and the floor reconciliation is a
+    Basel 3.1 / PS1/26 construct only.
 
 !!! info "Full formula context"
     The complete output floor formula is `TREA = max{U-TREA; x × S-TREA + OF-ADJ}` — see the
@@ -362,6 +503,108 @@ should compare the portfolio-weighted 100% against the portfolio-weighted
     single pipeline run — it would require two runs combined externally. See the
     [B31 SA spec](sa-risk-weights.md#output-floor-election-for-unrated-corporates-art-12278)
     for the full treatment including Art. 122(7) sound-processes obligation.
+
+## SA Specialised Lending in S-TREA (Art. 122A–122B, Art. 139(2B))
+
+**Art. 122A, Art. 122B, Art. 139(2B)**
+
+When an IRB firm computes the `S-TREA` leg of the output floor, exposures that
+the firm risk-weights via SL slotting under IRB (Art. 153(5)) must be re-mapped
+to the **SA specialised-lending regime** in Art. 122A–122B, because S-TREA is the
+SA-equivalent quantity (Art. 92(3A) excludes the IRB approach). This subsection
+records the rule that determines whether a given SL exposure picks up an
+ECAI-driven weight or the unrated SL ladder when it crosses into S-TREA.
+
+!!! warning "Plan-item misattribution corrected"
+    `DOCS_IMPLEMENTATION_PLAN.md` item D4.59 originally described an
+    "Art. 139(2B) SA specialised lending **exclusion** from the output floor"
+    in which IRB firms applying SA SL via Art. 122A "do not include those
+    exposures in the output floor SA-RWA calculation". **No such exclusion
+    exists in PS1/26 App 1.** Verbatim Art. 139(2B) reads (PS1/26 App 1 p. 71):
+
+    > "Paragraphs 2 and 2A do not apply for the purposes of Article 122B(1)."
+
+    Art. 139(2B) is therefore an **ECAI-rating routing rule** that constrains
+    which credit assessments can be used to invoke the rated-SL pathway in
+    Art. 122B(1); it is not a carve-out from the output floor and does not
+    remove SL exposures from the SA-RWA leg. SA SL exposures continue to enter
+    `S-TREA` in full — the only thing Art. 139(2B) governs is **which row of the
+    Art. 122A–122B table** they land on once they get there.
+
+### Mechanic
+
+Art. 122B(1) routes a rated SA SL exposure to the rated corporate ECAI table in
+Art. 122(2): "Where a relevant issue-specific credit assessment by a nominated
+ECAI is available for a specialised lending exposure, an institution shall apply
+the risk weight treatment set out in Article 122(2)" (PS1/26 App 1 p. 46). Under
+the general ECAI rules, Art. 139(2) and Art. 139(2A) would let the firm fall
+back to an issuer-level rating (or a rating on a different issue) where no
+directly applicable issue-specific rating exists. Art. 139(2B) **switches both
+fallbacks off** for the purposes of Art. 122B(1):
+
+- **Art. 139(2)** — issuer-level rating, or rating from a different issue, where
+  the exposure ranks pari passu / senior — **disapplied for SA SL**.
+- **Art. 139(2A)** — issuer-level rating that applies only to a limited class of
+  liabilities — **disapplied for SA SL**.
+- **Art. 122B(1)** therefore requires a **directly issue-specific credit
+  assessment** on the SL exposure itself before the rated corporate table is
+  used; otherwise the exposure falls to the unrated SL ladder in Art. 122B(2).
+
+### Numerical effect on S-TREA
+
+The practical consequence for IRB firms computing `S-TREA` is that more SL
+exposures end up on the **unrated SL ladder** than they would under the
+general ECAI rules:
+
+| Path | Without Art. 139(2B) (counterfactual) | With Art. 139(2B) (actual) |
+|------|----------------------------------------|-----------------------------|
+| SL exposure with issuer-level rating only, no issue-specific rating | Rated corporate table per Art. 122(2) (e.g. CQS 1 → 20%, CQS 3 → 75%) via 139(2) fallback | Unrated SL ladder per Art. 122B(2): OF/CF 100%, PF pre-op 130%, PF op 100%, high-quality op PF 80% |
+| SL exposure with directly issue-specific rating | Rated corporate table per Art. 122(2) | **Unchanged** — rated corporate table per Art. 122(2) (Art. 139(2B) does not bite) |
+| SL exposure with no rating at all | Unrated SL ladder per Art. 122B(2) | **Unchanged** — unrated SL ladder per Art. 122B(2) |
+
+Because Art. 122B(2) weights cluster at 100% (object/commodities finance and
+operational PF) and 130% (pre-operational PF), Art. 139(2B) is generally
+**conservative** — it prevents firms from using a low-CQS issuer rating to
+weight an unrated PF tranche at 20%–50% in S-TREA. The 80% high-quality
+operational PF weight under Art. 122B(4) remains available where the Art.
+122B(5) criteria are met, but it is not an ECAI fallback — it is a
+structural-quality test on the unrated path.
+
+The rule applies to both branches of the floor formula via S-TREA: it shapes
+the SA-equivalent input to `x × S-TREA + OF-ADJ` and is unaffected by the
+transitional `x` in Art. 92(5). U-TREA is computed using IRB SL slotting (Art.
+153(5)) and is not touched by Art. 139(2B).
+
+### Engine status
+
+The engine's S-TREA path runs the SA calculator over the IRB-permissioned
+population, so SL exposures classified under Art. 122A automatically pick up the
+Art. 122B(2)/(4) ladder when no rated SA path applies. The Art. 139(2B)
+constraint on the rated-SL fallback is **not currently encoded as a dedicated
+rating-eligibility check** — the engine treats the firm-supplied
+`external_cqs` as already reflecting Art. 138 / Art. 139 routing (consistent
+with how Art. 139(6) implicit-support handling is treated upstream — see
+[Art. 138(1)(g) / Art. 139(6) treatment in the SA spec](sa-risk-weights.md#ecai-assessment-implicit-government-support-art-1381g-art-1396)).
+
+Firms must therefore either (i) pre-adjust `external_cqs` for SL exposures so
+that issuer-level / cross-issue ratings are suppressed before the S-TREA run,
+or (ii) model the SL population as unrated and rely on Art. 122B(2)/(4). This
+is a documentation gap in `IMPLEMENTATION_PLAN.md` (no dedicated code item
+filed at the time of writing) and should be tracked there as a follow-up if
+firms in scope of the output floor are observed to rely on Art. 139(2)/(2A)
+fallbacks for SL.
+
+!!! note "What this rule is not"
+    Art. 139(2B) does **not**:
+
+    - exclude SA SL exposures from S-TREA;
+    - reduce S-TREA by the SL RWA;
+    - introduce a separate add-on or carve-out term in the
+      `TREA = max{U-TREA; x × S-TREA + OF-ADJ}` formula;
+    - change the IRB slotting treatment that drives U-TREA.
+
+    It governs ECAI rating eligibility within the unchanged Art. 122B(1) entry
+    point only.
 
 ## Structural Invariants
 

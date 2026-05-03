@@ -48,15 +48,15 @@ This page documents the authoritative schemas for all input data files required 
 | `sector_code` | `String` | No | Industry sector code (SIC-based) |
 | `apply_fi_scalar` | `Boolean` | No | User flag: True = apply 1.25x FI correlation scalar (CRR Art. 153(2)) |
 | `is_managed_as_retail` | `Boolean` | No | SME managed on pooled retail basis (75% RW per CRR Art. 123) |
-| `is_natural_person` | `Boolean` | No | True for individuals — drives Basel 3.1 retail RE classification gates (Art. 124E(1) primary-residence exception, Art. 124H natural-person CRE branch) |
-| `is_social_housing` | `Boolean` | No | True for social-housing providers — qualifies for the Art. 124E(1) materially-dependent exception so the loan-splitter treats it as non-income-producing residential RE (PRA PS1/26) |
-| `is_financial_sector_entity` | `Boolean` | No | True for FSEs (regulated or unregulated). Used in conjunction with `apply_fi_scalar` and `total_assets` for the LFSE 1.25x correlation gate (Art. 142(1)(4)) |
+| `is_natural_person` | `Boolean` | No | True for individuals (natural persons). Required to qualify a counterparty for the SA retail exposure class (CRR Art. 123 / PS1/26 Art. 123 — the class is restricted to "natural persons or to a small or medium-sized enterprise"). Also drives the Basel 3.1 retail RE classification gates (PS1/26 Art. 124E(1) primary-residence exception, Art. 124H natural-person CRE branch) |
+| `is_social_housing` | `Boolean` | No | True for social-housing providers. Under CRR Art. 123(d), exposures to a "social housing provider, or [a] non-profit association regulated by law" are eligible for retail-class treatment without the natural-person test. Under Basel 3.1 the same population qualifies for the Art. 124E(1) materially-dependent exception so the loan-splitter treats it as non-income-producing residential RE (PRA PS1/26) |
+| `is_financial_sector_entity` | `Boolean` | No | True for financial sector entities (FSEs) as defined in CRR Art. 119(5) — credit institutions, investment firms, financial institutions, insurance and reinsurance undertakings, and similar regulated/unregulated entities. Used in conjunction with `apply_fi_scalar` and `total_assets` for the LFSE 1.25x correlation gate (Art. 142(1)(4) — "large financial sector entity") |
 | `is_ccp_client_cleared` | `Boolean` | No | True when the counterparty is a CCP whose exposures arise from client-cleared trades — drives the QCCP 4% RW (vs 2% proprietary) under CRR Art. 306 / PS1/26 Art. 306 |
-| `borrower_income_currency` | `String` | No | ISO 4217 currency in which the borrower earns income — used for currency-mismatch unhedged-FX retail uplift (PRA PS1/26 Art. 123A) |
-| `local_currency` | `String` | No | Counterparty's domestic currency — used in conjunction with `borrower_income_currency` for the currency-mismatch test |
-| `sovereign_cqs` | `Int32` | No | External CQS for the counterparty's sovereign — feeds the institution sovereign floor (CRR Art. 121(6) / Art. 119(2)) and SCRA derivations |
-| `institution_cqs` | `Int8` | No | External CQS for the counterparty when treated as an institution — used by ECRA institution risk weights (CRR Art. 120 Table 3 / PS1/26 Table 3) |
-| `scra_grade` | `String` | No | SCRA grade for unrated institutions: `"A"`, `"B"`, `"C"` (Basel 3.1 CRE20.16-21) |
+| `borrower_income_currency` | `String` | No | ISO 4217 currency in which the borrower earns income (or, for RRE indexation, the currency in which the borrower's repayment cashflows are denominated). Triggers **two** independent currency-mismatch tests: (1) **PRA PS1/26 Art. 123A** unhedged-FX retail uplift — when the *exposure* currency differs from `borrower_income_currency` for an unhedged retail exposure, the RW is multiplied by 1.5 (capped at 150%); (2) **PS1/26 Art. 124(2)(c)** RRE primary-residence carve-out — only available where the exposure currency matches the currency of the borrower's repayment cashflows |
+| `local_currency` | `String` | No | Counterparty's domestic currency (ISO 4217). Two use sites: (1) **CRR Art. 114(4) sovereign domestic-currency carve-out** — exposures to a central government or central bank denominated **and** funded in that sovereign's own domestic currency may receive a 0% RW regardless of CQS (compared to `currency` on the loan/facility row); (2) currency-mismatch test for retail under PS1/26 Art. 123A when `borrower_income_currency` is unavailable — `local_currency` is then used as the proxy "income" currency. Distinct from `borrower_income_currency`, which is the obligor's actual income currency |
+| `sovereign_cqs` | `Int32` | No | External CQS for the counterparty's **sovereign** (i.e. the central government of the country in `country_code`). Counterparty-level — distinct from the row-level `external_cqs` derived on each exposure (which captures the obligor's own rating, not its sovereign). Primary use site is the SA sovereign risk weight table (CRR Art. 114(2) / PS1/26 Art. 114(2) — exposures to central governments and central banks rated by a nominated ECAI). Drives the **domestic-currency preferential treatment** (CRR Art. 114(4): exposures to the sovereign and central bank denominated and funded in the domestic currency may receive 0% RW), the **third-country preferential treatment** (CRR Art. 114(5)–(6): same treatment for non-EU/UK sovereigns where the third country applies an equivalent supervisory regime). Also feeds the **sovereign-derived institution floor** (CRR Art. 119(2) — institution RW must not be more favourable than its home sovereign's RW; PS1/26 Art. 121(1) Table 5 derives unrated-institution SCRA grades from the home sovereign's CQS), and SCRA derivations |
+| `institution_cqs` | `Int8` | No | External CQS for the counterparty when treated as an **institution** — counterparty-level field, distinct from the row-level `external_cqs` derived on each exposure. Used by ECRA institution risk weights (CRR Art. 120 Table 3 / PS1/26 Art. 120 Table 3). Under ECRA, rated institutions take a CQS-driven RW; unrated institutions fall through to SCRA (PS1/26 Art. 121, where unrated grades may themselves be derived from the home sovereign via Art. 121(1) Table 5). When both `sovereign_cqs` and `institution_cqs` are populated, the sovereign floor at Art. 119(2) caps the institution treatment |
+| `scra_grade` | `String` | No | SCRA grade for unrated institutions: `"A"`, `"A_ENHANCED"`, `"B"`, `"C"` (Basel 3.1 CRE20.16-21 / PRA PS1/26 Art. 121). Use `"A_ENHANCED"` when the counterparty satisfies the Art. 121(5) quantitative thresholds (CET1 ratio &ge; 14% **and** leverage ratio &ge; 5%) — yields a 30% RW (>3m) vs the standard Grade A 40% (>3m) / 20% (&le;3m) weights. |
 | `is_investment_grade` | `Boolean` | No | Publicly traded + investment grade → 65% SA RW (Basel 3.1 CRE20.47) |
 
 ### Entity Type: The Single Source of Truth
@@ -77,13 +77,16 @@ The `entity_type` field is the **authoritative source** for determining both SA 
 | `pse_sovereign` | PSE | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 116 - govt guaranteed |
 | `pse_institution` | PSE | INSTITUTION | CRR Art. 116 - commercial PSE |
 | **MDB/International Org Class** |
-| `mdb` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 117 - 0% RW if on eligible list |
-| `international_org` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 118 |
+| `mdb` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 117(1) — non-named MDB; institution table (CRR) / dedicated Table 2B (PS1/26 Art. 117(1)(a)) |
+| `mdb_named` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 117(2) / PS1/26 Art. 117(2) — named MDBs on the eligible list (e.g. IBRD, IFC, EIB, EBRD) qualify for **0% RW**. Use `mdb` for non-named MDBs that fall back to the institution / Table 2B treatment |
+| `international_org` | MDB | CENTRAL_GOVT_CENTRAL_BANK | CRR Art. 118 — international organisations (e.g. IMF, BIS); 0% RW |
 | **Institution Class** |
 | `institution` | INSTITUTION | INSTITUTION | CRR Art. 112(d) |
 | `bank` | INSTITUTION | INSTITUTION | CRR Art. 112(d) |
 | `ccp` | INSTITUTION | INSTITUTION | CRR Art. 300-311 (CCP treatment) |
 | `financial_institution` | INSTITUTION | INSTITUTION | CRR Art. 112(d) |
+| **Covered Bond Class** |
+| `covered_bond` | COVERED_BOND | COVERED_BOND | CRR Art. 129 / PS1/26 Art. 129 — eligible covered bonds. Rated: CQS lookup against Table 6A (CRR) / Table 7 (B31). Unrated: derived from issuing institution's senior unsecured RW per Art. 129(5). B31 adds new due-diligence requirement (Art. 129(4A)) and expands the unrated derivation table from 4 to 7 entries |
 | **Corporate Class** |
 | `corporate` | CORPORATE | CORPORATE | CRR Art. 112(g) |
 | `company` | CORPORATE | CORPORATE | CRR Art. 112(g) |
@@ -94,6 +97,20 @@ The `entity_type` field is the **authoritative source** for determining both SA 
 | `specialised_lending` | SPECIALISED_LENDING | SPECIALISED_LENDING | CRR Art. 147(8) |
 | **Equity Class** |
 | `equity` | EQUITY | EQUITY | CRR Art. 133 |
+| **High-Risk Class (Basel 3.1 only — see warning below)** |
+| `high_risk` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — generic "items associated with particularly high risk"; **150% RW**. Assessment criteria per Art. 128(3): high risk of loss from obligor default; impossible to assess on standard data |
+| `high_risk_venture_capital` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — venture capital exposures held outside the equity exposure class (priority 3 equity takes precedence; this bucket is for non-equity VC exposures only). 150% RW |
+| `high_risk_private_equity` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — private-equity exposures held outside the equity exposure class. 150% RW |
+| `high_risk_speculative_re` | HIGH_RISK | HIGH_RISK | PS1/26 Art. 128 — speculative immovable property financing (e.g. land acquisition with uncertain end use). 150% RW. Distinct from ADC (Art. 124K) which has its own loan-splitter treatment |
+| **Other Items Class (CRR Art. 134 / PS1/26 Art. 134)** |
+| `other_cash` | OTHER | OTHER | CRR Art. 134(3) / PS1/26 Art. 134(3) — cash in hand and equivalent items; **0% RW** |
+| `other_gold` | OTHER | OTHER | CRR Art. 134(4) / PS1/26 Art. 134(4) — gold bullion held in own vaults or on an allocated basis (backed by bullion liabilities); **0% RW** |
+| `other_items_in_collection` | OTHER | OTHER | CRR Art. 134(2) / PS1/26 Art. 134(2) — cash items in the process of collection; **20% RW** |
+| `other_tangible` | OTHER | OTHER | CRR Art. 134(7) / PS1/26 Art. 134(7) — other tangible assets, prepayments, and accrued income (where the counterparty cannot be identified); **100% RW** |
+| `other_residual_lease` | OTHER | OTHER | CRR Art. 134(7) / PS1/26 Art. 134(7) — residual value of leasing exposures (i.e. the portion not captured as a lease receivable on the obligor); **100% RW** |
+
+!!! warning "Art. 128 (high-risk items) is omitted from current UK CRR"
+    Art. 128 was **omitted from UK onshored CRR by SI 2021/1078** (the Capital Requirements Regulation (Amendment) Regulations 2021). The high-risk exposure class is therefore a **dead letter under current UK CRR (pre-2027)** — exposures tagged with any `high_risk*` `entity_type` will fall through to other classes under a CRR-mode run. The class is **re-introduced under PRA PS1/26 Art. 128** with effect 1 January 2027. Use the `high_risk*` entity types only when running in Basel 3.1 mode, or accept that the row will be reclassified under CRR. See [SA risk weights spec - High-risk exposures](../specifications/crr/sa-risk-weights.md#high-risk-exposures-art-128).
 
 ### Why SA and IRB Classes Can Differ
 

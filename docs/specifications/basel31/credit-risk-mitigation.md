@@ -226,84 +226,274 @@ values and the blended LGD formula.
 
 ### Overview
 
-Basel 3.1 replaces the CRR double default treatment with **PD parameter substitution** for
-IRB-rated guarantors. This is a new mechanism where the guarantor's PD is substituted into
-the IRB capital formula for the guaranteed portion.
+Basel 3.1 replaces the CRR double default treatment with the **Parameter Substitution
+Method** (PSM) for IRB-rated guarantors. PSM is one of the six CRM methods listed in
+Art. 191A and is applied per Art. 236 to the *covered* portion of an exposure.
+
+The substitution is a four-parameter swap: PD, LGD, correlation R, and maturity M are
+each replaced (where appropriate) with the value that would apply to a *comparable
+direct exposure to the protection provider*. The covered portion's risk weight is then
+re-computed via the standard IRB capital formula at Art. 153 (corporate / institution /
+sovereign) or Art. 154 (retail).
+
+**Regulatory anchor:** PRA PS1/26 Art. 236(1)(a) (BCBS CRE22.70–85), with
+parameter-specific cross-references to Art. 160, Art. 161, Art. 162, Art. 163 and
+Art. 164. Verified against `ps126app1.pdf` pp.215–216 (17 Apr 2026).
 
 ### Trigger Conditions
 
-Parameter substitution activates when **all** of the following hold:
+Per `engine/irb/guarantee.py::_apply_parameter_substitution`, PSM activates row-wise
+when **all** of the following hold:
 
-1. Framework is Basel 3.1
-2. Guarantor has an **internal PD** (rated under the firm's IRB model)
-3. Guarantee is eligible per Art. 213–217
+1. The exposure carries a non-zero `guaranteed_portion` (Art. 236(1)(a) covered part);
+2. `guarantor_approach == "irb"` and the guarantor has a non-null `guarantor_pd`
+   (i.e. the guarantor is rated under an IRB model rather than only externally rated);
+3. The guarantee is eligible per Art. 213–217 (gating performed upstream in
+   `engine/crm/guarantees.py`).
 
-If the guarantor has only an external rating (SA guarantor), the standard SA risk weight
-substitution applies regardless of framework.
+If only `guarantor_pd` is missing — i.e. the guarantor is on the SA — the row falls
+back to the SA Risk-Weight Substitution Method (RWSM, Art. 235), with `guarantor_rw`
+sourced from `_compute_guarantor_rw_sa` instead.
 
-### Calculation Method
+The PSM branch fires under both CRR and Basel 3.1 whenever an internal `guarantor_pd`
+exists, but the framework selects the F-IRB LGD table used (CRR 0.45 senior unsecured
+vs Basel 3.1 0.40 non-FSE / 0.45 FSE under Art. 161(1)(aa)). Under CRR, the optional
+double-default overlay (Art. 153(3) / Art. 202–203) can sit on top — see
+[Double Default Overlay](#double-default-overlay-crr-only-art-1533) below.
 
-For the guaranteed (covered) portion of the exposure Art. 236(1)(a) applies the
-IRB capital formula using the **guarantor's** PD together with an LGD drawn from
-one of two options (ps126app1.pdf p.215–216, 17 Apr 2026):
+### Step 1 — PD Substitution (Art. 202 / CRE22.72)
+
+The PD on the covered portion is substituted with the PD that would apply to a
+comparable direct exposure to the protection provider (PRA PS1/26 Art. 236(1)(a)(i),
+"PD = ..."; BCBS CRE22.72):
 
 ```
-guarantor_rw = IRB_formula(PD=guarantor_pd_floored, LGD=LGD_covered, MA=MA_original, scaling=1.0)
+PD_substituted = max(guarantor_pd, PD_floor)
 ```
 
 Where:
 
-- `guarantor_pd_floored` = the PD that would be assigned to a comparable direct exposure
-  to the protection provider, after the Art. 160 PD floor and the Art. 160(4) "no better
-  than direct" uplift.
-- `LGD_covered` is one of:
-    1. **Borrower LGD, unprotected** — the LGD the exposure would carry if no unfunded
-       credit protection existed, after the Art. 161(5) input floor and the Art. 161(6)
-       uplift; or
-    2. **Guarantor F-IRB LGD** — the LGD that would apply to the guarantee if it were a
-       direct exposure to the protection provider under the F-IRB Approach, taking
-       seniority into account (Art. 161(1): 40% senior non-FSE, 45% senior FSE, 75%
-       subordinated, etc.), with the same Art. 160(4) / 161(6) uplifts.
-- Scaling factor = 1.0 (no 1.06).
+- `guarantor_pd` is the firm's internal PD estimate for the protection provider on
+  the rating system the protection provider sits on.
+- `PD_floor` is the Art. 160(1) input floor (corporate / institution / sovereign) or
+  Art. 163(1) input floor (retail) appropriate to the **guarantor's** exposure class —
+  evaluated via `_pd_floor_expression(config, has_transactor_col=...)` in the engine.
+- The Art. 160(4) (or Art. 163(4)) "no better than direct" uplift is implicit in the
+  way PSM is applied: PSM is recognised only when the resulting `guarantor_rw <
+  risk_weight_irb_original` (the `is_guarantee_beneficial` gate); a non-beneficial
+  PSM result is simply not applied (Art. 236(1)(c) blended formula collapses to
+  `rn × E / E`).
 
-!!! note "Change log — Art. 236 LGD source clarified (17 Apr 2026)"
-    Earlier drafts of this spec stated `LGD = 40% (F-IRB senior unsecured non-FSE)`
-    as a fixed value. Art. 236(1)(a) does not fix LGD at 40% — the institution may
-    either retain the borrower's unprotected LGD or substitute the guarantor's F-IRB
-    LGD. In the common case of a non-FSE senior guarantor the substituted value is
-    40% under Art. 161(1)(aa), which is why the simplification was previously shown,
-    but for FSE guarantors the substituted LGD is 45% and for subordinated guarantees
-    it is 75%.
+The same floored PD is used in the correlation and maturity-adjustment formulas
+below — it is *not* re-floored separately at each step.
 
-### Blended RWA
+### Step 2 — LGD Adjustment by Guarantor Seniority (Art. 161 / CRE22.73)
+
+PRA PS1/26 Art. 236(1)(a)(i) gives the firm a **choice** of LGD source for the
+covered portion:
+
+1. **Option (i): Borrower LGD, unprotected** — the LGD the borrower exposure would
+   carry under Art. 161 (F-IRB) or Art. 161 + Art. 164(4)/(4A) (A-IRB) **as if no
+   unfunded credit protection existed**, with the Art. 161(5) input floor and the
+   Art. 161(6) uplift applied; or
+2. **Option (ii): Guarantor F-IRB LGD** — the LGD that would apply to the guarantee
+   if it were a direct exposure to the protection provider under the **Foundation
+   IRB Approach**, "taking into account the seniority of the guarantee" (Art.
+   236(1)(a)(i), verbatim). Under Art. 161(1)(aa) (Basel 3.1):
+    - **40%** — senior unsecured, non-FSE counterparty
+    - **45%** — senior unsecured, FSE counterparty (Art. 142(1)(4))
+    - **75%** — subordinated guarantee
+    - Art. 161(1)(d) covered-bond LGDs (e.g. 11.25%) where the guarantee is itself
+      a covered-bond claim.
+
+Either choice is then "increased as necessary" to comply with the Art. 161(3) /
+Art. 160(4) "no better than direct" obligation (Art. 236(1)(a)(i), final
+sub-paragraph).
+
+The implementation in `_apply_parameter_substitution` defaults to option (ii) — it
+sources the F-IRB senior unsecured LGD via `get_firb_lgd_table_for_framework` and
+plugs it into `_parametric_irb_risk_weight_expr(lgd=firb_lgd_senior, ...)`. Option (i)
+(borrower-LGD retention) is not currently surfaced as a config switch.
+
+| Framework | F-IRB senior unsecured LGD used | Source |
+|-----------|---------------------------------|--------|
+| CRR | 45% | `firb_lgd.crr["unsecured_senior"]` |
+| Basel 3.1 | **40%** (non-FSE) / 45% (FSE) | Art. 161(1)(aa); `firb_lgd.basel_31["unsecured_senior"]` |
+
+!!! note "Code-side gating — LGD seniority not modelled per row"
+    The engine looks up a single `firb_lgd_senior` scalar per framework rather than
+    deriving the seniority from each guarantee individually. Subordinated guarantees
+    (Art. 161(1)(b), 75%) and covered-bond guarantees (Art. 161(1)(d)) are therefore
+    not differentiated at the row level — both currently route through the
+    senior-unsecured entry. This is a known simplification of Art. 236(1)(a)(i) /
+    Art. 161(1) and is tracked in `IMPLEMENTATION_PLAN.md`.
+
+### Step 3 — Correlation Re-Derivation (CRE22.74)
+
+PRA PS1/26 Art. 236(1)(a)(i) defines:
+
+> R = the correlation coefficient that would be assigned to a comparable direct
+> exposure to the protection provider.
+
+Under Art. 153(2)–(4), R depends on the guarantor's **exposure class** (and, for
+SME corporates, the guarantor's turnover and the firm-size adjustment). The
+Basel 3.1 correlation formulas reused for the substitution step are documented in
+[Asset Correlation (Art. 153(2)–(4))](firb-calculation.md#asset-correlation-art-15324)
+and [Step 2 from F-IRB Capital Formula](firb-calculation.md#capital-formula-art-153);
+for retail guarantors the Art. 154(1) fixed / decay correlations apply (R = 0.15
+mortgage, R = 0.04 QRRE, decay form for retail-other).
+
+The FI scalar (Art. 153(2), 1.25× correlation multiplier) re-applies if the
+guarantor is itself a large or unregulated FSE — see
+[FI Scalar (Art. 153(2))](firb-calculation.md#fi-scalar-art-1532).
+
+!!! warning "Code-side gating — correlation read from borrower's class, not guarantor's"
+    `_parametric_irb_risk_weight_expr` (in `engine/irb/formulas.py`) computes the
+    substituted correlation by reading the **borrower's** `exposure_class`,
+    `turnover_m` and `requires_fi_scalar` columns rather than the guarantor's. This
+    is a known engine deviation from the strict Art. 236(1)(a)(i) reading: in the
+    common case where guarantor and borrower share an exposure class (e.g.
+    corporate-to-corporate guarantee) it is harmless, but cross-class guarantees
+    (e.g. an institution guaranteeing a corporate exposure, or a retail guarantor)
+    will currently use the borrower's correlation curve. Tracked in
+    `IMPLEMENTATION_PLAN.md` for a future engine fix; do not assume the spec text
+    of Step 3 is currently fully realised.
+
+### Step 4 — Maturity Adjustment (Art. 162 / CRE22.80)
+
+For non-retail substitutions, Art. 236(1)(a)(i) reads:
+
+> M = the maturity of the exposure calculated in accordance with Credit Risk:
+> Internal Ratings Based Approach (CRR) Part Article 162.
+
+The maturity used in the substitution is therefore **the maturity of the
+underlying exposure** measured under Art. 162 (Art. 162(2A) calculation methods,
+floored at 1.0 year, capped at 5.0 years), **not** a separate maturity for the
+guarantor. The Art. 162(2A) machinery is documented in
+[Effective Maturity (Art. 162)](firb-calculation.md#effective-maturity-art-162); the
+Art. 162(3) one-day floor exceptions for short-term / daily-margined exposures are
+preserved.
+
+The MA factor itself reuses the Art. 153(1) form documented in
+[Maturity Adjustment Formula](firb-calculation.md#maturity-adjustment-formula),
+evaluated with the **substituted PD** from Step 1:
 
 ```
-RWA = RWA_borrower x (unguaranteed / EAD) + guaranteed_portion x guarantor_rw x 12.5
+b = (0.11852 - 0.05478 * ln(PD_substituted))^2
+MA = (1 + (M - 2.5) * b) / (1 - 1.5 * b)
 ```
 
-Parameter substitution is only applied when **beneficial** (guarantor RW < borrower's
-original IRB RW).
+For retail guarantees (`exposure_class` ∈ {`RETAIL`, `RETAIL_MORTGAGE`, `QRRE`,
+`RETAIL_OTHER`, `RETAIL_SME`}), MA = 1.0 — this matches Art. 154 (retail formula
+omits the maturity adjustment) and the explicit override in
+`_parametric_irb_risk_weight_expr` (`is_retail` branch).
 
-### Expected Loss Under Parameter Substitution
+A separate maturity-mismatch adjustment (Art. 236A / Art. 237–239) applies *before*
+this step when the protection's residual maturity is shorter than the underlying
+exposure's. The `G* → GA` reduction is documented in
+[Maturity Mismatch (Art. 237–239)](#maturity-mismatch-art-237-239); the
+Art. 237(1) / 237(2) eligibility gates can disqualify the protection entirely (e.g.
+protection with residual maturity < 3 months and < exposure maturity).
+
+!!! info "Art. 236A is folded into Art. 239 in PS1/26"
+    BCBS CRE22.80–85 distinguishes a "maturity adjustment" treatment for guarantees
+    (CRE22.80) from the maturity-mismatch GA formula (CRE22.83). PRA PS1/26
+    consolidates both into Section 5 (Art. 237–239); there is no standalone
+    Art. 236A in the UK rule instrument. The substantive outcome is unchanged — the
+    GA reduction is applied to the protection amount before Step 1's PD substitution
+    sees it (the engine consumes `GA` as `guaranteed_portion`).
+
+### Composing the Four Steps — Covered-Portion Risk Weight
+
+The covered portion's risk weight `r_g` (Art. 236(1)(a)(i)) is the IRB capital
+formula evaluated with the substituted parameters:
 
 ```
-EL_blended = EL_original x (unguaranteed / EAD)
-           + guarantor_pd_floored x LGD_covered x guaranteed_portion
+K_g = LGD_covered * N[(1 - R_g)^(-0.5) * G(PD_g) + (R_g / (1 - R_g))^(0.5) * G(0.999)]
+       - PD_g * LGD_covered
+r_g = K_g * 12.5 * scaling * MA_g
 ```
 
-`LGD_covered` is the same value used in the risk-weight calculation above
-(Art. 236(1A)(b)) — either the unprotected borrower LGD or the substituted
-guarantor F-IRB LGD.
+Where `PD_g`, `LGD_covered`, `R_g` and `MA_g` are the Step 1–4 substituted values,
+and `scaling` is **1.0** under Basel 3.1 (Art. 153(1) — 1.06 removed), retained at
+**1.06** under CRR.
+
+The implementation lives in
+[`_parametric_irb_risk_weight_expr`](https://github.com/OpenAfterHours/rwa_calculator/blob/master/src/rwa_calc/engine/irb/formulas.py)
+(`engine/irb/formulas.py:756`).
+
+### Composing the Four Steps — Blended RWA (Art. 236(1)(c))
+
+The whole-exposure risk weight blends the covered and uncovered portions per
+Art. 236(1)(c):
+
+```
+RW_blended = (E_n * r_n + E_g * r_g) / E
+RWA_blended = RWA_borrower * (E_n / E) + E_g * r_g * 12.5_via_K
+```
+
+With:
+
+- `E_n` (uncovered) = `unguaranteed_portion`
+- `E_g` (covered) = `guaranteed_portion = min(GA, E)`
+- `r_n` = the borrower's pre-CRM IRB risk weight (`risk_weight_irb_original`)
+- `r_g` = the Step 1–4 result above (`guarantor_rw` post-substitution)
+
+The benefit gate (`is_guarantee_beneficial = guarantor_rw < risk_weight_irb_original`)
+disapplies PSM when it would *worsen* the capital outcome, in line with the implicit
+Art. 213 economic-substance test and the explicit Art. 160(4) "no better than
+direct" floor.
+
+### Expected Loss Under PSM (Art. 236(1A))
+
+Art. 236(1A) blends EL by the same covered/uncovered split:
+
+```
+EL_blended = EL_original * (E_n / E) + PD_g * LGD_covered * E_g
+```
+
+Where `PD_g` and `LGD_covered` are the **same values** used in `r_g` at Step 1 and
+Step 2 respectively (Art. 236(1A)(b) verbatim). The implementation (`_adjust_expected_loss`
+in `engine/irb/guarantee.py`) uses `guarantor_pd_floored * firb_lgd_senior * guaranteed_portion`
+for the covered-portion EL when `_is_pd_substitution` is set and the row is not also on
+the CRR double-default branch.
+
+### Double Default Overlay (CRR Only, Art. 153(3))
+
+Under CRR, A-IRB firms with a corporate underlying and an eligible institution /
+MDB / sovereign / rated-corporate guarantor may, in addition to PSM, apply the
+**double-default multiplier** of Art. 153(3) / Art. 202–203:
+
+```
+RW_dd = RW_obligor * (0.15 + 160 * PD_g_floored)
+```
+
+floored by `RW_g` (the substituted PSM RW from Steps 1–4). The Basel 3.1 rule
+instrument leaves Art. 153(3) "Provision left blank" — double default is not
+available under PS1/26. The CRR overlay is therefore gated in the engine on
+`config.is_crr and config.enable_double_default and has_guarantor_pd`
+(`_apply_double_default`). See
+[Double Default Removal](airb-calculation.md#double-default-removal) on the
+Basel 3.1 A-IRB page for the framework-level rationale.
 
 ### Audit Trail
 
-The `guarantee_method_used` output column indicates the method applied:
+The `guarantee_method_used` output column indicates the method applied per row:
 
 | Value | Meaning |
 |-------|---------|
-| `PD_SUBSTITUTION` | IRB guarantor under Basel 3.1 |
-| `SA_RW_SUBSTITUTION` | SA guarantor, or any guarantor under CRR |
-| `NO_GUARANTEE` | No guarantee applied |
+| `PD_PARAMETER_SUBSTITUTION` | IRB guarantor — Steps 1–4 above (PSM, Art. 236) |
+| `SA_RW_SUBSTITUTION` | SA guarantor — RWSM (Art. 235) instead |
+| `DOUBLE_DEFAULT` | CRR-only — Art. 153(3) overlay applied on top of PSM |
+| `NO_SUBSTITUTION` | Beneficial gate failed; protection ignored |
+
+### Worked Example
+
+See acceptance scenarios **B31-D7** (single IRB guarantor, full coverage) and
+**B31-D7b** (partial coverage blending) in
+[`tests/acceptance/`](https://github.com/OpenAfterHours/rwa_calculator/tree/master/tests/acceptance)
+for end-to-end PSM walk-throughs with verified PD / LGD / R / MA inputs and the
+Art. 236(1)(c) blended-RWA output.
 
 ---
 
@@ -345,8 +535,141 @@ CCR exposures use IMM / SFT VaR / FCCM / FCSM (SA only).
   191A(3) consistency rule (same method across the same type of unfunded protection).
 
 **Part 4 — Unfunded CP covered by funded CP:**
-Where unfunded protection is itself collateralised, funded CRM is applied to the unfunded
-protection first, then the adjusted unfunded protection is applied to the original exposure.
+Where unfunded protection is itself collateralised, funded CRM may be applied to the
+unfunded protection first (the "look-through"), then the adjusted unfunded protection
+is applied to the original exposure. Detailed mechanics in
+[Look-Through for Unfunded Protection Backed by Funded Protection](#look-through-for-unfunded-protection-backed-by-funded-protection-art-191a2e-f)
+below.
+
+### Look-Through for Unfunded Protection Backed by Funded Protection (Art. 191A(2)(e), (f))
+
+PS1/26 Art. 191A(2)(e) introduces an **explicit "look-through" optionality** for the
+case where an institution's exposure is covered by **unfunded credit protection** (a
+guarantee or credit derivative) and that unfunded protection is **itself covered by
+funded credit protection** posted by the unfunded-protection provider — for example,
+a guarantor that has pledged collateral to the lending institution to back the
+guarantee it has written. Verified against `ps126app1.pdf` p.168 (Art. 191A(2)(e),
+(f), 1 January 2027 effective text).
+
+#### Verbatim Text — Art. 191A(2)(e) and (f)
+
+> **(e)** where an institution has an exposure that is covered by unfunded credit
+> protection that, in turn, is covered by funded credit protection and such
+> institution chooses to take into account either (i) only the funded credit
+> protection or (ii) both the unfunded credit protection and the funded credit
+> protection, then the institution shall take into account the applicable credit
+> protection or credit protections in an appropriate manner that is consistent
+> with the decision tree in Part 4 of Appendix 1 (and, to the extent referenced
+> therein, the decision trees in Parts 1 to 3 of Appendix 1), and in a way that
+> does not double count the effects of the credit protection. Notwithstanding
+> this point (e), such institution may choose to take into account only the
+> unfunded credit protection in accordance with point (c) and not the funded
+> credit protection; and
+>
+> **(f)** to the extent an institution chooses to take into account funded
+> credit protection under point (e), references to the 'borrower' or the
+> 'obligor' in this Part (in the context of unfunded credit protection which is
+> covered by funded credit protection) shall be deemed to refer to either:
+>
+>   - **(i)** only the provider of the unfunded protection;
+>   - **(ii)** one of the borrower/obligor or the provider of the unfunded
+>     credit protection; or
+>   - **(iii)** both the obligor and the provider of the unfunded credit
+>     protection,
+>
+> in each case where appropriate from a prudential point of view to reflect the
+> nature of the credit protection arrangement and the risks related to that
+> arrangement.
+
+#### Plain-English Reading
+
+The institution has a **choice** of three treatments for the
+exposure → guarantor → collateral chain (Art. 191A(2)(e), final sentence:
+*"may choose"*):
+
+| Election | What is recognised | Decision-tree route |
+|----------|--------------------|---------------------|
+| **(i) Funded only** | The collateral the guarantor has posted is treated as if it directly secured the obligor exposure; the guarantee is ignored. | Part 4 of Appendix 1, then Parts 1–2 (funded) |
+| **(ii) Unfunded + funded** | Both protections are recognised, with the funded protection treated as collateralising the unfunded protection (i.e. the guarantor's exposure is reduced by the collateral) before the unfunded protection is substituted onto the original exposure. | Part 4, then Parts 1–3 |
+| **Default fallback** | Treat only the unfunded protection per the ordinary Part 3 unfunded path; ignore the funded leg of the guarantor's collateral. | Part 3 only (no look-through) |
+
+The Art. 191A(2)(f) "borrower deeming" rule is a definitional clean-up:
+where the funded protection sits between the guarantor and the institution, the
+ordinary Part 2 funded-CRM articles (which speak of "obligor" / "borrower")
+have to be re-read with the **guarantor** standing in as the obligor of the
+funded leg — because the collateral is securing a claim against the guarantor,
+not directly against the original obligor. The (f)(i)–(iii) options give the
+firm flexibility to reflect either party (or both) as the relevant counterparty
+in eligibility tests (e.g. wrong-way-risk checks under Art. 194), depending on
+which assignment is "appropriate from a prudential point of view".
+
+#### CRR Comparison — Wholly New Under PS1/26
+
+CRR Art. 108 (the predecessor of Art. 191A) was a one-paragraph cross-reference
+to the CRM techniques in Chapter 4 of Title II of Part Three. It contained
+**no equivalent of (2)(e) / (2)(f)**: the look-through mechanic for
+unfunded-backed-by-funded protection is not enumerated as an explicit option
+anywhere in the CRR text. Under CRR a firm holding a guarantee secured by
+guarantor-posted collateral could in practice rely on the same economic
+substance, but the route was via the general "no double-counting" obligation
+(CRR Art. 193(2)) plus per-form CRM application — not a named optionality with
+the borrower-deeming flexibility set out in PS1/26 Art. 191A(2)(f).
+
+| Feature | CRR (pre-1 Jan 2027) | PS1/26 Art. 191A(2)(e), (f) |
+|---------|----------------------|------------------------------|
+| Explicit look-through option | No standalone provision | **Yes — Art. 191A(2)(e)** |
+| Recognise funded only (ignore guarantee) | Implicit; not a named election | **Explicit (Art. 191A(2)(e)(i))** |
+| Recognise unfunded + funded jointly | Implicit; subject to general no-double-count rule | **Explicit (Art. 191A(2)(e)(ii))** |
+| Borrower-deeming rule (i)–(iii) | None | **Yes — Art. 191A(2)(f)** |
+| Decision-tree anchor | None | Part 4 of Appendix 1 |
+
+This is a substantive widening of optionality: PS1/26 lets a firm reach the
+funded protection directly (skipping the guarantee), which under PSM (Art. 236)
+or RWSM (Art. 235) can be the more capital-efficient route when the guarantor's
+PD / risk weight is worse than the substituted CRM benefit from the underlying
+collateral.
+
+#### Cross-References
+
+- The funded leg, once "looked through", is run through the ordinary funded
+  CRM machinery: see [FCSM Under Basel 3.1 (Art. 222)](#fcsm-under-basel-31-art-222),
+  [FCCM E\* Formula (Art. 223(5))](#fccm-e-formula-art-2235), and the
+  Foundation Collateral Method documented under
+  [Supervisory LGD (Art. 161)](firb-calculation.md#supervisory-lgd-art-161) /
+  [Collateral-Type LGDS Values](firb-calculation.md#collateral-type-lgds-values-art-230-cre329-12).
+- The unfunded leg, where retained alongside the funded leg, follows
+  [IRB Parameter Substitution (B31-D7)](#irb-parameter-substitution-b31-d7)
+  (PSM, Art. 236) or the SA Risk-Weight Substitution Method (Art. 235), per
+  the [Method Selection by Approach](#method-selection-by-approach) table.
+- The no-double-counting obligation is anchored in Art. 191A(2)(d) /
+  Art. 193(2); see [Anti-Double-Counting and Consistency Rules](#anti-double-counting-and-consistency-rules)
+  immediately below.
+- Maturity-mismatch handling on each leg is governed by
+  [Art. 237–239](#maturity-mismatch-art-237-239) — the GA / CVAM
+  adjustment is computed per leg before the look-through composes the two.
+
+#### Implementation Status
+
+!!! warning "Not Yet Implemented"
+    The Art. 191A(2)(e) / (f) look-through is not modelled by the engine. The
+    CRM processor (`engine/crm/processor.py`) treats funded and unfunded
+    protection as covering distinct portions of the original exposure
+    (the no-double-counting rule of Art. 191A(2)(d)) and does not provide an
+    election to recognise guarantor-posted collateral *through* the guarantee
+    as if it secured the original exposure directly. Firms with collateralised
+    guarantees will currently get either the unfunded substitution
+    (Art. 235 / 236) **or** unrelated funded collateral on the obligor leg —
+    not the (e)(i) "funded only" or (e)(ii) "both" combinations. The
+    `borrower`-deeming flexibility of Art. 191A(2)(f) is also not surfaced.
+
+    This sits in the same family as IMPLEMENTATION_PLAN.md item **P1.30**
+    (CRM method selection decision tree under Art. 191A), which currently
+    enumerates sub-items (a)–(f) but does **not** carry a dedicated entry for
+    the (2)(e) / (2)(f) look-through option. The orchestrator should add this
+    as a **new P-coded item** referencing PS1/26 Art. 191A(2)(e), (f) and
+    Part 4 of Appendix 1; it is not the same gap as P1.30(e) (which is about
+    Art. 234 *tranched* coverage on a single exposure, not Art. 191A(2)(e)
+    look-through across two protection layers).
 
 ### Anti-Double-Counting and Consistency Rules
 
@@ -526,8 +849,11 @@ in the **same currency**, the floor drops to **0%** if either:
 ### Art. 222 — No Maturity Mismatch
 
 Under the FCSM, the collateral's residual maturity must be at least equal to the exposure's
-residual maturity. The Art. 238 maturity mismatch adjustment does **not** apply to the
-FCSM (Art. 239(1) excludes FCSM from the maturity-mismatch formula).
+residual maturity. The Art. 239(2) maturity mismatch adjustment formula
+(`CVAM = CVA × (t − 0.25) / (T − 0.25)`, with `t` and `T` measured per Art. 238) does **not**
+apply to the FCSM — Art. 239(1) excludes FCSM from the maturity-mismatch formula entirely:
+the collateral simply does not qualify as eligible funded credit protection where any
+mismatch exists.
 
 ---
 
@@ -665,13 +991,115 @@ facility / loan row, the pledged surrender value, and the policy currency.
 The insurer's senior-unsecured SA RW is re-computed against the framework
 in play (CRR: CRR Table 3 / 4; B31: ECRA Table 3 / 4 or SCRA Table 5 per
 Art. 121). The mapping is then applied to produce the secured-portion RW
-emitted as the `life_ins_secured_rw` column (see
-[Output Schemas](../../data-model/output-schemas.md)).
+emitted as the `life_ins_secured_rw` column.
 
-!!! warning "Output-column naming documented separately"
-    The `life_ins_collateral_value` / `life_ins_secured_rw` output columns
-    are tracked for schema documentation under DOCS_IMPLEMENTATION_PLAN
-    D3.53 — not part of the current D2.48 closure.
+#### Spec ↔ Output-Column Cross-Reference
+
+The two `life_ins_*` columns produced by
+`engine/crm/life_insurance.py::compute_life_insurance_columns` are the
+machine-readable image of Art. 232(2) and Art. 232(3). The mapping
+between regulatory mechanics and engine outputs is one-to-one:
+
+| Art. 232 mechanic | PS1/26 ref | Engine output column | Engine semantics |
+|-------------------|------------|----------------------|------------------|
+| Eligibility (assigned/pledged, notified, surrender value declared) | Art. 200(b), Art. 212(2) | (gating only — no column) | Ineligible policies are filtered out by `LIFE_INSURANCE_COLLATERAL_TYPES` and the `beneficiary_reference` join; non-matching rows do not contribute. |
+| Value of credit protection = current surrender value, reduced for currency mismatch per Art. 233(3) **and (4)** | Art. 232(2), 2nd sub-paragraph | `life_ins_collateral_value` (`Float64`) | Sum of `market_value` across eligible pledged policies per beneficiary, capped at `ead_gross`. The surrender value is taken from the collateral row's `market_value` field by convention (`compute_life_insurance_columns` lines 109, 121-122). Currency-mismatch reduction is applied upstream when the haircut pipeline runs. |
+| SA secured-portion RW per Art. 232(3) derivation table (20% / 35% / 70% / 150%) | Art. 232(3)(a)-(d) | `life_ins_secured_rw` (`Float64`) | Value-weighted average across pledged policies of the per-policy mapped RW from `LIFE_INSURANCE_RW_MAP` (`engine/crm/life_insurance.py` lines 34-42). Computed by `_map_insurer_rw_to_secured_rw_expr` from the per-policy `insurer_risk_weight`. |
+| Blended RW = secured share × mapped RW + unsecured share × exposure RW (no Art. 222 floor) | Art. 232(2)(a) read with Art. 232(3) | `risk_weight` (overwritten in place) | `lf.sa.apply_life_insurance_rw_mapping()` (`engine/sa/namespace.py` lines 1423-1458) consumes the two `life_ins_*` columns and overwrites the row's `risk_weight` with the blended value. EAD is **not** reduced (life insurance is an RW substitution, not an EAD substitution). |
+| F-IRB LGD<sub>S</sub> = 40% on secured portion | Art. 232(2)(b) | (handled in IRB LGD waterfall) | The two `life_ins_*` columns describe SA only. F-IRB consumption of life-insurance collateral runs through the LGD waterfall — see [F-IRB collateral LGDs](../crr/firb-calculation.md). A-IRB firms apply own-estimate LGDs (Art. 169A/169B) and ignore these columns. |
+
+Defaults: where no eligible life-insurance collateral is pledged to an
+exposure, both columns are emitted as `0.0`
+(`_add_default_life_ins_columns`, `engine/crm/life_insurance.py`
+lines 155-160) and `apply_life_insurance_rw_mapping` is a no-op.
+
+The full output-frame schema entry for these two columns lives in
+[Output Schemas — CRM life insurance collateral](../../data-model/output-schemas.md#crm-life-insurance-collateral-art-232).
+
+#### Worked Example — SA Exposure Secured by an Investment-Grade Life-Insurance Policy
+
+A small, PDF-faithful end-to-end trace using the new B31 input tier
+35% (Art. 232(3)(b), insurer SA RW = 30%):
+
+**Inputs**
+
+| Field | Value |
+|-------|-------|
+| `exposure_reference` | `LOAN-001` |
+| `ead_gross` | GBP 1,000,000 |
+| Borrower SA risk weight (pre-CRM) | 100% (unrated corporate) |
+| Pledged policy `collateral_type` | `life_insurance` |
+| Pledged policy `market_value` (= surrender value) | GBP 600,000 |
+| Pledged policy currency | GBP (no FX mismatch) |
+| Insurer entity | UK insurance undertaking, SCRA Grade A bank-equivalent treatment, well-capitalised → **`insurer_risk_weight` = 30%** under Art. 121(5) |
+| `beneficiary_reference` (collateral row) | `LOAN-001` |
+
+**Step 1 — Eligibility (Art. 200(b), Art. 212(2))**
+
+The policy is pledged to the institution, the insurer has been
+notified, the surrender value is declared and non-reducible, and the
+policy is in scope of `LIFE_INSURANCE_COLLATERAL_TYPES`. The collateral
+row therefore enters the Art. 232 path. (If any operational requirement
+fails, the row is dropped from `li_coll`.)
+
+**Step 2 — Per-policy mapped secured-portion RW (Art. 232(3))**
+
+`insurer_risk_weight = 30%` falls into Art. 232(3)(b) ("30% or 50%"),
+so the per-policy mapped secured-portion RW is **35%**
+(`LIFE_INSURANCE_RW_MAP[0.30] = 0.35`).
+
+**Step 3 — Aggregation per beneficiary (`compute_life_insurance_columns`)**
+
+A single policy is pledged, so the value-weighted RW collapses to the
+per-policy RW:
+
+```
+_li_total_value   = 600,000
+_li_weighted_rw   = 600,000 × 0.35 = 210,000
+avg_rw            = 210,000 / 600,000 = 0.35
+capped_value      = min(600,000, 1,000,000) = 600,000   # ≤ ead_gross
+```
+
+**Step 4 — Output columns set on the exposure frame**
+
+| Column | Value |
+|--------|-------|
+| `life_ins_collateral_value` | `600000.0` |
+| `life_ins_secured_rw` | `0.35` |
+
+**Step 5 — SA risk-weight blending (`apply_life_insurance_rw_mapping`)**
+
+```
+secured_pct   = min(life_ins_collateral_value / ead, 1.0)
+              = 600,000 / 1,000,000 = 0.60
+unsecured_pct = 1 − 0.60 = 0.40
+blended_rw    = 0.60 × 0.35 + 0.40 × 1.00
+              = 0.210 + 0.400 = 0.610
+```
+
+The original `risk_weight = 1.00` is overwritten with **`0.61`**. EAD
+is unchanged (Art. 232 is an RW mechanic, not an EAD reduction).
+
+**Step 6 — Resulting RWA**
+
+```
+RWA = ead_final × risk_weight
+    = 1,000,000 × 0.61 = 610,000
+```
+
+vs. an unmitigated RWA of GBP 1,000,000 — a 39.0% RWA reduction driven
+entirely by the Art. 232(3)(b) 30% → 35% mapping on the secured 60% of
+the exposure. No Art. 222 20% floor applies (Art. 232 does not import
+the FCSM floor) — see `apply_life_insurance_rw_mapping`,
+`engine/sa/namespace.py` line 1450.
+
+!!! note "Why the worked example uses a 30% insurer RW"
+    The 30% input tier is one of the three new B31 tiers (30%, 65%,
+    135%) added by Art. 232(3) — a CRR firm holding the same policy
+    would have no derivation row for a 30% SCRA Grade A enhanced
+    insurer and would have to fall back to a less favourable tier or
+    refuse recognition. Picking 30% in the example therefore exercises
+    the B31-only path and matches the structural changes table above.
 
 ---
 

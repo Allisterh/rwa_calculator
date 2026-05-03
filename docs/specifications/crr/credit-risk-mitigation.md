@@ -145,6 +145,9 @@ Under certain conditions, supervisory haircuts may be set to **0%** for repo-sty
 
 - Both the exposure and collateral are **cash or CQS 1 government bonds**
 - The transaction is subject to **daily margin maintenance** with a one-day margin period of risk
+- The close-out period from the last MTM to the liquidation of the collateral
+  following a re-margining failure is **no more than 4 business days** (Art. 227(2)(d) —
+  see [the verbatim text and FCSM cross-application](#art-2272d-4-business-day-close-out-window))
 - In the event of a counterparty failure to deliver margin, the transaction can be **terminated and collateral liquidated promptly**
 - Settlement is via a **delivery-versus-payment** or equivalent mechanism
 - The documentation is **standard market documentation** for the repo/SFT transaction type
@@ -262,6 +265,63 @@ Note: Pro-rata allocation gives different LGD* than sequential fill when total c
 ## Non-Financial Collateral Recognition (CRR Art. 230)
 
 Non-financial collateral is recognised through the Foundation Collateral Method using the LGD* formula with LGDS values.
+
+### Eligibility for Other Physical Collateral (CRR Art. 199(6))
+
+Before any Art. 230 LGD\* mechanics can be applied, **other physical collateral**
+(i.e., physical collateral that is *not* immovable property under Art. 199(2)–(4) or
+receivables under Art. 199(5)) must clear the Art. 199(6) eligibility gate. CRR
+Art. 199(6) requires the competent authority to permit the institution to use the
+collateral, and is conditional on **all four** of the following:
+
+| Para | Condition |
+|------|-----------|
+| (a) | **Liquid market.** There are liquid markets, evidenced by frequent transactions taking into account the asset type, for the disposal of the collateral in an expeditious and economically efficient manner. The institution must reassess this periodically and where information indicates material market changes. |
+| (b) | **Public market prices.** There are well-established, publicly available market prices for the collateral, drawn from reliable sources (e.g., public indices), reflecting prices of transactions under normal conditions, and obtainable regularly without undue burden. |
+| (c) | **Realisation analysis.** The institution analyses the market prices, the time and costs required to realise the collateral, and the realised proceeds from the collateral. |
+| (d) | **70% / 10% realisation test.** *"the institution demonstrates that the realised proceeds from the collateral are not below 70% of the collateral value in more than 10% of all liquidations for a given type of collateral"* (CRR Art. 199(6)(d) verbatim, `docs/assets/crr.pdf` p. 197). Where there is material price volatility, the institution must additionally demonstrate to the competent authority that its valuation is sufficiently conservative. |
+
+The (d) test is a **collateral-type-level** historical realisation track record — it is
+assessed across the institution's full population of past liquidations of that
+collateral type, not loan-by-loan. Failing the test (or any of (a)–(c)) renders
+the collateral type ineligible: it cannot enter the Art. 230 LGD\* waterfall at
+all, and there is no fallback to a haircut-based recognition.
+
+Art. 199(6) eligibility is the **gate**; [Art. 230](#non-financial-collateral-recognition-crr-art-230)
+governs the **mechanics** (the C\*/C\*\* minimum coverage thresholds and the
+LGDS values applied to the secured portion via the LGD\* formula). The two
+articles operate in sequence: 199(6) decides whether the collateral type may be
+used at all, and 230 then converts the eligible collateral into an LGD effect
+subject to the 30% C\* minimum and 140% C\*\* full-recognition thresholds for
+"other collateral" in [Art. 230 Table 5](#f-irb-lgds-values-art-230--art-161).
+
+Art. 199(6) also feeds the documentation duty: institutions shall document
+fulfilment of (a)–(d) and the operational requirements under
+[Art. 210](#crm-eligibility-principles-art-193-194). Art. 199(8) further
+requires the PRA to publish a list of types of physical collateral for which
+institutions can assume that conditions (a) and (b) of paragraph 6 are met
+(condition (d) is institution-specific and cannot be satisfied by such a list).
+
+!!! info "Verbatim text vs plan reference"
+    The 70%/10% realisation test is sometimes informally cited as "Art. 199(3)"
+    (e.g., in legacy gap-analysis tracking) because the same test sits at point
+    16 of Annex VIII Part 1 of the original 2006 Capital Requirements Directive
+    framework, and the renumbering between Annex VIII (CRD III) and CRR
+    Art. 199 was not always updated downstream. In the consolidated UK-onshored
+    CRR (`docs/assets/crr.pdf` p. 197), the rule sits at **Art. 199(6)(d)**.
+    Art. 199(3) in the consolidated CRR is the unrelated UK-residential-property
+    loss-rate derogation paragraph (≤ 0.3% / ≤ 0.5% loss limits for the
+    derogation from the Art. 199(2)(b) repayment-source test). PS1/26 carries
+    Art. 199 forward unchanged for IRB physical-collateral eligibility — the
+    70%/10% test applies under both CRR and Basel 3.1.
+
+!!! warning "Not Yet Implemented"
+    The calculator does not currently enforce the Art. 199(6) eligibility gate
+    on inputs. Other-physical collateral rows enter the Foundation Collateral
+    Method (Art. 230) directly, subject only to the 30% C\* minimum threshold
+    and 1.4× overcollateralisation ratio below. Firms relying on this code path
+    must self-certify Art. 199(6)(a)–(d) compliance for each collateral type
+    before submission.
 
 ### Overcollateralisation Ratios
 
@@ -493,7 +553,7 @@ When credit protection covers a specific tranche (first loss or mezzanine) rathe
 
 - **First loss tranche**: The protection covers losses up to a specified threshold. The firm bears losses above the threshold. The protected portion uses the protection provider's risk weight; the retained senior tranche uses the obligor's risk weight.
 - **Second loss / mezzanine tranche**: More complex — the firm bears first losses up to the attachment point, protection covers the mezzanine band. The first loss portion may attract higher risk weights (up to 1250% for securitisation-like treatment).
-- **Maturity mismatch**: Standard maturity mismatch adjustment (Art. 238) applies to the protected tranche.
+- **Maturity mismatch**: Standard maturity mismatch adjustment (Art. 239(2)/(3); Art. 238 governs maturity *measurement*) applies to the protected tranche.
 
 !!! note "Implementation Status"
     Proportional coverage is implemented. Tranched coverage (Art. 234) is not yet implemented — all guarantee coverage is treated as proportional. This is a future enhancement for structured credit protection.
@@ -650,15 +710,89 @@ to the collateral instrument (Art. 222(3), first sub-paragraph), subject to a mi
 
 ### Art. 222(4) — 0% / 10% Floor for SFTs (Art. 227 Criteria)
 
+CRR Art. 222(4) verbatim (`docs/assets/crr.pdf` p. 217):
+
+!!! quote "CRR Art. 222(4)"
+    *"Institutions shall assign a risk weight of 0 % to the collateralised portion of
+    the exposure arising from repurchase transaction and securities lending or borrowing
+    transactions which fulfil the criteria in Article 227. Where the counterparty to the
+    transaction is not a core market participant, institutions shall assign a risk weight
+    of 10 %."*
+
 For **repurchase transactions and securities lending or borrowing transactions** that
 meet the criteria in Art. 227, the collateralised portion receives:
 
-- **0%** RW where the counterparty is a **core market participant** (as defined in
-  Art. 227);
-- **10%** RW where the counterparty is not a core market participant.
+- **0%** RW where the counterparty is a **core market participant** (as enumerated in
+  Art. 227(3) — sovereigns / central banks eligible for 0% RW under Art. 114, supervised
+  institutions and investment firms, certain insurance undertakings, regulated CIUs
+  subject to capital requirements, regulated pension funds, and recognised clearing
+  organisations);
+- **10%** RW where the counterparty is **not** a core market participant — that is, the
+  counterparty fails the Art. 227(3) enumeration even though all other Art. 227(2)
+  preconditions are met. The 10% reflects the higher counterparty-credit-risk tail under
+  a re-margining failure when the obligor sits outside the closed circle of regulated
+  market participants who underpin the 0% treatment.
+
+Art. 222(4) is a **risk-weight floor**, not a haircut. It substitutes for the obligor
+risk weight on the collateralised portion of the SFT — it does not modify the collateral's
+market value. Volatility haircuts are an FCCM mechanic (Art. 223–227) that does not exist
+under FCSM; FCSM uses the unadjusted market value of the collateral (Art. 222(2)) and
+expresses risk mitigation purely through the substituted RW.
 
 Art. 222(4) governs SFTs only — it does not extend to non-SFT transactions or to OTC
 derivative collateralisation (those fall under paragraphs 5 and 6 respectively).
+
+#### Art. 227(2)(a)–(h) — Preconditions for the FCSM SFT Carve-Out
+
+Art. 222(4) is gated by the eight conditions in Art. 227(2). All eight must be met
+for the 0% / 10% RW to apply; otherwise the SFT falls back to the Art. 222(3) 20%
+RW floor. The conditions cover (a) eligible cash / 0%-RW sovereign collateral, (b)
+single-currency exposure and collateral, (c) one-day maturity or daily MTM /
+re-margining, (d) the **4-business-day close-out window** detailed below, (e) a
+proven settlement system, (f) standard market documentation, (g) immediate
+terminability on default, and (h) core-market-participant counterparty status (the
+Art. 227(3) list — sovereigns/CBs eligible for 0% RW, institutions, investment
+firms, certain insurers, regulated CIUs, regulated pension funds, recognised
+clearing organisations).
+
+##### Art. 227(2)(d) — 4-business-day close-out window
+
+The close-out window in (d) is the operational tail risk gate. CRR
+Art. 227(2)(d) (verbatim, `docs/assets/crr.pdf` p. 226):
+
+!!! quote "CRR Art. 227(2)(d)"
+    *"the time between the last marking-to-market before a failure to re-margin by
+    the counterparty and the liquidation of the collateral is no more than four
+    business days;"*
+
+This is an **eligibility precondition** for the Art. 222(4) 0% / 10% RW — not a
+haircut-style adjustment. The four business days are measured from the last
+successful MTM (i.e., the last point at which the institution and counterparty
+agreed the value of the collateral) to the actual liquidation of the collateral
+following the counterparty's re-margining failure. If contractual or operational
+arrangements cannot demonstrate close-out within four business days, condition
+(d) fails, all of Art. 227(2) fails, and the SFT cannot use the FCSM SFT carve-out
+— it falls back to the Art. 222(3) 20% RW floor.
+
+The same Art. 227(2)(d) gate also governs the FCCM 0% volatility adjustment under
+Art. 227(1) (the title paragraph of Art. 227 is "Conditions for applying a 0%
+volatility adjustment under the Financial Collateral Comprehensive Method"). Both
+methods inherit the four-business-day test from the same paragraph; the difference
+is what the test gates — under FCSM it gates the RW substitution at Art. 222(4),
+under FCCM it gates the 0% volatility adjustment at Art. 227(1) replacing the
+Art. 224 haircuts.
+
+!!! info "B31 alignment — close-out window unchanged, condition list expanded"
+    PS1/26 Art. 227 (effective 1 January 2027) carries forward the four-business-day
+    close-out window unchanged at PS1/26 Art. 227(2)(d) (`docs/assets/ps126app1.pdf`
+    p. 207, identical wording: *"the time between the last marking-to-market before
+    a failure to re-margin by the counterparty and the liquidation of the collateral
+    is no more than four business days"*). PS1/26 expands the condition list from
+    (a)–(h) to (a)–(i) by adding a new (i) requiring an *"unfettered, enforceable
+    right immediately to seize and liquidate the collateral"* on default, and adds
+    a new paragraph 4 extending the 0% volatility adjustment treatment to master
+    netting agreements only when all transactions in the netting set meet
+    paragraph 2. The four-business-day test in (d) is untouched.
 
 ### Art. 222(6) — 0% Floor for Same-Currency Cash or 0%-RW Sovereign Debt (non-SFT, non-derivative)
 
@@ -740,6 +874,27 @@ path is reserved for firms that elect it under Art. 148(1) / Art. 150(1).
     See [B31 FCSM spec](../basel31/credit-risk-mitigation.md#fcsm-under-basel-31-art-222)
     for the corresponding paragraph structure (the Art. 222(3)/(4)/(6) three-tier
     split carries forward unchanged).
+
+!!! note "Change log — Art. 227(2)(d) 4-business-day close-out window documented (2026-05-02, D4.49)"
+    Added the
+    [Art. 227(2)(a)–(h) precondition list and the verbatim Art. 227(2)(d)
+    four-business-day close-out window](#art-2272ah-preconditions-for-the-fcsm-sft-carve-out)
+    that gates the Art. 222(4) FCSM SFT carve-out. The same paragraph governs the
+    FCCM 0% volatility adjustment under Art. 227(1). PS1/26 carries the test
+    forward unchanged at PS1/26 Art. 227(2)(d); the only PS1/26 change to Art. 227
+    is a new condition (i) (unfettered enforceable right to seize and liquidate)
+    and a new paragraph 4 covering master netting agreements.
+
+!!! note "Change log — Art. 222(4) verbatim text and 10% non-core-market rationale (2026-05-03, D4.54)"
+    Added the verbatim CRR Art. 222(4) quote and a clarifying note that Art. 222(4) is a
+    **risk-weight floor**, not a haircut. The 10% RW for non-core-market-participant SFT
+    counterparties was already stated in this section, but the plan item flagged it as
+    "haircut floor" terminology. FCSM has no haircut mechanic — collateral is taken at
+    unadjusted market value (Art. 222(2)) and risk mitigation is expressed through RW
+    substitution. The 10% reflects the residual counterparty tail risk when the obligor
+    sits outside the Art. 227(3) closed list of regulated market participants. PS1/26
+    carries Art. 222(4) forward unchanged — see the
+    [Basel 3.1 FCSM spec](../basel31/credit-risk-mitigation.md#fcsm-under-basel-31-art-222).
 
 ## Financial Collateral Comprehensive Method — FCCM (Art. 223)
 

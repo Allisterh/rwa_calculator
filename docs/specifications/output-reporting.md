@@ -110,6 +110,7 @@ breakdown, risk weight breakdown, memorandum items).
 - **C 08.02 / OF 08.02** — CR IRB by obligor grade: same columns as C 08.01 with dynamic rows (one per firm-specific internal rating grade/pool, ordered by PD).
 - **C 08.03 / OF 08.03** — CR IRB PD ranges: one submission per IRB exposure class. 11 columns covering on/off-BS, avg CCF, exposure value, avg PD, obligors, avg LGD, avg maturity, RWEA, EL, provisions. Rows are 17 fixed PD range buckets (0.00–0.15 through 100% default). Basel 3.1: row allocation uses pre-input-floor PD ("PD RANGE (PRE-INPUT FLOOR)") while the PD column value reports post-input-floor PD ("EXPOSURE WEIGHTED AVERAGE PD (POST INPUT FLOOR)"). Supporting factors removed, slotting excluded.
 - **C 08.04 / OF 08.04** — CR IRB RWEA flow statements: one submission per IRB exposure class. 1 column (RWEA), 9 rows (previous period, 7 movement categories, current period). Virtually identical between CRR and Basel 3.1 (supporting factors no longer mentioned).
+- **C 08.05 / OF 08.05** — CR IRB PD back-testing: one submission per IRB exposure class. 5 columns (arithmetic average PD, prior-year obligor count, of which defaulted, observed default rate, historical annual default rate), 17 fixed PD range buckets (same as C 08.03). Basel 3.1: col 0010 explicitly post-input floor; row allocation uses pre-input-floor PD. Slotting and CCR exposures excluded. See [corep-reporting.md](../features/corep-reporting.md#c-0805-of-0805-cr-irb-pd-back-testing) for the full column structure.
 - **C 08.06 / OF 08.06** — CR IRB specialised lending slotting: one submission per SL type. 10 columns (CRR) / 11 columns (Basel 3.1 adds col 0031 "(-) Change in exposure due to FCCM" — a deduction column between original exposure and exposure value). Rows by slotting category (1–5) × maturity band. Basel 3.1 adds "substantially stronger" sub-categories (reported in both row 0015 and 0025 when both criteria met) and separates HVCRE from IPRE (5 SL types vs 4).
 - **C 08.07 / OF 08.07** — CR IRB scope of use: one submission covering all exposure/roll-out classes. 5 columns (CRR) / 18 columns (Basel 3.1 — significantly expanded with RWEA breakdown by SA reason and materiality thresholds). Rows change from exposure classes to roll-out classes (Art 147B).
 - **C 09.01 / OF 09.01** — CR GB 1 geographical breakdown SA: one submission per country. 13 columns (CRR) / 10 columns (Basel 3.1) covering original exposure, defaults, provisions, exposure value, RWEA. Rows by SA exposure class. Basel 3.1: supporting factor columns removed, real estate rows restructured (regulatory residential/commercial RE sub-rows).
@@ -117,7 +118,6 @@ breakdown, risk weight breakdown, memorandum items).
 
 ### Missing Templates (Not Yet Documented)
 
-- **OF 08.05** — PD Backtesting: 5 columns — col 0010 arithmetic average PD (post-input floor, %), col 0020 number of obligors at end of previous year, col 0030 of which defaulted during the year, col 0040 observed average default rate (%), col 0050 average historical annual default rate (%). Rows organised by PD range buckets. CRR equivalent C 08.05 exists with same structure except col 0010 is "arithmetic average PD (%)" without the floor qualifier.
 - **OF 08.05.1** — PD Backtesting External Rating Equivalent: Extension of OF 08.05 for Art. 180(1)(f) ECAI-based estimates. Col 0005 uses firm-defined PD ranges (variable-width, not fixed buckets). Col 0006 provides one column per ECAI considered showing external rating equivalents. Columns 0010-0050 same as OF 08.05.
 - **OF 34.07** — IRB CCR Exposures by Exposure Class and PD Scale: 7 columns — col 0010 exposure value, col 0020 exposure-weighted average PD (post-floor), col 0030 number of obligors, col 0040 EWA LGD, col 0050 EWA maturity (years), col 0060 RWEA, col 0070 density of RWEA (col 0060 / col 0010). Required for any firm using F-IRB or A-IRB for CCR, regardless of CCR valuation method (SA-CCR, IMM, etc.). Excludes CCP-cleared exposures.
 
@@ -128,7 +128,7 @@ breakdown, risk weight breakdown, memorandum items).
 - Col 0160-0190: Off-balance sheet breakdown now uses 5 CCF bands (10%, 20%, 40%, 50%, 100%) instead of 4
 - Col 0235: Of which: where a credit assessment by a nominated ECAI is not available (new)
 - Rows 0021-0026: Specialised lending sub-types (object, commodities, project finance phases)
-- Rows 0330-0360: Real estate sub-breakdowns (regulatory RESI/CRE, dependent/not, ADC)
+- Rows 0330-0360: Real estate sub-breakdowns (regulatory RESI/CRE, dependent/not, ADC). PS1/26 row order is **non-sequential** for CRE: 0341 then 0343 (SME nested under 0341) then 0342 then 0344 (SME nested under 0342). See [OF 07.00 Section 1 — Real Estate Row Hierarchy](#of-0700-section-1--real-estate-row-hierarchy) for the full nesting.
 - Row 0380: Currency mismatch multiplier (retail and real estate)
 
 **OF 08.01 (IRB)** — new columns vs CRR C 08.01:
@@ -138,6 +138,7 @@ breakdown, risk weight breakdown, memorandum items).
 - Col 0252: Adjustment for post-model adjustments
 - Col 0253: Adjustment for mortgage RW floor
 - Col 0254: Unrecognised exposure adjustments (Art. 153(5A)(b), 154(4A)(c)) — not reported for F-IRB or slotting sheets
+- Col 0260: Risk-weighted exposure amount **after** adjustments — equals col 0251 adjusted for cols 0252 to 0254 (i.e. `0251 + 0252 + 0253 + 0254`). This is the post-adjustment RWEA that flows into OF 02.00 row 0010 as the IRB credit-risk RWEA contribution. Source: PS1/26 Annex II §3.3.1, p. 112.
 - Col 0265: Of which: exposure value for non-defaulted
 - Col 0275-0276: Non-modelled approaches exposure value and RWEA (for output floor)
 - Col 0281: Expected loss adjustment for post-model adjustments
@@ -156,10 +157,122 @@ breakdown, risk weight breakdown, memorandum items).
 
 **OF 07.00 (SA)** — missing row IDs:
 - Rows 0021-0026: Specialised lending sub-types (0021=OF, 0022=CF, 0023=PF, 0024=PF pre-operational, 0025=PF operational, 0026=PF high-quality operational — hierarchical under PF)
-- Rows 0331-0344: Real estate sub-breakdowns (regulatory RESI/CRE by dependent/non-dependent, including SME sub-rows 0343/0344 within CRE, ADC)
-- Rows 0351-0354: Other real estate sub-breakdown (residential/commercial, dependent/non-dependent)
+- Rows 0330-0360: Real estate sub-breakdowns (regulatory RESI, regulatory CRE, other RE, ADC). The 03xx grid is **non-sequential** in the PS1/26 row order — see [OF 07.00 Section 1 — Real Estate Row Hierarchy](#of-0700-section-1--real-estate-row-hierarchy) below.
+- Rows 0351-0354: Other real estate sub-breakdown (residential/commercial, dependent/non-dependent under Art. 124J)
 - Rows 0371-0374: Equity transitional sub-rows (0371=SA higher-risk, 0372=SA other, 0373=IRB higher-risk, 0374=IRB other — expire 1 January 2030)
 - Row 0380: Retail and real estate exposures subject to the currency mismatch multiplier (Art. 112(1)(h)/(i))
+
+#### OF 07.00 Section 1 — Real Estate Row Hierarchy
+
+The Section 1 real-estate "of which" grid (rows 0330–0360) is **not** a flat
+sequential range. PS1/26 Annex II §3.2 (pp. 90–91) defines the rows in the
+order **0341 → 0343 → 0342 → 0344**, and the SME sub-rows (0343, 0344) are
+each nested under a different parent. Generators must respect this nesting
+when allocating SME CRE exposures.
+
+| Row | Title | Article | Parent | Notes |
+|-----|-------|---------|--------|-------|
+| 0330 | Regulatory residential real estate | Art. 124F + 124G | — | Sum of 0331 + 0332 |
+| 0331 | RESI — not materially dependent on property cash flows | Art. 124F | 0330 | Loan-splitting "secured leg" applies |
+| 0332 | RESI — materially dependent on property cash flows | Art. 124G | 0330 | Income-producing residential (LTV grid) |
+| 0340 | Regulatory commercial real estate | Art. 124H + 124I | — | Sum of 0341 + 0342 |
+| 0341 | CRE — not materially dependent on property cash flows | Art. 124H | 0340 | |
+| 0343 | of which: CRE not materially dependent — to SMEs | Art. 124H + Glossary "SME" | **0341** | **Nested under 0341, not 0342** |
+| 0342 | CRE — materially dependent on property cash flows | Art. 124I | 0340 | |
+| 0344 | of which: CRE materially dependent — to SMEs | Art. 124I + Glossary "SME" | **0342** | **Nested under 0342, not 0341** |
+| 0350 | Other real estate | Art. 124J | — | Sum of 0351–0354 |
+| 0351 | Other RESI — not materially dependent | Art. 124J(2) | 0350 | |
+| 0352 | Other RESI — materially dependent | Art. 124J(1) | 0350 | |
+| 0353 | Other CRE — not materially dependent | Art. 124J(3) | 0350 | |
+| 0354 | Other CRE — materially dependent | Art. 124J(1) | 0350 | |
+| 0360 | Land acquisition, development and construction (ADC) | Art. 124K | — | |
+
+!!! warning "0343 is under 0341, 0344 is under 0342"
+    The SME sub-rows are **separated by parent**, not paired together. A CRE
+    SME exposure that is not materially dependent on property cash flows
+    (Art. 124H) is reported in row **0343** (nested under 0341); a CRE SME
+    exposure that **is** materially dependent (Art. 124I) is reported in
+    row **0344** (nested under 0342). The PS1/26 Annex II row-order listing
+    deliberately interleaves them as 0341 → 0343 → 0342 → 0344 to make this
+    explicit. Do not assume row-ID ordering implies parent-child grouping.
+
+Source: PS1/26 Annex II §3.2, pp. 90–91 of
+`docs/assets/ps1-26-annex-ii-reporting-instructions.pdf`.
+
+For the **risk-weight band rows** (Section 3 of OF 07.00), see the dedicated table
+[OF 07.00 Section 3 — Risk Weight Band Row IDs](#of-0700-section-3--risk-weight-band-row-ids)
+below.
+
+### OF 07.00 Section 3 — Risk Weight Band Row IDs
+
+Section 3 of OF 07.00 (the "Breakdown of total exposures by risk weights" section)
+expands from **15** risk-weight rows under CRR C 07.00 to **29** rows under Basel 3.1
+OF 07.00. The fourteen new granular bands (15%, 25%, 30%, 40%, 45%, 60%, 65%, 80%,
+85%, 105%, 110%, 130%, 135%, 400%) reflect the more granular risk-weight grid
+introduced by PRA PS1/26 — primarily from real-estate loan-splitting / income-producing
+LTV bands (Art. 124F–124I), corporate sub-categories (Art. 122), institution ECRA/SCRA
+(Art. 120–121), and the new equity higher-risk weight (Art. 133(4)).
+
+The previous CRR row 0260 (370%) is **removed** and replaced by row **0261 (400%)**
+for higher-risk equity exposures under Art. 133(4) — reported during the Standardised
+Transitional Approach period via memorandum row 0374, but always allocated to row 0261
+in Section 3.
+
+| Row ID | Risk Weight | Basel 3.1 / CRR Article(s) | Typical Source |
+|--------|-------------|----------------------------|----------------|
+| 0140 | 0% | SA Art. 114(2) (sovereign CQS 1), Art. 116(4) (PSE), Art. 134(3) (cash) | Sovereign AAA-AA-, eligible PSE, cash items |
+| 0150 | 2% | Art. 306(1) Counterparty Credit Risk (CRR) Part | Trade exposures to QCCPs |
+| 0160 | 4% | Art. 305(3) Counterparty Credit Risk (CRR) Part | Default-fund contributions to QCCPs (cap) |
+| 0170 | 10% | SA Art. 129 (covered bonds CQS 1) | Covered bonds — CQS 1 |
+| **0171** | **15%** | SA Art. 129 (covered bonds CQS 2-3) — Basel 3.1 expansion | Covered bonds — CQS 2 (and certain CQS 3) |
+| 0180 | 20% | SA Art. 114 / 120 (sovereign / institution CQS 2; SCRA Grade A short-term) | Sovereign CQS 2, institution ECRA CQS 1, RE secured-portion (Art. 124F) |
+| **0181** | **25%** | SA Art. 124G(2) junior-charge multiplier on 20% base | Real estate income-producing RESI low-LTV variants |
+| **0182** | **30%** | SA Art. 120 (institution ECRA CQS 2 >3m), Art. 121 (SCRA Grade A enhanced), Art. 124G (income-producing RESI <=50% LTV) | Institutions, income-producing RESI |
+| 0190 | 35% | SA Art. 124G (income-producing RESI 50-60% LTV) | Income-producing residential RE |
+| **0191** | **40%** | SA Art. 121 (SCRA Grade A >3m), Art. 124G (income-producing RESI 60-70% LTV), Art. 161 covered-bond LGD-driven RW | Institutions SCRA Grade A, income-producing RESI mid-LTV |
+| **0192** | **45%** | SA Art. 123A (transactor retail) — Basel 3.1 new | Transactor retail exposures (paid in full each cycle) |
+| 0200 | 50% | SA Art. 120 (institution ECRA CQS 3), Art. 124G (income-producing RESI 70-80% LTV) | Institutions ECRA CQS 3, income-producing RESI |
+| **0201** | **60%** | SA Art. 124H (commercial RE secured-portion natural person/SME), Art. 124G (income-producing RESI 80-90% LTV) | CRE loan-splitting secured leg |
+| **0202** | **65%** | SA Art. 122(2) (corporate CQS 3 — was 100% under CRR), Art. 122(3) (investment-grade unrated corporate) | Corporates CQS 3, investment-grade unrated corporates |
+| 0210 | 70% | Art. 232(3)(c) Credit Risk Mitigation (CRR) Part | CRM-driven outcomes (e.g., minimum collateral floor) |
+| 0220 | 75% | SA Art. 123 (other retail), Art. 124F (counterparty RW for RESI residual) | Standard retail, RE residual leg |
+| **0221** | **80%** | SA Art. 122A(3) (project finance high-quality operational phase) — Basel 3.1 SA SL new | High-quality operational PF |
+| **0222** | **85%** | SA Art. 122(4) (SME corporate — replaces CRR 100% + SF mechanism) | SME corporate (turnover <= EUR 50m) |
+| 0230 | 100% | SA Art. 122(2) (corporate CQS 4-5 / unrated), Art. 124I (commercial RE income-producing <=80% LTV), Art. 134(2) (other items) | Default unrated corporates, CRE income-producing, other items |
+| **0231** | **105%** | SA Art. 124G (income-producing RESI >100% LTV) | High-LTV income-producing residential |
+| **0232** | **110%** | SA Art. 124I (commercial RE income-producing >80% LTV) | High-LTV income-producing commercial |
+| **0233** | **130%** | SA Art. 122A(1) (project finance pre-operational phase) — Basel 3.1 SA SL new | Pre-operational project finance |
+| **0234** | **135%** | Junior-charge multiplier × 110% (CRE income-producing high-LTV with subordinated charge) | Junior-charge CRE outcome |
+| 0240 | 150% | SA Art. 122(2) (corporate CQS 6), Art. 127 (defaulted, low provisions), Art. 128 (high-risk), Art. 133 (subordinated debt) | Defaulted high-LGD, high-risk items, subordinated debt |
+| 0250 | 250% | SA Art. 133(3) (standard equity) and Art. 48(4) CRR | Standard SA equity exposures |
+| **0261** | **400%** | SA Art. 133(4) (higher-risk equity) and Art. 48(4) CRR — **replaces CRR row 0260 (370%)** | Higher-risk equity (unlisted, <5yr, PE, speculative) |
+| 0270 | 1250% | SA Art. 132(2) and Art. 379 CRR | Risk-weight deductions (full capital) |
+| 0280 | Other | SA Art. 113(1)–(5) | Other risk weights — not available for Government, Corporates, Institutions, Retail. Used for nth-to-default credit derivatives under "Other items" |
+
+!!! warning "0260 (370%) Removed Under Basel 3.1"
+    The CRR-era C 07.00 row **0260 = 370%** (higher-risk equity under CRR Art. 133(4))
+    is **removed** under Basel 3.1 OF 07.00. Higher-risk equity exposures are now
+    reported in row **0261 = 400%**, reflecting the increased Basel 3.1 SA risk weight
+    in PRA PS1/26 Art. 133(4). Any code or template mapping that previously emitted
+    row 0260 must be updated to emit 0261 with the revised 400% weight.
+
+!!! info "Allocation Notes"
+    - Mixed real estate exposures (Art. 124(4)) are reported against the risk weights
+      for their constituent parts.
+    - Real estate exposures with junior charges (Art. 124G(2), 124H(3), 124I(3)) are
+      **allocated** to the row that would apply if the junior-charge multiplier were
+      disapplied; the **RWEA column** still reflects the multiplier (so a 110% base
+      with a 1.25× junior-charge multiplier reports under row 0232 = 110%, but with
+      RWEA = exposure × 137.5%, surfacing in row 0234 = 135% only when the base RW
+      itself is the multiplier outcome).
+    - Equity exposures under the Standardised Transitional Approach (Rules 4.1–4.10
+      of the Credit Risk: General Provisions (CRR) Part) are allocated to rows 0250
+      and 0261 per Art. 133, and additionally reported against memorandum rows
+      0371–0374 for the transitional period (expiring 1 January 2030). The
+      memorandum reporting in 0371–0374 does **not** affect the primary allocation
+      to 0250 / 0261.
+    - Source: PS1/26 Annex II §3.2.5, pp. 95–96 of
+      `docs/assets/ps1-26-annex-ii-reporting-instructions.pdf`.
 
 **OF 08.07 (IRB Scope of Use)** — missing row IDs:
 - Rows 0180-0260: Roll-out class breakdowns for corporate sub-classes, retail sub-classes, and SL types
@@ -255,7 +368,7 @@ COREP supervisory returns with publicly available credit risk data.
 ### Reference Documents
 - CRR: `docs/assets/crr-annex-xx-instructions-regarding-disclosure.PDF`, `crr-pillar3-irb-credit-risk-instructions.pdf`, `crr-pillar3-risk-weighted-exposure-instructions-leverage-ratio.pdf`, `crr-pillar3-specialised-lending-instructions.pdf`
 - Basel 3.1: `docs/assets/ps1-26-annex-xx-credit-risk-sa-disclosure-instructions.pdf` (CR4, CR5), `ps1-26-annex-xxii-credit-risk-irb-disclosure-instructions.pdf` (CR6, CR6-A, CR7, CR7-A, CR8, CR9, CR9.1), `ps1-26-annex-xxiv-credit-risk-irb-disclosure-instructions.pdf` (CR10)
-- **CMS1 / CMS2**: instructions are in PS1/26 Annex II (output-floor and capital-summaries disclosure instructions). Source PDF is **not reproduced locally** in `docs/assets/` — the disclosure annex references the template via an inline hyperlink. Refer to PS1/26 Appendix 1 §6.2A / §6.2B (around p470) and Article 2a of the Disclosure (CRR) Part on p467. Official hyperlink: <https://www.bankofengland.co.uk/prudential-regulation/publication/2026/january/implementation-of-the-basel-3-1-final-rules-policy-statement>.
+- **CMS1 / CMS2**: the templates are listed in **Annex I** and the row/column instructions live in **Annex II** of the Disclosure (CRR) Part. Article 2a (*Disclosure of Output Floor*) of the Disclosure (CRR) Part — `docs/assets/ps126app1.pdf` page 467 — establishes that institutions shall make the Article 456(1) output-floor disclosures using Templates UKB CMS1 and UKB CMS2 of Annex I "and the relevant instructions set out in Annex II". The PS1/26 PDF references the Annex I templates and Annex II instructions only via inline hyperlinks (`docs/assets/ps126app1.pdf` page 470, §6.2A "Annex I Template UKB CMS1 can be found here" and §6.2B "Annex I Template UKB CMS2 can be found here"); neither the templates nor the disclosure instructions are reproduced locally as standalone PDFs in `docs/assets/`. Retrieve them from the PS1/26 publication landing page: <https://www.bankofengland.co.uk/prudential-regulation/publication/2026/january/implementation-of-the-basel-3-1-final-rules-policy-statement>. Note: the local file `docs/assets/ps1-26-annex-ii-reporting-instructions.pdf` is the **COREP supervisory** reporting Annex II — **not** the Pillar III Disclosure Annex II that contains CMS1/CMS2 instructions.
 
 ### Status
 - Documentation: Done — see [Pillar III Disclosures](../features/pillar3-disclosures.md)

@@ -44,7 +44,18 @@ by remaining maturity. All specialised lending types (PF, OF, CF, IPRE) use the 
 | Good | 90% | 70% |
 | Satisfactory | 115% | 115% |
 | Weak | 250% | 250% |
-| Default | 0% | 0% |
+| Default | 0% (EL) | 0% (EL) |
+
+!!! note "`(EL)` annotation — Default category"
+    The 0% risk weight on the Default row is paired with a non-zero **expected loss**
+    rate of **50%** of EAD. The capital impact for defaulted slotting exposures flows
+    through the EL shortfall/excess mechanism (Art. 159), not through the risk weight.
+    See [Slotting Expected Loss Rates — Table B](#slotting-expected-loss-rates--table-b-pra-ps126-art-1586)
+    for the full EL ladder; the same `(EL)` convention is used in the
+    [Basel 3.1 slotting tables](../basel31/slotting-approach.md#risk-weight-tables).
+    UK CRR Art. 158 was omitted by SI 2021/1078 — the 50% Default EL rate is sourced
+    from the PRA Rulebook (CRR Firms) equivalent, see
+    [Provisions spec](provisions.md) for the legal basis.
 
 !!! warning "UK CRR Has No HVCRE Concept — No Table 2"
     The term "high volatility commercial real estate" does **not appear anywhere** in the

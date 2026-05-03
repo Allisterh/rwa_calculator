@@ -2,9 +2,43 @@
 
 Equity exposure treatment under SA and IRB, including CIU look-through and Basel 3.1 transitional schedule.
 
-**Regulatory Reference:** CRR Articles 132-133, 155; PRA PS1/26 Articles 132-133, 147A
+**Regulatory Reference:** CRR Articles 132 (omitted)–133, 155; PRA PS1/26 Articles 132–132C, 133, 147A
 
 **Test Group:** CRR-J
+
+---
+
+!!! warning "Regulatory History — UK CRR Art. 132 / 132a omitted"
+    **UK CRR has no live Art. 132, 132a, 132A, or 132B.** Article 132
+    ("Exposures in the form of units or shares in CIUs") and Article 132a
+    ("Approaches for calculating risk-weighted exposure amounts of CIUs") were
+    **omitted from UK CRR by SI 2021/1078, regs. 1(1), 6(3)(b)–(c), effective
+    1 January 2022**. From 1 Jan 2022 to 31 Dec 2026, the equivalent CIU rules
+    are housed in the **PRA Rulebook (CRR firms — Standardised Approach Part)**
+    rather than CRR itself.
+
+    **Pre-omission paragraph structure** of Art. 132 contained paragraphs
+    (1)–(5), with paragraph (4) covering the look-through approach and
+    paragraph (5) covering the mandate-based approach (Annex III correlation
+    table, page 451 of the UK-onshored CRR PDF, references Art. 132(4) and
+    Art. 132(5) explicitly). Some later versions of EU CRR (post-CRR2 amendment
+    by Reg. 2017/2401) split these into Art. 132 + Art. 132a; UK onshoring
+    omitted both.
+
+    **Article 132A and Article 132B are Basel 3.1 (PRA PS1/26) constructs**,
+    not CRR articles:
+
+    - **PRA PS1/26 Art. 132A** — Approaches for calculating risk-weighted exposure amounts of CIUs (look-through = Art. 132A(1); mandate-based = Art. 132A(2)).
+    - **PRA PS1/26 Art. 132B** — Exclusions from the approaches for calculating risk-weighted exposure amounts of CIUs (separate exclusion treatment, not a CRM equivalent).
+    - **PRA PS1/26 Art. 132C** — Treatment of off-balance sheet exposures to CIUs.
+
+    These come into force on 1 January 2027. See
+    [Basel 3.1 Equity Approach Specification](../basel31/equity-approach.md)
+    for the B31 treatment.
+
+    Within this CRR specification, references to the look-through and
+    mandate-based approaches use the pre-omission **Art. 132(4)** and
+    **Art. 132(5)** citations.
 
 ---
 
@@ -14,7 +48,7 @@ Equity exposure treatment under SA and IRB, including CIU look-through and Basel
 |----|-------------|----------|--------|
 | FR-1.7 | Equity risk weights: SA (Art. 133) and IRB Simple (Art. 155) | P1 | Done |
 | FR-1.7a | Basel 3.1 equity SA weights (Art. 133(3)-(6)) | P1 | Done |
-| FR-1.7b | CIU treatment (Art. 132/132A/132B) | P2 | Done |
+| FR-1.7b | CIU treatment (CRR Art. 132 (omitted, pre-omission paras (4)–(5)); PRA PS1/26 Art. 132A / 132B) | P2 | Done |
 | FR-1.7c | Equity transitional schedule (PRA Rules 4.1-4.3) | P2 | Done |
 
 ---
@@ -30,9 +64,9 @@ as high risk items in accordance with Article 128."
 |-------------|-------------|-----------|
 | Central bank / sovereign equity | 0% | Sovereign treatment |
 | All other equity (listed, unlisted, PE, etc.) | 100% | Art. 133(2) flat |
-| CIU (fallback) | **1,250%** | Art. 132(2) |
-| CIU (look-through) | Underlying RW | Art. 132(1) |
-| CIU (mandate-based) | Mandate RW | Art. 132A |
+| CIU (fallback) | **1,250%** | Art. 132(2) (pre-omission) |
+| CIU (look-through) | Underlying RW | Art. 132(4) (pre-omission) |
+| CIU (mandate-based) | Mandate RW | Art. 132(5) (pre-omission) |
 
 !!! warning "Previous Spec Error Corrected"
     This table previously claimed CRR Art. 133 had differentiated weights: unlisted=150%
@@ -197,11 +231,19 @@ PD/LGD, Internal Models) are removed. All equity exposures must use SA risk weig
 (Art. 133). This is a mandatory restriction — firms cannot opt to continue using IRB
 equity methods.
 
-## CIU Treatment (Art. 132 / 132A / 132B)
+## CIU Treatment (Pre-omission Art. 132)
 
-Collective Investment Undertakings (CIUs / funds) have three possible treatments:
+Collective Investment Undertakings (CIUs / funds) have three possible treatments
+under the pre-omission UK CRR Art. 132 framework. Recall that Art. 132 was
+**omitted from UK CRR by SI 2021/1078** with effect from 1 January 2022; the
+paragraph references below are the pre-omission citations preserved here for
+historical and pre-2022 reporting completeness. The equivalent live UK rules
+through 31 December 2026 sit in the PRA Rulebook (CRR firms — Standardised
+Approach Part); from 1 January 2027 they are reintroduced as PRA PS1/26
+Art. 132A (look-through and mandate-based) and Art. 132B (exclusions) — see
+[Basel 3.1 Equity Approach Specification](../basel31/equity-approach.md#ciu-treatment).
 
-### Look-Through Approach (Art. 132A)
+### Look-Through Approach (pre-omission Art. 132(4))
 
 Where the firm has sufficient information about the CIU's underlying holdings:
 
@@ -209,7 +251,10 @@ Where the firm has sufficient information about the CIU's underlying holdings:
 - The CIU's leverage is applied to gross up the risk weights
 - Requires daily knowledge of the fund's composition
 
-### Mandate-Based Approach (Art. 132B)
+Reintroduced under Basel 3.1 as **PRA PS1/26 Art. 132A(1)** (and Art. 152(4)
+for IRB CIUs).
+
+### Mandate-Based Approach (pre-omission Art. 132(5))
 
 Where full look-through is not available but the fund's mandate is known:
 
@@ -217,7 +262,10 @@ Where full look-through is not available but the fund's mandate is known:
 - Then the next highest-risk class, and so on until the maximum total investment capacity is filled
 - This produces a conservative weighted-average risk weight
 
-### Fallback Approach (Art. 132(2))
+Reintroduced under Basel 3.1 as **PRA PS1/26 Art. 132A(2)** (and Art. 152(5)
+for IRB CIUs).
+
+### Fallback Approach (pre-omission Art. 132(2))
 
 Where neither look-through nor mandate-based approaches are feasible:
 
@@ -229,11 +277,14 @@ The 1,250% fallback originates from CRR2 (Regulation 2019/876) and is carried fo
 unchanged in PRA PS1/26 Art. 132(2). This is a punitive weight designed to incentivise
 firms to use look-through or mandate-based approaches.
 
-!!! info "Art. 132B(2) Exclusion — Not the Same as Fallback"
-    CIU equity exposures **excluded** from CIU treatment under Art. 132B(2) (e.g.,
-    0% sovereign entities, legislative programme holdings) receive standard **Art. 133
-    equity treatment** instead: 100% (CRR) / 250% listed or 400% unlisted (Basel 3.1).
-    These are NOT the Art. 132(2) "fallback" — they are reclassified equity exposures.
+!!! info "PRA PS1/26 Art. 132B Exclusion — Not the Same as Fallback"
+    Under Basel 3.1, certain CIU equity exposures are **excluded** from CIU
+    treatment by Art. 132B (e.g., 0% sovereign entities, legislative programme
+    holdings) and instead receive standard **Art. 133 equity treatment**: 100%
+    (CRR) / 250% listed or 400% unlisted (Basel 3.1). These are NOT the
+    Art. 132(2) "fallback" — they are reclassified equity exposures. Art. 132B
+    has no CRR equivalent; under UK CRR the analogous exclusion criteria sat
+    within the omitted Art. 132 itself (and now within the PRA Rulebook).
 
 !!! note "Fixed in v0.1.181"
     The CIU fallback is correctly applied as **1,250%** for both CRR and Basel 3.1,
@@ -340,12 +391,14 @@ for detailed requirements and acceptance test scenarios.
 
 | Scenario ID | Description | CIU Approach | Key Parameters | EAD | Expected RW | Expected RWA |
 |-------------|-------------|--------------|----------------|-----|-------------|--------------|
-| CRR-J15 | CIU mandate-based SA (Art. 132A) | `mandate_based` | `ciu_mandate_rw=0.80` | £200,000 | 80% | £160,000 |
+| CRR-J15 | CIU mandate-based SA (pre-omission Art. 132(5)) | `mandate_based` | `ciu_mandate_rw=0.80` | £200,000 | 80% | £160,000 |
 | CRR-J16 | CIU mandate-based + third-party 1.2× multiplier | `mandate_based` | `ciu_mandate_rw=0.80`, `ciu_third_party_calc=True` | £200,000 | 96% | £192,000 |
 | CRR-J17 | CIU no approach set (default fallback) | `None` | — | £100,000 | 1,250% | £1,250,000 |
 
-CRR-J16 calculation: the 1.2× third-party multiplier (Art. 132(4)) scales the mandate risk weight:
-`RW = 0.80 × 1.2 = 0.96 (96%)`.
+CRR-J16 calculation: the 1.2× third-party multiplier (pre-omission Art. 132(5),
+third sub-paragraph, third-party calculation provision) scales the mandate risk
+weight: `RW = 0.80 × 1.2 = 0.96 (96%)`. Under PRA PS1/26 the same 1.2×
+multiplier sits in Art. 132A(2).
 
 ### RWA Arithmetic Verification — CRR-J18 to CRR-J20
 

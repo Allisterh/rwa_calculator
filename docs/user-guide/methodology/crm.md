@@ -195,6 +195,79 @@ flowchart LR
 | Corporates | Rated corporates with lower RW |
 | Parent Companies | Under certain conditions |
 
+### Qualifying CCP (QCCP) Guarantor Override (CRR Art. 306)
+
+When the guarantor is a **qualifying central counterparty** (QCCP), the substituted
+risk weight on the guaranteed portion is overridden by the Art. 306 trade-exposure
+weights. This bypasses the normal institution CQS-keyed lookup and applies under
+both CRR and Basel 3.1 (Art. 306 is carried forward unchanged by PRA PS1/26):
+
+| Trade Type | RW | Trigger | Reference |
+|------------|----|---------|-----------|
+| Proprietary trade exposure (own / clearing-member trades) | **2%** | `guarantor_entity_type == "ccp"` and `guarantor_is_ccp_client_cleared` is `False` / null | CRR Art. 306(1)(a); BCBS CRE54.14 |
+| Client-cleared trade exposure | **4%** | `guarantor_entity_type == "ccp"` and `guarantor_is_ccp_client_cleared = True` | CRR Art. 306(1)(b); BCBS CRE54.15 |
+
+The override fires inside the IRB guarantee SA-RW substitution path
+(`_compute_guarantor_rw_sa` in
+[`engine/irb/guarantee.py`](https://github.com/OpenAfterHours/rwa_calculator/blob/master/src/rwa_calc/engine/irb/guarantee.py))
+and the parallel SA path. It takes precedence over the institution
+CQS-driven RW that would otherwise apply to a `guarantor_exposure_class` of
+`institution`, and the guarantee-beneficiality test (guarantor RW < borrower
+IRB RW) is then evaluated against the 2%/4% weight rather than the institution
+CQS weight.
+
+!!! info "Scope: trade exposures only"
+    Art. 306 covers **trade exposures** (initial margin, mark-to-market, cleared
+    derivative positions). Default-fund contributions to a QCCP follow the
+    separate Art. 308 / CRE54.16 risk-sensitive calculation and are not part
+    of the guarantee substitution path. See the COREP CR-SA template mapping
+    at [Output Reporting Specification — Row 0150 / 0160](../../specifications/output-reporting.md)
+    for how each is tagged.
+
+!!! warning "Non-QCCPs do not get the override"
+    If the guarantor is a CCP that is **not** qualifying (i.e. `is_qccp = False`),
+    Art. 306 does not apply: the guarantor falls back to the bilateral institution
+    treatment (CQS-keyed institution RW) for trade exposures, and default-fund
+    contributions attract the punitive 1250% / deduction treatment. The calculator
+    only fires the 2%/4% override when the entity is flagged as a CCP at the input
+    layer; QCCP qualification is a precondition the user data must already reflect.
+
+#### Worked Example — QCCP-Guaranteed Bank Exposure
+
+**Exposure:**
+
+- Corporate loan, £10m, IRB obligor
+- Pre-CRM IRB RW: 80%
+
+**Guarantee:**
+
+- Qualifying CCP, proprietary trade exposure
+- `guarantor_entity_type = "ccp"`, `guarantor_is_ccp_client_cleared = False`
+- Guaranteed amount: £6m
+
+**Calculation:**
+
+```python
+# Guarantor RW from Art. 306(1)(a) override -- not the institution CQS table
+guarantor_rw = 0.02  # 2% QCCP proprietary
+
+# Beneficiality check: 2% < 80% -> guarantee is beneficial, applied
+RWA_guaranteed   = 6_000_000 * 0.02 = 120_000
+RWA_unguaranteed = 4_000_000 * 0.80 = 3_200_000
+
+RWA = 120_000 + 3_200_000 = 3_320_000
+
+# vs. pre-CRM RWA = 10,000,000 * 0.80 = 8,000,000
+# Benefit: 58.5% reduction
+```
+
+If the same guarantee had been a client-cleared trade exposure instead, the
+override would yield 4% on the guaranteed portion (`6_000_000 × 0.04 =
+£240,000`) — still substantially below any institution CQS RW.
+
+> **See also:** [Institution Exposure Class — Central Counterparties](../exposure-classes/institution.md#central-counterparties-ccps)
+> for the SA direct-exposure side of the same Art. 306 mechanic.
+
 ### Guarantee Requirements
 
 1. **Direct claim** on guarantor
@@ -204,29 +277,51 @@ flowchart LR
 
 ### Double Default (CRR Only)
 
-For qualifying guarantees under CRR, the double default treatment (Art. 153(3)) scales the
-obligor's IRB capital requirement by a factor that reflects the guarantor's creditworthiness:
+For qualifying guarantees under CRR, the double default treatment (Art. 153(3)) adjusts the
+risk-weighted exposure amount by a factor that reflects the guarantor's creditworthiness:
 
 ```
-K_dd = K_obligor × (0.15 + 160 × PD_guarantor)
+RWEA_dd = RW × exposure_value × (0.15 + 160 × PD_pp)
 ```
 
-Where `K_obligor` is the IRB capital requirement calculated using the obligor's PD and the
-guarantor's LGD (Art. 161(4)), and `PD_guarantor` is the protection provider's probability of
-default. The scaling factor `(0.15 + 160 × PD_guarantor)` is always less than 1 for investment-grade
-guarantors, providing significant capital relief.
+Where `RW` is calculated using the **obligor's PD** combined with the **LGD of a comparable
+direct exposure to the protection provider** (per Art. 161(4)), `PD_pp` is the protection
+provider's probability of default, and the maturity factor `b` is calculated using the lower
+of the guarantor and obligor PDs. The scaling factor `(0.15 + 160 × PD_pp)` is less than 1
+for investment-grade guarantors, providing meaningful capital relief.
 
-**Eligibility (Art. 202, Art. 217):**
+**Eligibility — protection provider (Art. 202):**
 
-- Underlying exposure must be corporate, RGLA, PSE, or SME retail
-- Protection provider must be an institution, investment firm, insurance undertaking, or export
-  credit agency with internal PD equivalent to CQS 2 or better (CQS 3 maintained threshold)
+- Must be an institution, investment firm, insurance/reinsurance undertaking, or export
+  credit agency
+- Must be regulated equivalently to the CRR, **or** had an ECAI assessment ≥ CQS 3 at the
+  time the protection was provided (Art. 202(b))
+- Must have had, at the time the protection was provided (or any period thereafter), an
+  internal rating with PD equivalent to **CQS 2 or better** (Art. 202(c))
+- Must currently have an internal rating with PD equivalent to **CQS 3 or better**
+  (Art. 202(d))
+- Export credit agency protection must not benefit from any explicit central government
+  counter-guarantee
+
+**Eligibility — exposure & operational (Art. 153(3), Art. 154(2), Art. 217):**
+
+- Underlying exposure must be corporate, institution, central government/central bank, or
+  retail SME (the latter via Art. 154(2) cross-reference to Art. 153(3))
 - Obligor and protection provider must not be in the same group
-- A-IRB permission required (the firm must model PD internally for the guarantor)
-- Risk weight must not already factor in any aspect of the credit protection
+- Risk weight on the underlying exposure must not already factor in any aspect of the
+  credit protection
+- The institution must hold **A-IRB own-LGD permission** for the relevant exposure class:
+  Art. 153(3) requires the LGD of a comparable direct exposure to the protection provider
+  (Art. 161(4)), which in turn presupposes the own-LGD recognition framework of Art. 161(3).
+  Foundation-IRB firms (supervisory LGD per Art. 161(1)) cannot use the double-default
+  formula and must fall back to Art. 235 risk weight substitution or Art. 236 parameter
+  substitution.
 
-The resulting risk-weighted amount is floored at the guarantor's own risk weight (Art. 153(3)
-paragraph 2).
+The general Art. 161(3) floor still applies: the adjusted risk weight from the double-default
+treatment must not be lower than that of a comparable direct exposure to the guarantor.
+
+> Formal definition and full eligibility text:
+> [CRR Credit Risk Mitigation Specification](../../specifications/crr/credit-risk-mitigation.md).
 
 !!! warning "Removed under Basel 3.1"
     PRA PS1/26 blanks Art. 153(3), Art. 202, and Art. 217 — the double default treatment is
@@ -262,20 +357,30 @@ Gross_RWA = £5,000,000
 # Benefit: 80% reduction
 ```
 
-### Maturity Mismatch
+### Maturity Mismatch (CRR Art. 237–239)
 
-When protection maturity < exposure maturity:
+When protection residual maturity < exposure residual maturity, the credit
+protection is either disallowed entirely (Art. 237 eligibility gates) or
+its value is scaled down by the Art. 239 adjustment factor.
 
 ```python
-# Minimum protection maturity: 3 months (0.25 years)
+# Maturity inputs (CRR Art. 238 — measurement of T and t):
+#   t = residual maturity of the credit protection (years)
+#   T = min(residual exposure maturity, 5)  # 5-year cap per Art. 238
+# The 5-year cap on T is the rule that distinguishes the maturity-mismatch
+# treatment from the IRB maturity adjustment in Art. 162.
 t = max(0.25, protection_residual_maturity)
-T = min(max(0.25, exposure_residual_maturity), 5.0)  # Capped at 5 years
+T = min(max(0.25, exposure_residual_maturity), 5.0)  # Art. 238: cap T at 5 years
 
-# Adjustment factor
+# Adjustment factor (CRR Art. 239(2) for funded, Art. 239(3) for unfunded):
+#   funded:    CVAM = CVA × (t − 0.25) / (T − 0.25)
+#   unfunded:  GA   = G*  × (t − 0.25) / (T − 0.25)
+# Note: the multiplier is identical between Art. 239(2) and (3); only the
+# protection input (CVA vs G*) differs.
 if t >= T:
     adjustment = 1.0
 elif t < 0.25:
-    adjustment = 0.0  # Below minimum — no protection
+    adjustment = 0.0  # Art. 237(1) — below 3-month floor, protection ineligible
 else:
     adjustment = (t - 0.25) / (T - 0.25)
 
@@ -284,14 +389,26 @@ Adjusted_Protection = Protection × adjustment
 ```
 
 **Example:**
-- Exposure maturity: 5 years
-- Guarantee maturity: 3 years
+- Exposure residual maturity: 5 years (so T = min(5, 5) = 5)
+- Guarantee residual maturity: 3 years (so t = 3)
 
 ```python
 adjustment = (3 - 0.25) / (5 - 0.25) = 2.75 / 4.75 = 0.579
 
-# £4m guarantee provides £2.32m effective protection
+# £4m guarantee provides £2.32m effective protection (Art. 239(3) GA)
 ```
+
+!!! info "Cap matters when exposure maturity > 5 years"
+    For an exposure with residual maturity of 7 years and a guarantee with
+    residual maturity of 5 years, `T` is capped at 5 (not 7), so
+    `adjustment = (5 − 0.25) / (5 − 0.25) = 1.0` — i.e. the guarantee is
+    treated as fully matched. Without the Art. 238 cap the same case
+    would scale the guarantee down to `(5 − 0.25) / (7 − 0.25) ≈ 0.704`.
+
+> **Spec:** see
+> [CRR CRM Specification — Maturity Mismatch (Art. 237–239)](../../specifications/crr/credit-risk-mitigation.md#maturity-mismatch-crr-art-237-239)
+> for the full eligibility gates, the Art. 238(1A) list of in-scope CRM
+> methods, and the Basel 3.1 (PS1/26) carry-forward note.
 
 ## On-Balance Sheet Netting (CRR Art. 195)
 
@@ -615,7 +732,7 @@ provision = {
 | Financial collateral | Art. 197-200 | CRE22.35-70 |
 | Haircuts | Art. 224-227 | CRE22.50-55 |
 | Guarantees | Art. 213-216 | CRE22.71-85 |
-| Maturity mismatch | Art. 238-239 | CRE22.90-95 |
+| Maturity mismatch | Art. 237–239 | CRE22.90-95 |
 | Physical collateral | Art. 199 | CRE22.100-120 |
 | Overcollateralisation | Art. 230 | CRE32.9-12 |
 

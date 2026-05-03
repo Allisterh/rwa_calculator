@@ -74,6 +74,11 @@ Where RGLA exposures have their own ECAI rating, use Table 1B:
 
 **UK local authorities**: All UK local authorities receive **20%** risk weight per PRA designation.
 
+**Religious communities treated as RGLAs (Art. 115(3))**: Exposures to **churches or religious communities constituted in the form of a legal person under public law** shall, **in so far as they raise taxes in accordance with legislation conferring on them the right to do so**, be treated as exposures to **regional governments and local authorities** (CRR Art. 115(3), crr.pdf p.114). Both eligibility limbs must be satisfied — the entity must be a public-law legal person *and* must hold statutory tax-raising powers. Where eligible, the exposure is routed into the Art. 115(1) RGLA tables above (sovereign-derived Table 1A or own-rating Table 1B as applicable); CRR Art. 115(3) further provides that the central-government treatment in Art. 115(2) does **not** apply, and that the IRB permanent-partial-use exclusion in Art. 150(1)(a) is **not** engaged for these exposures. This is an edge-case provision aimed at jurisdictions (notably Germany under the *Körperschaftsteuergesetz*) where established churches retain a constitutional right to levy church tax; UK-resident religious bodies generally do **not** satisfy the tax-raising limb.
+
+!!! info "Basel 3.1 — Art. 115(3) Retained"
+    PRA PS1/26 Art. 115(3) re-enacts the religious community RGLA route in materially the same terms (ps126app1.pdf p.37): "Exposures to churches or religious communities constituted in the form of a legal person under public law shall, in so far as they raise taxes in accordance with legislation conferring on them the right to do so, be treated as exposures to regional governments or local authorities." The PS1/26 text drops the CRR Art. 150(1)(a) IRB-permission carve-out (consistent with the wider B31 restructuring of permanent-partial-use eligibility), but the substantive RGLA-derived treatment continues unchanged from 1 January 2027.
+
 **Sterling-funded UK RGLAs (Art. 115(5))**: Exposures to regional governments or local authorities of the United Kingdom that are not treated as central government under Art. 115(2)–(4) and are **denominated and funded in pounds sterling** shall be assigned a risk weight of **20%**. This treatment is **maturity-independent** — it applies regardless of the original or residual maturity of the exposure and regardless of the counterparty's CQS.
 
 !!! warning "Previous Spec Error Corrected"
@@ -202,6 +207,41 @@ The following international organisations receive a **0%** risk weight:
 - European Financial Stability Facility (EFSF)
 - European Stability Mechanism (ESM)
 
+!!! warning "Art. 118(f) Omitted on UK Exit (SI 2018/1401)"
+    Art. 118(f) was **omitted from UK onshored CRR** by
+    *The Capital Requirements (Amendment) (EU Exit) Regulations 2018*
+    ([SI 2018/1401](https://www.legislation.gov.uk/uksi/2018/1401/contents)),
+    reg. 116, with effect from 31 December 2020 (IP completion day). The
+    original EU CRR text read:
+
+    > "(f) an international financial institution established by two or more
+    > Member States, which has the purpose to mobilise funding and provide
+    > financial assistance to the benefit of its members that are experiencing
+    > or threatened by severe financing problems."
+
+    *Source: CRR Art. 118 footnote F266; legislation.gov.uk "as adopted by EU"
+    text dated 28 June 2013.*
+
+    **Practical effect:** The Art. 118 0% list is **closed** under UK CRR — only
+    items (a) to (e) qualify. There is no residual catch-all for "international
+    financial institutions established by two or more Member States" any longer,
+    so any such body that is not separately named in Art. 117(2) (MDB list) or
+    Art. 118(a)–(e) must be risk-weighted as a corporate/institution under the
+    standard exposure-class waterfall. A separate UK-exit edit (SI 2019/1232,
+    reg. 35) also struck words from Art. 118(a) — leaving "the European Union"
+    as the sole referent.
+
+!!! note "Plan-item misattribution (D4.56)"
+    The audit item that prompted this subsection described Art. 118 as
+    "exposures to recognised exchanges" and the SI 2018/1401 deletion as
+    targeting "EU-regulated exchanges". Both are incorrect: Art. 118 has
+    always been the **international-organisations 0%** list, and SI 2018/1401
+    reg. 116 deleted **Art. 118(f)** — the residual "two-or-more-Member-States
+    international financial institution" catch-all quoted above. Recognised
+    exchanges are governed by **CRR Art. 107** (definition of "recognised
+    exchange") and Art. 197/198 (eligible collateral via main-index equities),
+    not Art. 118.
+
 ## Institution Exposures (CRR Art. 120-121)
 
 | CQS | Risk Weight |
@@ -251,6 +291,155 @@ sovereign's CQS:
 
 Unrated institutions with residual maturity ≤ 3 months receive **20%** regardless of
 sovereign CQS (Art. 121(3)).
+
+### Trade Finance Preferential Treatment for Unrated Institutions (CRR Art. 121(4))
+
+CRR Art. 121(4) carves out a dedicated preferential channel for **trade-finance**
+exposures to **unrated institutions**, overriding both the sovereign-derived Table 5
+weights for unrated-sovereign jurisdictions (Art. 121(2), 100%) and the general
+short-term unrated 20% (Art. 121(3)).
+
+!!! quote "Art. 121(4) — verbatim (CRR p. 120)"
+    "Notwithstanding paragraphs 2 and 3, for trade finance exposures referred to in
+    point (b) of the second subparagraph of Article 162(3) to unrated institutions,
+    the risk weight shall be 50 % and where the residual maturity of these trade
+    finance exposures to unrated institutions is three months or less, the risk
+    weight shall be 20 %."
+
+**Risk weights.** Two cases only — Art. 121(4) does **not** take a CQS input; the
+preferential weight is fixed at the article level:
+
+| Eligible trade-finance exposure | Risk Weight |
+|---|---|
+| Trade finance to unrated institution, residual maturity > 3 months but ≤ 1 year | **50%** |
+| Trade finance to unrated institution, residual maturity ≤ 3 months | **20%** |
+
+The 50% / 20% values **replace** what the exposure would otherwise receive under
+Art. 121(1) Table 5 (sovereign-derived 20%–150%), Art. 121(2) (unrated sovereign
+jurisdiction → 100%), and Art. 121(3) (unrated short-term flat 20%). The
+"notwithstanding paragraphs 2 and 3" head-clause ensures the Art. 121(4) result
+binds in priority over those subordinate paragraphs.
+
+**Eligibility — what counts as "trade finance" under Art. 121(4).**
+
+Art. 121(4) routes through Art. 162(3) second subparagraph point (b) — the AIRB
+maturity-floor list of *qualifying short-term exposures* — which describes:
+
+!!! quote "Art. 162(3) second subparagraph point (b) — verbatim (CRR p. 160)"
+    "self-liquidating short-term trade finance transactions connected to the
+    exchange of goods or services with a residual maturity of up to one year as
+    referred to in point (80) of Article 4(1);"
+
+That cross-reference further pulls in the Art. 4(1)(80) defined term:
+
+!!! quote "Art. 4(1)(80) — verbatim (CRR p. 39)"
+    "'trade finance' means financing, including guarantees, connected to the
+    exchange of goods and services through financial products of fixed
+    short-term maturity, generally of less than one year, without automatic
+    rollover."
+
+Cumulative eligibility — all five conditions must hold for the Art. 121(4)
+preferential to apply:
+
+1. **Counterparty type** — exposure is to an **unrated institution** (i.e. an
+   institution falling within Art. 121 because no nominated ECAI assessment is
+   available — Art. 119(1)). Rated institutions route through Art. 120 / Table 4
+   (general short-term) or Table 4A (Basel 3.1 short-term ECRA), not Art. 121(4).
+2. **Trade finance product** — financing or guarantees connected to the exchange
+   of goods and services (Art. 4(1)(80)).
+3. **Self-liquidating** — repayment funded by the underlying trade flow, not by
+   a refinancing facility (Art. 162(3) second subparagraph point (b)).
+4. **Connected to goods or services exchange** — the financing is documented as
+   trade-related, not a general working-capital facility branded as trade finance.
+5. **Residual maturity** — ≤ 1 year (the Art. 4(1)(80) "generally less than one
+   year" envelope, hard-edged in Art. 162(3) point (b) at "up to one year"). The
+   20% reduction below the 50% base further requires residual maturity **≤ 3
+   months**.
+
+**Sovereign linkage — none.** Despite sitting inside Art. 121 ("sovereign-derived
+approach for unrated institutions"), Art. 121(4) is **not** keyed on the
+sovereign's CQS. The 50%/20% weights apply uniformly regardless of whether the
+institution is incorporated in a CQS 1 (UK / equivalent) or CQS 6 jurisdiction.
+This contrasts with Art. 121(1) Table 5, which steps the unrated institution
+weight from 20% (sovereign CQS 1) up to 150% (sovereign CQS 6).
+
+**Distinction from Art. 122 / 121(3) short-term channels.** Three short-term
+windows can apply to an unrated institution exposure; the most favourable
+applicable weight wins:
+
+| Article | Eligibility key | Maturity test | Currency / sovereign condition | RW outcome |
+|---|---|---|---|---|
+| Art. 121(1) Table 5 | Unrated institution, all maturities | None (general path) | Uses sovereign CQS of jurisdiction of incorporation | 20%/50%/100%/100%/100%/150% |
+| Art. 121(3) | Unrated institution, **original** effective maturity ≤ 3 months | Original ≤ 3m | None | Flat **20%** |
+| Art. 121(4) (this section) | Unrated institution + self-liquidating trade finance per Art. 162(3)(b) | **Residual** ≤ 1y (50%) or **residual** ≤ 3m (20%) | None — uniform fixed weight | **50%** or **20%** |
+| Art. 119(2)/(3) | Any institution + national-currency denom & funding + residual ≤ 3m | Residual ≤ 3m | National-currency denom **and** funded | One step less favourable than Art. 114(4)–(7) sovereign preferential, floored at 20% |
+
+Note the maturity-test difference: Art. 121(3) uses **original** effective
+maturity (≤ 3 months); Art. 121(4) uses **residual** maturity (≤ 1 year for the
+50% weight, ≤ 3 months for the further-reduced 20% weight). A trade-finance
+exposure with original maturity 6 months but residual maturity 2 months at
+reporting date qualifies for the Art. 121(4) 20% under the residual test even
+though it fails the Art. 121(3) original-maturity test.
+
+**Worked example — UK trade finance to unrated foreign institution.**
+
+A 9-month £10m self-liquidating trade-finance facility (a confirmed letter of
+credit financing a goods import) extended to a Vietnam-incorporated bank without
+a nominated ECAI rating, residual maturity at reporting date 7 months. Vietnam
+sovereign sits at CQS 4 (Art. 114(2) Table 1 → 100% sovereign).
+
+1. Eligibility checks: counterparty = unrated institution (yes); product =
+   self-liquidating trade-related letter-of-credit financing (yes — Art. 162(3)
+   second subparagraph point (b)); residual maturity ≤ 1 year (yes, 7m); residual
+   maturity ≤ 3 months (no).
+2. Apply Art. 121(4): residual maturity > 3 months but ≤ 1 year → **50%**.
+3. Compare against alternative paths:
+    - Art. 121(1) Table 5 with sovereign CQS 4 → 100%. Worse, displaced by
+      Art. 121(4) "notwithstanding paragraph 2".
+    - Art. 121(3) requires *original* effective maturity ≤ 3 months — original
+      is 9 months, fails. Path closed.
+    - Art. 119(2)/(3) requires sterling denom **and** funding (the borrower's
+      national currency would be VND); a £-denominated facility fails the
+      "denominated and funded in the *national currency of the borrower*" test.
+      Path closed.
+4. Final risk weight: **50%**. RWA = £10m × 50% = £5m.
+
+Had residual maturity been 2 months at reporting date, Art. 121(4) would yield
+**20%** directly — RWA = £10m × 20% = £2m — beating the Art. 121(1) Table 5
+result (100%) by a factor of five.
+
+!!! warning "Removed under Basel 3.1 (PS1/26 Art. 121 restructured to SCRA grades)"
+    PRA PS1/26 Art. 121 (ps126app1.pdf pp. 41–44) replaces the entire CRR
+    sovereign-derived Table 5 framework with a **Standardised Credit Risk
+    Assessment (SCRA)** approach: unrated institutions are classified into
+    **Grade A / Grade B / Grade C** based on capital, leverage, and going-concern
+    criteria, and risk-weighted via Table 5 (40% / 75% / 150%) for general
+    maturities or Table 5A (20% / 50% / 150%) for short-term / movement-of-goods
+    exposures. There is **no direct successor** to CRR Art. 121(4)'s flat 50%
+    trade-finance weight. The economically closest provision is PS1/26
+    Art. 121(4): exposures to unrated institutions where the **original maturity
+    was six months or less and the exposure arose from the movement of goods**
+    receive Table 5A treatment (Grade A 20% / Grade B 50% / Grade C 150%) —
+    similar in spirit to the CRR carve-out but now SCRA-graded (not flat) and
+    keyed on *original* maturity ≤ 6 months (not residual ≤ 1 year). Additionally,
+    PS1/26 Art. 121(6)(b) excludes self-liquidating trade-related contingent
+    items with original maturity < 1 year from the foreign-currency sovereign
+    floor that otherwise applies under Art. 121(6).
+    See [Basel 3.1 SA Risk Weights — Institution Risk Weights (SCRA, Art. 121)](../basel31/sa-risk-weights.md#institution-risk-weights-ecra-art-120).
+
+!!! bug "Implementation Status — Not implemented in CRR calculator"
+    The CRR SA calculator branch (`engine/sa/calculator.py`) does **not**
+    evaluate Art. 121(4) trade finance preferential. The calculator routes all
+    unrated institution exposures through Art. 121(1) Table 5 with the
+    Art. 121(3) 20% short-term override only. There is no `is_trade_finance`
+    schema field, no Art. 162(3)(b) self-liquidating gate, and no flat 50%/20%
+    trade-finance constant in `data/tables/crr_risk_weights.py`. Firms with
+    material trade-finance books to unrated institutions in CQS 2–6 jurisdictions
+    must apply the Art. 121(4) override outside the engine — the gap overstates
+    RW versus the regulation in those cells. The CRR-only nature of the rule
+    means this gap will not affect Basel 3.1 calculations from 1 January 2027
+    (SCRA-based PS1/26 Art. 121 replaces the framework entirely; see warning
+    callout above).
 
 ### National-Currency Short-Term Preferential Treatment (CRR Art. 119(2), 119(3))
 
@@ -525,7 +714,9 @@ Covered bonds backed by eligible collateral pools receive preferential risk weig
 ### CRR Covered Bond Risk Weights — Unrated (Art. 129(5))
 
 Unrated eligible covered bonds are assigned a risk weight derived from the issuing
-institution's senior unsecured risk weight:
+institution's senior unsecured risk weight. Under CRR, Art. 129(5) contains exactly
+**four sub-paragraphs** (a)–(d), enumerating the only institution RW inputs that can
+arise from the CRR Art. 120 / Art. 121 paths:
 
 | Institution Senior Unsecured RW | Covered Bond RW | Art. 129(5) Sub-Para |
 |---------------------------------|-----------------|----------------------|
@@ -538,6 +729,52 @@ The institution RW is determined per Art. 120 (ECRA rated) or Art. 121 (sovereig
 If the issuing institution itself is unrated under CRR, the sovereign-derived approach
 (Art. 121, Table 5) provides the institution RW, which then maps through the table above.
 
+!!! quote "CRR Art. 129(5) — verbatim (CRR p. 129)"
+    "[CRR covered bonds] for which a credit assessment by a nominated ECAI is not
+    available shall be assigned a risk weight on the basis of the risk weight
+    assigned to senior unsecured exposures to the institution which issues them.
+    The following correspondence between risk weights shall apply:
+    (a) if the exposures to the institution are assigned a risk weight of 20 %,
+    the [CRR covered bonds] shall be assigned a risk weight of 10 %;
+    (b) if the exposures to the institution are assigned a risk weight of 50 %,
+    the [CRR covered bonds] shall be assigned a risk weight of 20 %;
+    (c) if the exposures to the institution are assigned a risk weight of 100 %,
+    the [CRR covered bonds] shall be assigned a risk weight of 50 %;
+    (d) if the exposures to the institution are assigned a risk weight of 150 %,
+    the [CRR covered bonds] shall be assigned a risk weight of 100 %."
+
+    *Source: CRR Art. 129(5), as onshored — see `docs/assets/crr.pdf` p.129.*
+
+!!! warning "Only Four CRR Institution RWs Can Drive Art. 129(5)"
+    The CRR institution risk-weight set is exhaustive and consists of exactly the
+    values **{20%, 50%, 100%, 150%}** — produced by Art. 120 Table 3 (ECRA, CQS-keyed)
+    and Art. 121 Table 5 (sovereign-derived for unrated institutions). The CRR
+    short-term path (Art. 120(2) Table 4 / Art. 121(3)) and the trade-finance path
+    (Art. 121(4)) reuse the same RW set or fix the result outside the derivation
+    chain (e.g. flat 20% / 50%); they introduce no new RW inputs into Art. 129(5).
+
+    Consequently, **only four CRR covered bond RWs can be produced under
+    Art. 129(5): 10%, 20%, 50%, 100%** (and the 100% fallback when the institution
+    sits at 150%). The 30% / 40% / 75% institution RWs that drive Art. 129(5)(aa) /
+    (ab) / (ba) under PRA PS1/26 — corresponding to ECRA CQS 2 (30%), SCRA Grade A
+    (40%), and SCRA Grade B (75%) respectively — **do not exist in CRR** and cannot
+    arise under any CRR-only calculation path. See
+    [Basel 3.1 Covered Bond Changes (Art. 129)](#basel-31-covered-bond-changes-art-129)
+    below for the expanded 7-entry PRA PS1/26 derivation table, and the Basel 3.1
+    spec at
+    [`basel31/sa-risk-weights.md` — Unrated Covered Bonds](../basel31/sa-risk-weights.md#unrated-covered-bonds-art-1295)
+    for the full B31 narrative.
+
+!!! info "Implementation Note — Shared `covered_bond_unrated_derivation` Dict"
+    The shared regulatory-data dict `COVERED_BOND_UNRATED_DERIVATION` in
+    `src/rwa_calc/data/tables/crr_risk_weights.py` is sized to the **larger** B31
+    domain (7 entries) so that both CRR and B31 calculation paths can index it with
+    a single lookup. Under CRR-only configuration the calculator never queries the
+    `30%`, `40%`, or `75%` keys: the upstream institution-RW computation cannot
+    produce those values without the B31 ECRA Table 3 / SCRA grade tables. The dict
+    name's "CRR Art. 129(5), PRA PS1/26 Art. 129" comment reflects shared storage,
+    not framework equivalence — the four CRR-applicable rows are (a)/(b)/(c)/(d) only.
+
 ### Eligibility Conditions (Art. 129(1)–(3), (7))
 
 Covered bonds must meet the following to qualify for preferential treatment:
@@ -547,6 +784,55 @@ Covered bonds must meet the following to qualify for preferential treatment:
 - Backed by one of: (a) residential mortgage loans ≤ 80% LTV, (b) commercial mortgage loans ≤ 60% LTV, (c) exposures to central/regional governments ≤ CQS 1–2, (d) exposures to credit institutions ≤ CQS 1–2
 - Bond holders have priority claim in the event of issuer default
 - Collateral meets Art. 208 valuation requirements and Art. 229(1) valuation rules (Art. 129(3))
+
+### Pre-2007 Grandfathering (Art. 129(6))
+
+CRR Art. 129(6) grandfathers covered bonds issued before 31 December 2007: they
+retain access to the preferential rated and unrated risk weights in Art. 129(4)/(5)
+**without** having to meet the eligible-collateral requirements of Art. 129(1)
+or the Art. 208 / Art. 229(1) valuation requirements of Art. 129(3). The
+grandfathering runs **until the bond's contractual maturity** — there is no sunset
+date and no re-eligibility test on amendment.
+
+This is an **eligibility carve-out only**: the risk weights themselves come from
+the same Art. 129(4) Table 6A (rated) and Art. 129(5) derivation table (unrated)
+that apply to post-2007 bonds. A grandfathered CRR covered bond at CQS 2 still
+attracts 20%; a grandfathered unrated bond issued by a 50%-RW institution still
+attracts 20%.
+
+!!! quote "CRR Art. 129(6) — verbatim"
+    "[CRR covered bonds] issued before 31 December 2007 are not subject to the
+    requirements of paragraphs 1 and 3. They are eligible for the preferential
+    treatment under paragraphs 4 and 5 until their maturity."
+
+    *Source: CRR Art. 129(6), as onshored — see `docs/assets/crr.pdf` p.129.*
+
+**Operational implication.** Pre-2007 bonds in run-off are common in legacy UK
+covered bond programmes. Where the bond cannot be re-evidenced against modern
+Art. 129(1)(a)–(g) cover-pool eligibility — for example, because the cover pool
+includes asset types that pre-date the current eligible-asset list, or because
+LTV / valuation evidence to Art. 208 standards is unavailable — the firm should
+flag the issue date and rely on Art. 129(6) rather than re-classifying the bond
+out of the covered bond class. The Art. 129(7) portfolio-information /
+semi-annual disclosure conditions are **not** disapplied by para (6) and remain
+required for ongoing preferential treatment.
+
+!!! info "Basel 3.1 delta — grandfathering retained, scope tightened"
+    PRA PS1/26 Art. 129(6) **retains** the pre-2007 grandfathering on the same
+    "until maturity" basis, but narrows it: the grandfathered bond must still
+    meet the Art. 129(7) portfolio-information requirements, and the carve-out
+    is now drafted as disapplying paragraphs 1 and 3 only (eligible assets and
+    valuation), not paragraph 7. PS1/26 wording: *"CRR covered bonds issued
+    before 31 December 2007 which meet the requirements of paragraph 7 shall be
+    eligible covered bonds until their maturity and shall not be subject to the
+    requirements of paragraphs 1 and 3."* (PRA PS1/26 Art. 129(6),
+    `docs/assets/ps126app1.pdf` p.62.)
+
+    Net effect: a pre-2007 bond that was already meeting Art. 129(7) under CRR
+    transitions into the Basel 3.1 regime without re-papering. A pre-2007 bond
+    that has *not* been meeting Art. 129(7) loses preferential treatment from
+    1 January 2027 — even though it would have remained eligible under CRR
+    Art. 129(6) (which made no explicit reference to para 7).
 
 ### Basel 3.1 Covered Bond Changes (Art. 129)
 
@@ -623,18 +909,67 @@ items under Art. 128.
 
 ## Residential Mortgage Exposures (CRR Art. 125)
 
-Risk weight depends on LTV ratio with a split at 80%:
+Art. 125(2)(d) applies a **proportion-based split** — the 35% risk weight is
+assigned only to the **part of the loan that does not exceed 80% of the market
+value** (or 80% of the mortgage lending value, where rigorous MLV criteria
+apply in the United Kingdom). The remainder of the loan falls back to the
+counterparty's **unsecured exposure risk weight** under Art. 124(1) (e.g. 75%
+for a retail counterparty under Art. 123, or the applicable corporate /
+institution / SME weight where the borrower is non-retail).
 
-| LTV | Treatment |
-|-----|-----------|
-| LTV ≤ 80% | 35% on whole exposure |
-| LTV > 80% | Split: 35% on portion up to 80% LTV, 75% on excess |
+!!! quote "Art. 125(2)(d) — verbatim (CRR p. 124)"
+    "unless otherwise determined under Article 124(2), the part of the loan to
+    which the 35 % risk weight is assigned does not exceed 80 % of the market
+    value of the property in question or 80 % of the mortgage lending value of
+    the property in question if rigorous criteria are in force at the time in
+    the United Kingdom for the assessment of the mortgage lending value."
 
-**Blended formula for LTV > 80%:**
+!!! quote "Art. 124(1) residual — verbatim (CRR p. 122)"
+    "The part of the exposure that exceeds the mortgage value of the immovable
+    property shall be assigned the risk weight applicable to the unsecured
+    exposures of the counterparty involved."
+
+**Mechanism — proportion-based split (mirrors Art. 126 CRE).** This is **not**
+an LTV-band table lookup: the regulation does not assign a single risk weight
+to the whole exposure based on which LTV band it falls into. Instead, the loan
+is partitioned into a *secured portion* (capped at 80% of property value) which
+receives 35%, and a *residual portion* which receives the counterparty's
+unsecured RW. Where the entire loan is within the secured portion (LTV ≤ 80%)
+the residual is zero and 35% applies to the whole exposure. The two cases below
+are therefore the same proportion-based mechanism — not two distinct bands.
+
+| Loan position vs property value | Treatment |
+|---------------------------------|-----------|
+| Entire loan ≤ 80% of property value (LTV ≤ 80%) | 35% on whole exposure (residual = 0) |
+| Loan exceeds 80% of property value (LTV > 80%) | 35% on the portion up to 80% of property value; counterparty unsecured RW on the excess |
+
+**Blended formula (general form):**
 
 ```
-avg_RW = 0.35 x (0.80 / LTV) + 0.75 x ((LTV - 0.80) / LTV)
+secured_share = min(1.0, 0.80 / LTV)
+avg_RW = 0.35 × secured_share + counterparty_unsecured_RW × (1.0 - secured_share)
 ```
+
+For a retail mortgage borrower (counterparty unsecured RW = 75% per Art. 123),
+the formula reduces to:
+
+```
+avg_RW = 0.35 × (0.80 / LTV) + 0.75 × ((LTV - 0.80) / LTV)    (LTV > 0.80, retail counterparty)
+```
+
+**Worked example — retail residential mortgage at 90% LTV.** £200k loan
+secured on a property valued at £222.2k (LTV = 0.90). Apply the proportion-
+based split:
+
+- Secured portion = 80% × £222.2k = £177.8k → 35% RW.
+- Residual portion = £200k − £177.8k = £22.2k → 75% RW (Art. 123 retail
+  unsecured).
+- `secured_share = 0.80 / 0.90 = 0.889`.
+- `avg_RW = 0.35 × 0.889 + 0.75 × 0.111 = 0.311 + 0.0833 = 0.3944` → **39.4%**.
+- RWA = £200k × 39.4% = **£78,889**.
+
+A naïve LTV-band reading ("90% LTV → 75%") would assign 75% to the whole
+£200k loan and produce £150k of RWA — almost twice the regulatory result.
 
 **Art. 125(2) qualifying conditions** for the 35% secured portion:
 
@@ -642,8 +977,10 @@ avg_RW = 0.35 x (0.80 / LTV) + 0.75 x ((LTV - 0.80) / LTV)
 - (b) Borrower risk does not materially depend on property/project performance —
   repayment capacity from other sources (i.e. not income-dependent)
 - (c) Art. 208 requirements and Art. 229(1) valuation rules are met
-- (d) The exposure is fully and completely secured by mortgages on residential
-  property which is or shall be occupied or let by the owner
+- (d) The 35% risk weight applies only to the part of the loan not exceeding
+  80% of market value (or 80% of MLV where the UK rigorous-MLV criteria apply).
+  The exposure must be fully and completely secured by mortgages on residential
+  property which is or shall be occupied or let by the owner (Art. 125(1)(a))
 
 !!! info "Counterparty scope (Art. 125 vs `RETAIL_MORTGAGE`)"
     Art. 125 is **not** restricted to retail individuals — any exposure secured
@@ -989,22 +1326,71 @@ Rated specialised lending exposures use the corporate CQS table (Art. 122A(3)).
 | Residual value of leased assets | 1/t × 100% (t = remaining lease years, min 1) | Art. 134(6) |
 | All other | 100% | Art. 134(2) |
 
-## ECA Consensus Risk Scores (CRR Art. 137 / Table 9)
+## Export Credit Agency Assessments (CRR Art. 137 / Table 9)
 
-Export Credit Agency (ECA) consensus risk scores are mapped to CQS for sovereign exposures when no ECAI rating is available:
+Where an Export Credit Agency (ECA) credit assessment is nominated under Art. 137(1) — either an OECD consensus risk score or a published assessment associated with one of the eight **minimum export insurance premiums (MEIPs)** — the exposure is assigned a risk weight directly from Art. 137(2) Table 9. Each MEIP score (0–7) maps **directly** to a risk weight; there is **no intermediate CQS step**.
 
-| ECA Risk Score | CQS Mapping | Risk Weight |
-|---------------|-------------|-------------|
-| 0-1 | CQS 1 | 0% |
-| 2 | CQS 2 | 20% |
-| 3 | CQS 3 | 50% |
-| 4-6 | CQS 4-6 | 100% |
-| 7 | CQS 6 | 150% |
+**Table 9 — MEIP risk weights (verbatim, Art. 137(2)):**
 
-This mapping is used for sovereign exposures (Art. 114) and for deriving institution risk weights from their sovereign's ECA score where the sovereign lacks an ECAI rating.
+| MEIP score | Risk weight |
+|------------|-------------|
+| 0 | 0% |
+| 1 | 0% |
+| 2 | 20% |
+| 3 | 50% |
+| 4 | 100% |
+| 5 | 100% |
+| 6 | 100% |
+| 7 | 150% |
 
-!!! note "Implementation Status"
-    ECA score lookup is not yet implemented. The calculator currently requires ECAI CQS for rated exposures. ECA-to-CQS mapping is a future enhancement.
+This mapping is used for sovereign exposures (Art. 114) where an ECA assessment is recognised, and — via the institution-from-sovereign rules — for deriving institution risk weights where the sovereign itself is rated only by an ECA.
+
+### Art. 136 vs Art. 137 — two distinct mappings
+
+CRR provides **two** routes by which an external assessment becomes a risk weight, and
+they must not be conflated:
+
+- **Art. 136 — ECAI mapping to CQS.** The PRA, by technical standard, maps each
+  nominated ECAI's credit assessments onto Credit Quality Steps 1–6. Articles 114, 120,
+  122, 129, 131 etc. then look the CQS up in their respective risk-weight tables
+  ("a risk weight in accordance with Table N which corresponds to the credit assessment
+  of the ECAI **in accordance with Article 136**" — verbatim from each of those
+  articles). Where a counterparty is rated only by an Export Credit Agency that has been
+  recognised as an ECAI, the ECA assessment flows through the **Art. 136 CQS pipeline**
+  in the normal way.
+- **Art. 137 — direct MEIP-to-RW.** Where an Export Credit Agency assessment is
+  nominated under Art. 137(1) — i.e. an OECD consensus risk score or a published
+  assessment associated with one of the eight Minimum Export Insurance Premiums — the
+  risk weight is read **directly** from Table 9 above. There is no intermediate CQS
+  step; MEIP score 0–7 maps straight to 0% / 0% / 20% / 50% / 100% / 100% / 100% / 150%.
+
+The two routes are alternatives, not a chain: an institution chooses which nominated
+assessment applies to a given Art. 114 sovereign exposure and uses the corresponding
+table.
+
+!!! warning "Implementation Status — Open Gap"
+    Neither Art. 137 direct MEIP lookup **nor** any ECA-score-to-CQS mapping under
+    Art. 136 is implemented in the engine. The calculator currently accepts
+    `credit_quality_step` (CQS 1–6) directly on the input row and applies the
+    Art. 114 / 120 / 122 / 129 / 131 tables to that CQS — it does not ingest raw
+    ECAI grade strings, OECD consensus scores, or MEIP integers and resolve them.
+
+    **What the regulation requires.** A complete implementation would need to:
+
+    1. Accept either an ECAI grade (mapped via Art. 136 PRA technical standard to a
+       CQS) or an Art. 137 MEIP score (0–7) on the input row.
+    2. For Art. 137, route the MEIP score directly to Table 9 (above) without going
+       through a CQS, applying it to sovereign exposures under Art. 114 and — via the
+       sovereign-derived rules of Art. 121 (Table 5) — to unrated institutions in the
+       same jurisdiction.
+    3. Honour the multi-assessment selection rules of Art. 138 (use the second-best
+       assessment where two or more apply, etc.) across both ECAI and ECA inputs.
+
+    **Tracked as an open implementation gap.** This is a documentation-side flag only;
+    the corresponding engine work (input schema field for MEIP score, lookup table in
+    `data/tables/`, classifier wiring for Art. 114/121 sovereign-derived flow) has not
+    been scheduled. Operator note: surface this to `IMPLEMENTATION_PLAN.md` so it can
+    be triaged against P1 / P2 priority.
 
 ## Basel 3.1 Changes Summary
 
@@ -1032,8 +1418,9 @@ This mapping is used for sovereign exposures (Art. 114) and for deriving institu
 - **Default exposures** (Art. 127): Provision-based 100%/150% with RESI RE always-100% exception — Done
 - **Other items** (Art. 134): Cash=0%, gold=0%, collection=20%, tangible=100% — Done
 - **Covered bonds** (Art. 129): CQS-based risk weights, eligibility criteria, unrated derivation, PRA deviation — Added
+- **Pre-2007 covered bond grandfathering** (Art. 129(6)): CRR carve-out from Art. 129(1)/(3) eligibility tests retained until maturity; PRA PS1/26 Art. 129(6) retains the carve-out but additionally requires Art. 129(7) disclosure conditions — Added
 - **RGLA/PSE/MDB/Int'l Org tables** (Art. 115-118): Missing from original spec — Added
-- **ECA consensus scores** (Art. 137 Table 9): ECA-to-CQS mapping for unrated sovereigns — Added
+- **ECA / MEIP scores** (Art. 137 Table 9): direct MEIP-score-to-risk-weight mapping (0–7 → 0%/0%/20%/50%/100%/100%/100%/150%) for sovereigns rated by an Export Credit Agency — Added
 - **Short-term assessments** (Art. 131 Table 7): Short-term ECAI CQS mapping — Added
 - **CIU treatment** (Art. 132/132a-132c): UK CRR omission noted, PRA Rulebook governs CIU — Added
 - **Unrated institution sovereign-derived** (Art. 121 Table 5): Full sovereign-derived table — Added

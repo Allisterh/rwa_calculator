@@ -39,7 +39,7 @@ differences. For complete column and row definitions, see the
 | **CCF buckets (SA)** | 0%, 20%, 50%, 100% | 10%, 20%, 40%, 50%, 100% |
 | **PD ranges (08.03) columns** | 11 (0010–0110) | 11 — col names updated (PD post input floor, LGD with floors, RWEA without factors) |
 | **RWEA flow (08.04)** | 1 column, 9 rows | Virtually identical — supporting factors removed from RWEA description |
-| **Slotting (08.06) columns** | 10 (0010–0100) | 11 — adds 0031 (FCCM change); supporting factors removed |
+| **Slotting (08.06) columns** | 10 (0010–0100) | 11 — adds 0031 (FCCM change); supporting factors removed; col 0090 EL re-references OFCR IRB 1 col 0282 (post-model-adjusted EL) |
 | **Slotting SL types** | 4 (PF, IPRE/HVCRE, OF, CF) | 5 — HVCRE separated from IPRE |
 | **Scope of use (08.07) columns** | 5 (0010–0050) | 18 — adds RWEA breakdown by SA reason, IRB RWEA, materiality thresholds |
 | **Scope of use rows** | 17 by exposure class | Restructured to roll-out classes (Art 147B) |
@@ -89,6 +89,11 @@ CRR defines **15** risk weight rows. Basel 3.1 expands to **29** rows:
 The additional bands reflect Basel 3.1's more granular LTV-based real estate weights,
 corporate sub-categories (investment grade 65%, SME 85%), and income-producing property
 weights.
+
+For the **complete row-ID-to-risk-weight mapping** (including the article reference
+and typical exposure source for each new band, and confirmation that row 0261=400%
+replaces the old CRR row 0260=370%), see the authoritative table at
+[Output & Reporting — OF 07.00 Section 3 Risk Weight Band Row IDs](../specifications/output-reporting.md#of-0700-section-3--risk-weight-band-row-ids).
 
 #### Section 4 — CIU Approach
 
@@ -203,7 +208,9 @@ criteria, broken down by slotting category and remaining maturity.
 | Change | Ref(s) | Description |
 |--------|--------|-------------|
 | **Added** | 0031 | (-) Change in exposure due to FCCM — Financial Collateral Comprehensive Method adjustment |
-| **Changed** | 0080 | "RWEA" — no longer "after supporting factors" (factors removed) |
+| **Changed** | 0080 | "RWEA" — no longer "after supporting factors" (factors removed). Reference updated from generic "CR-IRB instructions" to **OFCR IRB 1 column 0260** (post-supporting-factor-removal RWEA). |
+| **Changed** | 0090 | "Expected Loss Amount" — reference updated from generic "CR-IRB instructions" (pre-adjustment EL) to **OFCR IRB 1 column 0282** (EL **after** post-model adjustments per Art. 158(6A)). The slotting EL must therefore include any management overlay added under Art. 158(6A); CRR C 08.06 col 0090 had no such adjustment concept. See [OF 08.01 col 0281–0282](#c-0801--of-0801--cr-irb-totals) for the post-model adjustment columns this references. |
+| **Changed** | 0100 | "(-) Value adjustments and provisions" — reference updated from generic "CR-IRB instructions" to **OFCR IRB 1 column 0290**. |
 
 ### Row Changes
 
@@ -239,18 +246,48 @@ coverage percentages and RWEA attribution. **Significantly expanded in Basel 3.1
 | **Added** | 0130 | RWEA for SA: due to roll-out plan |
 | **Added** | 0140 | RWEA for SA: other |
 | **Added** | 0150 | RWEA for exposures subject to IRB |
-| **Added** | 0160 | Materiality of roll-out class (Art 150(1A)(c) threshold) |
-| **Added** | 0170 | % subject to permanent partial use (type of exposures) |
-| **Added** | 0180 | % subject to permanent partial use (immaterial in aggregate) |
+| **Added** | 0160 | Materiality of roll-out class — Art 150(1A)(c) threshold = `col 0100 / CA2 row 0040` (per Art 92(3)(a)+(f)) |
+| **Added** | 0170 | % subject to permanent partial use (type of exposures) — Art 150(1) last subparagraph threshold = `(col 0110 + col 0120) / (col 0060 - col 0070)` |
+| **Added** | 0180 | % subject to permanent partial use (immaterial in aggregate) — Art 150(1A)(e) threshold; see row 0270 below for the verbatim formula |
 
 ### Row Changes
 
 | Change | Ref(s) | Description |
 |--------|--------|-------------|
 | **Changed** | 0180–0250 | Rows restructured from **exposure classes** (CRR Art 147(2)) to **roll-out classes** (Basel 3.1 Art 147B). Roll-out classes align with the exposure classes but the regulatory basis differs. |
-| **Added** | 0260 | Total row (sum of 0180–0250) |
-| **Added** | 0270 | Percentage subject to permanent partial use (immateriality in aggregate) |
+| **Added** | 0260 | Total row (sum of rows 0180–0250 across columns 0060–0150) |
+| **Added** | 0270 | Percentage subject to permanent partial use (immateriality in aggregate) — populated **only** in column 0180; per Annex II §3.3 (col 0270): "See column 0180" |
 | **Removed** | 0010–0170 | CRR exposure class rows replaced by roll-out class structure |
+
+!!! info "OF 08.07 row 0270 / col 0180 — Art 150(1A)(e) formula"
+    Row 0270 reports the **Article 150(1A)(e) immateriality-in-aggregate** threshold
+    used to gate permanent partial use of the SA across multiple types of exposures.
+    Annex II §3.3 (col 0180) defines the cell as point (1) divided by point (2):
+
+    ```
+    row_0270_col_0180 = row_0260_col_0120
+                       / sum(col_0060 for rows 0180-0250 where col_0150 > 0)
+    ```
+
+    | Operand | Plain English |
+    |---------|---------------|
+    | Numerator — `row 0260, col 0120` | Total RWEA (across all roll-out classes) for SA exposures permitted under Art 150(1)(l)(ii) — i.e. all "types of exposures" deemed **immaterial in aggregate**. |
+    | Denominator — `sum(col 0060 for rows 0180-0250 where col 0150 > 0)` | Sum of total RWEA (col 0060) across every roll-out class in which the firm uses the IRB approach for at least some exposures (col 0150 > 0). Roll-out classes that are 100% on SA are excluded. |
+
+    The result is a percentage that the firm must keep below the Art 150(1A)(e)
+    materiality threshold for the PPU permission to remain valid.
+
+    !!! note "Distinct from col 0170"
+        Col 0170 implements a **different** PPU threshold — the last subparagraph of
+        **Art 150(1)** (type-of-exposures level) — using the formula
+        `(col 0110 + col 0120) / (col 0060 - col 0070)`. Col 0170 is reported per
+        roll-out class on rows 0180–0250; col 0180 is reported only on the row 0270
+        aggregate. Both feed into the materiality assessment but reference different
+        articles and different denominators.
+
+    > **Details:** for the underlying Art 150(1A) materiality regime and how it
+    > interacts with model permissions, see
+    > [Permanent Partial Use Materiality Thresholds (Art. 150(1A))](../specifications/basel31/model-permissions.md#permanent-partial-use-materiality-thresholds-art-1501a).
 
 ---
 

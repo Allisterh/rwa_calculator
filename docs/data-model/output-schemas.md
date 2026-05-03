@@ -178,6 +178,45 @@ from the output data alone.
 | `maturity_mismatch_adjustment` | `Float64` | Adjustment for maturity mismatch |
 | `collateral_adjusted_value` | `Float64` | Net collateral value after haircuts |
 
+### CRM — life insurance collateral (Art. 232)
+
+Captures life-insurance-policy collateral recognised under the **Other Funded Credit
+Protection Method** (PS1/26 Art. 232 / CRR Art. 232). Unlike financial collateral,
+life-insurance policies do not reduce EAD on the SA side — they map the secured portion
+to a preferential risk weight via the Art. 232(3) insurer-RW table:
+
+| Insurer SA RW | Mapped secured-portion RW |
+|---------------|---------------------------|
+| 20%           | 20%                       |
+| 30% / 50%     | 35%                       |
+| 65% / 100% / 135% | 70%                   |
+| 150%          | 150%                      |
+
+The SA calculator then blends the mapped RW across the secured / unsecured portions of
+the exposure (no Art. 222 floor applies, unlike FCSM). On the IRB side, life-insurance
+collateral feeds the LGD waterfall with `LGD_S = 40%` (Art. 232(2)(b)) — the columns
+below describe the SA-side mechanic only.
+
+**References**: PRA PS1/26 Art. 232 (Other Funded Credit Protection Method, including
+the new 7-tier mapping with 30% / 65% / 135% bands); CRR Art. 232 (4-tier 20% / 50%
+/ 100% / 150% mapping); Art. 200(b) (eligibility); Art. 212(2) (operational
+requirements). Source: `engine/crm/life_insurance.py::compute_life_insurance_columns`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `life_ins_collateral_value` | `Float64` | Total surrender value (sum of `market_value` across eligible life-insurance policies pledged to the exposure), capped at `ead_gross`. Defaults to `0.0` when no life-insurance collateral is present. |
+| `life_ins_secured_rw` | `Float64` | Value-weighted Art. 232(3) mapped risk weight across the pledged policies. Defaults to `0.0` when no life-insurance collateral is present. Consumed by `lf.sa.apply_life_insurance_rw_mapping()` during SA risk-weight blending. |
+
+!!! note "Single source of truth — CRM methodology"
+    The Art. 232 derivation table, eligibility gates, and CRR vs PS1/26 differences
+    (4-tier vs 7-tier insurer-RW mapping, OFCP scope gate, mandatory maturity-mismatch
+    adjustment) are documented in
+    [Basel 3.1 CRM — Other Funded Credit Protection Method (Art. 232)](../specifications/basel31/credit-risk-mitigation.md#paragraph-3--mapping-table-art-2323-revised).
+    These two columns are emitted on the exposure frame by the CRM processor and
+    survive through to the SA result frame as auxiliary columns (they are not part of
+    the canonical `SA_RESULT_SCHEMA` dict but are present whenever life-insurance
+    collateral exists in the input bundle).
+
 ### CRM — guarantee impact (substitution approach)
 
 | Column | Type | Description |
@@ -216,6 +255,25 @@ from the output data alone.
 | `scra_provision_amount` | `Float64` | Specific provisions |
 | `gcra_provision_amount` | `Float64` | General provisions |
 | `provision_capped_amount` | `Float64` | Amount eligible for CRM |
+
+### CRM — currency mismatch (Basel 3.1 only)
+
+Captures the unhedged-FX retail uplift for residential mortgages and qualifying retail
+exposures whose servicing currency differs from the borrower's primary income currency.
+
+**Reference**: PRA PS1/26 Art. 123B / BCBS CRE20.93 — applies a 1.5× risk-weight multiplier
+(capped at 150%) to the otherwise-applicable risk weight when there is no natural or
+financial hedge in place. Under CRR there is no equivalent retail FX uplift.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `borrower_income_currency` | `String` | ISO 4217 currency of borrower's primary income (mirrored from input) |
+| `currency_mismatch_multiplier_applied` | `Boolean` | `True` if the 1.5× RW multiplier was applied (Basel 3.1 only; always `False` under CRR) |
+
+!!! note "Source field on input"
+    `borrower_income_currency` is also an input field on `LoanData`; the value on the output
+    is the resolved value used for the multiplier test (after any inheritance from the
+    counterparty). See [Input Schemas — Counterparty](input-schemas.md#counterparty-schema).
 
 ### EAD calculation
 
@@ -290,22 +348,114 @@ from the output data alone.
 | `final_rwa` | `Float64` | `max(rwa_before_floor, output_floor_rwa)` |
 | `risk_weight_effective` | `Float64` | `final_rwa / final_ead` (implied RW) |
 
+### Post-model adjustments (Basel 3.1 only)
+
+Captures the IRB post-model adjustment (PMA) overlays required by PRA PS1/26 to compensate
+for known IRB model deficiencies. Sequencing is regulatorily prescribed: the mortgage RW
+floor (Art. 154(4A)(b)) is applied first to establish the post-floor RWEA base, then
+general PMA scalars (Art. 146(3) / Art. 153(5A) / Art. 154(4A)(a)) and unrecognised-exposure
+adjustments are applied on top of the floored amount.
+
+**References**: PRA PS1/26 Art. 146(3) (PMA root obligation), Art. 153(5A) (corporate /
+institution / sovereign sequencing), Art. 154(4A) (retail sequencing and 10% mortgage RW
+floor), Art. 158(6A) (EL monotonicity — PMA can only **increase** EL, never decrease it).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `rwa_pre_adjustments` | `Float64` | RWEA before post-model adjustments (post-formula, post-mortgage-floor) |
+| `mortgage_rw_floor_adjustment` | `Float64` | RWEA increase from the 10% residential mortgage RW floor (Art. 154(4A)(b)) |
+| `post_model_adjustment_rwa` | `Float64` | General PMA add-on to RWEA (Art. 146(3) / Art. 153(5A) / Art. 154(4A)(a)) |
+| `unrecognised_exposure_adjustment` | `Float64` | RWEA increase covering exposures not captured by the IRB model |
+| `el_pre_adjustment` | `Float64` | Expected loss before post-model adjustments |
+| `post_model_adjustment_el` | `Float64` | General PMA add-on to EL — must be ≥ 0 (Art. 158(6A) monotonicity) |
+| `el_after_adjustment` | `Float64` | EL after post-model adjustments |
+
+!!! note "Reporting"
+    PMA add-ons are reported in COREP IRB column **0252** (adjustment for post-model
+    adjustments). See [A-IRB Specification — Post-Model Adjustments](../specifications/crr/airb-calculation.md#post-model-adjustments-basel-31)
+    for the formulae and worked examples.
+
+### Double default (CRR only)
+
+CRR Art. 153(3) provides a double-default treatment for IRB exposures with eligible
+unfunded credit protection (Art. 202 — eligible protection providers; Art. 217-218 —
+operational requirements). Under PRA PS1/26 Art. 153(3), Art. 202, and Art. 217 are all
+**"[Note: Provision left blank]"** — the double-default treatment has been removed and
+these columns will be `False` / `0` / `null` for Basel 3.1 runs.
+
+**References**: CRR Art. 153(3) (RWEA formula with double-default scalar), Art. 202
+(eligible protection providers), Art. 217-218 (operational requirements).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `is_double_default_eligible` | `Boolean` | Whether the exposure qualifies for DD treatment under CRR Art. 153(3) (always `False` under Basel 3.1) |
+| `double_default_unfunded_protection` | `Float64` | Guaranteed portion treated under DD — feeds COREP CR IRB column 0220 |
+| `irb_lgd_double_default` | `Float64` | LGD used in the DD formula (the obligor's own LGD, not the protection provider's) |
+
+!!! warning "Basel 3.1 deprecation"
+    For Basel 3.1 / PRA PS1/26 calculations these columns are populated for schema
+    parity but the DD treatment is not applied. Guaranteed exposures fall back to
+    standard parameter substitution (Art. 236) or risk-weight substitution (Art. 235).
+    See [CRM methodology — Double Default](../user-guide/methodology/crm.md#double-default-crr-only).
+
 ### Expected loss (IRB)
+
+EL is compared against **Pool B** of Art. 159 — provisions plus additional value
+adjustments (AVA, Art. 34) plus other own-funds reductions. The Pool B formula determines
+whether IRB exposures generate a CET1 deduction (`el_shortfall`, Art. 36(1)(d)) or a T2
+credit (`el_excess`, capped at 0.6% of IRB credit-risk RWA, Art. 62(d)).
+
+**References**: CRR Art. 159(1)(a) (provisions), Art. 159(1)(c) / Art. 34 (AVA), Art.
+159(1)(d) (other own-funds reductions). When `ava_amount` or `other_own_funds_reductions`
+are absent from the input bundle, they default to zero so that pre-Pool-B implementations
+behave the same as before.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `irb_expected_loss` | `Float64` | `PD × LGD × EAD` |
-| `provision_held` | `Float64` | Total provision amount |
-| `el_shortfall` | `Float64` | `max(0, EL − provision)` |
-| `el_excess` | `Float64` | `max(0, provision − EL)` |
+| `provision_held` | `Float64` | Total provision amount allocated to this IRB exposure |
+| `ava_amount` | `Float64` | Additional value adjustments (Art. 34) — Pool B component (Art. 159(1)(c)) |
+| `other_own_funds_reductions` | `Float64` | Other own-funds reductions — Pool B component (Art. 159(1)(d)) |
+| `el_shortfall` | `Float64` | `max(0, EL − pool_b)` where `pool_b = provision_held + ava_amount + other_own_funds_reductions` |
+| `el_excess` | `Float64` | `max(0, pool_b − EL)` |
+
+!!! note "Portfolio totals"
+    Per-exposure `el_shortfall` / `el_excess` are aggregated into the
+    [`ELPortfolioSummary`](#elportfoliosummary) bundle, where `t2_credit_cap = 0.6% ×
+    total_irb_rwa` and `t2_credit = min(total_el_excess, t2_credit_cap)` per Art. 62(d).
+    See the [Provisions specification — Portfolio-Level Summary](../specifications/crr/provisions.md#portfolio-level-summary-elportfoliosummary)
+    for portfolio-level Pool B aggregates (`total_ava_amount`,
+    `total_other_own_funds_reductions`, `total_pool_b`).
 
 ### Supporting factors (CRR only)
 
+The supporting-factor columns capture both the SME (CRR Art. 501) and infrastructure
+(CRR Art. 501a) RWA reductions. Under Basel 3.1 / PRA PS1/26 these factors are not
+available and the columns are populated for schema parity only (`supporting_factor = 1.0`,
+`supporting_factor_applied = False`). The `*_applied` flag is **generic** — it is `True`
+whenever any qualifying factor was applied, regardless of whether the binding factor was
+SME or infrastructure.
+
 | Column | Type | Description |
 |--------|------|-------------|
-| `sme_supporting_factor` | `Float64` | SME factor (0.7619/0.85), CRR only |
-| `infra_supporting_factor` | `Float64` | Infrastructure factor (0.75), CRR only |
-| `supporting_factor_benefit` | `Float64` | RWA reduction from factors |
+| `supporting_factor` | `Float64` | Effective (most beneficial) factor applied — `min(sme_factor, infra_factor)`. Defaults to `1.0` when no factor applies or under Basel 3.1. |
+| `supporting_factor_applied` | `Boolean` | `True` when `supporting_factor < 1.0`. Generic flag covering both Art. 501 (SME) and Art. 501a (infrastructure). |
+| `rwa_pre_factor` | `Float64` | RWA before any supporting factor was applied. |
+| `rwa_post_factor` | `Float64` | `rwa_pre_factor × supporting_factor` — RWA after the most beneficial factor. |
+| `sme_supporting_factor` | `Float64` | SME factor component (0.7619 below threshold / 0.85 above, blended on E\*). CRR only. |
+| `infra_supporting_factor` | `Float64` | Infrastructure factor component (0.75). CRR only. |
+| `supporting_factor_benefit` | `Float64` | RWA reduction from the applied factor (`rwa_pre_factor − rwa_post_factor`). |
+
+!!! note "Column rename — generic `supporting_factor_applied`"
+    Earlier releases emitted `sme_supporting_factor_applied`. The column was renamed to
+    the generic `supporting_factor_applied` when the Art. 501a infrastructure factor was
+    added to the same code path (`engine/sa/supporting_factors.py`,
+    `engine/aggregator/_supporting_factors.py`) — the flag now signals whichever factor
+    was binding. The legacy `sme_supporting_factor_applied` and
+    `infrastructure_factor_applied` keys are still defined in
+    `CRR_OUTPUT_SCHEMA_ADDITIONS` for back-compat with COREP-driven exporters; new
+    consumers should read `supporting_factor_applied` together with `is_sme` /
+    `is_infrastructure` to disambiguate.
 
 ### Warnings and validation
 
@@ -324,15 +474,14 @@ from the output data alone.
 |--------|------|-------------|
 | `regulatory_framework` | `String` | `"CRR"` |
 | `crr_effective_date` | `Date` | Regulation effective date |
-| `sme_supporting_factor_eligible` | `Boolean` | Turnover < EUR 50m |
-| `sme_supporting_factor_applied` | `Boolean` | Whether factor was applied |
-| `sme_supporting_factor_value` | `Float64` | 0.7619 |
+| `sme_supporting_factor_eligible` | `Boolean` | Turnover < EUR 50m (CRR Art. 501) |
+| `supporting_factor_applied` | `Boolean` | **Generic** flag — `True` whenever any factor (Art. 501 SME or Art. 501a infrastructure) was applied. Emitted by `engine/sa/supporting_factors.py`; replaces the legacy `sme_supporting_factor_applied` / `infrastructure_factor_applied` pair (which remain in `CRR_OUTPUT_SCHEMA_ADDITIONS` as legacy aliases for COREP back-compat). |
+| `sme_supporting_factor_value` | `Float64` | 0.7619 below threshold / 0.85 above (CRR Art. 501) |
 | `rwa_before_sme_factor` | `Float64` | RWA before SME factor |
 | `rwa_sme_factor_benefit` | `Float64` | RWA reduction from SME factor |
-| `infrastructure_factor_eligible` | `Boolean` | Qualifies as infrastructure |
-| `infrastructure_factor_applied` | `Boolean` | Whether factor was applied |
-| `infrastructure_factor_value` | `Float64` | 0.75 |
-| `rwa_infrastructure_factor_benefit` | `Float64` | RWA reduction |
+| `infrastructure_factor_eligible` | `Boolean` | Qualifies as infrastructure (CRR Art. 501a) |
+| `infrastructure_factor_value` | `Float64` | 0.75 (CRR Art. 501a) |
+| `rwa_infrastructure_factor_benefit` | `Float64` | RWA reduction from infrastructure factor |
 | `crr_exposure_class` | `String` | CRR-specific classification |
 | `crr_exposure_subclass` | `String` | Sub-classification where applicable |
 | `crr_mortgage_treatment` | `String` | `"35_pct"` or `"split_treatment"` |
