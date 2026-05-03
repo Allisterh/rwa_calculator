@@ -1506,6 +1506,7 @@ def _dedicated_test_loans() -> list[Loan]:
     - Collateral: COLL_CASH_001/002, COLL_GILT_001, COLL_EQ_001, COLL_REC_002
     - Guarantees: GUAR_SOV_001, GUAR_BANK_001/002, GUAR_CORP_003
     - Provisions: PROV_S1_CORP_001, PROV_S2_CORP_001, PROV_S2_SME_001
+    - P1.158: COLL_P1158_CORP_BOND_001 (null-maturity haircut conservative fallback)
     """
     return [
         # --- Collateral test loans ---
@@ -1688,6 +1689,26 @@ def _dedicated_test_loans() -> list[Loan]:
             drawn_amount=500_000.0,
             interest=0.0,
             lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # =============================================================================
+        # P1.158: Target for COLL_P1158_CORP_BOND_001
+        # £1m corporate term loan (~6y maturity) to unrated corporate counterparty.
+        # Collateral: £500k corp bond CQS 2, residual_maturity_years=None.
+        # Post-fix: E* = £560,000; SA RWA = £560,000 (100% RW, unrated corporate).
+        # =============================================================================
+        Loan(
+            loan_reference="LOAN_P1158_CORP_001",
+            product_type="TERM_LOAN",
+            book_code="CORP_LENDING",
+            counterparty_reference="CORP_UR_001",  # Unrated corporate — 100% SA RW
+            value_date=VALUE_DATE,
+            maturity_date=date(2032, 1, 1),  # ~6y residual maturity
+            currency="GBP",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,  # Not used under SA
             beel=0.0,
             seniority="senior",
         ),
