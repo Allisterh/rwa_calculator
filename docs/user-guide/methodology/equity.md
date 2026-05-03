@@ -74,6 +74,86 @@ purposes outside the explicit-hedge case.
     [CRR Equity Approach Specification](../../specifications/crr/equity-approach.md#simple-risk-weight-approach-art-1552)
     for the verbatim Art. 155(2) text.
 
+### PD/LGD Approach Per-Exposure Cap (Art. 155(3))
+
+Firms with permission to use the **Art. 155(3) PD/LGD approach** for equity compute
+RWEA via the Art. 153(1) corporate IRB formula, using the equity-specific PD floors
+(Art. 165(1): 0.09% / 0.40% / 1.25%) and LGDs (Art. 165(2): 90%, or 65% for
+sufficiently diversified PE), with `M = 5 years` (Art. 165(3)).
+
+CRR Art. 155(3) imposes an **individual-exposure capital cap** on the PD/LGD output:
+
+```
+EL × 12.5 + RWEA  ≤  EAD × 12.5
+```
+
+Equivalently, the total risk-based capital implied by a single equity exposure
+(expected-loss cover plus 8% × RWEA) cannot exceed a 100% loss assumption on the
+exposure value. This bites when the underlying PD and LGD combination would
+otherwise drive the per-exposure capital above one-for-one EAD coverage —
+typically only for **near-default** equity holdings.
+
+The cap operates **per individual exposure**, not at portfolio level. It is the
+counterpart to (but distinct from) the portfolio-level IMA floor in
+[Art. 155(4)](#internal-models-approach-art-1554) below.
+
+#### Worked Example — Non-Binding Case
+
+Listed PE holding under PD/LGD, EAD = £100, PD = 0.40%, LGD = 90% (Art. 165(2)
+non-diversified), giving an Art. 153(1) RW ≈ 370% (illustrative — exact value
+depends on the corporate K-formula with the 0.40% PD floor):
+
+```
+RWEA      = £100 × 370%       = £370
+EL        = £100 × 0.40% × 90% = £0.36
+EL × 12.5 = £0.36 × 12.5      = £4.50
+LHS       = £370 + £4.50      = £374.50
+RHS       = £100 × 12.5       = £1,250
+Cap       = LHS ≤ RHS         → not binding (£374.50 ≪ £1,250)
+```
+
+#### Worked Example — Binding Case
+
+Same exposure but with `PD = 80%` (a near-default unrated holding) and the
+Art. 178 default-definition information condition unmet, so the **1.5× scaling
+factor** in Art. 155(3) applies. With LGD = 90% and an illustrative scaled
+RW = 1,500% from the PD/LGD formula:
+
+```
+RWEA       = £100 × 1,500%     = £1,500
+EL         = £100 × 80% × 90%  = £72
+EL × 12.5  = £72 × 12.5        = £900
+LHS        = £1,500 + £900     = £2,400
+RHS        = £100 × 12.5       = £1,250
+Cap        = LHS ≤ RHS         → BINDING (£2,400 > £1,250)
+
+Capped RWEA = (RHS − EL × 12.5) = £1,250 − £900 = £350
+```
+
+Result: PD/LGD RWEA is reduced from £1,500 to £350 to satisfy the Art. 155(3) cap.
+
+!!! note "Cap applies only to PD/LGD (Art. 155(3)), not to Simple (Art. 155(2))"
+    The per-exposure cap is part of the PD/LGD approach mechanics. It does not
+    apply to the Simple Risk Weight Approach in Art. 155(2), where 190% / 290% /
+    370% are calibrated risk weights without a separate EL component. See the
+    canonical text and full PD/LGD parameter table in the
+    [CRR Equity Approach Specification — PD/LGD Approach](../../specifications/crr/equity-approach.md#pdlgd-approach-art-1553).
+
+!!! warning "Removed under Basel 3.1"
+    PRA PS1/26 Art. 147A abolishes the Art. 155(3) PD/LGD approach (alongside
+    Simple and IMA). From 1 January 2027, all equity exposures must use SA
+    (Art. 133), so the Art. 155(3) per-exposure cap has no successor in the
+    Basel 3.1 framework. The Rules 4.4–4.10 transitional applies to the Simple
+    Risk Weight Approach output, not to PD/LGD RWEA.
+
+!!! info "Implementation status"
+    The current calculator implements **only** the Simple Risk Weight Approach
+    (Art. 155(2)) under IRB equity — the PD/LGD approach (Art. 155(3)) is not
+    yet implemented (tracked as `P1.153` in `IMPLEMENTATION_PLAN.md`). The
+    Art. 155(3) per-exposure cap therefore does not bite in any current
+    calculation path. Once the PD/LGD approach is built, the cap becomes a
+    mandatory post-RWEA adjustment on PD/LGD-routed equity exposures.
+
 ### Internal Models Approach (Art. 155(4))
 
 Firms with PRA permission for the IRB Internal Models Approach (IMA) for equity
@@ -96,7 +176,8 @@ output.
 
 !!! warning "Art. 155(4) floor vs Art. 155(3) per-exposure cap"
     The Art. 155(4) IMA floor (`PD/LGD RWEA + EL × 12.5`) is a **lower bound on the
-    IMA portfolio output**. It is distinct from the Art. 155(3) per-exposure cap
+    IMA portfolio output**. It is distinct from the
+    [Art. 155(3) per-exposure cap](#pdlgd-approach-per-exposure-cap-art-1553)
     (`EL × 12.5 + RWEA ≤ EAD × 12.5`), which limits the PD/LGD output of any single
     exposure to a 100% loss assumption. The two operate on different approaches
     (IMA vs PD/LGD) and at different levels (portfolio vs exposure).
