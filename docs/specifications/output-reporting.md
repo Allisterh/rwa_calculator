@@ -128,7 +128,7 @@ breakdown, risk weight breakdown, memorandum items).
 - Col 0160-0190: Off-balance sheet breakdown now uses 5 CCF bands (10%, 20%, 40%, 50%, 100%) instead of 4
 - Col 0235: Of which: where a credit assessment by a nominated ECAI is not available (new)
 - Rows 0021-0026: Specialised lending sub-types (object, commodities, project finance phases)
-- Rows 0330-0360: Real estate sub-breakdowns (regulatory RESI/CRE, dependent/not, ADC)
+- Rows 0330-0360: Real estate sub-breakdowns (regulatory RESI/CRE, dependent/not, ADC). PS1/26 row order is **non-sequential** for CRE: 0341 then 0343 (SME nested under 0341) then 0342 then 0344 (SME nested under 0342). See [OF 07.00 Section 1 — Real Estate Row Hierarchy](#of-0700-section-1--real-estate-row-hierarchy) for the full nesting.
 - Row 0380: Currency mismatch multiplier (retail and real estate)
 
 **OF 08.01 (IRB)** — new columns vs CRR C 08.01:
@@ -156,10 +156,47 @@ breakdown, risk weight breakdown, memorandum items).
 
 **OF 07.00 (SA)** — missing row IDs:
 - Rows 0021-0026: Specialised lending sub-types (0021=OF, 0022=CF, 0023=PF, 0024=PF pre-operational, 0025=PF operational, 0026=PF high-quality operational — hierarchical under PF)
-- Rows 0331-0344: Real estate sub-breakdowns (regulatory RESI/CRE by dependent/non-dependent, including SME sub-rows 0343/0344 within CRE, ADC)
-- Rows 0351-0354: Other real estate sub-breakdown (residential/commercial, dependent/non-dependent)
+- Rows 0330-0360: Real estate sub-breakdowns (regulatory RESI, regulatory CRE, other RE, ADC). The 03xx grid is **non-sequential** in the PS1/26 row order — see [OF 07.00 Section 1 — Real Estate Row Hierarchy](#of-0700-section-1--real-estate-row-hierarchy) below.
+- Rows 0351-0354: Other real estate sub-breakdown (residential/commercial, dependent/non-dependent under Art. 124J)
 - Rows 0371-0374: Equity transitional sub-rows (0371=SA higher-risk, 0372=SA other, 0373=IRB higher-risk, 0374=IRB other — expire 1 January 2030)
 - Row 0380: Retail and real estate exposures subject to the currency mismatch multiplier (Art. 112(1)(h)/(i))
+
+#### OF 07.00 Section 1 — Real Estate Row Hierarchy
+
+The Section 1 real-estate "of which" grid (rows 0330–0360) is **not** a flat
+sequential range. PS1/26 Annex II §3.2 (pp. 90–91) defines the rows in the
+order **0341 → 0343 → 0342 → 0344**, and the SME sub-rows (0343, 0344) are
+each nested under a different parent. Generators must respect this nesting
+when allocating SME CRE exposures.
+
+| Row | Title | Article | Parent | Notes |
+|-----|-------|---------|--------|-------|
+| 0330 | Regulatory residential real estate | Art. 124F + 124G | — | Sum of 0331 + 0332 |
+| 0331 | RESI — not materially dependent on property cash flows | Art. 124F | 0330 | Loan-splitting "secured leg" applies |
+| 0332 | RESI — materially dependent on property cash flows | Art. 124G | 0330 | Income-producing residential (LTV grid) |
+| 0340 | Regulatory commercial real estate | Art. 124H + 124I | — | Sum of 0341 + 0342 |
+| 0341 | CRE — not materially dependent on property cash flows | Art. 124H | 0340 | |
+| 0343 | of which: CRE not materially dependent — to SMEs | Art. 124H + Glossary "SME" | **0341** | **Nested under 0341, not 0342** |
+| 0342 | CRE — materially dependent on property cash flows | Art. 124I | 0340 | |
+| 0344 | of which: CRE materially dependent — to SMEs | Art. 124I + Glossary "SME" | **0342** | **Nested under 0342, not 0341** |
+| 0350 | Other real estate | Art. 124J | — | Sum of 0351–0354 |
+| 0351 | Other RESI — not materially dependent | Art. 124J(2) | 0350 | |
+| 0352 | Other RESI — materially dependent | Art. 124J(1) | 0350 | |
+| 0353 | Other CRE — not materially dependent | Art. 124J(3) | 0350 | |
+| 0354 | Other CRE — materially dependent | Art. 124J(1) | 0350 | |
+| 0360 | Land acquisition, development and construction (ADC) | Art. 124K | — | |
+
+!!! warning "0343 is under 0341, 0344 is under 0342"
+    The SME sub-rows are **separated by parent**, not paired together. A CRE
+    SME exposure that is not materially dependent on property cash flows
+    (Art. 124H) is reported in row **0343** (nested under 0341); a CRE SME
+    exposure that **is** materially dependent (Art. 124I) is reported in
+    row **0344** (nested under 0342). The PS1/26 Annex II row-order listing
+    deliberately interleaves them as 0341 → 0343 → 0342 → 0344 to make this
+    explicit. Do not assume row-ID ordering implies parent-child grouping.
+
+Source: PS1/26 Annex II §3.2, pp. 90–91 of
+`docs/assets/ps1-26-annex-ii-reporting-instructions.pdf`.
 
 For the **risk-weight band rows** (Section 3 of OF 07.00), see the dedicated table
 [OF 07.00 Section 3 — Risk Weight Band Row IDs](#of-0700-section-3--risk-weight-band-row-ids)
