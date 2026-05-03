@@ -39,7 +39,7 @@ differences. For complete column and row definitions, see the
 | **CCF buckets (SA)** | 0%, 20%, 50%, 100% | 10%, 20%, 40%, 50%, 100% |
 | **PD ranges (08.03) columns** | 11 (0010–0110) | 11 — col names updated (PD post input floor, LGD with floors, RWEA without factors) |
 | **RWEA flow (08.04)** | 1 column, 9 rows | Virtually identical — supporting factors removed from RWEA description |
-| **Slotting (08.06) columns** | 10 (0010–0100) | 11 — adds 0031 (FCCM change); supporting factors removed |
+| **Slotting (08.06) columns** | 10 (0010–0100) | 11 — adds 0031 (FCCM change); supporting factors removed; col 0090 EL re-references OFCR IRB 1 col 0282 (post-model-adjusted EL) |
 | **Slotting SL types** | 4 (PF, IPRE/HVCRE, OF, CF) | 5 — HVCRE separated from IPRE |
 | **Scope of use (08.07) columns** | 5 (0010–0050) | 18 — adds RWEA breakdown by SA reason, IRB RWEA, materiality thresholds |
 | **Scope of use rows** | 17 by exposure class | Restructured to roll-out classes (Art 147B) |
@@ -208,7 +208,9 @@ criteria, broken down by slotting category and remaining maturity.
 | Change | Ref(s) | Description |
 |--------|--------|-------------|
 | **Added** | 0031 | (-) Change in exposure due to FCCM — Financial Collateral Comprehensive Method adjustment |
-| **Changed** | 0080 | "RWEA" — no longer "after supporting factors" (factors removed) |
+| **Changed** | 0080 | "RWEA" — no longer "after supporting factors" (factors removed). Reference updated from generic "CR-IRB instructions" to **OFCR IRB 1 column 0260** (post-supporting-factor-removal RWEA). |
+| **Changed** | 0090 | "Expected Loss Amount" — reference updated from generic "CR-IRB instructions" (pre-adjustment EL) to **OFCR IRB 1 column 0282** (EL **after** post-model adjustments per Art. 158(6A)). The slotting EL must therefore include any management overlay added under Art. 158(6A); CRR C 08.06 col 0090 had no such adjustment concept. See [OF 08.01 col 0281–0282](#c-0801--of-0801--cr-irb-totals) for the post-model adjustment columns this references. |
+| **Changed** | 0100 | "(-) Value adjustments and provisions" — reference updated from generic "CR-IRB instructions" to **OFCR IRB 1 column 0290**. |
 
 ### Row Changes
 
