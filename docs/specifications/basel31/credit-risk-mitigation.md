@@ -991,13 +991,115 @@ facility / loan row, the pledged surrender value, and the policy currency.
 The insurer's senior-unsecured SA RW is re-computed against the framework
 in play (CRR: CRR Table 3 / 4; B31: ECRA Table 3 / 4 or SCRA Table 5 per
 Art. 121). The mapping is then applied to produce the secured-portion RW
-emitted as the `life_ins_secured_rw` column (see
-[Output Schemas](../../data-model/output-schemas.md)).
+emitted as the `life_ins_secured_rw` column.
 
-!!! warning "Output-column naming documented separately"
-    The `life_ins_collateral_value` / `life_ins_secured_rw` output columns
-    are tracked for schema documentation under DOCS_IMPLEMENTATION_PLAN
-    D3.53 — not part of the current D2.48 closure.
+#### Spec ↔ Output-Column Cross-Reference
+
+The two `life_ins_*` columns produced by
+`engine/crm/life_insurance.py::compute_life_insurance_columns` are the
+machine-readable image of Art. 232(2) and Art. 232(3). The mapping
+between regulatory mechanics and engine outputs is one-to-one:
+
+| Art. 232 mechanic | PS1/26 ref | Engine output column | Engine semantics |
+|-------------------|------------|----------------------|------------------|
+| Eligibility (assigned/pledged, notified, surrender value declared) | Art. 200(b), Art. 212(2) | (gating only — no column) | Ineligible policies are filtered out by `LIFE_INSURANCE_COLLATERAL_TYPES` and the `beneficiary_reference` join; non-matching rows do not contribute. |
+| Value of credit protection = current surrender value, reduced for currency mismatch per Art. 233(3) **and (4)** | Art. 232(2), 2nd sub-paragraph | `life_ins_collateral_value` (`Float64`) | Sum of `market_value` across eligible pledged policies per beneficiary, capped at `ead_gross`. The surrender value is taken from the collateral row's `market_value` field by convention (`compute_life_insurance_columns` lines 109, 121-122). Currency-mismatch reduction is applied upstream when the haircut pipeline runs. |
+| SA secured-portion RW per Art. 232(3) derivation table (20% / 35% / 70% / 150%) | Art. 232(3)(a)-(d) | `life_ins_secured_rw` (`Float64`) | Value-weighted average across pledged policies of the per-policy mapped RW from `LIFE_INSURANCE_RW_MAP` (`engine/crm/life_insurance.py` lines 34-42). Computed by `_map_insurer_rw_to_secured_rw_expr` from the per-policy `insurer_risk_weight`. |
+| Blended RW = secured share × mapped RW + unsecured share × exposure RW (no Art. 222 floor) | Art. 232(2)(a) read with Art. 232(3) | `risk_weight` (overwritten in place) | `lf.sa.apply_life_insurance_rw_mapping()` (`engine/sa/namespace.py` lines 1423-1458) consumes the two `life_ins_*` columns and overwrites the row's `risk_weight` with the blended value. EAD is **not** reduced (life insurance is an RW substitution, not an EAD substitution). |
+| F-IRB LGD<sub>S</sub> = 40% on secured portion | Art. 232(2)(b) | (handled in IRB LGD waterfall) | The two `life_ins_*` columns describe SA only. F-IRB consumption of life-insurance collateral runs through the LGD waterfall — see [F-IRB collateral LGDs](../crr/firb-calculation.md). A-IRB firms apply own-estimate LGDs (Art. 169A/169B) and ignore these columns. |
+
+Defaults: where no eligible life-insurance collateral is pledged to an
+exposure, both columns are emitted as `0.0`
+(`_add_default_life_ins_columns`, `engine/crm/life_insurance.py`
+lines 155-160) and `apply_life_insurance_rw_mapping` is a no-op.
+
+The full output-frame schema entry for these two columns lives in
+[Output Schemas — CRM life insurance collateral](../../data-model/output-schemas.md#crm-life-insurance-collateral-art-232).
+
+#### Worked Example — SA Exposure Secured by an Investment-Grade Life-Insurance Policy
+
+A small, PDF-faithful end-to-end trace using the new B31 input tier
+35% (Art. 232(3)(b), insurer SA RW = 30%):
+
+**Inputs**
+
+| Field | Value |
+|-------|-------|
+| `exposure_reference` | `LOAN-001` |
+| `ead_gross` | GBP 1,000,000 |
+| Borrower SA risk weight (pre-CRM) | 100% (unrated corporate) |
+| Pledged policy `collateral_type` | `life_insurance` |
+| Pledged policy `market_value` (= surrender value) | GBP 600,000 |
+| Pledged policy currency | GBP (no FX mismatch) |
+| Insurer entity | UK insurance undertaking, SCRA Grade A bank-equivalent treatment, well-capitalised → **`insurer_risk_weight` = 30%** under Art. 121(5) |
+| `beneficiary_reference` (collateral row) | `LOAN-001` |
+
+**Step 1 — Eligibility (Art. 200(b), Art. 212(2))**
+
+The policy is pledged to the institution, the insurer has been
+notified, the surrender value is declared and non-reducible, and the
+policy is in scope of `LIFE_INSURANCE_COLLATERAL_TYPES`. The collateral
+row therefore enters the Art. 232 path. (If any operational requirement
+fails, the row is dropped from `li_coll`.)
+
+**Step 2 — Per-policy mapped secured-portion RW (Art. 232(3))**
+
+`insurer_risk_weight = 30%` falls into Art. 232(3)(b) ("30% or 50%"),
+so the per-policy mapped secured-portion RW is **35%**
+(`LIFE_INSURANCE_RW_MAP[0.30] = 0.35`).
+
+**Step 3 — Aggregation per beneficiary (`compute_life_insurance_columns`)**
+
+A single policy is pledged, so the value-weighted RW collapses to the
+per-policy RW:
+
+```
+_li_total_value   = 600,000
+_li_weighted_rw   = 600,000 × 0.35 = 210,000
+avg_rw            = 210,000 / 600,000 = 0.35
+capped_value      = min(600,000, 1,000,000) = 600,000   # ≤ ead_gross
+```
+
+**Step 4 — Output columns set on the exposure frame**
+
+| Column | Value |
+|--------|-------|
+| `life_ins_collateral_value` | `600000.0` |
+| `life_ins_secured_rw` | `0.35` |
+
+**Step 5 — SA risk-weight blending (`apply_life_insurance_rw_mapping`)**
+
+```
+secured_pct   = min(life_ins_collateral_value / ead, 1.0)
+              = 600,000 / 1,000,000 = 0.60
+unsecured_pct = 1 − 0.60 = 0.40
+blended_rw    = 0.60 × 0.35 + 0.40 × 1.00
+              = 0.210 + 0.400 = 0.610
+```
+
+The original `risk_weight = 1.00` is overwritten with **`0.61`**. EAD
+is unchanged (Art. 232 is an RW mechanic, not an EAD reduction).
+
+**Step 6 — Resulting RWA**
+
+```
+RWA = ead_final × risk_weight
+    = 1,000,000 × 0.61 = 610,000
+```
+
+vs. an unmitigated RWA of GBP 1,000,000 — a 39.0% RWA reduction driven
+entirely by the Art. 232(3)(b) 30% → 35% mapping on the secured 60% of
+the exposure. No Art. 222 20% floor applies (Art. 232 does not import
+the FCSM floor) — see `apply_life_insurance_rw_mapping`,
+`engine/sa/namespace.py` line 1450.
+
+!!! note "Why the worked example uses a 30% insurer RW"
+    The 30% input tier is one of the three new B31 tiers (30%, 65%,
+    135%) added by Art. 232(3) — a CRR firm holding the same policy
+    would have no derivation row for a 30% SCRA Grade A enhanced
+    insurer and would have to fall back to a less favourable tier or
+    refuse recognition. Picking 30% in the example therefore exercises
+    the B31-only path and matches the structural changes table above.
 
 ---
 
