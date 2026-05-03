@@ -35,7 +35,7 @@ summarises the key differences. For complete column and row definitions, see the
 | **CR5 exposure breakdown** | Total only (p, q) | Total + on-BS/off-BS/avg CCF/total (ad-ae, ba-bd) |
 | **CR6 PD allocation** | Based on estimated PD | Based on **pre-input-floor** PDs |
 | **CR6 RWEA** | Includes supporting factors | Includes **post-model adjustments**; no supporting factors |
-| **CR6 F-IRB breakdown** | Corporates: SME, SL, other | Adds **financial corporates and large corporates** |
+| **CR6 F-IRB breakdown** | Corporates: SME, SL, other | F-IRB: institutions + 4 corporate sub-classes (**SL, financial+large, SME, non-SME**); A-IRB: 3 corporate sub-classes + 7 retail sub-classes — see [CR6 sub-template structure](#cr6-sub-template-structure-firb-vs-airb) |
 | **CR6-A row structure** | By exposure class (Art. 147) | By **roll-out class** (Art. 147B) |
 | **CR7 approach categories** | F-IRB, A-IRB (2 subtotals) | F-IRB, A-IRB, **slotting** (3 subtotals) |
 | **CR7-A columns** | a-n (14 columns) | a-p (**16 columns** — adds slotting FCP/UFCP) |
@@ -129,6 +129,82 @@ Column structure unchanged (a-f).
 | **Added** | A-IRB retail: commercial immovable property (SME/non-SME) |
 | **Changed** | Slotting exposures **excluded** (was included under corporates — now in CR10) |
 | **Removed** | Supporting factor adjustments from RWEA |
+
+### CR6 sub-template structure (FIRB vs AIRB)
+
+Under UKB CR6 the institution discloses a **separate template per
+exposure-class category**, with each category closed off by a "Total"
+row. The FIRB and AIRB category lists are **not symmetric** — they
+diverge in three ways: FIRB carries an institutions sub-template that
+AIRB does not, AIRB carries a retail sub-template that FIRB does not,
+and the corporate sub-class breakdown differs (FIRB has a fourth
+"financial corporates and large corporates" sub-row that AIRB lacks).
+
+The lists below are taken verbatim from PRA PS1/26 Annex XXII
+(`docs/assets/ps1-26-annex-xxii-credit-risk-irb-disclosure-instructions.pdf`),
+pp. 6–7.
+
+=== "FIRB sub-templates"
+
+    | # | Sub-template | Article reference |
+    |---|--------------|-------------------|
+    | **1.** | Institutions | Art. 147(2)(b) |
+    | **2.** | Corporates | Art. 147(2)(c) |
+    | **2.1** | Specialised lending (incl. SL exposures subject to slotting) | Art. 147(2)(c)(i) |
+    | **2.2** | Financial corporates and large corporates | Art. 147(2)(c)(ii) |
+    | **2.3** | Other general corporates — SMEs | Art. 147(2)(c)(iii) read with Glossary SME definition |
+    | **2.4** | Other general corporates — non-SMEs | Art. 147(2)(c)(iii), residual to 2.3 |
+    | **3.** | Total | — |
+
+=== "AIRB sub-templates"
+
+    | # | Sub-template | Article reference |
+    |---|--------------|-------------------|
+    | **1.** | Corporates | Art. 147(2)(c) |
+    | **1.1** | Specialised lending | Art. 147(2)(c)(i) |
+    | **1.2** | Other general corporates — SMEs | Art. 147(2)(c)(iii) read with Glossary SME definition |
+    | **1.3** | Other general corporates — non-SMEs | Art. 147(2)(c)(iii), residual to 1.1 / 1.2 |
+    | **2.** | Retail | Art. 147(2)(d) |
+    | **2.1** | Secured by residential immovable property — SMEs | Art. 147(2)(d)(ii) read with Glossary SME definition |
+    | **2.2** | Secured by residential immovable property — non-SMEs | Art. 147(2)(d)(ii), residual to 2.1 |
+    | **2.3** | Secured by commercial immovable property — SMEs | Art. 147(2)(d), residual to 2.1 / 2.2 |
+    | **2.4** | Secured by commercial immovable property — non-SMEs | Art. 147(2)(d), residual to 2.1 / 2.2 / 2.3 |
+    | **2.5** | Qualifying revolving retail exposures (QRRE) | Art. 147(2)(d)(i) |
+    | **2.6** | Other — SMEs | Art. 147(2)(d) |
+    | **2.7** | Other — non-SMEs | Art. 147(2)(d)(iii), residual to 2.6 |
+    | **3.** | Total | — |
+
+!!! warning "FIRB and AIRB CR6 row structures are not interchangeable"
+
+    Three asymmetries should be highlighted to anyone consuming UKB CR6:
+
+    1. **Institutions appear only under FIRB.** Exposures to
+       institutions (Art. 147(2)(b)) are not eligible for A-IRB under
+       PRA PS1/26 Art. 147A — there is no A-IRB institutions
+       sub-template. Mapping a CRR "institutions" disclosure into a
+       UKB CR6 AIRB section is a category error.
+    2. **Retail appears only under AIRB.** Retail exposures
+       (Art. 147(2)(d)) are A-IRB-only under Basel 3.1; there is no
+       FIRB retail sub-template. The AIRB retail breakdown also gains
+       commercial-RE SME/non-SME rows (2.3, 2.4) that did not exist in
+       the legacy CRR template.
+    3. **Corporates differ by one sub-class.** FIRB has **four**
+       corporate sub-classes (SL, financial+large, SME, non-SME);
+       AIRB has **three** (SL, SME, non-SME). The "financial
+       corporates and large corporates" sub-row at FIRB 2.2
+       (Art. 147(2)(c)(ii)) has **no AIRB counterpart** — under
+       PRA PS1/26 financial corporates and large corporates are
+       restricted to F-IRB (see [Model Permissions](../specifications/basel31/model-permissions.md)).
+
+    Numerically: FIRB produces **6** numbered rows (1, 2, 2.1, 2.2,
+    2.3, 2.4) plus a Total; AIRB produces **12** numbered rows (1,
+    1.1, 1.2, 1.3, 2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7) plus a Total.
+    Re-using a single row-key map across both approaches will silently
+    mis-align sub-class numbering.
+
+    The same FIRB / AIRB asymmetry applies to UKB CR9 — see the
+    [General Reporting Rules](#cr9-irb-back-testing-of-pd-per-exposure-class)
+    bullet on F-IRB and A-IRB sub-templates.
 
 ---
 
