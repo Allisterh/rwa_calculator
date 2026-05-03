@@ -81,8 +81,11 @@ class CalculationConfig:
         permission_mode: PermissionMode = PermissionMode.STANDARDISED,
         eur_gbp_rate: Decimal = Decimal("0.8732"),
         enable_double_default: bool = False,
+        crm_collateral_method: CRMCollateralMethod = CRMCollateralMethod.COMPREHENSIVE,
         collect_engine: PolarsEngine = "cpu",
         spill_dir: Path | None = None,
+        log_level: str = "INFO",
+        log_format: Literal["text", "json"] = "text",
     ) -> CalculationConfig:
         """
         Create CRR (Basel 3.0) configuration.
@@ -95,23 +98,6 @@ class CalculationConfig:
         - No output floor
         - 1.06 scaling factor for IRB K
         - Optional double-default treatment (Art. 153(3), 202)
-
-        Args:
-            reporting_date: As-of date for calculation.
-            permission_mode: STANDARDISED (all SA) or IRB (model permissions
-                drive routing).
-            eur_gbp_rate: EUR/GBP exchange rate for threshold conversion.
-            enable_double_default: Enable CRR Art. 153(3) double-default
-                treatment for IRB exposures with eligible unfunded credit
-                protection (Art. 202 / Art. 217). Default False.
-            collect_engine: Polars collection engine.
-            spill_dir: Directory for temp files during streaming (None = system temp).
-
-        Example:
-            >>> config = CalculationConfig.crr(
-            ...     reporting_date=date(2026, 12, 31),
-            ...     permission_mode=PermissionMode.IRB,
-            ... )
         """
 
     @classmethod
@@ -119,9 +105,20 @@ class CalculationConfig:
         cls,
         reporting_date: date,
         permission_mode: PermissionMode = PermissionMode.STANDARDISED,
+        post_model_adjustments: PostModelAdjustmentConfig | None = None,
         use_investment_grade_assessment: bool = False,
+        institution_type: InstitutionType | None = None,
+        reporting_basis: ReportingBasis | None = None,
+        gcra_amount: float = 0.0,
+        sa_t2_credit: float = 0.0,
+        art_40_deductions: float = 0.0,
+        skip_transitional_floor: bool = False,
+        crm_collateral_method: CRMCollateralMethod = CRMCollateralMethod.COMPREHENSIVE,
+        airb_collateral_method: AIRBCollateralMethod = AIRBCollateralMethod.LGD_MODELLING,
         collect_engine: PolarsEngine = "cpu",
         spill_dir: Path | None = None,
+        log_level: str = "INFO",
+        log_format: Literal["text", "json"] = "text",
     ) -> CalculationConfig:
         """
         Create Basel 3.1 (PRA PS1/26) configuration.
@@ -132,28 +129,137 @@ class CalculationConfig:
         - No supporting factors
         - Output floor (72.5%, transitional from 60% in 2027)
         - 1.06 scaling factor removed
-
-        Args:
-            reporting_date: As-of date for calculation.
-            permission_mode: STANDARDISED (all SA) or IRB (model permissions
-                drive routing).
-            use_investment_grade_assessment: Art. 122(6)/(8) election. When
-                True, unrated non-SME corporates get 65% (IG) / 135% (non-IG);
-                when False (default), all unrated non-SME corporates get the
-                Art. 122(5) flat 100%. Also drives the SA-equivalent risk
-                weight in the output floor S-TREA leg under Art. 122(8).
-                Requires prior PRA permission. See
-                [`use_investment_grade_assessment`](#use_investment_grade_assessment).
-            collect_engine: Polars collection engine.
-            spill_dir: Directory for temp files during streaming (None = system temp).
-
-        Example:
-            >>> config = CalculationConfig.basel_3_1(
-            ...     reporting_date=date(2027, 6, 30),
-            ...     permission_mode=PermissionMode.IRB,
-            ... )
         """
 ```
+
+The full keyword list for each factory:
+
+| Argument | `crr()` | `basel_3_1()` | Knob it controls |
+|---|---|---|---|
+| `reporting_date` | required | required | as-of date |
+| `permission_mode` | yes | yes | SA-only vs IRB routing |
+| `eur_gbp_rate` | yes | n/a (GBP-native) | CRR EUR-threshold FX |
+| `enable_double_default` | yes | n/a (Art. 153(3) blanked) | CRR Art. 153(3) — see [`enable_double_default`](#enable_double_default) |
+| `use_investment_grade_assessment` | n/a | yes | Art. 122(6)/(8) — see [`use_investment_grade_assessment`](#use_investment_grade_assessment) |
+| `crm_collateral_method` | yes | yes | Art. 191A SA financial collateral — see [`crm_collateral_method`](#crm_collateral_method) |
+| `airb_collateral_method` | n/a | yes | Art. 169A/169B A-IRB collateral — see [`airb_collateral_method`](#airb_collateral_method) |
+| `post_model_adjustments` | n/a | yes | Art. 153(5A)/154(4A)/158(6A) PMAs |
+| `institution_type` | n/a | yes | Art. 92 para 2A floor applicability |
+| `reporting_basis` | n/a | yes | Art. 92 para 2A floor applicability |
+| `gcra_amount` / `sa_t2_credit` / `art_40_deductions` | n/a | yes | OF-ADJ inputs (Art. 92 para 2A) |
+| `skip_transitional_floor` | n/a | yes | Art. 92 para 5 — bypass 60/65/70% phase-in |
+| `collect_engine` / `spill_dir` | yes | yes | Polars engine |
+| `log_level` / `log_format` | yes | yes | observability |
+
+#### Factory Overrides — Worked Examples
+
+The factories return a fully-configured `CalculationConfig`; pass keyword
+overrides to flip a knob on one factory call rather than constructing the
+config by hand. For knobs that the factory does **not** expose (e.g. equity
+transitionals, raw `output_floor` field swaps), use `dataclasses.replace`
+on the returned config — see [Replace-based overrides](#replace-based-overrides)
+below.
+
+##### CRR — toggle double-default and the SA financial collateral method
+
+```python
+from datetime import date
+from decimal import Decimal
+from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.domain.enums import CRMCollateralMethod, PermissionMode
+
+# CRR baseline with Art. 153(3) double-default *and* the Art. 222 simple
+# financial collateral method on the SA leg, plus a non-default EUR/GBP
+# rate for retail / SME threshold conversion.
+config = CalculationConfig.crr(
+    reporting_date=date(2026, 12, 31),
+    permission_mode=PermissionMode.IRB,
+    eur_gbp_rate=Decimal("0.8800"),
+    enable_double_default=True,                              # Art. 153(3)
+    crm_collateral_method=CRMCollateralMethod.SIMPLE,        # Art. 222 (SA-only)
+    log_format="json",                                       # audit-ready logs
+)
+
+assert config.is_crr
+assert config.enable_double_default is True
+assert config.crm_collateral_method is CRMCollateralMethod.SIMPLE
+```
+
+See the per-knob sections for regulatory derivation:
+[`enable_double_default`](#enable_double_default),
+[`crm_collateral_method`](#crm_collateral_method).
+
+##### Basel 3.1 — Art. 122(6)/(8) IG assessment + Foundation A-IRB collateral + skip-transitional floor
+
+```python
+from datetime import date
+from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.domain.enums import (
+    AIRBCollateralMethod,
+    CRMCollateralMethod,
+    InstitutionType,
+    PermissionMode,
+    ReportingBasis,
+)
+
+# Stand-alone UK IRB firm, individual basis, electing:
+# - Art. 122(6)(b)/(8)(b) IG vs non-IG split for unrated corporates
+# - Art. 191A Part 2 / Art. 169A election to use the Foundation
+#   Collateral Method on the A-IRB book
+# - Art. 222 Simple Method on the SA financial collateral book
+# - Art. 92 para 5 voluntary skip of the 60/65/70% transitional → 72.5%
+#   from day one
+config = CalculationConfig.basel_3_1(
+    reporting_date=date(2027, 6, 30),
+    permission_mode=PermissionMode.IRB,
+    use_investment_grade_assessment=True,                          # Art. 122(6)/(8)
+    airb_collateral_method=AIRBCollateralMethod.FOUNDATION,        # Art. 169A
+    crm_collateral_method=CRMCollateralMethod.SIMPLE,              # Art. 222
+    institution_type=InstitutionType.STANDALONE_UK,                # Art. 92 para 2A(a)(i)
+    reporting_basis=ReportingBasis.INDIVIDUAL,
+    skip_transitional_floor=True,                                  # Art. 92 para 5
+)
+
+assert config.is_basel_3_1
+assert config.use_investment_grade_assessment is True
+assert config.airb_collateral_method is AIRBCollateralMethod.FOUNDATION
+assert config.crm_collateral_method is CRMCollateralMethod.SIMPLE
+assert config.output_floor.is_floor_applicable() is True
+assert config.get_output_floor_percentage() == Decimal("0.725")    # phased-in from day one
+```
+
+See the per-knob sections for regulatory derivation:
+[`use_investment_grade_assessment`](#use_investment_grade_assessment),
+[`airb_collateral_method`](#airb_collateral_method),
+[`crm_collateral_method`](#crm_collateral_method).
+
+##### Replace-based overrides
+
+A small number of fields are not exposed as factory keywords because they
+are derived from other config (`pd_floors`, `lgd_floors`, `thresholds`,
+`equity_transitional`, the raw `output_floor` dataclass, `scaling_factor`,
+`apply_fx_conversion`, `sync_eur_gbp_rate_from_fx_table`). For test
+harnesses or research workflows that need to swap one of these, build the
+config from the factory and use `dataclasses.replace`:
+
+```python
+from dataclasses import replace
+from datetime import date
+from decimal import Decimal
+from rwa_calc.contracts.config import CalculationConfig, PDFloors
+
+config = CalculationConfig.basel_3_1(reporting_date=date(2027, 6, 30))
+
+# Tighten the corporate PD floor for a stress scenario without
+# disturbing any other framework defaults.
+stressed_floors = replace(config.pd_floors, corporate=Decimal("0.0010"))
+config = replace(config, pd_floors=stressed_floors)
+
+assert config.pd_floors.corporate == Decimal("0.0010")
+```
+
+`replace(...)` returns a new frozen instance — the original config is
+untouched, preserving the immutability contract.
 
 ### `PDFloors`
 
@@ -517,21 +623,21 @@ class CRMCollateralMethod(StrEnum):
 
 | Factory | Default value |
 |---------|---------------|
-| `CalculationConfig.crr(...)` | `CRMCollateralMethod.COMPREHENSIVE` (dataclass default) |
-| `CalculationConfig.basel_3_1(...)` | `CRMCollateralMethod.COMPREHENSIVE` (dataclass default) |
+| `CalculationConfig.crr(...)` | `CRMCollateralMethod.COMPREHENSIVE` (factory default) |
+| `CalculationConfig.basel_3_1(...)` | `CRMCollateralMethod.COMPREHENSIVE` (factory default) |
 
-Neither factory exposes this knob as a constructor argument — flip it by
-constructing the config from the factory and replacing the field, or by
-passing the enum directly when instantiating `CalculationConfig` for tests.
+Both factories expose this knob as a constructor keyword. Pass the enum
+directly to elect the Simple Method:
 
 ```python
-from dataclasses import replace
 from datetime import date
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import CRMCollateralMethod
 
-config = CalculationConfig.basel_3_1(reporting_date=date(2027, 6, 30))
-config = replace(config, crm_collateral_method=CRMCollateralMethod.SIMPLE)
+config = CalculationConfig.basel_3_1(
+    reporting_date=date(2027, 6, 30),
+    crm_collateral_method=CRMCollateralMethod.SIMPLE,  # Art. 222 (FCSM)
+)
 
 assert config.crm_collateral_method is CRMCollateralMethod.SIMPLE
 ```
@@ -576,14 +682,14 @@ class AIRBCollateralMethod(StrEnum):
 
 | Factory | Default value |
 |---------|---------------|
-| `CalculationConfig.crr(...)` | `None` (dataclass default — A-IRB is free-form under CRR) |
-| `CalculationConfig.basel_3_1(...)` | `None` (dataclass default; firms electing A-IRB should set this explicitly) |
+| `CalculationConfig.crr(...)` | `None` (dataclass default — A-IRB is free-form under CRR; not exposed as a `crr()` keyword) |
+| `CalculationConfig.basel_3_1(...)` | `AIRBCollateralMethod.LGD_MODELLING` (factory default — Art. 169A) |
 
-Neither factory currently exposes this knob as a constructor argument. To
-elect a method on a Basel 3.1 config, replace the field after construction:
+`CalculationConfig.basel_3_1(...)` exposes this knob as a constructor
+keyword. To elect the Foundation Collateral Method instead of the Art. 169A
+LGD-modelling default, pass it directly to the factory:
 
 ```python
-from dataclasses import replace
 from datetime import date
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import AIRBCollateralMethod, PermissionMode
@@ -591,10 +697,10 @@ from rwa_calc.domain.enums import AIRBCollateralMethod, PermissionMode
 config = CalculationConfig.basel_3_1(
     reporting_date=date(2027, 6, 30),
     permission_mode=PermissionMode.IRB,
+    airb_collateral_method=AIRBCollateralMethod.FOUNDATION,  # Art. 169A election → Foundation
 )
-config = replace(config, airb_collateral_method=AIRBCollateralMethod.LGD_MODELLING)
 
-assert config.airb_collateral_method is AIRBCollateralMethod.LGD_MODELLING
+assert config.airb_collateral_method is AIRBCollateralMethod.FOUNDATION
 ```
 
 !!! warning "Basel 3.1 only — inert under CRR"
