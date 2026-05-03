@@ -90,6 +90,11 @@ The additional bands reflect Basel 3.1's more granular LTV-based real estate wei
 corporate sub-categories (investment grade 65%, SME 85%), and income-producing property
 weights.
 
+For the **complete row-ID-to-risk-weight mapping** (including the article reference
+and typical exposure source for each new band, and confirmation that row 0261=400%
+replaces the old CRR row 0260=370%), see the authoritative table at
+[Output & Reporting — OF 07.00 Section 3 Risk Weight Band Row IDs](../specifications/output-reporting.md#of-0700-section-3--risk-weight-band-row-ids).
+
 #### Section 4 — CIU Approach
 
 CRR has **3** rows; Basel 3.1 has **5** — adds "of which: exposures to relevant CIUs"

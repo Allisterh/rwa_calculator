@@ -161,6 +161,81 @@ breakdown, risk weight breakdown, memorandum items).
 - Rows 0371-0374: Equity transitional sub-rows (0371=SA higher-risk, 0372=SA other, 0373=IRB higher-risk, 0374=IRB other — expire 1 January 2030)
 - Row 0380: Retail and real estate exposures subject to the currency mismatch multiplier (Art. 112(1)(h)/(i))
 
+For the **risk-weight band rows** (Section 3 of OF 07.00), see the dedicated table
+[OF 07.00 Section 3 — Risk Weight Band Row IDs](#of-0700-section-3--risk-weight-band-row-ids)
+below.
+
+### OF 07.00 Section 3 — Risk Weight Band Row IDs
+
+Section 3 of OF 07.00 (the "Breakdown of total exposures by risk weights" section)
+expands from **15** risk-weight rows under CRR C 07.00 to **29** rows under Basel 3.1
+OF 07.00. The fourteen new granular bands (15%, 25%, 30%, 40%, 45%, 60%, 65%, 80%,
+85%, 105%, 110%, 130%, 135%, 400%) reflect the more granular risk-weight grid
+introduced by PRA PS1/26 — primarily from real-estate loan-splitting / income-producing
+LTV bands (Art. 124F–124I), corporate sub-categories (Art. 122), institution ECRA/SCRA
+(Art. 120–121), and the new equity higher-risk weight (Art. 133(4)).
+
+The previous CRR row 0260 (370%) is **removed** and replaced by row **0261 (400%)**
+for higher-risk equity exposures under Art. 133(4) — reported during the Standardised
+Transitional Approach period via memorandum row 0374, but always allocated to row 0261
+in Section 3.
+
+| Row ID | Risk Weight | Basel 3.1 / CRR Article(s) | Typical Source |
+|--------|-------------|----------------------------|----------------|
+| 0140 | 0% | SA Art. 114(2) (sovereign CQS 1), Art. 116(4) (PSE), Art. 134(3) (cash) | Sovereign AAA-AA-, eligible PSE, cash items |
+| 0150 | 2% | Art. 306(1) Counterparty Credit Risk (CRR) Part | Trade exposures to QCCPs |
+| 0160 | 4% | Art. 305(3) Counterparty Credit Risk (CRR) Part | Default-fund contributions to QCCPs (cap) |
+| 0170 | 10% | SA Art. 129 (covered bonds CQS 1) | Covered bonds — CQS 1 |
+| **0171** | **15%** | SA Art. 129 (covered bonds CQS 2-3) — Basel 3.1 expansion | Covered bonds — CQS 2 (and certain CQS 3) |
+| 0180 | 20% | SA Art. 114 / 120 (sovereign / institution CQS 2; SCRA Grade A short-term) | Sovereign CQS 2, institution ECRA CQS 1, RE secured-portion (Art. 124F) |
+| **0181** | **25%** | SA Art. 124G(2) junior-charge multiplier on 20% base | Real estate income-producing RESI low-LTV variants |
+| **0182** | **30%** | SA Art. 120 (institution ECRA CQS 2 >3m), Art. 121 (SCRA Grade A enhanced), Art. 124G (income-producing RESI <=50% LTV) | Institutions, income-producing RESI |
+| 0190 | 35% | SA Art. 124G (income-producing RESI 50-60% LTV) | Income-producing residential RE |
+| **0191** | **40%** | SA Art. 121 (SCRA Grade A >3m), Art. 124G (income-producing RESI 60-70% LTV), Art. 161 covered-bond LGD-driven RW | Institutions SCRA Grade A, income-producing RESI mid-LTV |
+| **0192** | **45%** | SA Art. 123A (transactor retail) — Basel 3.1 new | Transactor retail exposures (paid in full each cycle) |
+| 0200 | 50% | SA Art. 120 (institution ECRA CQS 3), Art. 124G (income-producing RESI 70-80% LTV) | Institutions ECRA CQS 3, income-producing RESI |
+| **0201** | **60%** | SA Art. 124H (commercial RE secured-portion natural person/SME), Art. 124G (income-producing RESI 80-90% LTV) | CRE loan-splitting secured leg |
+| **0202** | **65%** | SA Art. 122(2) (corporate CQS 3 — was 100% under CRR), Art. 122(3) (investment-grade unrated corporate) | Corporates CQS 3, investment-grade unrated corporates |
+| 0210 | 70% | Art. 232(3)(c) Credit Risk Mitigation (CRR) Part | CRM-driven outcomes (e.g., minimum collateral floor) |
+| 0220 | 75% | SA Art. 123 (other retail), Art. 124F (counterparty RW for RESI residual) | Standard retail, RE residual leg |
+| **0221** | **80%** | SA Art. 122A(3) (project finance high-quality operational phase) — Basel 3.1 SA SL new | High-quality operational PF |
+| **0222** | **85%** | SA Art. 122(4) (SME corporate — replaces CRR 100% + SF mechanism) | SME corporate (turnover <= EUR 50m) |
+| 0230 | 100% | SA Art. 122(2) (corporate CQS 4-5 / unrated), Art. 124I (commercial RE income-producing <=80% LTV), Art. 134(2) (other items) | Default unrated corporates, CRE income-producing, other items |
+| **0231** | **105%** | SA Art. 124G (income-producing RESI >100% LTV) | High-LTV income-producing residential |
+| **0232** | **110%** | SA Art. 124I (commercial RE income-producing >80% LTV) | High-LTV income-producing commercial |
+| **0233** | **130%** | SA Art. 122A(1) (project finance pre-operational phase) — Basel 3.1 SA SL new | Pre-operational project finance |
+| **0234** | **135%** | Junior-charge multiplier × 110% (CRE income-producing high-LTV with subordinated charge) | Junior-charge CRE outcome |
+| 0240 | 150% | SA Art. 122(2) (corporate CQS 6), Art. 127 (defaulted, low provisions), Art. 128 (high-risk), Art. 133 (subordinated debt) | Defaulted high-LGD, high-risk items, subordinated debt |
+| 0250 | 250% | SA Art. 133(3) (standard equity) and Art. 48(4) CRR | Standard SA equity exposures |
+| **0261** | **400%** | SA Art. 133(4) (higher-risk equity) and Art. 48(4) CRR — **replaces CRR row 0260 (370%)** | Higher-risk equity (unlisted, <5yr, PE, speculative) |
+| 0270 | 1250% | SA Art. 132(2) and Art. 379 CRR | Risk-weight deductions (full capital) |
+| 0280 | Other | SA Art. 113(1)–(5) | Other risk weights — not available for Government, Corporates, Institutions, Retail. Used for nth-to-default credit derivatives under "Other items" |
+
+!!! warning "0260 (370%) Removed Under Basel 3.1"
+    The CRR-era C 07.00 row **0260 = 370%** (higher-risk equity under CRR Art. 133(4))
+    is **removed** under Basel 3.1 OF 07.00. Higher-risk equity exposures are now
+    reported in row **0261 = 400%**, reflecting the increased Basel 3.1 SA risk weight
+    in PRA PS1/26 Art. 133(4). Any code or template mapping that previously emitted
+    row 0260 must be updated to emit 0261 with the revised 400% weight.
+
+!!! info "Allocation Notes"
+    - Mixed real estate exposures (Art. 124(4)) are reported against the risk weights
+      for their constituent parts.
+    - Real estate exposures with junior charges (Art. 124G(2), 124H(3), 124I(3)) are
+      **allocated** to the row that would apply if the junior-charge multiplier were
+      disapplied; the **RWEA column** still reflects the multiplier (so a 110% base
+      with a 1.25× junior-charge multiplier reports under row 0232 = 110%, but with
+      RWEA = exposure × 137.5%, surfacing in row 0234 = 135% only when the base RW
+      itself is the multiplier outcome).
+    - Equity exposures under the Standardised Transitional Approach (Rules 4.1–4.10
+      of the Credit Risk: General Provisions (CRR) Part) are allocated to rows 0250
+      and 0261 per Art. 133, and additionally reported against memorandum rows
+      0371–0374 for the transitional period (expiring 1 January 2030). The
+      memorandum reporting in 0371–0374 does **not** affect the primary allocation
+      to 0250 / 0261.
+    - Source: PS1/26 Annex II §3.2.5, pp. 95–96 of
+      `docs/assets/ps1-26-annex-ii-reporting-instructions.pdf`.
+
 **OF 08.07 (IRB Scope of Use)** — missing row IDs:
 - Rows 0180-0260: Roll-out class breakdowns for corporate sub-classes, retail sub-classes, and SL types
 
