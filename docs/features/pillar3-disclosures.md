@@ -816,6 +816,56 @@ comparison between full standardised RWA and modelled RWA by risk type.
 - Col c: Sum of cols a and b
 - Col d: sa_rwa for all exposures (full SA recalculation)
 
+### Col d — pre-OF-ADJ S-TREA input (reconciles to OF 02.01 col 0040)
+
+Column d is the **S-TREA input to the output floor formula before the floor multiplier
+`x` is applied and before OF-ADJ is added** — not the post-floor RWA. It matches the
+S-TREA value reported in supervisory return **OF 02.01 col 0040** ("Standardised total
+RWA — multiplier not applied"). The full TREA formula is:
+
+```
+TREA = max{U-TREA; x · S-TREA + OF-ADJ}
+OF-ADJ = 12.5 · (IRB T2 − IRB CET1 − GCRA + SA T2)
+```
+
+Source: PRA PS1/26 Art. 92(2A), `docs/assets/ps126app1.pdf` page 13.
+
+!!! quote "PRA PS1/26 Art. 92(2A) — definition of GCRA (`docs/assets/ps126app1.pdf` p. 13)"
+    "**GCRA** = general credit risk adjustments, gross of tax effects, of up to 1.25%
+    of risk-weighted exposure amounts calculated in accordance with paragraph 3A;"
+
+    Paragraph 3A is the definition of S-TREA — the same value that populates CMS1
+    col d. The 1.25% cap on the GCRA component of OF-ADJ is therefore **gated by
+    the very figure CMS1 col d reports**.
+
+!!! info "Why this matters — GCRA T2 capacity is gated by CMS1 col d"
+    The `GCRA` term in OF-ADJ (Art. 92(2A)) and the SA Tier 2 credit (`SA T2` per
+    Own Funds (CRR) Part Art. 62(c)) are each capped against an RWA base. The
+    GCRA cap specifically references S-TREA, so CMS1 col d **directly determines**
+    the maximum GCRA amount that can flow into OF-ADJ:
+
+    `max GCRA in OF-ADJ = 1.25% × (CMS1 col d for credit risk row 0010, plus the
+    S-TREA contribution from non-credit risk types)`
+
+    For an IRB firm whose credit-risk S-TREA is the dominant component (as is
+    typical), increasing CMS1 col d row 0010 raises the GCRA T2 capacity in
+    OF-ADJ; a contraction in SA-equivalent credit RWA tightens it. This is the
+    mechanical link between the public CMS1 disclosure and the supervisory
+    OF-ADJ inputs reported in OF 02.00 row 0036.
+
+!!! note "Cross-references — single source of truth"
+    The OF-ADJ formula, the GCRA / SA T2 / IRB T2 / IRB CET1 components, the
+    Art. 62(c) / Art. 62(d) / Art. 92(2A) cap mechanics, and the
+    Reg (EU) 183/2014 GCRA qualifying criteria are documented once in the
+    output floor specification — do not duplicate the formula here.
+
+    - [Output Floor — OF-ADJ Capital Adjustment](../specifications/basel31/output-floor.md#of-adj-capital-adjustment)
+      — full formula derivation, T2 caps, Art. 40 DTA gross-up rule.
+    - [Output Floor — GCRA Qualifying Criteria](../specifications/basel31/output-floor.md#general-credit-risk-adjustments-gcra-qualifying-criteria)
+      — GCRA / SCRA boundary, IFRS 9 mapping, Art. 110(3) mixed-approach allocation.
+    - [Output Reporting — Output Floor Adjustment (OF-ADJ)](../specifications/output-reporting.md#output-floor-adjustment-of-adj)
+      — COREP OF 02.00 row 0036 / OF 02.01 col 0040 mapping.
+
 ---
 
 ## UKB CMS2 — Output Floor Comparison by Asset Class (Art. 456(1)(b))
@@ -864,6 +914,23 @@ Basel 3.1 only — no CRR equivalent. Breaks down the credit risk comparison at 
 - Sub-rows 0041/0042 filter by approach (F-IRB/A-IRB within corporates)
 - Sub-rows 0044, 0045, 0054 are null (require pipeline data not yet available)
 - Excludes CCR, CVA, and securitisation exposures
+
+### Col d — pre-OF-ADJ S-TREA at asset-class granularity
+
+CMS2 col d carries the **same pre-OF-ADJ S-TREA semantics as CMS1 col d**, broken down
+by asset class instead of by risk type. The vertical sum of CMS2 col d (row 0070
+"Total") equals the credit-risk component of CMS1 col d row 0010, which in turn
+equals the credit-risk slice of OF 02.01 col 0040 (S-TREA — multiplier not
+applied). Neither CMS1 col d nor CMS2 col d have the floor multiplier `x` or
+OF-ADJ applied; both feed the un-multiplied S-TREA leg of
+`TREA = max{U-TREA; x · S-TREA + OF-ADJ}` (Art. 92(2A), `docs/assets/ps126app1.pdf`
+p. 13).
+
+The 1.25% S-TREA cap on the GCRA component of OF-ADJ (Art. 92(2A)) is therefore
+also gated by **the sum of CMS2 col d across all asset classes** for the
+credit-risk portion of S-TREA. See the
+[CMS1 col d cross-reference admonition](#col-d--pre-of-adj-s-trea-input-reconciles-to-of-0201-col-0040)
+above for the full reconciliation and links to the OF-ADJ formula and GCRA cap.
 
 ---
 
