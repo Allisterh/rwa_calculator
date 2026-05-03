@@ -147,15 +147,157 @@ The comparison pool 'B' (provisions side) includes:
     default to 0.0 (backward compatible). The `ELPortfolioSummary` reports
     `total_ava_amount`, `total_other_own_funds_reductions`, and `total_pool_b`.
 
-### Art. 159(3) Two-Branch Comparison
+### Art. 159(3) — Two-Branch Comparison Rule
 
-When non-defaulted EL exceeds non-defaulted provisions (A>B) AND defaulted provisions exceed defaulted EL (D>C) simultaneously, Art. 159(3) requires **separate computation** of the non-defaulted shortfall and defaulted excess. The defaulted excess must **not** offset the non-defaulted shortfall.
+Art. 159 partitions the EL-vs-provisions comparison into four labelled amounts:
+
+| Label | Definition | Source |
+|-------|-----------|--------|
+| **A** | EL amounts for **non-defaulted** exposures | Art. 158(5), (6), (10) (PD × LGD × EAD) |
+| **B** | Provisions for **non-defaulted** exposures | General CRAs (Art. 110) + specific CRAs for non-defaulted exposures + AVAs (Art. 34) + other own funds reductions |
+| **C** | EL amounts for **defaulted** exposures | Art. 158(5), (6), (10) (BEEL for A-IRB; 1 × LGD × EAD for F-IRB) |
+| **D** | Specific CRAs for **defaulted** exposures | Art. 110 |
+
+Art. 159(3) sets out **two distinct branches** depending on whether the
+non-defaulted and defaulted pools are aligned in sign:
+
+```
+Branch 1 — split branch (A > B AND D > C, simultaneously):
+    negative amount = B − A    (non-defaulted shortfall)
+    positive amount = D − C    (defaulted excess)
+
+Branch 2 — combined branch (all other cases):
+    if (A + C) > (B + D):
+        negative amount = (B + D) − (A + C)
+    if (B + D) > (A + C):
+        positive amount = (B + D) − (A + C)
+```
+
+The split branch prevents specific CRAs on defaulted exposures from offsetting
+expected loss amounts on other (non-defaulted) exposures.
+
+!!! quote "Art. 159(3) — verbatim (UK CRR, as substituted by Reg (EU) 2019/630; mirrored in PRA Rulebook IRB Approach (CRR) Part Art. 159(3))"
+    "Where 'A' > 'B' and 'D' > 'C', an institution shall, in order to compare
+    expected loss amounts with credit risk adjustments, additional value
+    adjustments and other own fund reductions, such that specific credit risk
+    adjustments on exposures in default are not used to cover expected loss
+    amounts on other exposures:
+
+    (a) calculate the following negative amount: 'B' – 'A'; and
+
+    (b) calculate the following positive amount: 'D' – 'C'.
+
+    In all other cases, an institution shall, in order to compare expected loss
+    amounts with credit risk adjustments, additional value adjustments and
+    other own fund reductions:
+
+    (c) if ('A' + 'C') > ('B' + 'D'), calculate the following negative amount:
+    ('B' + 'D') – ('A' + 'C');
+
+    (d) if ('B' + 'D') > ('A' + 'C'), calculate the following positive amount:
+    ('B' + 'D') – ('A' + 'C')."
+
+The **negative amount** (shortfall) is deducted in full from CET1 under
+Art. 36(1)(d). The **positive amount** (excess) is added to T2 under
+Art. 62(d), subject to the cap defined below.
 
 !!! success "Implemented (P1.81)"
-    Art. 159(3) two-branch rule is implemented. When the condition holds,
-    `effective_shortfall = non_defaulted_shortfall` and `effective_excess =
-    defaulted_excess` — no cross-pool netting. The `art_159_3_applies` flag
-    on `ELPortfolioSummary` indicates when the two-branch rule is triggered.
+    Art. 159(3) two-branch rule is implemented. When the split branch holds,
+    `effective_shortfall = non_defaulted_shortfall = A − B` and
+    `effective_excess = defaulted_excess = D − C` — no cross-pool netting.
+    The `art_159_3_applies` flag on `ELPortfolioSummary` indicates when the
+    split branch is triggered.
+
+### Art. 62(d) — T2 Cap on EL Excess
+
+The Art. 159(3) **positive amount** (EL excess) is admissible to Tier 2
+capital under Art. 62(d), but only up to a hard ceiling expressed as a
+percentage of IRB credit-risk RWA:
+
+```
+T2_credit_cap = 0.006 × IRB_credit_risk_RWA
+T2_credit     = min(EL_excess, T2_credit_cap)
+```
+
+!!! quote "Art. 62(d) — verbatim (UK CRR; substantive text now in PRA Rulebook Own Funds (CRR) Part Art. 62(d))"
+    "(d) credit risk adjustments and provisions for the exposures referred to
+    in Article 110(2) … not exceeding 0.6 % of risk weighted exposure amounts
+    calculated under Article 153 [the IRB approach]."
+
+The 0.6% cap is **calculated on the un-floored IRB credit-risk RWA**, not
+on the post-CCB or post-output-floor TREA. CRR has no output floor, so
+this distinction does not arise here — under CRR the IRB RWA base for the
+cap is simply the IRB credit-risk RWA from Art. 153.
+
+#### Worked example — both branches
+
+**Scenario A: combined branch with shortfall (CET1 deduction)**
+
+```
+Inputs (£m):
+  A = 100   (non-defaulted EL)
+  B =  60   (non-defaulted provisions + AVAs + other reductions)
+  C =  40   (defaulted EL)
+  D =  30   (defaulted specific CRAs)
+  IRB credit-risk RWA = 12,500
+
+Branch test: A > B (100 > 60) AND D > C? D = 30, C = 40, so D < C.
+  → Split branch does NOT apply. Use combined branch.
+
+(A + C) − (B + D) = 140 − 90 = 50 > 0
+  → Negative amount = (B + D) − (A + C) = −50.
+  → CET1 deduction (Art. 36(1)(d)) = £50m.
+  → No T2 credit. T2 cap not engaged.
+```
+
+**Scenario B: combined branch with excess, cap binds (T2 credit at cap)**
+
+```
+Inputs (£m):
+  A =  60
+  B = 100
+  C =  20
+  D =  40
+  IRB credit-risk RWA = 12,500
+
+Branch test: A > B? 60 < 100, so split branch does NOT apply.
+
+(B + D) − (A + C) = 140 − 80 = 60 > 0
+  → Positive amount (EL excess) = £60m.
+
+T2 cap (Art. 62(d)):
+  T2_credit_cap = 0.006 × £12,500m = £75m
+  T2_credit     = min(£60m, £75m)  = £60m   (cap not binding)
+
+If instead IRB RWA = £8,000m:
+  T2_credit_cap = 0.006 × £8,000m  = £48m
+  T2_credit     = min(£60m, £48m)  = £48m   (cap binds — £12m of excess unrecognised)
+```
+
+**Scenario C: split branch (Art. 159(3)(a)/(b))**
+
+```
+Inputs (£m):
+  A = 100   (non-defaulted EL)
+  B =  60   (non-defaulted provisions)
+  C =  20   (defaulted EL)
+  D =  50   (defaulted specific CRAs)
+  IRB credit-risk RWA = 10,000
+
+Branch test: A > B (100 > 60) AND D > C (50 > 20)? Yes — split branch applies.
+
+Negative amount (a) = B − A = 60 − 100 = −40   (non-defaulted shortfall £40m)
+Positive amount (b) = D − C = 50 − 20 =  30    (defaulted excess £30m)
+
+Capital impact:
+  CET1 deduction (Art. 36(1)(d)) = £40m  (full non-defaulted shortfall)
+  T2 cap (Art. 62(d)) = 0.006 × £10,000m = £60m
+  T2 credit          = min(£30m, £60m) = £30m  (cap not binding)
+
+Note: The £30m defaulted excess is NOT netted against the £40m non-defaulted
+shortfall. Cross-pool netting is precisely what Art. 159(3) split branch
+prohibits — both the full deduction and the (capped) credit flow through.
+```
 
 ### Portfolio-Level Summary (ELPortfolioSummary)
 
@@ -169,8 +311,8 @@ The aggregator computes a portfolio-level `ELPortfolioSummary` with:
 | `total_pool_b` | `provisions + AVA + other_own_funds_reductions` | CRR Art. 159(1) |
 | `total_el_shortfall` | `sum(el_shortfall)` after Art. 159(3) rule | CRR Art. 159 |
 | `total_el_excess` | `sum(el_excess)` after Art. 159(3) rule | CRR Art. 62(d) |
-| `t2_credit_cap` | `total_irb_rwa × 0.006` (must use **un-floored** IRB RWA, not post-output-floor TREA) | CRR Art. 62(d) |
-| `t2_credit` | `min(total_el_excess, t2_credit_cap)` | CRR Art. 62(d) |
+| `t2_credit_cap` | `total_irb_rwa × 0.006` (un-floored IRB credit-risk RWA — CRR has no output floor) | CRR Art. 62(d) |
+| `t2_credit` | `min(total_el_excess, t2_credit_cap)` — see [Art. 62(d) — T2 Cap on EL Excess](#art-62d-t2-cap-on-el-excess) for the formula and worked examples | CRR Art. 62(d) |
 | `cet1_deduction` | `total_el_shortfall` (full amount) | Art. 36(1)(d) |
 | `t2_deduction` | `Decimal(0)` — always zero | — |
 
