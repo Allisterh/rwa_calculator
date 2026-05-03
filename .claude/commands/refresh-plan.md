@@ -16,12 +16,22 @@ Invoke the `plan-curator` agent. Prompt:
 > workflow, with the **audit pass first** — no skipping it on the
 > grounds that the queue looks fine:
 >
-> 1. **Audit every existing item — open *and* completed.** For each
->    bullet: citation resolves, gap is still real (not silently
->    fixed since it was written), no newer duplicate, in the right
->    plan, right tier, right scope. Close / re-tier / re-scope /
->    merge as needed per your system prompt's audit rules. Surface
->    items that should live on the docs plan instead.
+> 1. **Audit every existing item — open *and* completed.** Both
+>    plan files are trust anchors for downstream agents; a wrong
+>    bullet gets implemented as if it described a real fix. For
+>    each bullet, verify: **claim is independently verifiable**
+>    (don't take the bullet's reading of the regulation or the code
+>    on trust — confirm via the `basel31` / `crr` Skill that the
+>    rule says what the bullet claims, *and* confirm by reading the
+>    cited source that the code actually diverges), citation
+>    resolves, gap is still real (not silently fixed since it was
+>    written), no newer duplicate, in the right plan, right tier,
+>    right scope. Close `closed-claim-invalid` for bullets that
+>    were wrong when filed; escalate `Unverifiable` when a claim
+>    can't be confirmed in a reasonable spot-check rather than
+>    leaving it silently in the queue. Close / re-tier / re-scope
+>    / merge as needed per your system prompt's audit rules.
+>    Surface items that should live on the docs plan instead.
 > 2. **Scan for new findings** — TODO / FIXME / HACK markers,
 >    `pytest.mark.skip`, conditional fixture guards,
 >    acceptance-test gaps, regulatory scalar drift between
@@ -32,7 +42,8 @@ Invoke the `plan-curator` agent. Prompt:
 > Cite every regulatory scalar via the `basel31` or `crr` Skill.
 > Do not edit any file other than `IMPLEMENTATION_PLAN.md`.
 > Return the structured audit summary (Added / Closed /
-> Re-scoped / Merged / Cross-file) defined in your system prompt.
+> Re-scoped / Merged / Unverifiable / Cross-file) defined in your
+> system prompt.
 
 ## Step 2 — review (top level)
 

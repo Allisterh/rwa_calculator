@@ -36,17 +36,36 @@ you in the prompt which file is the target — `IMPLEMENTATION_PLAN.md` or
    structure — tier headings (`Tier 1 — Calculation Correctness`, etc.
    for code; `Priority 1: Critical Gaps` etc. for docs). Preserve that
    structure.
-2. **Audit every existing item — not just `[x]` ones.** For each
-   bullet currently in the file (open and completed), spot-check:
+2. **Audit every existing item — not just `[x]` ones.** Both plan
+   files are **trust anchors for downstream agents**: engine-implementer
+   and doc-writer treat each bullet as an authoritative description
+   of a real gap. A wrong bullet — misread spec, misread code,
+   AI-generated phantom, copy-paste error — gets implemented as if it
+   were a real fix. The audit's job is to keep that trust intact.
+
+   For each bullet currently in the file (open and completed),
+   verify:
+
    - **Citation resolves**: any file path or test path the bullet
      names still exists. If a cited file was deleted or moved, the
      bullet either follows it or is closed with a note.
-   - **Gap is still real**: the regulatory scalar / formula / TODO
-     the bullet describes is still wrong in code (for the code plan)
-     or still missing in `docs/` (for the docs plan). If it's been
-     incidentally fixed since the bullet was written, mark `[x]` /
-     `[x] FIXED v<x.y.z>` with a one-line reason and move to
-     `## Completed`.
+   - **Claim is independently verifiable** — the load-bearing check.
+     Don't take the bullet's reading on trust. For a code-plan item:
+     (a) confirm via the `basel31` or `crr` Skill that the regulatory
+     rule actually requires what the bullet says it requires; (b)
+     confirm by reading the cited source that the code actually
+     diverges from that rule. For a docs-plan item: confirm the
+     regulatory source says what the bullet claims, **and** confirm
+     the docs page actually misses or misstates it. If the bullet
+     was wrong when filed, close it with `closed-claim-invalid: <why>`
+     and move to `## Completed`. If the bullet is partially wrong
+     (right rule, wrong file path; or right direction, wrong scope),
+     re-scope rather than close.
+   - **Gap is still real**: separate from validity — even a correctly
+     filed bullet may have been incidentally fixed since. Confirm the
+     scalar / formula / missing page is still wrong today. If
+     resolved in the meantime, mark `[x]` / `[x] FIXED v<x.y.z>` with
+     a one-line reason and move to `## Completed`.
    - **No duplicate**: a newer bullet hasn't superseded it. If two
      bullets describe the same gap, merge into the higher-priority
      one and drop the duplicate (with a `## Completed` note).
@@ -62,10 +81,20 @@ you in the prompt which file is the target — `IMPLEMENTATION_PLAN.md` or
      gaps gets split; a vague bullet gets refined with concrete file
      paths and acceptance criteria.
 
+   **Bias toward closure or escalation when a claim cannot be
+   verified.** If you cannot independently confirm a bullet's claim
+   within a reasonable spot-check (Skill lookup + file read), do not
+   silently keep it. List it under `Unverifiable` in the return
+   value with what you tried, so the operator can decide whether to
+   close, refine, or investigate further. Leaving an unverified
+   bullet in the queue means the next downstream agent will treat
+   it as truth.
+
    Audit cost note: spot-check, don't deep-read. For each open item
-   verify the cited file exists and the headline claim still holds.
-   Reserve heavy cross-checking for items whose citation looks stale
-   on first read.
+   verify the cited file exists, the regulatory claim resolves via
+   the Skill, and the headline gap still holds. Reserve heavy
+   cross-checking for items whose citation looks stale or whose
+   claim doesn't square with the Skill's first-pass answer.
 3. Audit for new findings, scoped to the target file:
    - **Code plan**: search for `TODO`, `FIXME`, `HACK`,
      `NotImplementedError`, `pytest.mark.skip`, conditional fixture
