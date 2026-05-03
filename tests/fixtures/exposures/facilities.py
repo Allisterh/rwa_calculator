@@ -264,6 +264,45 @@ def _institution_facilities() -> list[Facility]:
             seniority="senior",
             risk_type="MR",  # Medium risk - committed undrawn
         ),
+        # P1.169 — B31 ECRA short-term institution, CQS 4 (DE, EUR 1m, ≤3 months)
+        # original maturity = 90 days → qualifies for Art. 120(2) short-term ECRA gate.
+        # After bug-fix: RW = 50%; before fix: 20%.
+        Facility(
+            facility_reference="F-INST-ST-001",
+            product_type="SHORT_TERM_FACILITY",
+            book_code="FI_LENDING",
+            counterparty_reference="CP-INST-CQS4-ST",
+            value_date=date(2027, 1, 1),
+            maturity_date=date(2027, 4, 1),  # 90 days — triggers ≤3m original-maturity gate
+            currency="EUR",
+            limit=1_000_000.0,
+            committed=True,
+            lgd=0.45,
+            beel=0.0,
+            is_revolving=False,
+            seniority="senior",
+            risk_type="MR",  # Medium risk - committed undrawn
+            is_short_term_trade_lc=False,
+        ),
+        # P1.169 — B31 ECRA short-term institution, CQS 5 variant (DE, EUR 1m, ≤3 months)
+        # Parametric: CQS 5 shares the same 50% band as CQS 4 under Art. 120(2) Table 4.
+        Facility(
+            facility_reference="F-INST-ST-002",
+            product_type="SHORT_TERM_FACILITY",
+            book_code="FI_LENDING",
+            counterparty_reference="CP-INST-CQS5-ST",
+            value_date=date(2027, 1, 1),
+            maturity_date=date(2027, 4, 1),
+            currency="EUR",
+            limit=1_000_000.0,
+            committed=True,
+            lgd=0.45,
+            beel=0.0,
+            is_revolving=False,
+            seniority="senior",
+            risk_type="MR",
+            is_short_term_trade_lc=False,
+        ),
     ]
 
 

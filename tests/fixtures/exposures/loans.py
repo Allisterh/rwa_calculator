@@ -221,6 +221,39 @@ def _institution_loans() -> list[Loan]:
             beel=0.0,
             seniority="senior",
         ),
+        # P1.169 — B31 ECRA short-term institution, CQS 4, DE, EUR 1m
+        # EAD = 1_000_000; after bug-fix RW = 50%, RWA = 500_000.
+        # Linked to facility F-INST-ST-001 via facility_mapping.
+        Loan(
+            loan_reference="L-INST-ST-001",
+            product_type="INTERBANK_LOAN",
+            book_code="FI_LENDING",
+            counterparty_reference="CP-INST-CQS4-ST",
+            value_date=date(2027, 1, 1),
+            maturity_date=date(2027, 4, 1),
+            currency="EUR",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # P1.169 CQS-5 variant — same structure, different counterparty
+        # After bug-fix RW = 50% (same band), RWA = 500_000.
+        Loan(
+            loan_reference="L-INST-ST-002",
+            product_type="INTERBANK_LOAN",
+            book_code="FI_LENDING",
+            counterparty_reference="CP-INST-CQS5-ST",
+            value_date=date(2027, 1, 1),
+            maturity_date=date(2027, 4, 1),
+            currency="EUR",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
     ]
 
 

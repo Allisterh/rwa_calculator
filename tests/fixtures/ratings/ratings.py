@@ -143,11 +143,13 @@ def _institution_external_ratings() -> list[Rating]:
         Barclays, HSBC, JPMorgan: AA- (CQS 1) - 20% RW
         Metro Bank: A (CQS 2) - 30% RW (UK deviation)
         Monte dei Paschi: BBB (CQS 3) - 50% RW
-        Turkish Dev Bank: BB (CQS 4) - 100% RW
+        Turkish Dev Bank: BB (CQS 4) - 100% RW (CRR); 50% ST under B31 Art. 120(2)
         High Risk Regional: CCC (CQS 6) - 150% RW
         Investment Firm: A- (CQS 2)
         LCH (CCP): AA (CQS 1)
         Unrated Regional: No rating - 40% RW
+        P1.169 DE CQS4 Short-Term: BB (CQS 4) - B31 ECRA ST 50% (bug-fix target)
+        P1.169 DE CQS5 Short-Term: B (CQS 5) - B31 ECRA ST 50% (same band, parametric)
     """
     return [
         # CQS 1 Institutions - 20% Risk Weight
@@ -199,6 +201,32 @@ def _institution_external_ratings() -> list[Rating]:
             "RTG_INST_XX_001", "INST_XX_001", "external", "S&P", "CCC", 6, None, RATING_DATE, True
         ),
         # INST_UR_001 (Unrated) and INST_DF_001 (Defaulted) have no external rating
+        # P1.169 — B31 ECRA short-term institution, CQS 4 (DE)
+        # Art. 120(2) Table 4: original maturity ≤3m, CQS 4 → 50% (buggy table has 20%).
+        Rating(
+            "RTG_INST_CQS4_ST_001",
+            "CP-INST-CQS4-ST",
+            "external",
+            "S&P",
+            "BB",
+            4,
+            None,
+            RATING_DATE,
+            True,
+        ),
+        # P1.169 — B31 ECRA short-term institution, CQS 5 (DE)
+        # Art. 120(2) Table 4: original maturity ≤3m, CQS 5 → 50% (same band as CQS 4).
+        Rating(
+            "RTG_INST_CQS5_ST_001",
+            "CP-INST-CQS5-ST",
+            "external",
+            "S&P",
+            "B",
+            5,
+            None,
+            RATING_DATE,
+            True,
+        ),
     ]
 
 

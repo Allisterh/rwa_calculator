@@ -240,8 +240,10 @@ _SA_CRR_RW: dict[str, float] = {
 # Basel 3.1 specific scalars (PRA PS1/26, CRE20).
 _SA_B31_RW: dict[str, float] = {
     "high_risk": float(B31_HIGH_RISK_RW),
-    # ECRA short-term institution weights (Table 4) — CQS 1-5 vs CQS 6
+    # ECRA short-term institution weights (Table 4) — three-way split
+    # CQS 1-3 = 20%, CQS 4-5 = 50%, CQS 6 = 150% (PRA PS1/26 Art. 120(2)).
     "ecra_st_low": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[1]),
+    "ecra_st_mid": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[4]),
     "ecra_st_high": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[6]),
     # SCRA unrated institution weights (CRE20.16-21) — long-term
     "scra_a": float(B31_SCRA_RISK_WEIGHTS["A"]),
@@ -398,9 +400,9 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
     original_mty = pl.col("original_maturity_years").fill_null(1.0)
     return (
         # ECRA short-term rated institutions (Table 4, Art. 120(2)).
-        # Keys on ORIGINAL maturity <= 3m -> CQS 1-5 = 20%, CQS 6 = 150%.
-        # Art. 120(2A) extends Table 4 to ORIGINAL maturity <= 6m for exposures
-        # arising from the movement of goods.
+        # Keys on ORIGINAL maturity <= 3m -> CQS 1-3 = 20%, CQS 4-5 = 50%,
+        # CQS 6 = 150%. Art. 120(2A) extends Table 4 to ORIGINAL maturity
+        # <= 6m for exposures arising from the movement of goods.
         chain.when(
             is_institution
             & is_rated
@@ -410,8 +412,10 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
             )
         )
         .then(
-            pl.when(pl.col("cqs") <= 5)
+            pl.when(pl.col("cqs") <= 3)
             .then(pl.lit(_SA_B31_RW["ecra_st_low"]))
+            .when(pl.col("cqs") <= 5)
+            .then(pl.lit(_SA_B31_RW["ecra_st_mid"]))
             .otherwise(pl.lit(_SA_B31_RW["ecra_st_high"]))
         )
         # SCRA short-term unrated institutions (Art. 121(3)):
