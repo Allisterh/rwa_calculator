@@ -36,9 +36,36 @@ you in the prompt which file is the target — `IMPLEMENTATION_PLAN.md` or
    structure — tier headings (`Tier 1 — Calculation Correctness`, etc.
    for code; `Priority 1: Critical Gaps` etc. for docs). Preserve that
    structure.
-2. Confirm completion of items already marked `[x]` by spot-checking
-   the linked code or docs. Move stale items to a `## Completed`
-   section if not already there.
+2. **Audit every existing item — not just `[x]` ones.** For each
+   bullet currently in the file (open and completed), spot-check:
+   - **Citation resolves**: any file path or test path the bullet
+     names still exists. If a cited file was deleted or moved, the
+     bullet either follows it or is closed with a note.
+   - **Gap is still real**: the regulatory scalar / formula / TODO
+     the bullet describes is still wrong in code (for the code plan)
+     or still missing in `docs/` (for the docs plan). If it's been
+     incidentally fixed since the bullet was written, mark `[x]` /
+     `[x] FIXED v<x.y.z>` with a one-line reason and move to
+     `## Completed`.
+   - **No duplicate**: a newer bullet hasn't superseded it. If two
+     bullets describe the same gap, merge into the higher-priority
+     one and drop the duplicate (with a `## Completed` note).
+   - **Right plan file**: the bullet is in the right queue. A docs
+     bullet that turns out to be a code bug — or vice versa — gets
+     surfaced in the return value as a cross-file move recommendation
+     (you cannot edit the other plan yourself).
+   - **Right tier / priority**: a Tier 4 cosmetic that now blocks a
+     calculation, or a Priority 1 critical gap that's actually
+     cosmetic, should be re-tiered with the change called out in
+     the bullet itself (e.g. `(re-tiered from T3 — now blocks P1.x)`).
+   - **Right scope**: a bullet that has grown into multiple distinct
+     gaps gets split; a vague bullet gets refined with concrete file
+     paths and acceptance criteria.
+
+   Audit cost note: spot-check, don't deep-read. For each open item
+   verify the cited file exists and the headline claim still holds.
+   Reserve heavy cross-checking for items whose citation looks stale
+   on first read.
 3. Audit for new findings, scoped to the target file:
    - **Code plan**: search for `TODO`, `FIXME`, `HACK`,
      `NotImplementedError`, `pytest.mark.skip`, conditional fixture
@@ -86,7 +113,19 @@ text via pymupdf and cite the section heading or paragraph number.
 
 ## Return value
 
-A short summary of: items added (with IDs), items moved to
-`## Completed`, items reprioritised, and any cross-file dependencies
-worth surfacing to the operator (e.g. "P1.x in code plan blocks Priority 2
-docs item D2.y — both reference Art. 222(4)").
+A short summary, structured as:
+
+- **Added** (with IDs): brand-new items written this pass.
+- **Closed**: items moved to `## Completed` because the audit
+  found them already resolved or no longer applicable. One-line
+  reason each.
+- **Re-scoped / re-tiered**: items whose summary, file paths,
+  scope, or tier changed in the audit. One-line reason each.
+- **Merged duplicates**: pairs/groups collapsed into a single
+  bullet, naming the surviving ID.
+- **Cross-file recommendations**: items that should move to the
+  *other* plan file (you can't edit it). The operator runs the
+  matching `/refresh-*` command after.
+- **Cross-plan dependencies** worth surfacing (e.g. "P1.x in
+  code plan blocks Priority 2 docs item D2.y — both reference
+  Art. 222(4)").

@@ -13,32 +13,45 @@ Invoke the `plan-curator` agent. Prompt:
 > Curate `IMPLEMENTATION_PLAN.md`. Audit `src/rwa_calc/`,
 > `docs/specifications/`, the regulatory PDFs in `docs/assets/`,
 > and the test inventory under `tests/`. Apply your standard
-> workflow:
+> workflow, with the **audit pass first** — no skipping it on the
+> grounds that the queue looks fine:
 >
-> 1. Reconcile existing items (mark genuinely-fixed items
->    `[x] FIXED v<x.y.z>`, demote stale ones, move resolved
->    items to `## Completed`).
-> 2. Scan for new findings — TODO / FIXME / HACK markers,
+> 1. **Audit every existing item — open *and* completed.** For each
+>    bullet: citation resolves, gap is still real (not silently
+>    fixed since it was written), no newer duplicate, in the right
+>    plan, right tier, right scope. Close / re-tier / re-scope /
+>    merge as needed per your system prompt's audit rules. Surface
+>    items that should live on the docs plan instead.
+> 2. **Scan for new findings** — TODO / FIXME / HACK markers,
 >    `pytest.mark.skip`, conditional fixture guards,
 >    acceptance-test gaps, regulatory scalar drift between
 >    `src/rwa_calc/data/tables/` and the PDFs.
-> 3. Add new items in tier order with the standard bullet
+> 3. **Add new items** in tier order with the standard bullet
 >    format. Use the next free P-code integer in sequence.
 >
 > Cite every regulatory scalar via the `basel31` or `crr` Skill.
 > Do not edit any file other than `IMPLEMENTATION_PLAN.md`.
+> Return the structured audit summary (Added / Closed /
+> Re-scoped / Merged / Cross-file) defined in your system prompt.
 
 ## Step 2 — review (top level)
 
 Once plan-curator returns:
 
-1. Run `git diff IMPLEMENTATION_PLAN.md` and skim the new items.
+1. Run `git diff IMPLEMENTATION_PLAN.md` and skim — focus on the
+   audit changes (Closed, Re-scoped, Merged) as well as the Added
+   list. Audit changes are easy to miss in diff because they're
+   often a single bullet edit, but they're the load-bearing part
+   of a refresh.
 2. Confirm the diff is confined to `IMPLEMENTATION_PLAN.md`.
    If anything else changed, stop and ask the operator.
-3. If plan-curator surfaced a cross-file dependency (e.g. "P1.x
-   blocks docs item D2.y"), capture it for the operator —
-   either as a comment in the commit message or by triggering
+3. If plan-curator's return value flagged any **cross-file
+   recommendations** (an item that should move to the docs plan),
+   surface them to the operator and offer to trigger
    `/refresh-docs-plan` afterwards.
+4. If plan-curator surfaced a cross-file dependency (e.g. "P1.x
+   blocks docs item D2.y"), capture it for the operator — as a
+   commit message footer or by triggering `/refresh-docs-plan`.
 
 ## Step 3 — commit
 

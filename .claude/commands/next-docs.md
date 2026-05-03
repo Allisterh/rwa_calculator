@@ -18,24 +18,39 @@ priority buckets in order:
 3. Priority 3: Code-Docs Alignment
 4. Priority 4: Minor Fixes
 
-Select up to N items where each item's **canonical docs target page
-is unique within the batch** — two writers on the same `.md` file is
-the only collision worth blocking. To resolve the target page, scan
-the bullet for an explicit path; if absent, infer from the bullet's
-section heading and any cited spec.
+Select up to N items where every `.md` file plausibly touched by the
+batch is touched by **at most one** writer — including secondary
+edits, not just the canonical target page. A doc-writer typically
+edits its target page plus one or two satellites: parent indices,
+navigation references, cross-link targets, and shared appendix
+pages.
 
-If two top items share a target page, take the higher-priority one
-into the batch and skip the other this round (it will be eligible
-next batch).
+To resolve a candidate's footprint:
+
+1. Resolve the **target page** from the bullet — explicit path if
+   present, otherwise inferred from the section heading and cited
+   spec.
+2. List the **likely satellites**: any `index.md` in the target's
+   directory, the changelog (`docs/appendix/changelog.md`), and
+   `docs/development/documentation-conventions.md` if the bullet
+   suggests a style/convention edit. Cross-reference targets named
+   in the bullet count too.
+
+Two items collide if any path appears in both footprints. When two
+candidates collide, take the higher-priority one and defer the
+other to the next batch.
 
 If the queue is empty, report "nothing to do" and stop without
 dispatching anything.
 
 ## Step 2 — confirm before dispatch
 
-State to the operator: the picked item IDs, their priority
-buckets, and the distinct target docs page for each. One line per
-item. Stop here if the operator hasn't seen the list before — for
+State to the operator one line per item:
+`<item-id> | Priority <n> | target: <target page> | satellites: <comma-separated>`
+where `satellites` lists the secondary `.md` files inferred in
+Step 1 (or `none`). The operator can then spot collisions the
+heuristic missed before any agents fire. Stop here if the operator
+hasn't seen the list before — for
 headless `loop.sh` runs, proceed automatically.
 
 ## Step 3 — parallel dispatch

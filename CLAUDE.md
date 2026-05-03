@@ -174,6 +174,7 @@ Project subagents in `.claude/agents/` (role-based, not domain-based — regulat
 - **`fixture-builder`** — owns `tests/fixtures/`. Implements parquet rows and builders from a scenario proposal.
 - **`test-writer`** — owns `tests/{unit,acceptance,contracts,integration}/`. Writes the failing test that drives the next implementation step.
 - **`engine-implementer`** — owns `src/rwa_calc/`. Makes the failing test pass with the minimum diff and a green validation gate (arch_check, ruff, ty, contracts).
+- **`item-lead`** — owns nothing on disk. Drives the four-wave chain (scenario-architect → fixture-builder → test-writer → engine-implementer) for one item inside its dedicated git worktree, so the four sub-agent reports stay in *its* context. Used only by `/next-items` when N>1; the only agent permitted to spawn other agents.
 - **`plan-curator`** — owns the two work-queue files at the repo root: `IMPLEMENTATION_PLAN.md` and `DOCS_IMPLEMENTATION_PLAN.md`. Audits code/specs/PDFs against each other and writes prioritised bullet items.
 - **`doc-writer`** — owns `docs/`. Writes or updates one canonical docs page per `DOCS_IMPLEMENTATION_PLAN.md` item; runs `uv run zensical build` before returning.
 
@@ -186,11 +187,11 @@ Orchestration lives in slash commands, not in agents. Each `loop.sh` mode maps t
 | `loop.sh docs_build` | `PROMPT_docs_build.md` | `/next-docs 3` | `/next-doc` |
 | `loop.sh docs_plan` | `PROMPT_docs_plan.md` | `/refresh-docs-plan` | — |
 
-The batch commands pick N non-conflicting items, dispatch the agent pipeline as parallel waves, and run the validation gate (or `uv run zensical build`) **once at the end** — not per agent. Items that touch shared engine files (`engine/pipeline.py`, `contracts/protocols.py`, `contracts/bundles.py`, `engine/aggregator/aggregator.py`) are forced single-stream by `/next-items` even when N>1 was requested.
+The batch commands pick N non-conflicting items and run the validation gate (or `uv run zensical build`) **once at the end** — not per agent. `/next-items` dispatches one `item-lead` per item, each working in its own git worktree on `batch/<batch-id>/<P-code>`; the orchestrator squash-merges the worktree branches into the current feature branch before the gate runs. `/next-docs` keeps the flat parallel `doc-writer` dispatch (no worktree, no item-lead — docs writes don't collide). Items that touch shared engine files (`engine/pipeline.py`, `contracts/protocols.py`, `contracts/bundles.py`, `engine/aggregator/aggregator.py`) are forced single-stream by `/next-items` even when N>1 was requested, and run in the main tree without an item-lead.
 
 Plus `/implement-scenario <ID>` for ad-hoc one-off work on a specific P-code or scenario ID.
 
-Agents do not have commit/push permissions and do not invoke other agents — keep the call graph one level deep so `scripts/pre_commit_gate.sh` fires once per iteration with full context. The two root plan files (`IMPLEMENTATION_PLAN.md`, `DOCS_IMPLEMENTATION_PLAN.md`) are the source of truth for outstanding work; `docs/plans/implementation-plan.md` is published narrative on the Zensical site.
+Agents never commit or push — commits land in the slash-command orchestrator only. The call graph is normally one level deep (orchestrator → role-agent), with one exception: `/next-items` may go two levels deep via the `item-lead` agent (orchestrator → `item-lead` → role-agent) so that each batched item's sub-agent reports stay in the lead's context, not the orchestrator's. `item-lead` agents must not spawn other `item-lead` agents — three-level chains are a bug. The two root plan files (`IMPLEMENTATION_PLAN.md`, `DOCS_IMPLEMENTATION_PLAN.md`) are the source of truth for outstanding work; `docs/plans/implementation-plan.md` is published narrative on the Zensical site.
 
 ## Documentation
 

@@ -12,33 +12,48 @@ Invoke the `plan-curator` agent. Prompt:
 
 > Curate `DOCS_IMPLEMENTATION_PLAN.md`. Audit `docs/`
 > end-to-end against the regulatory PDFs in `docs/assets/` and
-> against `src/rwa_calc/`. Apply your standard workflow:
+> against `src/rwa_calc/`. Apply your standard workflow, with the
+> **audit pass first** — no skipping it on the grounds that the
+> queue looks fine:
 >
-> 1. Reconcile existing items (mark genuinely-resolved items
->    `[x]`, move them to `## Completed`).
-> 2. Scan for new findings:
+> 1. **Audit every existing item — open *and* completed.** For each
+>    bullet: cited target page still exists, the gap is still real
+>    (the docs page hasn't been written or corrected since the
+>    bullet was filed), no newer duplicate, in the right plan
+>    file, right priority bucket, right scope. Close / re-prioritise
+>    / re-scope / merge as needed per your system prompt's audit
+>    rules. Surface items that should live on the code plan instead.
+> 2. **Scan for new findings**:
 >    - PDF-to-docs mapping per `PROMPT_docs_plan.md`
 >      (`ps126app1.pdf`, `crr.pdf`, comparison PDF, COREP/Pillar 3
 >      instruction PDFs).
 >    - Code-docs alignment — risk weights, formulas, article
 >      references, scenario-ID coverage.
 >    - Basel 3.1 spec parity vs. the matching CRR specs.
-> 3. Add new items in priority order with the standard bullet
+> 3. **Add new items** in priority order with the standard bullet
 >    format. Use the existing `Phase N Findings` sub-headings or
 >    open a new dated phase if appropriate.
 >
 > Cite every regulatory scalar via the `basel31` or `crr` Skill.
 > Do not edit any file other than `DOCS_IMPLEMENTATION_PLAN.md`.
+> Return the structured audit summary (Added / Closed /
+> Re-scoped / Merged / Cross-file) defined in your system prompt.
 
 ## Step 2 — review (top level)
 
 Once plan-curator returns:
 
-1. Run `git diff DOCS_IMPLEMENTATION_PLAN.md` and skim.
+1. Run `git diff DOCS_IMPLEMENTATION_PLAN.md` and skim — focus on
+   the audit changes (Closed, Re-scoped, Merged) as well as the
+   Added list. Audit changes are easy to miss in diff because
+   they're often a single bullet edit, but they're the load-bearing
+   part of a refresh.
 2. Confirm the diff is confined to `DOCS_IMPLEMENTATION_PLAN.md`.
-3. If plan-curator flags items that are really code bugs (Priority 3
-   "Docs Correct, Code Has Known Issue"), surface them — they
-   belong in `IMPLEMENTATION_PLAN.md`, not the docs plan.
+3. If plan-curator's return value flagged any **cross-file
+   recommendations** — items that are really code bugs and belong
+   in `IMPLEMENTATION_PLAN.md` (Priority 3 "Docs Correct, Code Has
+   Known Issue") — surface them and offer to trigger
+   `/refresh-plan` afterwards.
 
 ## Step 3 — commit
 
