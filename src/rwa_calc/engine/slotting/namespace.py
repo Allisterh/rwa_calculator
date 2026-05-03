@@ -45,6 +45,7 @@ from rwa_calc.data.tables.b31_slotting import (
     B31_SLOTTING_EL_RATES_SHORT,
     B31_SLOTTING_RISK_WEIGHTS,
     B31_SLOTTING_RISK_WEIGHTS_HVCRE,
+    B31_SLOTTING_RISK_WEIGHTS_HVCRE_SHORT,
     B31_SLOTTING_RISK_WEIGHTS_PREOP,
     B31_SLOTTING_RISK_WEIGHTS_SHORT,
 )
@@ -90,6 +91,7 @@ _SLOTTING_WEIGHTS: dict[str, dict[str, dict[str, float]]] = {
         "short": _to_float_map(B31_SLOTTING_RISK_WEIGHTS_SHORT),
         "preop": _to_float_map(B31_SLOTTING_RISK_WEIGHTS_PREOP),
         "hvcre": _to_float_map(B31_SLOTTING_RISK_WEIGHTS_HVCRE),
+        "hvcre_short": _to_float_map(B31_SLOTTING_RISK_WEIGHTS_HVCRE_SHORT),
     },
 }
 
@@ -410,11 +412,14 @@ class SlottingExpr:
             )
         else:
             weights = _SLOTTING_WEIGHTS["basel_3_1"]
-            # PRA PS1/26 Art. 153(5)(d) Table A: non-HVCRE columns A/C apply
-            # when remaining maturity < 2.5 years. HVCRE column A/C is tracked
-            # separately (see P1.117) and not applied here.
+            # PRA PS1/26 Art. 153(5)(d) Table A: when remaining maturity < 2.5
+            # years, both non-HVCRE and HVCRE pick the col-A/C subgrade table.
+            # HVCRE short must fire before the generic HVCRE catch-all so the
+            # is_short flag is honoured for HVCRE exposures.
             return (
-                pl.when(is_hvcre_expr)
+                pl.when(is_hvcre_expr & is_short_expr)
+                .then(self._map_category(cat, weights["hvcre_short"]))
+                .when(is_hvcre_expr)
                 .then(self._map_category(cat, weights["hvcre"]))
                 .when(is_preop_expr)
                 .then(self._map_category(cat, weights["preop"]))

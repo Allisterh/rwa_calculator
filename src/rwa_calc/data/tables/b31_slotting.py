@@ -74,6 +74,17 @@ B31_SLOTTING_RISK_WEIGHTS_HVCRE: dict[SlottingCategory, Decimal] = {
     SlottingCategory.DEFAULT: Decimal("0.00"),
 }
 
+# HVCRE, remaining maturity < 2.5 years — PRA PS1/26 Art. 153(5)(d), Table A
+# HVCRE columns A (Strong) and C (Good). Satisfactory, Weak and Default have no
+# maturity differentiation under Table A (single column applies to both maturities).
+B31_SLOTTING_RISK_WEIGHTS_HVCRE_SHORT: dict[SlottingCategory, Decimal] = {
+    SlottingCategory.STRONG: Decimal("0.70"),  # Table A col A (HVCRE)
+    SlottingCategory.GOOD: Decimal("0.95"),  # Table A col C (HVCRE)
+    SlottingCategory.SATISFACTORY: Decimal("1.40"),
+    SlottingCategory.WEAK: Decimal("2.50"),
+    SlottingCategory.DEFAULT: Decimal("0.00"),
+}
+
 
 # =============================================================================
 # BASEL 3.1 SLOTTING EXPECTED LOSS RATES (PRA PS1/26 Art. 158(6), Table B)
