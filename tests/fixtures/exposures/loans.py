@@ -1887,6 +1887,28 @@ def _dedicated_test_loans() -> list[Loan]:
             seniority="senior",
         ),
         # =============================================================================
+        # P1.107 / B31-FCSM-CORP-CQS3 + CRR-FCSM-CORP-CQS3
+        # GBP 1m loan under FAC_P1107.  Fully collateralised with
+        # COLL_P1107 (EUR-denominated corporate bond, issuer_cqs=3).
+        # Currency mismatch (EUR vs GBP) — same-currency carve-out does not fire.
+        # B31 target: RWA = 750,000 (corp bond CQS 3 = 75% under B31 Art. 122(2) Table 6).
+        # CRR contrastive: RWA = 1,000,000 (corp bond CQS 3 = 100% under CRR Art. 122).
+        # =============================================================================
+        Loan(
+            loan_reference="LN_P1107",
+            product_type="TERM_LOAN",
+            book_code="CORP_LENDING",
+            counterparty_reference="CP_P1107",
+            value_date=VALUE_DATE,
+            maturity_date=date(2031, 1, 1),
+            currency="GBP",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # =============================================================================
         # P1.106 / B31-FCSM-INST-CQS2 + CRR-FCSM-INST-CQS2
         # GBP 1m loan under FAC_FCSM_INST_CQS2.  Half-collateralised with
         # COLL_INST_BOND_CQS2 (EUR-denominated institution bond, issuer_cqs=2).

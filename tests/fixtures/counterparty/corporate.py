@@ -598,6 +598,25 @@ def create_corporate_counterparties() -> pl.DataFrame:
             "is_managed_as_retail": False,
         },
         # =============================================================================
+        # P1.107 / B31-FCSM-CORP-CQS3: FCSM corporate-bond CQS 3 RW divergence
+        # Corporate borrower, CQS 4 (100% RW under both CRR and B31 SA).
+        # Divergence comes from the FCSM collateral branch: corporate bond issuer_cqs=3
+        # maps to 75% (B31 Art. 122(2) Table 6) vs 100% (CRR Art. 122 Table 5).
+        # Large corporate: turnover £250m — no SME factor.
+        # =============================================================================
+        {
+            "counterparty_reference": "CP_P1107",
+            "counterparty_name": "FCSM Corp Bond CQS3 Test Corp Ltd",
+            "entity_type": "corporate",
+            "country_code": "GB",
+            "annual_revenue": 250_000_000.0,  # £250m — large corporate (no SME factor)
+            "total_assets": 200_000_000.0,
+            "default_status": False,
+            "sector_code": "64.19",
+            "apply_fi_scalar": False,
+            "is_managed_as_retail": False,
+        },
+        # =============================================================================
         # CRR-A7: Commercial RE borrower (40% LTV, income cover)
         # =============================================================================
         {

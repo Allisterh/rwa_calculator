@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from rwa_calc.data.tables.b31_risk_weights import B31_CORPORATE_RISK_WEIGHTS
 from rwa_calc.data.tables.crr_risk_weights import (
     INSTITUTION_RISK_WEIGHTS_B31_ECRA,
     INSTITUTION_RISK_WEIGHTS_CRR,
@@ -111,15 +112,20 @@ def _derive_collateral_rw_expr(is_basel_3_1: bool = False) -> pl.Expr:
     # For FCSM purposes, use CRR 100% (collateral is financial instrument, not equity exposure)
     is_equity = ctype.is_in(["equity", "equity_main_index", "equity_other"])
 
-    # Corporate bonds → Art. 122 Table 5 (CRR) / Table 6 (B31)
-    corp_cqs5_rw = 1.50 if is_basel_3_1 else 1.00  # B31 Art. 122(2) CQS 5 = 150%
+    # Corporate bonds → Art. 122 Table 5 (CRR) / Table 6 (B31).
+    # B31 diverges at CQS 3 (0.75 vs 1.00 — PRA PS1/26 Art. 122(2) Table 6) and
+    # CQS 5 (1.50 vs 1.00 — PRA retains 150%, BCBS reduced to 100%). The B31
+    # values are sourced from B31_CORPORATE_RISK_WEIGHTS so that table remains
+    # the single source of truth for the Basel 3.1 framework.
+    corp_cqs3_rw = float(B31_CORPORATE_RISK_WEIGHTS[3]) if is_basel_3_1 else 1.00
+    corp_cqs5_rw = float(B31_CORPORATE_RISK_WEIGHTS[5]) if is_basel_3_1 else 1.00
     corporate_rw = (
         pl.when(cqs == 1)
         .then(0.20)
         .when(cqs == 2)
         .then(0.50)
         .when(cqs == 3)
-        .then(1.00)
+        .then(corp_cqs3_rw)
         .when(cqs == 4)
         .then(1.00)
         .when(cqs == 5)
