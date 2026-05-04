@@ -117,6 +117,13 @@ Comprehensive documentation is available at **[OpenAfterHours.github.io/rwa_calc
 
 ## Running Tests
 
+Test fixtures are parquet files generated from Python builders and are **not** checked into the repo (they are gitignored). Generate them once before running the test suite for the first time, and again whenever a fixture builder under `tests/fixtures/` changes:
+
+```bash
+# Generate all test fixtures (parquet output, 8 groups)
+uv run python tests/fixtures/generate_all.py
+```
+
 ```bash
 # Run all tests
 uv run pytest -v
