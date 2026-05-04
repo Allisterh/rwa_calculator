@@ -772,14 +772,14 @@ def calculate_double_default_k(
 
 def _parametric_irb_risk_weight_expr(
     pd_expr: pl.Expr,
-    lgd: float,
+    lgd: float | pl.Expr,
     scaling_factor: float = 1.0,
     eur_gbp_rate: float = 0.8732,
     is_b31: bool = False,
     sme_turnover_threshold_m: float = 44.0,
 ) -> pl.Expr:
     """
-    Compute IRB risk weight from arbitrary PD expression and fixed LGD.
+    Compute IRB risk weight from arbitrary PD expression and LGD.
 
     Used for Basel 3.1 parameter substitution (CRE22.70-85): when an IRB
     exposure is guaranteed by an F-IRB counterparty, the guaranteed portion
@@ -791,7 +791,9 @@ def _parametric_irb_risk_weight_expr(
 
     Args:
         pd_expr: Polars expression for the substituted PD (e.g. guarantor PD, floored)
-        lgd: Fixed LGD value (e.g. F-IRB supervisory unsecured senior)
+        lgd: F-IRB supervisory LGD — either a fixed scalar (uniform LGD across
+            all rows) or a Polars expression (per-row LGD selection, e.g. when
+            seniority/FSE drives Art. 161(1)(a)/(aa)/(b) routing).
         scaling_factor: 1.06 for CRR, 1.0 for Basel 3.1
         eur_gbp_rate: EUR/GBP rate for SME turnover conversion (CRR only)
         is_b31: If True, use GBP-native SME parameters per PRA PS1/26 Art. 153(4)
@@ -806,7 +808,8 @@ def _parametric_irb_risk_weight_expr(
         is_b31=is_b31,
         sme_turnover_threshold_m=sme_turnover_threshold_m,
     )
-    k = _capital_k_expr_from_params(pd_expr, pl.lit(lgd), correlation)
+    lgd_expr = lgd if isinstance(lgd, pl.Expr) else pl.lit(lgd)
+    k = _capital_k_expr_from_params(pd_expr, lgd_expr, correlation)
     ma = _maturity_adjustment_expr_from_pd(pd_expr)
 
     # Retail: no maturity adjustment (MA = 1.0)

@@ -292,13 +292,24 @@ def _apply_parameter_substitution(
     use_parameter_substitution: bool,
 ) -> pl.LazyFrame:
     """Apply parameter substitution for IRB guarantors (CRR Art. 161(3) /
-    Basel 3.1 CRE22.70-85). The F-IRB supervisory LGD differs by framework:
-    0.45 under CRR, 0.40 under Basel 3.1."""
+    Basel 3.1 CRE22.70-85). The F-IRB supervisory LGD is selected per row
+    by guarantor seniority and (Basel 3.1 only) FSE status:
+
+    - subordinated guarantor       -> 0.75  (Art. 161(1)(b), both frameworks)
+    - senior + FSE guarantor (B31) -> 0.45  (Art. 161(1)(a))
+    - senior + non-FSE guarantor   -> 0.40 B31 / 0.45 CRR (Art. 161(1)(aa)/(a))
+    """
     if use_parameter_substitution:
         from rwa_calc.data.tables.firb_lgd import get_firb_lgd_table_for_framework
 
         firb_lgd_table = get_firb_lgd_table_for_framework(is_basel_3_1=config.is_basel_3_1)
         firb_lgd_senior = float(firb_lgd_table["unsecured_senior"])
+        # FSE-specific senior key only exists in the Basel 3.1 table; CRR has
+        # no FSE split (Art. 161(1)(a) covers all senior unsecured at 45%).
+        firb_lgd_senior_fse = float(
+            firb_lgd_table.get("unsecured_senior_fse", firb_lgd_table["unsecured_senior"])
+        )
+        firb_lgd_subordinated = float(firb_lgd_table["subordinated"])
 
         # Ensure columns required by _parametric_irb_risk_weight_expr exist
         ensure_cols: list[pl.Expr] = []
@@ -308,6 +319,12 @@ def _apply_parameter_substitution(
             ensure_cols.append(pl.lit(False).alias("requires_fi_scalar"))
         if "has_one_day_maturity_floor" not in cols:
             ensure_cols.append(pl.lit(False).alias("has_one_day_maturity_floor"))
+        if "guarantor_seniority" not in cols:
+            ensure_cols.append(pl.lit(None).cast(pl.String).alias("guarantor_seniority"))
+        if "guarantor_is_financial_sector_entity" not in cols:
+            ensure_cols.append(
+                pl.lit(False).alias("guarantor_is_financial_sector_entity"),
+            )
         if ensure_cols:
             lf = lf.with_columns(ensure_cols)
 
@@ -319,11 +336,23 @@ def _apply_parameter_substitution(
         scaling_factor = 1.06 if config.is_crr else 1.0
         eur_gbp_rate = float(config.eur_gbp_rate)
 
+        # Per-row F-IRB supervisory LGD selection (Art. 161(1)(a)/(aa)/(b)).
+        # Missing seniority defaults to "senior".
+        seniority = pl.col("guarantor_seniority").cast(pl.String).fill_null("senior")
+        is_fse = pl.col("guarantor_is_financial_sector_entity").fill_null(False)
+        guarantor_lgd_expr = (
+            pl.when(seniority == "subordinated")
+            .then(pl.lit(firb_lgd_subordinated))
+            .when(is_fse)
+            .then(pl.lit(firb_lgd_senior_fse))
+            .otherwise(pl.lit(firb_lgd_senior))
+        )
+
         # Compute IRB risk weight from guarantor's PD and F-IRB supervisory LGD
         sme_turnover_m = float(config.thresholds.sme_turnover_threshold) / 1_000_000
         guarantor_rw_irb = _parametric_irb_risk_weight_expr(
             pd_expr=guarantor_pd_floored,
-            lgd=firb_lgd_senior,
+            lgd=guarantor_lgd_expr,
             scaling_factor=scaling_factor,
             eur_gbp_rate=eur_gbp_rate,
             is_b31=config.is_basel_3_1,
@@ -477,6 +506,10 @@ def _adjust_expected_loss(
 
         firb_lgd_table = get_firb_lgd_table_for_framework(is_basel_3_1=config.is_basel_3_1)
         firb_lgd_senior = float(firb_lgd_table["unsecured_senior"])
+        firb_lgd_senior_fse = float(
+            firb_lgd_table.get("unsecured_senior_fse", firb_lgd_table["unsecured_senior"])
+        )
+        firb_lgd_subordinated = float(firb_lgd_table["subordinated"])
 
         has_transactor = "is_qrre_transactor" in lf.collect_schema().names()
         pd_floor_expr = _pd_floor_expression(config, has_transactor_col=has_transactor)
@@ -484,12 +517,33 @@ def _adjust_expected_loss(
 
         _is_irb_non_dd = pl.col("_is_pd_substitution") & ~pl.col("_is_dd_applied")
 
+        # Mirror the per-row F-IRB LGD selection used in _apply_parameter_substitution
+        # so EL is computed against the same supervisory LGD as RW.
+        _schema_names = lf.collect_schema().names()
+        seniority_el = (
+            pl.col("guarantor_seniority").cast(pl.String).fill_null("senior")
+            if "guarantor_seniority" in _schema_names
+            else pl.lit("senior")
+        )
+        is_fse_el = (
+            pl.col("guarantor_is_financial_sector_entity").fill_null(False)
+            if "guarantor_is_financial_sector_entity" in _schema_names
+            else pl.lit(False)
+        )
+        guarantor_lgd_el = (
+            pl.when(seniority_el == "subordinated")
+            .then(pl.lit(firb_lgd_subordinated))
+            .when(is_fse_el)
+            .then(pl.lit(firb_lgd_senior_fse))
+            .otherwise(pl.lit(firb_lgd_senior))
+        )
+
         return lf.with_columns(
             [
                 pl.when(_base_el & _is_irb_non_dd)
                 .then(
                     _el_unguaranteed
-                    + guarantor_pd_floored * firb_lgd_senior * pl.col("guaranteed_portion")
+                    + guarantor_pd_floored * guarantor_lgd_el * pl.col("guaranteed_portion")
                 )
                 .when(_base_el & (pl.col("guarantor_approach").fill_null("") == "sa"))
                 .then(_el_unguaranteed)

@@ -273,6 +273,10 @@ GUARANTEE_SCHEMA: dict[str, ColumnSpec] = {
     # treated permissively (defaulted to >= 1y) — mirrors the collateral
     # original_maturity_years fallback in engine/crm/haircuts.py.
     "original_maturity_years": ColumnSpec(pl.Float64, required=False),
+    # Seniority of the guarantor's claim drives F-IRB supervisory LGD selection
+    # in PSM (parameter substitution) — Art. 161(1)(a)/(aa)/(b). Allowed
+    # values: "senior", "subordinated". Engine treats missing as "senior".
+    "guarantor_seniority": ColumnSpec(pl.String, required=False),
 }
 
 PROVISION_SCHEMA: dict[str, ColumnSpec] = {
