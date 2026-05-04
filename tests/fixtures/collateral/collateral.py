@@ -115,6 +115,7 @@ def create_collateral() -> pl.DataFrame:
         *_complex_scenario_collateral(),
         *_p1_158_null_maturity_haircut_collateral(),
         *_p1_106_fcsm_institution_bond_collateral(),
+        *_p1_107_fcsm_corporate_bond_collateral(),
     ]
 
     return pl.DataFrame([c.to_dict() for c in collateral], schema=dtypes_of(COLLATERAL_SCHEMA))
@@ -1030,6 +1031,63 @@ def _p1_106_fcsm_institution_bond_collateral() -> list[Collateral]:
             beneficiary_reference="LOAN_FCSM_INST_CQS2",
             issuer_cqs=2,  # CQS 2 — divergence point: 30% (B31) vs 50% (CRR)
             issuer_type="institution",  # Triggers institution branch in _derive_collateral_rw_expr
+            residual_maturity_years=5.0,  # Long enough to bypass Art. 222(7) maturity check
+            is_eligible_financial_collateral=True,
+            is_eligible_irb_collateral=True,
+            valuation_date=VALUE_DATE,
+            valuation_type="market",
+            property_type=None,
+            property_ltv=None,
+            is_income_producing=None,
+            is_adc=None,
+            is_presold=None,
+            liquidation_period_days=None,
+        ),
+    ]
+
+
+def _p1_107_fcsm_corporate_bond_collateral() -> list[Collateral]:
+    """
+    Collateral for P1.107: FCSM corporate-bond CQS 3 RW divergence (B31 vs CRR).
+
+    Scenario B31-FCSM-CORP-CQS3 (primary) and CRR-FCSM-CORP-CQS3 (contrastive).
+
+    Under CRR Art. 122 Table 5: corporate CQS 3 = 100%.
+    Under B31 / PRA PS1/26 Art. 122(2) Table 6: corporate CQS 3 = 75%.
+
+    The EUR currency (vs GBP loan exposure) means the same-currency carve-out
+    in Art. 222(4)/(6) does not fire. Market value equals the loan EAD, so the
+    FCSM secured share = 1,000,000 / 1,000,000 = 1.0 (fully secured).
+
+    Hand-calc (B31):  RW_collateral = 75%  → RWA = 1,000,000 × 0.75 = 750,000
+    Hand-calc (CRR):  RW_collateral = 100% → RWA = 1,000,000 × 1.00 = 1,000,000
+
+    References:
+        - PRA PS1/26 Art. 122(2) Table 6 (docs/assets/ps126app1.pdf)
+        - CRR Art. 122 Table 5 (docs/assets/crr.pdf)
+        - CRR Art. 222(1) — FCSM secured-portion RW substitution, 20% floor
+        - Bug site: src/rwa_calc/engine/crm/simple_method.py — _derive_collateral_rw_expr()
+          corporate_rw branch has cqs==3 hardcoded to 1.00 (CRR) instead of 0.75 (B31)
+    """
+    return [
+        # =====================================================================
+        # COLL_P1107
+        # EUR 1m corporate bond, issuer_cqs=3, 5yr residual maturity.
+        # Beneficiary: LN_P1107 (GBP 1m).
+        # is_eligible_financial_collateral = True → routes through FCSM.
+        # Currency mismatch (EUR vs GBP) — same-currency carve-out does not fire.
+        # =====================================================================
+        Collateral(
+            collateral_reference="COLL_P1107",
+            collateral_type="bond",
+            currency="EUR",  # EUR vs GBP exposure — same-ccy carve-out does not fire
+            maturity_date=date(2031, 1, 1),
+            market_value=1_000_000.0,
+            nominal_value=1_000_000.0,
+            beneficiary_type="loan",
+            beneficiary_reference="LN_P1107",
+            issuer_cqs=3,  # CQS 3 — divergence point: 75% (B31) vs 100% (CRR)
+            issuer_type="corporate",  # Triggers corporate branch in _derive_collateral_rw_expr
             residual_maturity_years=5.0,  # Long enough to bypass Art. 222(7) maturity check
             is_eligible_financial_collateral=True,
             is_eligible_irb_collateral=True,

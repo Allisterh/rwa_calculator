@@ -60,6 +60,30 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
         ("P1.114 (null book_code / null country_code)", "p1_114", _generate_p1114),
         ("P1.112 (non-UK unrated PSE sovereign-derived RW)", "p1_112", _generate_p1112),
         ("P1.98 (subordinated corporate A-IRB LGD floor fallback)", "p1_98", _generate_p198),
+        (
+            "P1.99 (CRR Art. 120(2) Table 4 short-term rated institution RW)",
+            "p1_99",
+            _generate_p199,
+        ),
+        ("P1.117 (B31 HVCRE slotting short-maturity subgrades)", "p1_117", _generate_p1117),
+        ("P1.125 (classifier FSE-column-missing warning CLS007)", "p1_125", _generate_p1125),
+        (
+            "P1.121 (CRR Art. 121(3) unrated institution short-term 20% RW)",
+            "p1_121",
+            _generate_p1121,
+        ),
+        ("P1.124 (CRR Art. 237(2)(a) guarantee maturity ineligibility)", "p1_124", _generate_p1124),
+        (
+            "P1.126 (classifier null-revenue conservative-large default CLS008)",
+            "p1_126",
+            _generate_p1126,
+        ),
+        ("P1.156 (PSM guarantor LGD seniority/FSE-aware Art. 236/161)", "p1_156", _generate_p1156),
+        (
+            "P1.182 (long-established PE/VC 250% vs 400% business-age split)",
+            "p1_182",
+            _generate_p1182,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -283,6 +307,205 @@ def _generate_p198(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_98", None)
+
+
+def _generate_p199(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.99 fixtures (CRR Art. 120(2) Table 4 short-term rated institution RW)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_99 import save_p199_fixtures
+
+        saved = save_p199_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_99", None)
+
+
+def _generate_p1117(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.117 fixtures (B31 HVCRE slotting short-maturity subgrades)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_117 import save_p1117_fixtures
+
+        saved = save_p1117_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_117", None)
+
+
+def _generate_p1126(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P1.126 builder imports (no parquet output — Python-only builder).
+
+    P1.126 tests null vs. non-null annual_revenue values in the counterparty
+    LazyFrame to exercise the CLS008 conservative-large-corp warning under
+    Basel 3.1.  Like P1.125, this is a Python-only builder: parquet round-trips
+    preserve column presence but may alter null handling semantics in edge cases.
+    The fixture is exercised by constructing all three named scenario bundles and
+    checking schema invariants that matter to the CLS008 logic.
+    """
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_126 import (  # noqa: F401
+            make_scenario_a_bundle,
+            make_scenario_b_bundle,
+            make_scenario_c_bundle,
+        )
+
+        # Smoke-check: all three bundles must construct without raising.
+        bundle_a = make_scenario_a_bundle()
+        bundle_b = make_scenario_b_bundle()
+        bundle_c = make_scenario_c_bundle()
+
+        # Invariant 1: annual_revenue column is present in all three scenarios
+        # (it is always present — null in A/C, non-null in B).
+        for label, bundle in [("A", bundle_a), ("B", bundle_b), ("C", bundle_c)]:
+            cp_cols = bundle.counterparty_lookup.counterparties.collect_schema().names()
+            if "annual_revenue" not in cp_cols:
+                raise AssertionError(f"Scenario {label}: annual_revenue column must be present")
+
+        # Invariant 2: Scenario A counterparty has null annual_revenue.
+        cp_a = bundle_a.counterparty_lookup.counterparties.collect()
+        if cp_a["annual_revenue"][0] is not None:
+            raise AssertionError("Scenario A: annual_revenue must be null")
+
+        # Invariant 3: Scenario B counterparty has non-null annual_revenue > 440m threshold.
+        cp_b = bundle_b.counterparty_lookup.counterparties.collect()
+        rev_b = cp_b["annual_revenue"][0]
+        if rev_b is None or rev_b <= 440_000_000.0:
+            raise AssertionError(f"Scenario B: annual_revenue must be > GBP 440m (got {rev_b})")
+
+        # Invariant 4: Scenario C counterparty has null annual_revenue (same data as A).
+        cp_c = bundle_c.counterparty_lookup.counterparties.collect()
+        if cp_c["annual_revenue"][0] is not None:
+            raise AssertionError("Scenario C: annual_revenue must be null")
+
+        # Invariant 5: is_financial_sector_entity is present and False in all scenarios
+        # (so FSE restriction does not interfere with the CLS008 path).
+        for label, cp_df in [("A", cp_a), ("B", cp_b), ("C", cp_c)]:
+            if "is_financial_sector_entity" not in cp_df.columns:
+                raise AssertionError(
+                    f"Scenario {label}: is_financial_sector_entity must be present"
+                )
+            if cp_df["is_financial_sector_entity"][0] is not False:
+                raise AssertionError(f"Scenario {label}: is_financial_sector_entity must be False")
+
+        # Invariant 6: model_id is present on the exposure and matches M_CORP_AIRB.
+        from p1_126 import MODEL_ID  # noqa: PLC0415
+
+        for label, bundle in [("A", bundle_a), ("B", bundle_b), ("C", bundle_c)]:
+            exp_cols = bundle.exposures.collect_schema().names()
+            if "model_id" not in exp_cols:
+                raise AssertionError(f"Scenario {label}: model_id must be present on exposures")
+            exp_df = bundle.exposures.collect()
+            if exp_df["model_id"][0] != MODEL_ID:
+                raise AssertionError(
+                    f"Scenario {label}: model_id must be {MODEL_ID!r} "
+                    f"(got {exp_df['model_id'][0]!r})"
+                )
+
+        # No parquet files written — report zero files, zero records.
+        return [("(python-only builder — no parquet)", 0)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_126", None)
+
+
+def _generate_p1125(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P1.125 builder imports (no parquet output — Python-only builder).
+
+    P1.125 tests column-schema existence, which cannot be preserved through a
+    parquet round-trip (parquet writes include all declared columns regardless of
+    whether they appear in the input dict).  The fixture is a Python builder that
+    constructs in-memory LazyFrames with controlled schemas.  This function
+    exercises the import path and checks the three named scenario bundles can be
+    constructed without error.
+    """
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_125 import (  # noqa: F401
+            make_scenario_a_bundle,
+            make_scenario_b_bundle,
+            make_scenario_c_bundle,
+        )
+
+        # Smoke-check: all three bundles must construct without raising.
+        bundle_a = make_scenario_a_bundle()
+        bundle_b = make_scenario_b_bundle()
+        bundle_c = make_scenario_c_bundle()
+
+        # Confirm the critical schema invariants.
+        cp_cols_a = bundle_a.counterparty_lookup.counterparties.collect_schema().names()
+        cp_cols_b = bundle_b.counterparty_lookup.counterparties.collect_schema().names()
+        cp_cols_c = bundle_c.counterparty_lookup.counterparties.collect_schema().names()
+
+        if "is_financial_sector_entity" in cp_cols_a:
+            raise AssertionError("Scenario A: is_financial_sector_entity must be absent")
+        if "is_financial_sector_entity" not in cp_cols_b:
+            raise AssertionError("Scenario B: is_financial_sector_entity must be present")
+        if "is_financial_sector_entity" in cp_cols_c:
+            raise AssertionError("Scenario C: is_financial_sector_entity must be absent")
+
+        # No parquet files written — report zero files, zero records.
+        return [("(python-only builder — no parquet)", 0)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_125", None)
+
+
+def _generate_p1121(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.121 fixtures (CRR Art. 121(3) unrated institution short-term 20% RW)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_121 import save_p1121_fixtures
+
+        saved = save_p1121_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_121", None)
+
+
+def _generate_p1124(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.124 fixtures (CRR Art. 237(2)(a) guarantee maturity ineligibility)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_124 import save_p1124_fixtures
+
+        saved = save_p1124_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_124", None)
+
+
+def _generate_p1156(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.156 fixtures (PSM guarantor LGD seniority/FSE-aware Art. 236/161)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_156 import save_p1156_fixtures
+
+        saved = save_p1156_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_156", None)
+
+
+def _generate_p1182(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.182 fixtures (long-established PE/VC 250% vs 400% business-age split)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_182 import save_p1182_fixtures
+
+        saved = save_p1182_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_182", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

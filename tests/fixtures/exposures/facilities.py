@@ -221,6 +221,30 @@ def _corporate_facilities() -> list[Facility]:
             risk_type="MR",  # Medium risk - committed undrawn
         ),
         # =========================================================================
+        # P1.107 / B31-FCSM-CORP-CQS3 + CRR-FCSM-CORP-CQS3
+        # GBP 1m term facility to CQS 4 corporate borrower (CP_P1107).
+        # Fully collateralised with EUR-denominated corporate bond (issuer_cqs=3).
+        # Currency mismatch (EUR collateral vs GBP loan) prevents same-currency carve-out.
+        # B31 target: RW_collateral = 75% (Art. 122(2) CQS3) → RWA = 750,000.
+        # CRR contrastive: RW_collateral = 100% (Art. 122 CQS3) → RWA = 1,000,000.
+        # =========================================================================
+        Facility(
+            facility_reference="FAC_P1107",
+            product_type="TERM_FACILITY",
+            book_code="CORP_LENDING",
+            counterparty_reference="CP_P1107",
+            value_date=VALUE_DATE,
+            maturity_date=date(2031, 1, 1),
+            currency="GBP",
+            limit=1_000_000.0,
+            committed=True,
+            lgd=0.45,
+            beel=0.0,
+            is_revolving=False,
+            seniority="senior",
+            risk_type="MR",
+        ),
+        # =========================================================================
         # P1.106 / B31-FCSM-INST-CQS2 + CRR-FCSM-INST-CQS2
         # GBP 1m term facility to CQS 4 corporate borrower.
         # Half-collateralised with EUR-denominated institution bond (CQS 2).

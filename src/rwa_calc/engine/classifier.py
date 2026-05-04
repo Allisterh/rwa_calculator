@@ -42,10 +42,14 @@ from rwa_calc.contracts.bundles import (
     ResolvedHierarchyBundle,
 )
 from rwa_calc.contracts.errors import (
+    ERROR_FSE_COLUMN_MISSING,
+    ERROR_LARGE_CORP_REVENUE_NULL,
     ERROR_MODEL_PERMISSION_UNMATCHED,
     ERROR_QRRE_COLUMNS_MISSING,
     ERROR_RETAIL_POOL_MGMT_MISSING,
     CalculationError,
+    ErrorCategory,
+    ErrorSeverity,
     classification_warning,
 )
 from rwa_calc.data.column_spec import ColumnSpec, ensure_columns
@@ -268,6 +272,70 @@ class ExposureClassifier:
                     regulatory_reference="PRA PS1/26 Art. 123A(1)(b)(iii)",
                 )
             )
+
+        # Art. 147A(1)(e): Under Basel 3.1, Financial Sector Entities (FSEs) are
+        # restricted to F-IRB (no A-IRB). When the is_financial_sector_entity
+        # column is absent from the ORIGINAL counterparty data, this restriction
+        # cannot be enforced and FSE exposures may receive A-IRB treatment in
+        # violation of the rule. Check the counterparty source schema directly.
+        cp_has_fse_flag = "is_financial_sector_entity" in set(
+            data.counterparty_lookup.counterparties.collect_schema().names()
+        )
+        if config.is_basel_3_1 and not cp_has_fse_flag:
+            classification_errors.append(
+                classification_warning(
+                    code=ERROR_FSE_COLUMN_MISSING,
+                    message=(
+                        "Art. 147A(1)(e) FSE A-IRB restriction cannot be enforced — "
+                        "'is_financial_sector_entity' column missing from counterparty "
+                        "data; FSE exposures may receive A-IRB treatment in violation "
+                        "of the restriction."
+                    ),
+                    regulatory_reference="PRA PS1/26 Art. 147A(1)(e)",
+                )
+            )
+
+        # Art. 147A(1)(d): Under Basel 3.1, large corporates (annual revenue >
+        # GBP 440m) are restricted to F-IRB (no A-IRB). When annual_revenue is
+        # null on any counterparty row, the engine cannot confirm that the
+        # counterparty falls below the threshold, so it conservatively assumes
+        # the counterparty IS large-corp (see _is_large_corp expression below)
+        # and applies the F-IRB restriction. CLS008 is emitted to flag that
+        # the restriction was applied without revenue confirmation.
+        cp_has_revenue_col = "annual_revenue" in set(
+            data.counterparty_lookup.counterparties.collect_schema().names()
+        )
+        if config.is_basel_3_1 and cp_has_revenue_col:
+            # Art. 147A(1)(d) is corporate-only — count null-revenue rows only
+            # among counterparties of entity_type == "corporate". This avoids
+            # spurious CLS008 warnings for specialised_lending / retail /
+            # sovereign / institution counterparties where annual_revenue is
+            # genuinely irrelevant.
+            null_revenue_count = (
+                data.counterparty_lookup.counterparties.filter(
+                    (pl.col("entity_type").fill_null("") == "corporate")
+                    & pl.col("annual_revenue").is_null()
+                )
+                .select(pl.len())
+                .collect()
+                .item()
+            )
+            if null_revenue_count > 0:
+                classification_errors.append(
+                    CalculationError(
+                        code=ERROR_LARGE_CORP_REVENUE_NULL,
+                        message=(
+                            f"Art. 147A(1)(d) large-corporate F-IRB restriction applied "
+                            f"conservatively for {null_revenue_count} corporate counterparty "
+                            f"row(s) with null annual_revenue — could not confirm revenue is "
+                            f"below the GBP 440m threshold."
+                        ),
+                        severity=ErrorSeverity.WARNING,
+                        category=ErrorCategory.CLASSIFICATION,
+                        regulatory_reference="PRA PS1/26 Art. 147A(1)(d)",
+                        field_name="annual_revenue",
+                    )
+                )
 
         # Step 2: Derive all independent flags (1 .with_columns)
         classified = self._derive_independent_flags(exposures, config, schema_names)
@@ -1214,10 +1282,23 @@ class ExposureClassifier:
                     (pl.col("cp_is_financial_sector_entity") == True)  # noqa: E712
                     .fill_null(False)
                 )
-            _is_large_corp = (
-                pl.col("cp_annual_revenue")
-                > float(config.thresholds.large_corporate_revenue_threshold)
-            ).fill_null(False)
+            # Art. 147A(1)(d): the large-corporate F-IRB restriction applies ONLY
+            # to counterparties of entity_type == "corporate". Non-corporate
+            # entity types (specialised_lending, retail, sovereign, institution,
+            # etc.) are governed by their own Art. 147A sub-clauses and must
+            # never trip this branch — even when their cp_annual_revenue is
+            # null/irrelevant. Within the corporate slice, null annual_revenue
+            # is treated conservatively (assumed large) so the F-IRB restriction
+            # is applied; CLS008 is emitted in parallel to flag the missing data.
+            _is_corporate_cp = pl.col("cp_entity_type").fill_null("") == "corporate"
+            _is_large_corp = _is_corporate_cp & (
+                pl.when(pl.col("cp_annual_revenue").is_null())
+                .then(pl.lit(True))
+                .otherwise(
+                    pl.col("cp_annual_revenue")
+                    > float(config.thresholds.large_corporate_revenue_threshold)
+                )
+            )
 
             # Art. 147A(1)(b): Institution (including RGLAs/PSEs treated as
             # institutions per Art. 147(4)(b)) → F-IRB only (no A-IRB).

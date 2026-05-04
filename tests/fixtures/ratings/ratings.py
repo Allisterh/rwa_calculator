@@ -279,6 +279,21 @@ def _corporate_external_ratings() -> list[Rating]:
             RATING_DATE,
             True,
         ),
+        # P1.107 / B31-FCSM-CORP-CQS3: FCSM corporate-bond CQS 3 RW divergence scenario borrower
+        # CQS 4 corporate = 100% RW under both CRR and B31 on the exposure side.
+        # Divergence comes from the collateral's own RW: corp bond issuer_cqs=3
+        # is 75% under B31 vs 100% under CRR (Art. 122(2) Table 6 vs Art. 122 Table 5).
+        Rating(
+            "RTG_CORP_P1107_001",
+            "CP_P1107",
+            "external",
+            "S&P",
+            "BB+",
+            4,
+            None,
+            RATING_DATE,
+            True,
+        ),
         # CQS 5/6 Corporates - 150% Risk Weight
         Rating(
             "RTG_CORP_XX_001", "CORP_XX_001", "external", "Fitch", "B-", 5, None, RATING_DATE, True

@@ -268,6 +268,15 @@ GUARANTEE_SCHEMA: dict[str, ColumnSpec] = {
     "beneficiary_reference": ColumnSpec(pl.String),
     "protection_type": ColumnSpec(pl.String, default="guarantee", required=False),
     "includes_restructuring": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 237(2)(a): original maturity of unfunded credit protection.
+    # A guarantee with original_maturity_years < 1.0 is ineligible. Null is
+    # treated permissively (defaulted to >= 1y) — mirrors the collateral
+    # original_maturity_years fallback in engine/crm/haircuts.py.
+    "original_maturity_years": ColumnSpec(pl.Float64, required=False),
+    # Seniority of the guarantor's claim drives F-IRB supervisory LGD selection
+    # in PSM (parameter substitution) — Art. 161(1)(a)/(aa)/(b). Allowed
+    # values: "senior", "subordinated". Engine treats missing as "senior".
+    "guarantor_seniority": ColumnSpec(pl.String, required=False),
 }
 
 PROVISION_SCHEMA: dict[str, ColumnSpec] = {
@@ -325,6 +334,11 @@ EQUITY_EXPOSURE_SCHEMA: dict[str, ColumnSpec] = {
     "ciu_third_party_calc": ColumnSpec(pl.Boolean, default=False, required=False),
     "fund_reference": ColumnSpec(pl.String, required=False),
     "fund_nav": ColumnSpec(pl.Float64, required=False),
+    # Number of years the underlying business has existed.
+    # Used by Basel 3.1 PE/VC higher-risk test (PRA PS1/26 Glossary p.5,
+    # Art. 133(4)): unlisted PE with business_age_years < 5.0 (or null,
+    # treated conservatively) routes to 400%; >= 5.0 routes to standard 250%.
+    "business_age_years": ColumnSpec(pl.Float64, required=False),
     # Risk weight: 100% (listed), 250% (unlisted), 400% (speculative)
 }
 
