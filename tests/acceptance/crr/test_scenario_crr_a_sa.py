@@ -189,6 +189,41 @@ class TestCRRGroupA_StandardisedApproach:
             result["rwa_post_factor"], expected["rwa_after_sf"], scenario_id="CRR-A7"
         )
 
+    def test_crr_a13_commercial_re_high_ltv_split(
+        self,
+        sa_results_df: pl.DataFrame,
+        expected_outputs_dict: dict[str, dict[str, Any]],
+    ) -> None:
+        """
+        CRR-A13: Commercial RE at 80% LTV gets proportion split per Art. 126(2)(d).
+
+        Input: £800,000 loan (LOAN_CRE_002) at 80% LTV with income-producing CRE collateral.
+        Hand-calc:
+            secured_share = min(1.0, 0.50 / 0.80) = 0.625
+            residual_share = 1.0 - 0.625 = 0.375
+            avg_RW = 0.50 * 0.625 + 1.00 * 0.375 = 0.6875
+            RWA = 800,000 * 0.6875 = 550,000.00
+        Expected: risk_weight=0.6875, rwa_before_sf=550,000, rwa_after_sf=550,000
+        Regulatory reference: CRR Art. 126(2)(d)
+        """
+        # Arrange
+        expected = expected_outputs_dict["CRR-A13"]
+        # Act
+        result = get_sa_result_for_exposure(sa_results_df, "LOAN_CRE_002")
+
+        # Assert
+        assert result is not None, "Exposure LOAN_CRE_002 not found in SA results"
+        assert_ead_match(result["ead_final"], expected["ead"], scenario_id="CRR-A13")
+        assert_risk_weight_match(
+            result["risk_weight"], expected["risk_weight"], scenario_id="CRR-A13"
+        )
+        assert_rwa_within_tolerance(
+            result["rwa_post_factor"], expected["rwa_before_sf"], scenario_id="CRR-A13"
+        )
+        assert_rwa_within_tolerance(
+            result["rwa_post_factor"], expected["rwa_after_sf"], scenario_id="CRR-A13"
+        )
+
     def test_crr_a8_obs_commitment_ccf(
         self,
         sa_results_df: pl.DataFrame,
@@ -266,7 +301,7 @@ class TestCRRGroupA_ParameterizedValidation:
     ) -> None:
         """Verify all CRR-A scenarios exist in expected outputs."""
         # Note: CRR-A10 and CRR-A12 removed due to fixture/expected output mismatches
-        expected_ids = [f"CRR-A{i}" for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 11]]
+        expected_ids = [f"CRR-A{i}" for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13]]
         for scenario_id in expected_ids:
             assert scenario_id in expected_outputs_dict, (
                 f"Missing expected output for {scenario_id}"

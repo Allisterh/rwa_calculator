@@ -632,6 +632,23 @@ def create_corporate_counterparties() -> pl.DataFrame:
             "is_managed_as_retail": False,
         },
         # =============================================================================
+        # CRR-A13: Commercial RE 80% LTV — Art. 126(2)(d) proportion split
+        # Revenue £120m → above SME threshold (EUR 50m / ~£44m) → no SME SF.
+        # Unrated → CQS = NULL → CORPORATE_RISK_WEIGHTS[CQS.UNRATED] = 100%.
+        # =============================================================================
+        {
+            "counterparty_reference": "CORP_CRE_002",
+            "counterparty_name": "Commercial Property Investor 2 Ltd",
+            "entity_type": "corporate",
+            "country_code": "GB",
+            "annual_revenue": 120_000_000.0,  # £120m — large corporate (no SME factor)
+            "total_assets": 200_000_000.0,
+            "default_status": False,
+            "sector_code": "68.20",  # Renting and operating of own real estate
+            "apply_fi_scalar": False,
+            "is_managed_as_retail": False,
+        },
+        # =============================================================================
         # CRR-A8: Off-Balance Sheet CCF test (unrated corporate = 100% RW)
         # Counterparty for CONT_CCF_001 contingent fixture
         # =============================================================================

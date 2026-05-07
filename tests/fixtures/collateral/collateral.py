@@ -67,6 +67,7 @@ class Collateral:
     is_presold: bool | None
     liquidation_period_days: int | None = None
     original_maturity_years: float | None = None
+    rental_to_interest_ratio: float | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -92,6 +93,7 @@ class Collateral:
             "is_adc": self.is_adc,
             "is_presold": self.is_presold,
             "liquidation_period_days": self.liquidation_period_days,
+            "rental_to_interest_ratio": self.rental_to_interest_ratio,
         }
 
 
@@ -474,6 +476,33 @@ def _commercial_real_estate() -> list[Collateral]:
             is_income_producing=True,  # Meets 1.5x interest coverage
             is_adc=False,
             is_presold=None,
+        ),
+        # CRR-A13: Commercial property 80% LTV (£800k loan / £1m property)
+        # Art. 126(2)(d) proportion split: portion ≤ 50% of property value (£500k) → 50% RW,
+        # remaining portion (£300k) falls back to unrated corporate → 100% RW.
+        # rental_to_interest_ratio=1.5 satisfies the income-cover test (Art. 126(2)(a)).
+        Collateral(
+            collateral_reference="COLL_CRE_A13",
+            collateral_type="real_estate",
+            currency="GBP",
+            maturity_date=None,
+            market_value=1_000_000.0,  # £1m property value
+            nominal_value=1_000_000.0,
+            beneficiary_type="loan",
+            beneficiary_reference="LOAN_CRE_002",
+            issuer_cqs=None,
+            issuer_type=None,
+            residual_maturity_years=None,
+            is_eligible_financial_collateral=False,
+            is_eligible_irb_collateral=True,
+            valuation_date=VALUE_DATE,
+            valuation_type="independent",
+            property_type="commercial",
+            property_ltv=0.80,  # 80% LTV — triggers proportion split
+            is_income_producing=True,
+            is_adc=False,
+            is_presold=None,
+            rental_to_interest_ratio=1.5,  # Art. 126(2)(a) income-cover threshold exactly met
         ),
         # ADC property (150% RW unless pre-sold)
         Collateral(

@@ -541,16 +541,25 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
 def _crr_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     """Append CRR commercial-then-residential RE branches (Art. 125-126)."""
     ltv_safe = pl.col("ltv").fill_null(1.0)
+    # CRR Art. 126(2)(d) proportion split for CRE with income cover and LTV > 50%:
+    #   secured_share   = min(1.0, 50% / LTV)  -> portion attracting 50% RW
+    #   residual_share  = 1.0 - secured_share  -> portion attracting standard RW
+    # When LTV <= 50% the clamp drives secured_share = 1.0 so the average collapses
+    # to the preferential 50% RW, matching the pre-split behaviour.
+    cre_secured_share = pl.min_horizontal(
+        pl.lit(1.0), _SA_CRR_RW["cre_ltv_threshold"] / ltv_safe
+    )
+    cre_residual_share = pl.lit(1.0) - cre_secured_share
     return (
         # Commercial RE must precede residential — see _is_commercial_re_class.
         # CRR Art. 126: LTV + income cover.
         chain.when(_is_commercial_re_class(uc))
         .then(
-            pl.when(
-                (ltv_safe <= _SA_CRR_RW["cre_ltv_threshold"])
-                & pl.col("has_income_cover").fill_null(False)
+            pl.when(pl.col("has_income_cover").fill_null(False))
+            .then(
+                _SA_CRR_RW["cre_rw_low"] * cre_secured_share
+                + _SA_CRR_RW["cre_rw_standard"] * cre_residual_share
             )
-            .then(pl.lit(_SA_CRR_RW["cre_rw_low"]))
             .otherwise(pl.lit(_SA_CRR_RW["cre_rw_standard"]))
         )
         # CRR Art. 125 LTV split.

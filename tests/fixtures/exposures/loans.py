@@ -841,6 +841,7 @@ def _commercial_re_loans() -> list[Loan]:
 
     CRR Art. 126: Commercial RE with LTV <= 50% and income cover gets 50% RW.
     Scenario CRR-A7: £400,000 loan at 40% LTV with income cover.
+    Scenario CRR-A13: £800,000 loan at 80% LTV — Art. 126(2)(d) proportion split.
     """
     return [
         # CRR-A7: Commercial RE - 50% RW (LTV 40%, income cover met)
@@ -855,6 +856,26 @@ def _commercial_re_loans() -> list[Loan]:
             maturity_date=date(2031, 1, 1),
             currency="GBP",
             drawn_amount=400_000.0,
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # CRR-A13: Commercial RE - 80% LTV → proportion split (Art. 126(2)(d))
+        # Property value £1m, loan £800k → LTV 80%
+        # Art. 126(2)(d): portion ≤ 50% of property value (£500k) → 50% RW
+        #                  portion > 50% of property value (£300k) → 100% RW (corporate)
+        # Income-producing property meeting 1.5x interest coverage
+        # Counterparty is large corporate (revenue £120m > SME threshold) → no SME SF
+        Loan(
+            loan_reference="LOAN_CRE_002",
+            product_type="CRE_LOAN",
+            book_code="CORP_LENDING",
+            counterparty_reference="CORP_CRE_002",
+            value_date=VALUE_DATE,
+            maturity_date=date(2031, 1, 1),
+            currency="GBP",
+            drawn_amount=800_000.0,
             interest=0.0,
             lgd=0.45,
             beel=0.0,
