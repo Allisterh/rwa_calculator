@@ -222,6 +222,15 @@ B31_RETAIL_PAYROLL_LOAN_RW = Decimal("0.35")  # 35% for payroll/pension loans (A
 B31_RETAIL_NON_REGULATORY_RW = Decimal("1.00")  # 100% for non-regulatory retail (Art. 123(3)(c))
 
 # =============================================================================
+# CURRENCY MISMATCH MULTIPLIER — BASEL 3.1 (PRA PS1/26 Art. 123B / CRE20.93)
+# Retail / RE exposures denominated in a different currency to the borrower's
+# income source receive a 1.5x RW multiplier, capped at 150% absolute RW.
+# =============================================================================
+
+B31_CURRENCY_MISMATCH_MULTIPLIER: Decimal = Decimal("1.5")
+B31_CURRENCY_MISMATCH_RW_CAP: Decimal = Decimal("1.50")
+
+# =============================================================================
 # SA SPECIALISED LENDING — BASEL 3.1 (PRA PS1/26 Art. 122A-122B)
 # New SA exposure class with risk weights distinct from general corporates.
 # Rated SL exposures use the corporate CQS table (Art. 122A(3)).

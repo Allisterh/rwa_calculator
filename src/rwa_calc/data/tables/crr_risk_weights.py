@@ -370,6 +370,15 @@ def _create_corporate_df() -> pl.DataFrame:
 
 RETAIL_RISK_WEIGHT: Decimal = Decimal("0.75")
 
+# Art. 122: Corporate SME flat under CRR (Basel 3.1 reduces this to 85% via
+# B31_CORPORATE_SME_RW). Named for the SA override chain — explicit beats magic.
+CRR_CORPORATE_SME_RW: Decimal = Decimal("1.00")
+
+# Art. 123: Non-regulatory retail (fails qualifying criteria) -> 100% under CRR.
+# Mirrors B31_RETAIL_NON_REGULATORY_RW; named to remove the magic-1.0 from the
+# SA override chain.
+CRR_NON_REGULATORY_RETAIL_RW: Decimal = Decimal("1.00")
+
 
 # =============================================================================
 # QUALIFYING CCP RISK WEIGHTS (CRR Art. 306, CRE54.14-15)

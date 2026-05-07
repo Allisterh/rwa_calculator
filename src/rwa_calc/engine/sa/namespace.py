@@ -79,17 +79,23 @@ from rwa_calc.data.schemas import (
     CRM_OUTPUT_SCHEMA,
     HIERARCHY_OUTPUT_SCHEMA,
 )
+from rwa_calc.data.tables.b31_equity_rw import B31_SA_EQUITY_RISK_WEIGHTS
 from rwa_calc.data.tables.b31_risk_weights import (
     B31_CORPORATE_INVESTMENT_GRADE_RW,
     B31_CORPORATE_NON_INVESTMENT_GRADE_RW,
     B31_CORPORATE_SME_RW,
     B31_COVERED_BOND_UNRATED_FROM_SCRA,
+    B31_CURRENCY_MISMATCH_MULTIPLIER,
+    B31_CURRENCY_MISMATCH_RW_CAP,
     B31_DEFAULTED_PROVISION_THRESHOLD,
     B31_DEFAULTED_RESI_RE_NON_INCOME_RW,
     B31_DEFAULTED_RW_HIGH_PROVISION,
     B31_DEFAULTED_RW_LOW_PROVISION,
     B31_ECRA_SHORT_TERM_RISK_WEIGHTS,
     B31_HIGH_RISK_RW,
+    B31_RETAIL_NON_REGULATORY_RW,
+    B31_RETAIL_PAYROLL_LOAN_RW,
+    B31_RETAIL_TRANSACTOR_RW,
     B31_SCRA_RISK_WEIGHTS,
     B31_SCRA_SHORT_TERM_RISK_WEIGHTS,
     B31_SUBORDINATED_DEBT_RW,
@@ -100,12 +106,17 @@ from rwa_calc.data.tables.b31_risk_weights import (
     b31_sa_sl_rw_expr,
     get_b31_combined_cqs_risk_weights,
 )
+from rwa_calc.data.tables.crr_equity_rw import SA_EQUITY_RISK_WEIGHTS as CRR_SA_EQUITY_RW
 from rwa_calc.data.tables.crr_risk_weights import (
+    CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS,
     COMMERCIAL_RE_PARAMS,
+    CORPORATE_RISK_WEIGHTS,
     COVERED_BOND_UNRATED_DERIVATION,
+    CRR_CORPORATE_SME_RW,
     CRR_DEFAULTED_PROVISION_THRESHOLD,
     CRR_DEFAULTED_RW_HIGH_PROVISION,
     CRR_DEFAULTED_RW_LOW_PROVISION,
+    CRR_NON_REGULATORY_RETAIL_RW,
     HIGH_RISK_RW,
     INSTITUTION_RISK_WEIGHTS_B31_ECRA,
     INSTITUTION_RISK_WEIGHTS_CRR,
@@ -113,10 +124,12 @@ from rwa_calc.data.tables.crr_risk_weights import (
     INSTITUTION_SHORT_TERM_UNRATED_RW_CRR,
     IO_ZERO_RW,
     MDB_NAMED_ZERO_RW,
+    MDB_RISK_WEIGHTS_TABLE_2B,
     MDB_UNRATED_RW,
     OTHER_ITEMS_CASH_RW,
     OTHER_ITEMS_COLLECTION_RW,
     OTHER_ITEMS_DEFAULT_RW,
+    PSE_RISK_WEIGHTS_OWN_RATING,
     PSE_RISK_WEIGHTS_SOVEREIGN_DERIVED,
     PSE_SHORT_TERM_RW,
     PSE_UNRATED_DEFAULT_RW,
@@ -125,6 +138,7 @@ from rwa_calc.data.tables.crr_risk_weights import (
     RESIDENTIAL_MORTGAGE_PARAMS,
     RETAIL_RISK_WEIGHT,
     RGLA_DOMESTIC_CURRENCY_RW,
+    RGLA_RISK_WEIGHTS_OWN_RATING,
     RGLA_RISK_WEIGHTS_SOVEREIGN_DERIVED,
     RGLA_UK_DEVOLVED_RW,
     RGLA_UNRATED_DEFAULT_RW,
@@ -136,7 +150,7 @@ from rwa_calc.data.tables.eu_sovereign import (
     build_eu_domestic_currency_expr,
     denomination_currency_expr,
 )
-from rwa_calc.domain.enums import CQS, CRMCollateralMethod
+from rwa_calc.domain.enums import CQS, CRMCollateralMethod, EquityType
 from rwa_calc.engine.sa.supporting_factors import SupportingFactorCalculator
 
 if TYPE_CHECKING:
@@ -238,6 +252,10 @@ _SA_CRR_RW: dict[str, float] = {
     "defaulted_threshold": float(CRR_DEFAULTED_PROVISION_THRESHOLD),
     "defaulted_high": float(CRR_DEFAULTED_RW_HIGH_PROVISION),
     "defaulted_low": float(CRR_DEFAULTED_RW_LOW_PROVISION),
+    # Corporate / retail / equity tail (Art. 122 / 123 / 133(2))
+    "corporate_sme": float(CRR_CORPORATE_SME_RW),
+    "non_reg_retail": float(CRR_NON_REGULATORY_RETAIL_RW),
+    "equity": float(CRR_SA_EQUITY_RW[EquityType.LISTED]),
 }
 
 # Basel 3.1 specific scalars (PRA PS1/26, CRE20).
@@ -267,6 +285,16 @@ _SA_B31_RW: dict[str, float] = {
     "defaulted_high": float(B31_DEFAULTED_RW_HIGH_PROVISION),
     "defaulted_low": float(B31_DEFAULTED_RW_LOW_PROVISION),
     "defaulted_resi_re_non_income": float(B31_DEFAULTED_RESI_RE_NON_INCOME_RW),
+    # Retail / equity tail (PRA PS1/26 Art. 123 / Art. 133(3))
+    "qrre_transactor": float(B31_RETAIL_TRANSACTOR_RW),
+    "payroll": float(B31_RETAIL_PAYROLL_LOAN_RW),
+    "non_reg_retail": float(B31_RETAIL_NON_REGULATORY_RW),
+    "equity": float(B31_SA_EQUITY_RISK_WEIGHTS[EquityType.LISTED]),
+    # Currency mismatch (PRA PS1/26 Art. 123B / CRE20.93)
+    "currency_mismatch_multiplier": float(B31_CURRENCY_MISMATCH_MULTIPLIER),
+    "currency_mismatch_cap": float(B31_CURRENCY_MISMATCH_RW_CAP),
+    # B31 Art. 129(5) covered-bond unrated SCRA fallback (Grade C equivalent)
+    "unrated_cb_default": float(B31_COVERED_BOND_UNRATED_FROM_SCRA["C"]),
 }
 
 
@@ -300,6 +328,28 @@ def _sovereign_derived_rw_expr(
         expr = expr.when(pl.col("cp_sovereign_cqs") == int(cqs_val)).then(
             pl.lit(float(table[cqs_val]))
         )
+    return expr.otherwise(pl.lit(unrated_default))
+
+
+def _cqs_table_lookup_expr(
+    cqs_col: str,
+    table: dict[CQS, Decimal],
+    unrated_default: pl.Expr | float,
+) -> pl.Expr:
+    """Build a when/then chain mapping a CQS-bearing column to RW from a CQS table.
+
+    Mirrors the structure of ``_sovereign_derived_rw_expr`` but parameterised
+    on the CQS source column so it can drive any CQS-keyed regulatory table
+    (CGCB Art. 114, MDB Table 2B Art. 117(1), PSE Table 2A Art. 116(2),
+    RGLA Table 1B Art. 115(1)(b), Corporate Art. 122). Caller controls the
+    unrated fallback (constant or Polars expression).
+    """
+    cqs_order: list[CQS] = [CQS.CQS1, CQS.CQS2, CQS.CQS3, CQS.CQS4, CQS.CQS5, CQS.CQS6]
+    expr = pl.when(pl.col(cqs_col) == int(cqs_order[0])).then(pl.lit(float(table[cqs_order[0]])))
+    for cqs_val in cqs_order[1:]:
+        expr = expr.when(pl.col(cqs_col) == int(cqs_val)).then(pl.lit(float(table[cqs_val])))
+    if isinstance(unrated_default, pl.Expr):
+        return expr.otherwise(unrated_default)
     return expr.otherwise(pl.lit(unrated_default))
 
 
@@ -378,8 +428,8 @@ def _b31_unrated_cb_rw_expr() -> pl.Expr:
     # SCRA fallback (cp_scra_grade) for unrated issuers
     for grade, cb_rw in B31_COVERED_BOND_UNRATED_FROM_SCRA.items():
         expr = expr.when(pl.col("cp_scra_grade") == grade).then(pl.lit(float(cb_rw)))
-    # Conservative default: Grade C equivalent (100%)
-    return expr.otherwise(pl.lit(1.00))
+    # Conservative default: Grade C equivalent (B31_COVERED_BOND_UNRATED_FROM_SCRA["C"])
+    return expr.otherwise(pl.lit(_SA_B31_RW["unrated_cb_default"]))
 
 
 # ---------------------------------------------------------------------------
@@ -639,11 +689,18 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
         else -> null (no substitution)
     """
     gec = pl.col("guarantor_exposure_class").fill_null("")
-    cqs = pl.col("guarantor_cqs")
     guarantor_country_is_gb = pl.col("guarantor_country_code").fill_null("") == "GB"
+    # PSE/RGLA Art. 116(2)/115(1)(b) unrated fallback: domestic-GB guarantors
+    # get the RGLA/PSE 20% domestic-currency treatment; otherwise the
+    # conservative 100% PSE/RGLA unrated default applies.
     sovereign_derived_unrated = (
-        pl.when(guarantor_country_is_gb).then(pl.lit(0.20)).otherwise(pl.lit(1.0))
+        pl.when(guarantor_country_is_gb)
+        .then(pl.lit(_SA_SHARED_RW["rgla_domestic"]))
+        .otherwise(pl.lit(_SA_SHARED_RW["pse_unrated"]))
     )
+
+    cgcb_unrated = float(CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS[CQS.UNRATED])
+    corporate_unrated = float(CORPORATE_RISK_WEIGHTS[CQS.UNRATED])
 
     return (
         pl.when(pl.col("guaranteed_portion") <= 0)
@@ -654,17 +711,11 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
         # CGCB guarantors via CQS (Table 1 — sovereign weights).
         .when(gec == "central_govt_central_bank")
         .then(
-            pl.when(cqs == 1)
-            .then(pl.lit(0.0))
-            .when(cqs == 2)
-            .then(pl.lit(0.20))
-            .when(cqs == 3)
-            .then(pl.lit(0.50))
-            .when(cqs.is_in([4, 5]))
-            .then(pl.lit(1.0))
-            .when(cqs == 6)
-            .then(pl.lit(1.50))
-            .otherwise(pl.lit(1.0))  # Unrated
+            _cqs_table_lookup_expr(
+                "guarantor_cqs",
+                CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS,
+                cgcb_unrated,
+            )
         )
         # CCP guarantors: 2% proprietary / 4% client-cleared
         # (CRR Art. 306, CRE54.14-15) — overrides institution CQS weights.
@@ -676,26 +727,20 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
         )
         # Named MDB (Art. 117(2)): 0% unconditional.
         .when((gec == "mdb") & (pl.col("guarantor_entity_type").fill_null("") == "mdb_named"))
-        .then(pl.lit(0.0))
+        .then(pl.lit(_SA_SHARED_RW["mdb_named"]))
         # International Organisation (Art. 118): 0% unconditional.
         .when(
             (gec == "mdb") & (pl.col("guarantor_entity_type").fill_null("") == "international_org")
         )
-        .then(pl.lit(0.0))
+        .then(pl.lit(_SA_SHARED_RW["io"]))
         # Rated / unrated non-named MDB — Table 2B (Art. 117(1)).
         .when(gec == "mdb")
         .then(
-            pl.when(cqs == 1)
-            .then(pl.lit(0.20))
-            .when(cqs == 2)
-            .then(pl.lit(0.30))
-            .when(cqs == 3)
-            .then(pl.lit(0.50))
-            .when(cqs.is_in([4, 5]))
-            .then(pl.lit(1.0))
-            .when(cqs == 6)
-            .then(pl.lit(1.50))
-            .otherwise(pl.lit(0.50))  # Unrated MDB = 50% (Table 2B)
+            _cqs_table_lookup_expr(
+                "guarantor_cqs",
+                MDB_RISK_WEIGHTS_TABLE_2B,
+                _SA_SHARED_RW["mdb_unrated"],
+            )
         )
         # Institution guarantors — RW driven from INSTITUTION_RISK_WEIGHTS_CRR /
         # INSTITUTION_RISK_WEIGHTS_B31_ECRA so the dicts remain the single source
@@ -705,45 +750,29 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
         # PSE guarantors — Art. 116(2) Table 2A for rated, sovereign-derived for unrated.
         .when(gec == "pse")
         .then(
-            pl.when(cqs == 1)
-            .then(pl.lit(0.20))
-            .when(cqs == 2)
-            .then(pl.lit(0.50))
-            .when(cqs == 3)
-            .then(pl.lit(0.50))
-            .when(cqs.is_in([4, 5]))
-            .then(pl.lit(1.0))
-            .when(cqs == 6)
-            .then(pl.lit(1.50))
-            .otherwise(sovereign_derived_unrated)
+            _cqs_table_lookup_expr(
+                "guarantor_cqs",
+                PSE_RISK_WEIGHTS_OWN_RATING,
+                sovereign_derived_unrated,
+            )
         )
         # RGLA guarantors — Art. 115(1)(b) Table 1B for rated, sovereign-derived for unrated.
         .when(gec == "rgla")
         .then(
-            pl.when(cqs == 1)
-            .then(pl.lit(0.20))
-            .when(cqs == 2)
-            .then(pl.lit(0.50))
-            .when(cqs == 3)
-            .then(pl.lit(0.50))
-            .when(cqs.is_in([4, 5]))
-            .then(pl.lit(1.0))
-            .when(cqs == 6)
-            .then(pl.lit(1.50))
-            .otherwise(sovereign_derived_unrated)
+            _cqs_table_lookup_expr(
+                "guarantor_cqs",
+                RGLA_RISK_WEIGHTS_OWN_RATING,
+                sovereign_derived_unrated,
+            )
         )
         # Corporate guarantors — Art. 122 corporate CQS table.
         .when(gec.is_in(["corporate", "corporate_sme"]))
         .then(
-            pl.when(cqs == 1)
-            .then(pl.lit(0.20))
-            .when(cqs == 2)
-            .then(pl.lit(0.50))
-            .when(cqs.is_in([3, 4]))
-            .then(pl.lit(1.0))
-            .when(cqs.is_in([5, 6]))
-            .then(pl.lit(1.50))
-            .otherwise(pl.lit(1.0))
+            _cqs_table_lookup_expr(
+                "guarantor_cqs",
+                CORPORATE_RISK_WEIGHTS,
+                corporate_unrated,
+            )
         )
         .otherwise(pl.lit(None).cast(pl.Float64))
     )
@@ -995,16 +1024,16 @@ def _apply_b31_risk_weight_overrides(
         .when(
             uc.str.contains("RETAIL", literal=True) & pl.col("is_qrre_transactor").fill_null(False)
         )
-        .then(pl.lit(0.45))
+        .then(pl.lit(_SA_B31_RW["qrre_transactor"]))
         # Payroll/pension loans: 35% (Art. 123(3)(a-b)).
         .when(uc.str.contains("RETAIL", literal=True) & pl.col("is_payroll_loan").fill_null(False))
-        .then(pl.lit(0.35))
+        .then(pl.lit(_SA_B31_RW["payroll"]))
         # Non-regulatory retail (fails Art. 123A criteria): 100%.
         .when(
             uc.str.contains("RETAIL", literal=True)
             & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
         )
-        .then(pl.lit(1.0))
+        .then(pl.lit(_SA_B31_RW["non_reg_retail"]))
         # Regulatory retail (non-mortgage): 75% flat.
         .when(uc.str.contains("RETAIL", literal=True))
         .then(pl.lit(_SA_SHARED_RW["retail"]))
@@ -1037,7 +1066,7 @@ def _apply_b31_risk_weight_overrides(
         # Equity (Art. 133(3)): 250% — full equity treatment (CIU,
         # transitional floor) lives in the dedicated equity table.
         .when(uc == "EQUITY")
-        .then(pl.lit(2.50))
+        .then(pl.lit(_SA_B31_RW["equity"]))
         .otherwise(pl.col("risk_weight").fill_null(1.0))
         .alias("risk_weight")
     )
@@ -1076,13 +1105,13 @@ def _apply_crr_risk_weight_overrides(
         .then(pl.lit(_SA_SHARED_RW["retail"]))
         # Corporate SME: 100%.
         .when(uc.str.contains("CORPORATE", literal=True) & uc.str.contains("SME", literal=True))
-        .then(pl.lit(1.0))
+        .then(pl.lit(_SA_CRR_RW["corporate_sme"]))
         # Non-regulatory retail (fails qualifying criteria): 100%.
         .when(
             uc.str.contains("RETAIL", literal=True)
             & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
         )
-        .then(pl.lit(1.0))
+        .then(pl.lit(_SA_CRR_RW["non_reg_retail"]))
         # Regulatory retail (non-mortgage): 75% flat.
         .when(uc.str.contains("RETAIL", literal=True))
         .then(pl.lit(_SA_SHARED_RW["retail"]))
@@ -1170,7 +1199,7 @@ def _apply_crr_risk_weight_overrides(
         .then(pl.lit(_SA_SHARED_RW["other_default"]))
         # Equity (Art. 133(2)): flat 100%.
         .when(uc == "EQUITY")
-        .then(pl.lit(1.00))
+        .then(pl.lit(_SA_CRR_RW["equity"]))
         .otherwise(pl.col("risk_weight").fill_null(1.0))
         .alias("risk_weight")
     )
@@ -1204,19 +1233,14 @@ def _apply_sovereign_floor_for_institutions(
     """
     _uc = pl.col("_upper_class")
 
-    # Sovereign CQS → risk weight mapping (Art. 114 table)
-    _sovereign_rw = (
-        pl.when(pl.col("cp_sovereign_cqs") == 1)
-        .then(pl.lit(0.0))
-        .when(pl.col("cp_sovereign_cqs") == 2)
-        .then(pl.lit(0.20))
-        .when(pl.col("cp_sovereign_cqs") == 3)
-        .then(pl.lit(0.50))
-        .when(pl.col("cp_sovereign_cqs").is_in([4, 5]))
-        .then(pl.lit(1.0))
-        .when(pl.col("cp_sovereign_cqs") == 6)
-        .then(pl.lit(1.50))
-        .otherwise(pl.lit(None).cast(pl.Float64))
+    # Sovereign CQS → risk weight mapping (Art. 114 table —
+    # CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS). Unknown CQS → null so the
+    # downstream floor predicate (`_floor_applies` requires _sovereign_rw
+    # to be non-null) leaves the exposure unchanged.
+    _sovereign_rw = _cqs_table_lookup_expr(
+        "cp_sovereign_cqs",
+        CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS,
+        pl.lit(None).cast(pl.Float64),
     )
 
     # Compute sovereign RW as a temporary column
@@ -1670,7 +1694,11 @@ class SALazyFrame:
         return self._lf.with_columns(
             [
                 pl.when(mismatch_applies)
-                .then((pl.col("risk_weight") * 1.5).clip(upper_bound=pl.lit(1.50)))
+                .then(
+                    (pl.col("risk_weight") * _SA_B31_RW["currency_mismatch_multiplier"]).clip(
+                        upper_bound=pl.lit(_SA_B31_RW["currency_mismatch_cap"])
+                    )
+                )
                 .otherwise(pl.col("risk_weight"))
                 .alias("risk_weight"),
                 mismatch_applies.alias("currency_mismatch_multiplier_applied"),
