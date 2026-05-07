@@ -66,6 +66,7 @@ class Collateral:
     is_adc: bool | None
     is_presold: bool | None
     liquidation_period_days: int | None = None
+    original_maturity_years: float | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -80,6 +81,7 @@ class Collateral:
             "issuer_cqs": self.issuer_cqs,
             "issuer_type": self.issuer_type,
             "residual_maturity_years": self.residual_maturity_years,
+            "original_maturity_years": self.original_maturity_years,
             "is_eligible_financial_collateral": self.is_eligible_financial_collateral,
             "is_eligible_irb_collateral": self.is_eligible_irb_collateral,
             "valuation_date": self.valuation_date,
@@ -116,6 +118,7 @@ def create_collateral() -> pl.DataFrame:
         *_p1_158_null_maturity_haircut_collateral(),
         *_p1_106_fcsm_institution_bond_collateral(),
         *_p1_107_fcsm_corporate_bond_collateral(),
+        *_crr_d15_covered_bond_collateral(),
     ]
 
     return pl.DataFrame([c.to_dict() for c in collateral], schema=dtypes_of(COLLATERAL_SCHEMA))
@@ -1099,6 +1102,62 @@ def _p1_107_fcsm_corporate_bond_collateral() -> list[Collateral]:
             is_adc=None,
             is_presold=None,
             liquidation_period_days=None,
+        ),
+    ]
+
+
+def _crr_d15_covered_bond_collateral() -> list[Collateral]:
+    """
+    Collateral for CRR-D15: covered bond securing an Art. 207(2) repo-style transaction.
+
+    Scenario: £600k covered bond (institution issuer CQS 1, 2yr residual maturity)
+    posted as collateral against a £1m GBP repo cash leg (LOAN_CRM_D15) to a
+    CQS 2 institution (CP_D15, borrower RW = 50% under CRR Art. 120 Table 3).
+
+    Covered bonds are eligible financial collateral under CRR Art. 197(1)(f) / Art. 129
+    when issued by a CQS 1-3 institution. They fall into the COREP "covered_bond"
+    waterfall category (LGDS = 11.25%) — distinct from plain financial collateral
+    (LGDS = 0%) and corporate bonds.
+
+    Haircut reference (CRR Art. 224 Table 1 / Art. 226(2)):
+    - Base 10-day haircut for institution CQS 1 bond, 1-5y band = 4% (corp_bond_cqs1_1_5y)
+    - Scaled for 5-day SFT liquidation: 4% × sqrt(5/10) = 4% × 0.7071 ≈ 2.828%
+    - Value after haircut = 600,000 × (1 - 0.02828) ≈ 583,030
+
+    is_main_index=None: not applicable for bond collateral.
+    qualifies_for_zero_haircut=False: institution CQS 1 covered bond does not
+        qualify for the Art. 227 zero-haircut treatment (reserved for govt/central-bank
+        securities and cash).
+    """
+    return [
+        # =====================================================================
+        # COLL_D15: covered_bond, institution issuer CQS 1, 2yr residual maturity.
+        # Beneficiary: LOAN_CRM_D15 (GBP 1m repo cash leg).
+        # liquidation_period_days=5 — Art. 224(2)(a) SFT/repo standard period.
+        # =====================================================================
+        Collateral(
+            collateral_reference="COLL_D15",
+            collateral_type="covered_bond",
+            currency="GBP",
+            maturity_date=date(2027, 1, 1),  # 2yr residual from VALUE_DATE 2026-01-01
+            market_value=600_000.0,
+            nominal_value=600_000.0,
+            beneficiary_type="loan",
+            beneficiary_reference="LOAN_CRM_D15",
+            issuer_cqs=1,  # CQS 1 — Art. 197(1)(f): eligible financial collateral
+            issuer_type="institution",  # Covered bond issuer is an institution
+            residual_maturity_years=2.0,  # 2yr — lands in 1_5y maturity band
+            original_maturity_years=5.0,  # Original 5yr tenor (Art. 237 ineligibility check)
+            is_eligible_financial_collateral=True,
+            is_eligible_irb_collateral=True,
+            valuation_date=VALUE_DATE,
+            valuation_type="market",
+            property_type=None,
+            property_ltv=None,
+            is_income_producing=None,
+            is_adc=None,
+            is_presold=None,
+            liquidation_period_days=5,  # Art. 224(2)(a): repo-style SFT — 5-day period
         ),
     ]
 

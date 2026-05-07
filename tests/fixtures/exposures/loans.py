@@ -1007,6 +1007,27 @@ def _crm_scenario_loans() -> list[Loan]:
             beel=0.0,
             seniority="senior",
         ),
+        # =====================================================================
+        # D15: Covered bond collateral, Art. 207(2) repo-style transaction.
+        # GBP 1m repo cash leg to CQS 2 UK institution (CP_D15).
+        # Collateral: £600k covered bond (institution issuer CQS 1, 2yr residual).
+        # Liquidation period = 5 days (SFT/repo — Art. 224(2)(a)).
+        # Borrower RW = 50% (CRR Art. 120, CQS 2 standard band).
+        # =====================================================================
+        Loan(
+            loan_reference="LOAN_CRM_D15",
+            product_type="repo",
+            book_code="FI_LENDING",
+            counterparty_reference="CP_D15",  # CQS 2 institution — 50% RW
+            value_date=date(2025, 1, 1),
+            maturity_date=date(2026, 6, 30),
+            currency="GBP",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
     ]
 
 

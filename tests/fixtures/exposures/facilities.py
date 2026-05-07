@@ -277,6 +277,28 @@ def _institution_facilities() -> list[Facility]:
     Interbank lending facilities.
     """
     return [
+        # =============================================================================
+        # CRR-D15: Repo-style facility for covered-bond CRM scenario.
+        # GBP 1m repo facility to CQS 2 UK institution (CP_D15).
+        # risk_type="FR" (full risk — repo is a drawn on-balance-sheet transaction
+        # but the facility wrapper captures the counterparty limit).
+        # =============================================================================
+        Facility(
+            facility_reference="FAC_D15",
+            product_type="repo",
+            book_code="FI_LENDING",
+            counterparty_reference="CP_D15",
+            value_date=date(2025, 1, 1),
+            maturity_date=date(2026, 6, 30),
+            currency="GBP",
+            limit=1_000_000.0,
+            committed=True,
+            lgd=0.45,
+            beel=0.0,
+            is_revolving=False,
+            seniority="senior",
+            risk_type="FR",  # Full risk — repo cash leg is on-balance-sheet
+        ),
         # Interbank facility - Barclays
         Facility(
             facility_reference="FAC_INST_001",

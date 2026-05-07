@@ -417,7 +417,7 @@ class HaircutCalculator:
                 | ((ct == "bond") & (pl.col("issuer_type").str.to_lowercase() == "sovereign"))
             )
             .then(pl.lit("govt_bond"))
-            .when(ct.is_in(["corp_bond", "corporate_bond"]))
+            .when(ct.is_in(["corp_bond", "corporate_bond", "covered_bond"]))
             .then(pl.lit("corp_bond"))
             .when(ct.is_in(["equity", "shares", "stock"]))
             .then(pl.lit("equity"))
