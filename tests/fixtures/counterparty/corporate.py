@@ -681,6 +681,24 @@ def create_corporate_counterparties() -> pl.DataFrame:
             "apply_fi_scalar": False,
             "is_managed_as_retail": False,
         },
+        # =============================================================================
+        # P1.101 / CRR-D-REVAL: Non-Daily Revaluation Haircut Adjustment (Art. 226(1))
+        # Unrated corporate (100% SA RW under CRR Art. 122) borrowing £1m GBP SFT.
+        # Collateral: £800k corp_bond CQS 1, 4.5y residual, revaluation_frequency=5 days.
+        # Art. 226(1) scales H_m by sqrt((N+T_m-1)/T_m) where N=5, T_m=5.
+        # =============================================================================
+        {
+            "counterparty_reference": "CP_CRM_REVAL",
+            "counterparty_name": "Reval Haircut Test Corporate Ltd",
+            "entity_type": "corporate",
+            "country_code": "GB",
+            "annual_revenue": 90_000_000.0,  # Large corporate (unrated)
+            "total_assets": 70_000_000.0,
+            "default_status": False,
+            "sector_code": "64.19",
+            "apply_fi_scalar": False,
+            "is_managed_as_retail": False,
+        },
     ]
 
     df = pl.DataFrame(corporates, schema=dtypes_of(COUNTERPARTY_SCHEMA))

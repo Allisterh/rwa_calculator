@@ -255,6 +255,12 @@ COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
     # corporate / retail class. Not used under Basel 3.1.
     "rental_to_interest_ratio": ColumnSpec(pl.Float64, required=False),
     "liquidation_period_days": ColumnSpec(pl.Int32, required=False),
+    # CRR Art. 226(1) / PRA PS1/26 Art. 226(1): non-daily mark-to-market or
+    # non-daily-remargining adjustment. When N_R > 1 the supervisory haircut
+    # is scaled by sqrt((N_R + T_m - 1) / T_m) where T_m is the liquidation
+    # period in business days. Null is treated as daily revaluation (N_R=1)
+    # with no scaling applied.
+    "revaluation_frequency_days": ColumnSpec(pl.Int32, required=False),
     "qualifies_for_zero_haircut": ColumnSpec(pl.Boolean, default=False, required=False),
     "insurer_risk_weight": ColumnSpec(pl.Float64, required=False),
     "credit_event_reduction": ColumnSpec(pl.Float64, default=0.0, required=False),

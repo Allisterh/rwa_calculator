@@ -156,12 +156,32 @@ class HaircutCalculator:
             liq = sft_default.cast(pl.Float64)
         scaling_factor = (liq / 10.0).sqrt()
 
-        # Scale collateral haircut by liquidation period
+        # Art. 226(1): non-daily mark-to-market / non-daily-remargining adjustment.
+        # When revaluation_frequency_days (N_R) > 1, scale the haircut upward by
+        # sqrt((N_R + T_m - 1) / T_m). Null or N_R <= 1 leaves the multiplier at 1.0.
+        # PS1/26 carries Art. 226(1) forward unchanged so the same gate applies under
+        # Basel 3.1 — selection is on collateral input, not framework.
+        has_reval_freq = "revaluation_frequency_days" in schema.names()
+        if has_reval_freq:
+            n_r = pl.col("revaluation_frequency_days").fill_null(1).cast(pl.Float64)
+            reval_factor = (
+                pl.when(n_r > 1.0)
+                .then(((n_r + liq - 1.0) / liq).sqrt())
+                .otherwise(pl.lit(1.0))
+            )
+        else:
+            reval_factor = pl.lit(1.0)
+
+        # Scale collateral haircut by liquidation period, then apply the Art. 226(1)
+        # non-daily-revaluation multiplier (order matters per the spec composition
+        # H = H_n × sqrt(T_m/10) × sqrt((N_R + T_m - 1)/T_m)).
         # Non-financial collateral (real_estate, receivables, other_physical) uses Art. 230
         # HC values, not Art. 224 — do not scale those. However, the table join already
         # returns the correct base value; scaling only affects financial collateral and gold.
         collateral = collateral.with_columns(
-            (pl.col("collateral_haircut") * scaling_factor).alias("collateral_haircut")
+            (pl.col("collateral_haircut") * scaling_factor * reval_factor).alias(
+                "collateral_haircut"
+            )
         )
 
         # Apply FX haircut (also subject to liquidation period scaling per Art. 224 Table 4).
@@ -176,9 +196,12 @@ class HaircutCalculator:
         schema_names = collateral.collect_schema().names()
         has_zero_flag = "_is_zero_haircut" in schema_names
         coll_ccy_col = "original_currency" if "original_currency" in schema_names else "currency"
+        # Art. 226(1) symmetry: FX haircut is also subject to the non-daily-
+        # revaluation scaling — apply ``reval_factor`` after the Art. 226(2)
+        # liquidation-period factor, mirroring the collateral haircut path.
         fx_expr = (
             pl.when(pl.col(coll_ccy_col) != pl.col("exposure_currency"))
-            .then(pl.lit(fx_base) * scaling_factor)
+            .then(pl.lit(fx_base) * scaling_factor * reval_factor)
             .otherwise(pl.lit(0.0))
         )
         if has_zero_flag:

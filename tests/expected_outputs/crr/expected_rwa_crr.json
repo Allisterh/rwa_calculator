@@ -27,7 +27,7 @@
     },
     "CRR-D": {
       "name": "Credit Risk Mitigation",
-      "count": 6
+      "count": 7
     },
     "CRR-E": {
       "name": "Specialised Lending (Slotting)",
@@ -729,6 +729,30 @@
       "expected_loss": null,
       "regulatory_reference": "CRR Art. 224",
       "calculation_notes": "FX mismatch (EUR vs GBP), Hfx 11.314% (20-day secured lending per Art. 224(2)(a) + Art. 226(2))"
+    },
+    {
+      "scenario_id": "CRR-D-REVAL",
+      "scenario_group": "CRR-D",
+      "description": "Non-daily revaluation haircut adjustment (Art. 226(1)) - corp bond CQS1, 5-day reval",
+      "regulatory_framework": "CRR",
+      "approach": "SA-CRM",
+      "exposure_class": "CORPORATE",
+      "exposure_reference": "LOAN_CRM_REVAL",
+      "counterparty_reference": "CP_CRM_REVAL",
+      "ead": 230357.86553761643,
+      "pd": null,
+      "lgd": null,
+      "maturity": null,
+      "cqs": null,
+      "ltv": null,
+      "turnover": null,
+      "risk_weight": 1.0,
+      "rwa_before_sf": 230357.86553761643,
+      "supporting_factor": 1.0,
+      "rwa_after_sf": 230357.86553761643,
+      "expected_loss": null,
+      "regulatory_reference": "CRR Art. 226(1), Art. 226(2), Art. 224",
+      "calculation_notes": "corp_bond CQS1 1-5y: H_n=4%. SFT T_m=5d: H_m=4%*sqrt(0.5)=2.8284%. Non-daily reval N=5d: H=H_m*sqrt((5+5-1)/5)=H_m*sqrt(1.8)=3.7947%. C*=800000*(1-0.037947)=769642.13. EAD=230357.87. Counterfactual without Art.226(1): EAD=222627.42."
     },
     {
       "scenario_id": "CRR-E1",

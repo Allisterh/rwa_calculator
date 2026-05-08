@@ -62,6 +62,7 @@ class Loan:
     seniority: str  # senior, subordinated - affects F-IRB LGD (45% vs 75%)
     has_netting_agreement: bool = False  # CRR Art. 195: on-balance sheet netting
     netting_facility_reference: str | None = None  # Facility the netting agreement applies to
+    is_sft: bool = False  # CRR Art. 162(1): SFT flag — drives T_m=5 in haircut scaling
 
     def to_dict(self) -> dict:
         return {
@@ -79,6 +80,7 @@ class Loan:
             "seniority": self.seniority,
             "has_netting_agreement": self.has_netting_agreement,
             "netting_facility_reference": self.netting_facility_reference,
+            "is_sft": self.is_sft,
         }
 
 
@@ -1990,6 +1992,33 @@ def _dedicated_test_loans() -> list[Loan]:
             lgd=0.45,  # Not used under SA
             beel=0.0,
             seniority="senior",
+        ),
+        # =============================================================================
+        # P1.101 / CRR-D-REVAL: Non-Daily Revaluation Haircut Adjustment (Art. 226(1))
+        # £1m GBP SFT (is_sft=True) to unrated corporate CP_CRM_REVAL.
+        # is_sft=True → T_m=5 in haircut scaling (haircuts.py SFT branch).
+        # Maturity 2030-01-01 — ends before collateral residual to avoid mismatch.
+        # Collateral: COLL_CRM_REVAL (£800k corp_bond CQS 1, 4.5y, 5-day reval).
+        # Art. 226(1) reval factor: sqrt((5+5-1)/5) = sqrt(1.8) applied on top of
+        # the SFT-scaled haircut H_m = 4% × sqrt(5/10) = 2.828%.
+        # Final H = 2.828% × sqrt(1.8) = 3.795%.
+        # EAD = 1,000,000 − 800,000 × (1 − 0.03795) ≈ 230,357.87.
+        # SA RWA = 230,357.87 (unrated corporate, 100% RW).
+        # =============================================================================
+        Loan(
+            loan_reference="LOAN_CRM_REVAL",
+            product_type="repo",
+            book_code="FI_LENDING",
+            counterparty_reference="CP_CRM_REVAL",
+            value_date=VALUE_DATE,
+            maturity_date=date(2030, 1, 1),
+            currency="GBP",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,  # Not used under SA
+            beel=0.0,
+            seniority="senior",
+            is_sft=True,  # Art. 226(2): SFT → T_m=5 days for haircut period scaling
         ),
     ]
 

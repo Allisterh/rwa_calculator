@@ -94,6 +94,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_100",
             _generate_p1100,
         ),
+        (
+            "P1.101 (CRR Art. 226(1) non-daily revaluation haircut adjustment)",
+            "p1_101",
+            _generate_p1101,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -542,6 +547,19 @@ def _generate_p1100(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_100", None)
+
+
+def _generate_p1101(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.101 fixtures (CRR Art. 226(1) non-daily revaluation haircut adjustment)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_101 import save_p1101_fixtures
+
+        saved = save_p1101_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_101", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
