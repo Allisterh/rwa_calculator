@@ -2145,6 +2145,29 @@ class HierarchyResolver:
         if default_cols:
             exposures = exposures.with_columns(default_cols)
 
+        # PRA PS1/26 Art. 120(2B) Table 4A: ``has_short_term_ecai`` describes
+        # the counterparty's ECAI rating, so OR-aggregate the flag across all
+        # facilities of the same counterparty and broadcast to every exposure
+        # of that counterparty (including drawn loans without a facility link).
+        if "has_short_term_ecai" in fac_cols:
+            cp_st_ecai = (
+                facilities.group_by("counterparty_reference")
+                .agg(
+                    pl.col("has_short_term_ecai")
+                    .fill_null(False)
+                    .any()
+                    .alias("_cp_has_st_ecai")
+                )
+            )
+            exposures = exposures.join(
+                cp_st_ecai,
+                on="counterparty_reference",
+                how="left",
+            ).with_columns(pl.col("_cp_has_st_ecai").fill_null(False).alias("has_short_term_ecai"))
+            exposures = exposures.drop("_cp_has_st_ecai")
+        else:
+            exposures = exposures.with_columns(pl.lit(False).alias("has_short_term_ecai"))
+
         return exposures
 
     def _attach_counterparty_rating(

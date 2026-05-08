@@ -79,6 +79,10 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     "ccf_modelled": ColumnSpec(pl.Float64, required=False),
     "ead_modelled": ColumnSpec(pl.Float64, required=False),
     "is_short_term_trade_lc": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 120(2B) Table 4A: True when the institution exposure
+    # carries a dedicated short-term ECAI assessment (vs a long-term rating
+    # applied to a short-term exposure under Art. 120(2) Table 4).
+    "has_short_term_ecai": ColumnSpec(pl.Boolean, default=False, required=False),
     # CRR Art. 166(8)(d) vs Art. 166(10): True for credit lines / NIFs / RUFs
     # (75% F-IRB CCF), False for issued OBS items (Art. 166(10) — 50% MR / 20% MLR).
     # Facilities default to True because a facility row is, by construction, a

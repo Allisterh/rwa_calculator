@@ -91,6 +91,7 @@ from rwa_calc.data.tables.b31_risk_weights import (
     B31_DEFAULTED_RESI_RE_NON_INCOME_RW,
     B31_DEFAULTED_RW_HIGH_PROVISION,
     B31_DEFAULTED_RW_LOW_PROVISION,
+    B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS,
     B31_ECRA_SHORT_TERM_RISK_WEIGHTS,
     B31_HIGH_RISK_RW,
     B31_RETAIL_NON_REGULATORY_RW,
@@ -183,6 +184,7 @@ SA_INPUT_CONTRACT: dict[str, ColumnSpec] = {
     "is_qualifying_re": ColumnSpec(pl.Boolean, required=False),
     "prior_charge_ltv": ColumnSpec(pl.Float64, default=0.0, required=False),
     "is_short_term_trade_lc": ColumnSpec(pl.Boolean, default=False, required=False),
+    "has_short_term_ecai": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_qrre_transactor": ColumnSpec(pl.Boolean, default=False, required=False),
     "sl_type": ColumnSpec(pl.String, required=False),
@@ -267,6 +269,12 @@ _SA_B31_RW: dict[str, float] = {
     "ecra_st_low": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[1]),
     "ecra_st_mid": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[4]),
     "ecra_st_high": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[6]),
+    # Table 4A (PRA PS1/26 Art. 120(2B)) — dedicated short-term ECAI assessment.
+    # CQS 1=20%, CQS 2=50%, CQS 3=100%, CQS 4-5=150%.
+    "ecra_st_ecai_cqs1": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[1]),
+    "ecra_st_ecai_cqs2": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[2]),
+    "ecra_st_ecai_cqs3": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[3]),
+    "ecra_st_ecai_high": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[4]),
     # SCRA unrated institution weights (CRE20.16-21) — long-term
     "scra_a": float(B31_SCRA_RISK_WEIGHTS["A"]),
     "scra_ae": float(B31_SCRA_RISK_WEIGHTS["A_ENHANCED"]),
@@ -513,19 +521,29 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
     is_rated = pl.col("cqs").is_not_null() & (pl.col("cqs") > 0)
     is_unrated = pl.col("cqs").is_null() | (pl.col("cqs") <= 0)
     original_mty = pl.col("original_maturity_years").fill_null(1.0)
+    has_st_ecai = pl.col("has_short_term_ecai").fill_null(False)
+    in_st_window = (original_mty <= 0.25) | (
+        pl.col("is_short_term_trade_lc").fill_null(False) & (original_mty <= 0.5)
+    )
     return (
+        # ECRA short-term rated institutions with a dedicated short-term ECAI
+        # assessment (Table 4A, PRA PS1/26 Art. 120(2B)).
+        # CQS 1 = 20%, CQS 2 = 50%, CQS 3 = 100%, CQS 4-5 = 150%.
+        chain.when(is_institution & is_rated & has_st_ecai & in_st_window)
+        .then(
+            pl.when(pl.col("cqs") == 1)
+            .then(pl.lit(_SA_B31_RW["ecra_st_ecai_cqs1"]))
+            .when(pl.col("cqs") == 2)
+            .then(pl.lit(_SA_B31_RW["ecra_st_ecai_cqs2"]))
+            .when(pl.col("cqs") == 3)
+            .then(pl.lit(_SA_B31_RW["ecra_st_ecai_cqs3"]))
+            .otherwise(pl.lit(_SA_B31_RW["ecra_st_ecai_high"]))
+        )
         # ECRA short-term rated institutions (Table 4, Art. 120(2)).
         # Keys on ORIGINAL maturity <= 3m -> CQS 1-3 = 20%, CQS 4-5 = 50%,
         # CQS 6 = 150%. Art. 120(2A) extends Table 4 to ORIGINAL maturity
         # <= 6m for exposures arising from the movement of goods.
-        chain.when(
-            is_institution
-            & is_rated
-            & (
-                (original_mty <= 0.25)
-                | (pl.col("is_short_term_trade_lc").fill_null(False) & (original_mty <= 0.5))
-            )
-        )
+        .when(is_institution & is_rated & in_st_window)
         .then(
             pl.when(pl.col("cqs") <= 3)
             .then(pl.lit(_SA_B31_RW["ecra_st_low"]))
