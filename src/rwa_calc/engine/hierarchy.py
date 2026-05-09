@@ -2168,6 +2168,42 @@ class HierarchyResolver:
         else:
             exposures = exposures.with_columns(pl.lit(False).alias("has_short_term_ecai"))
 
+        # PRA PS1/26 Art. 121(4): the SCRA short-term window extends to self-
+        # liquidating trade-finance LCs. The flag lives on the facility row;
+        # drawn loans booked under a trade-LC facility have no facility_reference
+        # column to inherit from, so OR-aggregate the flag across the facilities
+        # of the same counterparty and broadcast it to every exposure of that
+        # counterparty — same precedent as ``has_short_term_ecai`` above.
+        # Coalesce preserves any explicit per-row value (e.g. on the synthetic
+        # facility_undrawn rows that already carry the flag from their source
+        # facility) and only fills nulls from the counterparty-level OR.
+        if "is_short_term_trade_lc" in fac_cols:
+            cp_trade_lc = facilities.group_by("counterparty_reference").agg(
+                pl.col("is_short_term_trade_lc")
+                .fill_null(False)
+                .any()
+                .alias("_cp_trade_lc")
+            )
+            exposures = exposures.join(
+                cp_trade_lc,
+                on="counterparty_reference",
+                how="left",
+            )
+            if "is_short_term_trade_lc" in exposures.collect_schema().names():
+                exposures = exposures.with_columns(
+                    pl.coalesce(
+                        pl.col("is_short_term_trade_lc"),
+                        pl.col("_cp_trade_lc"),
+                    )
+                    .fill_null(False)
+                    .alias("is_short_term_trade_lc")
+                )
+            else:
+                exposures = exposures.with_columns(
+                    pl.col("_cp_trade_lc").fill_null(False).alias("is_short_term_trade_lc")
+                )
+            exposures = exposures.drop("_cp_trade_lc")
+
         return exposures
 
     def _attach_counterparty_rating(

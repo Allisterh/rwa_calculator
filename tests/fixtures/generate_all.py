@@ -119,6 +119,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_103",
             _generate_p1103,
         ),
+        (
+            "P1.128 (B31 Art. 121(4) SCRA short-term trade finance exception)",
+            "p1_128",
+            _generate_p1128,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -632,6 +637,19 @@ def _generate_p1103(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_103", None)
+
+
+def _generate_p1128(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.128 fixtures (B31 Art. 121(4) SCRA short-term trade finance exception)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_128 import save_p1128_fixtures
+
+        saved = save_p1128_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_128", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

@@ -562,7 +562,10 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
         # ORIGINAL maturity <= 3m -> Grade A/A_ENHANCED = 20%, B = 50%, C = 150%.
         # Null SCRA grade defaults to Grade C (conservative treatment per
         # PRA PS1/26 Art. 120A).
-        .when(is_institution & is_unrated & (original_mty <= 0.25))
+        # Art. 121(4): the short-term window is extended to ORIGINAL maturity
+        # <= 6m for self-liquidating trade-finance LCs, mirroring the ECRA
+        # extension at Art. 120(2A) — reuses the same in_st_window gate.
+        .when(is_institution & is_unrated & in_st_window)
         .then(
             pl.when(pl.col("cp_scra_grade").is_in(["A", "A_ENHANCED"]))
             .then(pl.lit(_SA_B31_RW["scra_st_a"]))
