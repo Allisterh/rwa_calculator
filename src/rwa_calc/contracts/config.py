@@ -923,6 +923,7 @@ class CalculationConfig:
         cls,
         reporting_date: date,
         permission_mode: PermissionMode = PermissionMode.STANDARDISED,
+        base_currency: str = "GBP",
         eur_gbp_rate: Decimal = Decimal("0.8732"),
         enable_double_default: bool = False,
         crm_collateral_method: CRMCollateralMethod = CRMCollateralMethod.COMPREHENSIVE,
@@ -958,7 +959,7 @@ class CalculationConfig:
         return cls(
             framework=RegulatoryFramework.CRR,
             reporting_date=reporting_date,
-            base_currency="GBP",
+            base_currency=base_currency,
             pd_floors=PDFloors.crr(),
             lgd_floors=LGDFloors.crr(),
             supporting_factors=SupportingFactors.crr(),
@@ -981,6 +982,7 @@ class CalculationConfig:
         cls,
         reporting_date: date,
         permission_mode: PermissionMode = PermissionMode.STANDARDISED,
+        base_currency: str = "GBP",
         post_model_adjustments: PostModelAdjustmentConfig | None = None,
         use_investment_grade_assessment: bool = False,
         institution_type: InstitutionType | None = None,
@@ -1038,7 +1040,7 @@ class CalculationConfig:
         return cls(
             framework=RegulatoryFramework.BASEL_3_1,
             reporting_date=reporting_date,
-            base_currency="GBP",
+            base_currency=base_currency,
             pd_floors=PDFloors.basel_3_1(),
             lgd_floors=LGDFloors.basel_3_1(),
             supporting_factors=SupportingFactors.basel_3_1(),

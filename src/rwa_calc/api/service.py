@@ -182,6 +182,7 @@ class CreditRiskCalc:
             return CalculationConfig.crr(
                 reporting_date=self.reporting_date,
                 permission_mode=mode,
+                base_currency=self.base_currency,
                 eur_gbp_rate=self.eur_gbp_rate,
                 log_level=self.log_level,
                 log_format=self.log_format,
@@ -190,6 +191,7 @@ class CreditRiskCalc:
             return CalculationConfig.basel_3_1(
                 reporting_date=self.reporting_date,
                 permission_mode=mode,
+                base_currency=self.base_currency,
                 log_level=self.log_level,
                 log_format=self.log_format,
             )
