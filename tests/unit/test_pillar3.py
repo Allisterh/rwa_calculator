@@ -195,7 +195,7 @@ class TestTemplateDefinitions:
         assert len(CRR_OV1_ROWS) == 8
 
     def test_ov1_b31_rows_count(self):
-        assert len(B31_OV1_ROWS) == 13
+        assert len(B31_OV1_ROWS) == 20
 
     def test_ov1_b31_has_equity_rows(self):
         refs = {r.ref for r in B31_OV1_ROWS}

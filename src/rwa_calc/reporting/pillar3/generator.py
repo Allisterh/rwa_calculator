@@ -77,8 +77,11 @@ from rwa_calc.reporting.pillar3.templates import (
 )
 
 if TYPE_CHECKING:
+    from decimal import Decimal
+
     from rwa_calc.api.export import ExportResult
     from rwa_calc.api.service import CalculationResponse
+    from rwa_calc.contracts.config import Pillar3CapitalRatioOverrides
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +139,7 @@ class Pillar3Generator:
         results: pl.LazyFrame,
         *,
         framework: str = "CRR",
+        capital_ratios: Pillar3CapitalRatioOverrides | None = None,
     ) -> Pillar3TemplateBundle:
         """Generate all Pillar III templates from a pipeline results LazyFrame."""
         cols = _available_columns(results)
@@ -146,7 +150,7 @@ class Pillar3Generator:
         slotting_data = _filter_by_approach(results, "slotting", cols)
 
         return Pillar3TemplateBundle(
-            ov1=self._generate_ov1(results, cols, framework, errors),
+            ov1=self._generate_ov1(results, cols, framework, errors, capital_ratios),
             cr4=self._generate_cr4(sa_data, cols, framework, errors),
             cr5=self._generate_cr5(sa_data, cols, framework, errors),
             cr6=self._generate_all_cr6(irb_data, cols, framework, errors),
@@ -227,6 +231,7 @@ class Pillar3Generator:
         cols: set[str],
         framework: str,
         errors: list[str],
+        capital_ratios: Pillar3CapitalRatioOverrides | None = None,
     ) -> pl.DataFrame | None:
         rwa_col = _pick(cols, "rwa_final", "final_rwa", "rwa")
         if not rwa_col:
@@ -234,12 +239,15 @@ class Pillar3Generator:
             return None
 
         approach_col = _pick(cols, "approach_applied", "approach")
+        pre_floor_col = _pick(cols, "rwa_pre_floor")
         data = results.collect()
         rows_out: list[dict[str, object]] = []
         column_refs = [c.ref for c in OV1_COLUMNS]
 
         total_rwa = _col_sum(data, cols, rwa_col)
         own_funds = total_rwa * 0.08 if total_rwa else None
+
+        ratio_refs = {"5a", "5b", "6a", "6b", "7a", "7b"}
 
         for row_def in get_ov1_rows(framework):
             values: dict[str, object] = {}
@@ -256,10 +264,23 @@ class Pillar3Generator:
                 values["a"] = _approach_rwa(data, approach_col, rwa_col, "foundation_irb")
             elif ref == "4" and approach_col:
                 values["a"] = _approach_rwa(data, approach_col, rwa_col, "slotting")
+            elif ref == "4a":
+                # Pre-floor total RWEAs — sum rwa_pre_floor across all exposures
+                if pre_floor_col:
+                    pre_floor_total = _col_sum(data, cols, pre_floor_col)
+                    values["a"] = pre_floor_total
+                    values["c"] = pre_floor_total * 0.08 if pre_floor_total is not None else None
+                # else: leave a/b/c as None (mirror existing fallback posture)
             elif ref == "UK4a" and approach_col:
                 values["a"] = _approach_rwa(data, approach_col, rwa_col, "equity")
             elif ref == "5" and approach_col:
                 values["a"] = _approach_rwa(data, approach_col, rwa_col, "advanced_irb")
+            elif ref in ratio_refs:
+                # Pre-floor capital-ratio rows — populated from caller-supplied
+                # overrides only. Columns b and c stay None even when a is
+                # populated (no own-funds × 0.08 shim for ratio rows).
+                ratio = _ratio_for_ref(capital_ratios, ref)
+                values["a"] = float(ratio) * 100.0 if ratio is not None else None
             elif ref == "24":
                 # Memo: 250% RW exposures — filter to risk_weight == 2.50
                 rw_col = _pick(cols, "risk_weight", "sa_final_risk_weight")
@@ -278,7 +299,13 @@ class Pillar3Generator:
 
             # Column b (T-1) always None — requires prior period data
             values.setdefault("b", None)
-            if values.get("a") is not None and values.get("c") is None:
+            # Auto-shim: own funds = a * 0.08, except for ratio rows where
+            # column c is intentionally None (a is itself a percentage).
+            if (
+                ref not in ratio_refs
+                and values.get("a") is not None
+                and values.get("c") is None
+            ):
                 values["c"] = float(values["a"] or 0.0) * 0.08
 
             rows_out.append(_make_row(row_def, values, column_refs))
@@ -1548,6 +1575,29 @@ def _cr9_display_names(cr9_dict: dict[str, pl.DataFrame]) -> dict[str, str]:
         class_name = IRB_EXPOSURE_CLASSES.get(parts[1], parts[1]) if len(parts) > 1 else ""
         display[key] = f"{approach} {class_name}" if class_name else approach
     return display
+
+
+def _ratio_for_ref(
+    overrides: Pillar3CapitalRatioOverrides | None,
+    ref: str,
+) -> Decimal | None:
+    """Look up the OV1 pre-floor capital ratio for a row ref.
+
+    Maps OV1 row refs (5a/5b/6a/6b/7a/7b) to the matching field on the
+    Pillar3CapitalRatioOverrides bundle. Returns None when no overrides
+    were supplied or the matching field is None.
+    """
+    if overrides is None:
+        return None
+    mapping: dict[str, Decimal | None] = {
+        "5a": overrides.cet1_ratio_pre_floor,
+        "5b": overrides.cet1_ratio_pre_floor_transitional,
+        "6a": overrides.tier1_ratio_pre_floor,
+        "6b": overrides.tier1_ratio_pre_floor_transitional,
+        "7a": overrides.total_ratio_pre_floor,
+        "7b": overrides.total_ratio_pre_floor_transitional,
+    }
+    return mapping.get(ref)
 
 
 def _obligor_count(data: pl.DataFrame, cols: set[str]) -> float | None:
