@@ -139,6 +139,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_118",
             _generate_p1118,
         ),
+        (
+            "P1.120 (B31 Art. 127(1) defaulted corporate FCCM cash, gross denominator fix)",
+            "p1_120",
+            _generate_p1120,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -704,6 +709,19 @@ def _generate_p196(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_96", None)
+
+
+def _generate_p1120(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.120 fixtures (B31 Art. 127(1) defaulted corporate FCCM cash, gross denominator fix)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_120 import save_p1120_fixtures
+
+        saved = save_p1120_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_120", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

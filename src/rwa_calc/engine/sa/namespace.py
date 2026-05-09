@@ -1437,10 +1437,22 @@ def _apply_defaulted_risk_weight(
             & ~pl.col("has_income_cover").fill_null(False)
         )
 
-        # PS1/26 Art. 127(1): denominator is the outstanding amount of the
-        # item or facility — ead_final post-CRM reduction.
+        # PS1/26 Art. 127(1): denominator is "the outstanding amount of the
+        # item or facility" — gross outstanding (pre-CRM, pre-provision).
+        # Reconstruct from ead_gross (post-CCF, post-provision, pre-CRM) plus
+        # provision_deducted; fall back to the pre-CRM ead column when
+        # ead_gross is absent (single-exposure unit-test path), which yields
+        # the same gross outstanding when no FCCM collateral has been applied.
+        _schema_names = exposures.collect_schema().names()
+        if "ead_gross" in _schema_names:
+            gross_outstanding = pl.col("ead_gross") + pl.col("provision_deducted")
+        else:
+            gross_outstanding = ead + pl.col("provision_deducted")
         provision_rw = (
-            pl.when(pl.col("provision_allocated") >= _SA_B31_RW["defaulted_threshold"] * ead)
+            pl.when(
+                pl.col("provision_allocated")
+                >= _SA_B31_RW["defaulted_threshold"] * gross_outstanding
+            )
             .then(pl.lit(_SA_B31_RW["defaulted_high"]))
             .otherwise(pl.lit(_SA_B31_RW["defaulted_low"]))
         )
