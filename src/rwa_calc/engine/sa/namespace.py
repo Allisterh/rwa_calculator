@@ -83,6 +83,7 @@ from rwa_calc.data.tables.b31_equity_rw import B31_SA_EQUITY_RISK_WEIGHTS
 from rwa_calc.data.tables.b31_risk_weights import (
     B31_CORPORATE_INVESTMENT_GRADE_RW,
     B31_CORPORATE_NON_INVESTMENT_GRADE_RW,
+    B31_CORPORATE_RISK_WEIGHTS,
     B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS,
     B31_CORPORATE_SME_RW,
     B31_COVERED_BOND_UNRATED_FROM_SCRA,
@@ -869,11 +870,14 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
             )
         )
         # Corporate guarantors — Art. 122 corporate CQS table.
+        # Basel 3.1 (PRA PS1/26 Art. 122(2) Table 6): CQS3 = 75% (CRR: 100%);
+        # PRA retains CQS5 = 150%. Gated on framework so CRR runs are
+        # unchanged.
         .when(gec.is_in(["corporate", "corporate_sme"]))
         .then(
             _cqs_table_lookup_expr(
                 "guarantor_cqs",
-                CORPORATE_RISK_WEIGHTS,
+                B31_CORPORATE_RISK_WEIGHTS if is_basel_3_1 else CORPORATE_RISK_WEIGHTS,
                 corporate_unrated,
             )
         )
