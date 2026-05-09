@@ -217,6 +217,12 @@ ERROR_RE_CRR_RENTAL_COVERAGE_FAILED = "RE004"
 ERROR_INVALID_CONFIG = "CFG001"
 ERROR_MISSING_PERMISSION = "CFG002"
 
+# Aggregated output bound error codes (validate_aggregated_bundle)
+ERROR_RW_ABOVE_CAP = "OUT001"
+ERROR_RW_NEGATIVE = "OUT002"
+ERROR_RWA_NEGATIVE = "OUT003"
+ERROR_EAD_NULL = "OUT004"
+
 
 # =============================================================================
 # ERROR FACTORY FUNCTIONS
