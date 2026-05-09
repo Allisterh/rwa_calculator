@@ -90,6 +90,12 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     "is_obs_commitment": ColumnSpec(pl.Boolean, default=True, required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_buy_to_let": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
+    # under construction. Drives the ADC ("Acquisition, Development and
+    # Construction") classification path in the classifier. Combined with the
+    # corporate (non-natural-person) gate, a True value derives is_adc=True so
+    # the SA branch routes to the 150% Art. 124K(1) ADC risk weight.
+    "is_under_construction": ColumnSpec(pl.Boolean, default=False, required=False),
     "has_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sft": ColumnSpec(pl.Boolean, default=False, required=False),
     "facility_termination_date": ColumnSpec(pl.Date, required=False),
@@ -123,6 +129,10 @@ LOAN_SCHEMA: dict[str, ColumnSpec] = {
     "seniority": ColumnSpec(pl.String, default="senior", required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_buy_to_let": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
+    # under construction — drives the ADC classification derivation in the
+    # classifier (combined with a corporate / non-natural-person gate).
+    "is_under_construction": ColumnSpec(pl.Boolean, default=False, required=False),
     "has_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sft": ColumnSpec(pl.Boolean, default=False, required=False),
     "effective_maturity": ColumnSpec(pl.Float64, required=False),
@@ -174,6 +184,10 @@ CONTINGENTS_SCHEMA: dict[str, ColumnSpec] = {
     # Override to True for genuine commitment-style contingents (e.g., an
     # NIF / RUF booked as a contingent), in which case Art. 166(8)(d) -> 75% applies.
     "is_obs_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
+    # under construction — drives the ADC classification derivation in the
+    # classifier (combined with a corporate / non-natural-person gate).
+    "is_under_construction": ColumnSpec(pl.Boolean, default=False, required=False),
     "has_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sft": ColumnSpec(pl.Boolean, default=False, required=False),
     "effective_maturity": ColumnSpec(pl.Float64, required=False),

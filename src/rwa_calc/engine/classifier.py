@@ -541,7 +541,7 @@ class ExposureClassifier:
 
         Sets: exposure_class_sa, exposure_class_irb, exposure_class, is_mortgage,
               is_defaulted, exposure_class_for_sa, is_infrastructure,
-              qualifies_as_retail, retail_threshold_exclusion_applied
+              qualifies_as_retail, retail_threshold_exclusion_applied, is_adc
 
         Art. 123A enforcement (Basel 3.1 only):
         - Art. 123A(1)(a): SME entities (revenue > 0 and < threshold) auto-qualify
@@ -550,6 +550,17 @@ class ExposureClassifier:
           retail pool (cp_is_managed_as_retail=True). Null defaults to True for
           backward compatibility.
         - CRR: threshold check only (no Art. 123A).
+
+        ADC derivation (PRA PS1/26 Art. 124(3) / Art. 124K):
+        - Derives ``is_adc=True`` for corporate (non-natural-person) exposures
+          whose financed property is under construction (``is_under_construction``
+          on the loan/facility) or whose product type signals development finance.
+        - Natural persons fail the corporate gate even when
+          ``is_under_construction=True``.
+        - Any pre-existing non-null ``is_adc`` on the input row (e.g. propagated
+          from collateral by upstream stages) takes precedence via
+          ``pl.coalesce`` so the derivation cannot override an explicit
+          user-supplied flag.
         """
         max_retail_exposure = float(config.thresholds.retail_max_exposure)
 
@@ -632,6 +643,12 @@ class ExposureClassifier:
                 .alias("exposure_class_for_sa"),
                 # --- Infrastructure flag (uses _pt_upper) ---
                 pl.col("_pt_upper").str.contains("INFRASTRUCTURE").alias("is_infrastructure"),
+                # --- ADC classification (PRA PS1/26 Art. 124(3) / Art. 124K) ---
+                # Derive ``is_adc`` from the loan/facility ``is_under_construction``
+                # flag (or a development-finance product_type) gated on a corporate
+                # / non-natural-person counterparty. Coalesce with any pre-existing
+                # ``is_adc`` value so an explicit user-supplied flag wins.
+                self._build_is_adc_expr(schema_names),
                 # --- Retail threshold check + Art. 123A conditions (B31) ---
                 self._build_qualifies_as_retail_expr(config, schema_names, max_retail_exposure),
                 pl.when(pl.col("residential_collateral_value") > 0)
@@ -666,11 +683,18 @@ class ExposureClassifier:
         sme_threshold_gbp = float(config.thresholds.sme_turnover_threshold)
         qrre_max_limit = float(config.thresholds.qrre_max_limit)
 
+        # PRA PS1/26 Art. 124(3) / Art. 124K: ADC exposures retain the CORPORATE
+        # class and route to the 150% Art. 124K(1) ADC RW — they must not be
+        # reclassified to CORPORATE_SME. ``is_adc`` is always present after
+        # ``_derive_independent_flags``.
+        is_adc = pl.col("is_adc").fill_null(False)
+
         # Conditions reused across expressions (reading the independent-flag columns)
         is_corporate_sme = (
             (pl.col("exposure_class") == ExposureClass.CORPORATE.value)
             & (pl.col("cp_annual_revenue") < sme_threshold_gbp)
             & (pl.col("cp_annual_revenue") > 0)
+            & ~is_adc
         )
         is_retail_sme = (
             (pl.col("exposure_class") == ExposureClass.RETAIL_OTHER.value)
@@ -968,7 +992,9 @@ class ExposureClassifier:
         existing whole-loan path (CRR ``_apply_residential_mortgage_rw`` /
         B3.1 ``b31_residential_rw_expr``). Higher-priority Art. 112 classes
         (defaulted, equity, covered bond, high-risk) are also excluded — they
-        must never be downgraded.
+        must never be downgraded. ADC-flagged rows (PRA PS1/26 Art. 124(3)) are
+        also excluded so the 150% Art. 124K(1) ADC RW applies to the whole
+        exposure rather than a loan-split residential / corporate residual.
         """
         existing_re_classes = [
             _SECURED_TARGET_RESIDENTIAL,
@@ -993,7 +1019,13 @@ class ExposureClassifier:
             else pl.lit(False)
         )
 
-        is_candidate = is_eligible_class & primitives["has_property"] & ~is_income_producing
+        # PRA PS1/26 Art. 124(3) / Art. 124K: ADC exposures route to the 150%
+        # ADC path on the whole exposure — they must not be loan-split.
+        is_adc = pl.col("is_adc").fill_null(False)
+
+        is_candidate = (
+            is_eligible_class & primitives["has_property"] & ~is_income_producing & ~is_adc
+        )
 
         is_natural_person = (
             pl.col("cp_is_natural_person").fill_null(False)
@@ -1716,6 +1748,52 @@ class ExposureClassifier:
     # =========================================================================
     # Expression builders (static helpers returning pl.Expr)
     # =========================================================================
+
+    @staticmethod
+    def _build_is_adc_expr(schema_names: set[str]) -> pl.Expr:
+        """Build is_adc derivation expression (PRA PS1/26 Art. 124(3) / Art. 124K).
+
+        Derives ``is_adc=True`` when:
+            - the financed property is under construction
+              (``is_under_construction=True`` on the loan/facility), OR
+            - ``product_type`` indicates development finance / construction,
+        AND the borrower passes the corporate gate:
+            - counterparty entity_type is one of {corporate, company,
+              specialised_lending}, AND
+            - counterparty is NOT a natural person.
+
+        Any pre-existing non-null ``is_adc`` (e.g. propagated from collateral
+        upstream) wins via ``pl.coalesce`` — the derivation only fires when
+        ``is_adc`` is null on the input row.
+
+        Returns a ``pl.Expr`` aliased ``is_adc`` (Boolean).
+        """
+        is_under_construction = (
+            pl.col("is_under_construction").fill_null(False)
+            if "is_under_construction" in schema_names
+            else pl.lit(False)
+        )
+        is_adc_product = pl.col("_pt_upper").is_in(
+            ["DEVELOPMENT_FINANCE", "CONSTRUCTION_LOAN"]
+        )
+        # Corporate gate: entity types treated as corporate under SA Art. 112(1)(g).
+        is_corporate_entity = pl.col("cp_entity_type").is_in(
+            ["corporate", "company", "specialised_lending"]
+        )
+        is_natural_person = (
+            pl.col("cp_is_natural_person").fill_null(False)
+            if "cp_is_natural_person" in schema_names
+            else pl.lit(False)
+        )
+        derived = (
+            is_corporate_entity
+            & ~is_natural_person
+            & (is_under_construction | is_adc_product)
+        )
+
+        if "is_adc" in schema_names:
+            return pl.coalesce(pl.col("is_adc"), derived).fill_null(False).alias("is_adc")
+        return derived.alias("is_adc")
 
     @staticmethod
     def _build_is_mortgage_expr(schema_names: set[str]) -> pl.Expr:

@@ -214,6 +214,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_123",
             _generate_p1123,
         ),
+        (
+            "P1.140 (B31 Art. 124(3)/124K ADC classification derivation via is_under_construction)",
+            "p1_140",
+            _generate_p1140,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -1112,6 +1117,19 @@ def _generate_p1123(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_123", None)
+
+
+def _generate_p1140(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.140 fixtures (B31 Art. 124(3)/124K ADC classification via is_under_construction)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_140 import save_p1140_fixtures
+
+        saved = save_p1140_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_140", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

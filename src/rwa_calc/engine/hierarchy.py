@@ -807,6 +807,7 @@ class HierarchyResolver:
                 "is_obs_commitment": pl.Boolean,
                 "is_payroll_loan": pl.Boolean,
                 "is_buy_to_let": pl.Boolean,
+                "is_under_construction": pl.Boolean,
                 "has_one_day_maturity_floor": pl.Boolean,
                 "is_sft": pl.Boolean,
                 "has_netting_agreement": pl.Boolean,
@@ -1149,6 +1150,15 @@ class HierarchyResolver:
                 pl.col("is_buy_to_let").fill_null(False)
                 if "is_buy_to_let" in facility_cols
                 else pl.lit(False).alias("is_buy_to_let")
+            ),
+            # PRA PS1/26 Art. 124(3) / Art. 124K: under-construction flag drives
+            # ADC classification derivation in the classifier. Facility-level
+            # value flows through to facility_undrawn rows so commitments to
+            # development-finance facilities also surface the flag.
+            (
+                pl.col("is_under_construction").fill_null(False)
+                if "is_under_construction" in facility_cols
+                else pl.lit(False).alias("is_under_construction")
             ),
             (
                 pl.col("has_one_day_maturity_floor").fill_null(False)
@@ -1767,6 +1777,13 @@ class HierarchyResolver:
                 if "is_buy_to_let" in loan_cols
                 else pl.lit(False).alias("is_buy_to_let")
             ),
+            # PRA PS1/26 Art. 124(3) / Art. 124K: under-construction flag drives
+            # ADC classification derivation in the classifier.
+            (
+                pl.col("is_under_construction").fill_null(False)
+                if "is_under_construction" in loan_cols
+                else pl.lit(False).alias("is_under_construction")
+            ),
             (
                 pl.col("has_one_day_maturity_floor").fill_null(False)
                 if "has_one_day_maturity_floor" in loan_cols
@@ -1919,6 +1936,13 @@ class HierarchyResolver:
                 pl.lit(False).alias(
                     "is_buy_to_let"
                 ),  # BTL is a property lending characteristic, not for contingents
+                # PRA PS1/26 Art. 124(3) / Art. 124K: under-construction flag drives
+                # ADC classification derivation in the classifier.
+                (
+                    pl.col("is_under_construction").fill_null(False)
+                    if "is_under_construction" in cont_cols
+                    else pl.lit(False).alias("is_under_construction")
+                ),
                 (
                     pl.col("has_one_day_maturity_floor").fill_null(False)
                     if "has_one_day_maturity_floor" in cont_cols
