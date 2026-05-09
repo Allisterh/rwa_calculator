@@ -1,15 +1,22 @@
 """
-P1.157 — Basel 3.1 PSM Art. 160(4) "no better than direct" floor (BINDING).
+P1.157 — Basel 3.1 PSM Art. 160(4) "no better than direct" floor (PSM in guarantor context).
 
 Pipeline position:
     IRB guarantee substitution (_apply_parameter_substitution → guarantor_rw_post_nbd)
 
 Scenario design:
-    The NBD floor is BINDING in this scenario: RW_direct (guarantor in its own
-    corporate context, R~0.237, M=2.5) is far higher than guarantor_rw_irb
-    (guarantor in the BORROWER's QRRE context, R=0.04, MA=1.0). This large
-    divergence is the essence of Art. 160(4) — PSM would otherwise allow an
-    artificially low RW on the guaranteed portion.
+    Per Art. 236(1)(a)(i) (PRA PS1/26) the PSM correlation must be derived from
+    the **guarantor's** exposure class context, not the borrower's. With the
+    correct engine (post-P1.159) ``guarantor_rw_irb`` and ``rw_direct`` are
+    both computed in the guarantor's corporate context and produce the same
+    value here (≈ 0.17489), so the Art. 160(4) NBD floor does not strictly
+    bind in this scenario — but the floor mechanic is still exercised by the
+    test (max(guarantor_rw_irb, rw_direct) is taken and emitted as
+    ``guarantor_rw_post_nbd``).
+
+    The blended RWA on the guaranteed portion (≈ 233,494) is materially higher
+    than the borrower's QRRE RW × 60% would be — i.e., PSM raises the capital
+    on the covered portion, which is the substantive Art. 160(4) outcome.
 
 Borrower (QRRE revolver, A-IRB):
     exposure_class  = RETAIL_QRRE
@@ -27,20 +34,17 @@ Guarantee:
     guarantor_seniority = "senior"
     original_maturity_years = 5.0
 
-Hand calculation (scenario architect — see tmp/scenario-P1.157.md for full derivation):
+Hand calculation:
     Borrower pre-CRM RW           = 0.32140  (QRRE R=0.04, MA=1.0, PD=0.02, LGD=0.50)
     PD_guarantor_floored          = 0.0005   (corporate floor, Art. 163(1)(a))
-    guarantor_rw_irb              = 0.01346  (PSM in borrower QRRE context: R=0.04, MA=1.0)
-    RW_direct                     = 0.17489  (corporate context: R~0.237, MA~1.75, M=2.5)
-    guarantor_rw_post_nbd         = max(0.01346, 0.17489) = 0.17489  ← NBD floor BINDS
+    guarantor_rw_irb              = 0.17489  (PSM in GUARANTOR corporate context — Art. 236(1)(a)(i))
+    RW_direct                     = 0.17489  (NBD: same guarantor corporate context)
+    guarantor_rw_post_nbd         = max(0.17489, 0.17489) = 0.17489
     is_guarantee_beneficial       = True (0.17489 < 0.32140)
     RWA_blended                   = 321,400×0.40 + 600,000×0.17489 = 233,494
 
-Pre-fix vs post-fix delta:
-    Without NBD: guarantor_rw = 0.01346 → RWA = 136,636
-    With NBD:    guarantor_rw = 0.17489 → RWA = 233,494  (+96,858, +71%)
-
 Regulatory references:
+    - PRA PS1/26 Art. 236(1)(a)(i): PSM correlation derived from guarantor's class
     - PRA PS1/26 Art. 160(4): "no better than direct" floor on PSM RW
     - PRA PS1/26 Art. 163(1)(a): Corporate PD floor 0.05%
     - PRA PS1/26 Art. 161(1)(aa): B31 F-IRB supervisory LGD 40% (non-FSE senior corporate)
@@ -48,10 +52,10 @@ Regulatory references:
     - CRR Art. 153: Corporate correlation formula
 
 Code references:
-    - src/rwa_calc/engine/irb/guarantee.py:288-415 — _apply_parameter_substitution
-    - src/rwa_calc/engine/irb/guarantee.py:418-508 — _apply_no_better_than_direct_floor
-    - src/rwa_calc/engine/irb/formulas.py:773-824 — _parametric_irb_risk_weight_expr
-    - src/rwa_calc/engine/irb/formulas.py:51-114 — _pd_floor_expression
+    - src/rwa_calc/engine/irb/guarantee.py — _apply_parameter_substitution
+    - src/rwa_calc/engine/irb/guarantee.py — _apply_no_better_than_direct_floor
+    - src/rwa_calc/engine/irb/formulas.py — _parametric_irb_risk_weight_expr
+    - src/rwa_calc/engine/irb/formulas.py — _pd_floor_expression
 """
 
 from __future__ import annotations
@@ -85,11 +89,10 @@ from tests.fixtures.p1_157.p1_157 import (
 EXPECTED_RW_ORIGINAL: float = 0.32140
 EXPECTED_RWA_ORIGINAL: float = 321_400.0
 
-# guarantor_rw_irb: PSM uses BORROWER's QRRE context (R=0.04, MA=1.0)
-# with guarantor PD floored to corporate floor 0.0005 (Art. 163(1)(a))
-# G(0.0005) ≈ −3.29053; N[1.02062×(−3.29053) + 0.20412×3.09023] = N[−2.72735] ≈ 0.00319
-# K_psm = 0.40×0.00319 − 0.0005×0.40 = 0.001077; RW_psm = 0.001077×12.5
-EXPECTED_GUARANTOR_RW_IRB: float = 0.01346
+# guarantor_rw_irb: PSM in GUARANTOR's corporate context per Art. 236(1)(a)(i)
+# (R≈0.237, MA≈1.75 at M=2.5, LGD=0.40, floored PD=0.0005). Equal to rw_direct
+# in this scenario because both use the guarantor's class.
+EXPECTED_GUARANTOR_RW_IRB: float = 0.17489
 
 # RW_direct: NBD uses GUARANTOR's corporate context (R~0.237, MA~1.75, M=2.5)
 # PD=0.0005, LGD=0.40 → RW_direct = 0.17489 >> guarantor_rw_irb
@@ -213,15 +216,16 @@ def _build_p1157_lf(
 
 class TestP1157PSMNoBetterThanDirect:
     """
-    P1.157: Basel 3.1 PSM Art. 160(4) "no better than direct" floor — BINDING.
+    P1.157: Basel 3.1 PSM Art. 160(4) "no better than direct" floor mechanic.
 
-    The NBD floor is load-bearing here because guarantor_rw_irb (PSM in QRRE
-    context: R=0.04, MA=1.0) ≈ 1.35% while RW_direct (corporate context:
-    R~0.237, MA~1.75 at M=2.5) ≈ 17.49%. The NBD floor raises the guaranteed
-    portion's effective RW from 1.35% to 17.49% — a 13× increase.
+    Per Art. 236(1)(a)(i) (post-P1.159) the PSM correlation is derived from
+    the GUARANTOR's class context, so ``guarantor_rw_irb`` and ``rw_direct``
+    are both computed in the guarantor's corporate context and equal each
+    other here (≈ 17.49%). The NBD floor (max-of-two) is still emitted as
+    ``guarantor_rw_post_nbd`` even when it does not strictly raise the RW.
 
-    The guarantee remains beneficial (17.49% < borrower_rw 32.14%), so a blended
-    RWA of 233,494 results (vs 136,636 without the NBD floor — a 71% increase).
+    The guarantee remains beneficial (17.49% < borrower_rw 32.14%), producing
+    a blended RWA of 233,494.
     """
 
     @pytest.fixture(scope="class")
@@ -236,7 +240,7 @@ class TestP1157PSMNoBetterThanDirect:
 
         Arrange: QRRE revolver with 60% corporate IRB guarantee.
                  Guarantor PD_raw=0.0004 below B31 corporate floor 0.0005.
-                 RW_direct (corporate curve, M=2.5) >> guarantor_rw_irb (QRRE curve, MA=1.0).
+                 PSM in guarantor corporate context: rw_irb == rw_direct ≈ 0.17489.
         Act:     lf.irb.apply_guarantee_substitution(config).
         Return:  Collected DataFrame for all assertions.
         """
@@ -298,20 +302,17 @@ class TestP1157PSMNoBetterThanDirect:
         p1157_result: pl.DataFrame,
     ) -> None:
         """
-        P1.157: guarantor_rw_irb = 0.01346 (PSM in QRRE context, floored PD=0.0005).
+        P1.157: guarantor_rw_irb ≈ 0.17489 (PSM in GUARANTOR corporate context).
 
-        The PSM applies the guarantor's floored PD (0.0005 per Art. 163(1)(a)
-        corporate floor) through the IRB formula in the BORROWER's exposure class
-        context (retail_qrre: R=0.04, MA=1.0, LGD=0.40).
+        Per Art. 236(1)(a)(i) the PSM correlation is derived from the
+        **guarantor's** exposure class context — corporate (R≈0.237) at M=2.5,
+        with floored PD=0.0005 (Art. 163(1)(a)) and F-IRB supervisory LGD=0.40
+        (Art. 161(1)(aa)). The borrower's QRRE class plays no role in the
+        guarantor's PSM RW.
 
-        Key: the PD floor applied to the guarantor's PD must be the corporate
-        class floor (0.0005), not the QRRE revolver floor (0.0010) — the
-        guaranteed portion is economically equivalent to a direct corporate
-        exposure to the guarantor, so the corporate PD floor governs.
-
-        Arrange: guarantor_pd=0.0004, exposure_class=retail_qrre, is_qrre_transactor=False.
-        Act:     _apply_parameter_substitution floors guarantor PD, evaluates PSM RW.
-        Assert:  guarantor_rw_irb ≈ 0.01346 (rel=1e-2).
+        Arrange: guarantor_pd=0.0004 → floored to 0.0005, exposure_class=corporate.
+        Act:     _apply_parameter_substitution evaluates PSM RW in guarantor context.
+        Assert:  guarantor_rw_irb ≈ 0.17489 (rel=1e-2).
         """
         # Arrange
         row = p1157_result.row(0, named=True)
@@ -320,12 +321,8 @@ class TestP1157PSMNoBetterThanDirect:
         actual = row["guarantor_rw_irb"]
         assert actual == pytest.approx(EXPECTED_GUARANTOR_RW_IRB, rel=1e-2), (
             f"P1.157: guarantor_rw_irb should be {EXPECTED_GUARANTOR_RW_IRB:.5f} "
-            f"(PSM: floored PD=0.0005 corporate floor, QRRE context R=0.04, MA=1.0). "
-            f"Got {actual:.5f}. "
-            f"If engine gives ~0.02408, the PSM PD floor is using the borrower's "
-            f"QRRE revolver floor (0.0010) instead of the guarantor's corporate floor "
-            f"(0.0005) — fix _pd_floor_expression() call in _apply_parameter_substitution "
-            f"to use the guarantor's exposure class context."
+            f"(PSM in guarantor corporate context: R≈0.237, MA≈1.75 at M=2.5, "
+            f"floored PD=0.0005, LGD=0.40). Got {actual:.5f}."
         )
 
     def test_p1_157_rw_direct(
@@ -364,20 +361,24 @@ class TestP1157PSMNoBetterThanDirect:
         p1157_result: pl.DataFrame,
     ) -> None:
         """
-        P1.157 LOAD-BEARING: guarantor_rw_post_nbd == rw_direct (NBD floor BINDS).
+        P1.157: guarantor_rw_post_nbd == rw_direct (NBD floor mechanic emits max).
 
         Art. 160(4) "no better than direct" floor: the substituted RW for the
         guaranteed portion must not be lower than the RW the guarantor would
-        attract as a direct borrower. When rw_direct > guarantor_rw_irb, the
-        floor is binding and guarantor_rw_post_nbd is set to rw_direct.
+        attract as a direct borrower. ``guarantor_rw_post_nbd`` is the
+        ``max(guarantor_rw_irb, rw_direct)`` regardless of whether the floor
+        strictly binds.
 
-        In this scenario: rw_direct (0.17489) >> guarantor_rw_irb (0.01346),
-        so the NBD floor raises the effective RW by ~13×.
+        Under Art. 236(1)(a)(i) (post-P1.159) ``guarantor_rw_irb`` and
+        ``rw_direct`` are both computed in the guarantor's corporate context
+        and are equal here, so the NBD floor does not strictly raise the RW —
+        but the max is still emitted as ``guarantor_rw_post_nbd`` and equals
+        ``rw_direct``.
 
-        Arrange: guarantor_rw_irb ≈ 0.01346 << rw_direct ≈ 0.17489.
+        Arrange: guarantor_rw_irb ≈ rw_direct ≈ 0.17489.
         Act:     max(guarantor_rw_irb, rw_direct).
         Assert:  guarantor_rw_post_nbd == rw_direct (within rel=1e-3)
-                 AND guarantor_rw_post_nbd > guarantor_rw_irb.
+                 AND guarantor_rw_post_nbd >= guarantor_rw_irb.
         """
         # Arrange
         row = p1157_result.row(0, named=True)
@@ -385,19 +386,16 @@ class TestP1157PSMNoBetterThanDirect:
         rw_direct = row["rw_direct"]
         rw_irb = row["guarantor_rw_irb"]
 
-        # Assert: floor binds (post_nbd equals rw_direct, not rw_irb)
+        # Assert: post_nbd equals rw_direct (max-of-two, with rw_direct >= rw_irb)
         assert post_nbd == pytest.approx(rw_direct, rel=1e-3), (
             f"P1.157 Art. 160(4): guarantor_rw_post_nbd ({post_nbd:.5f}) must equal "
-            f"rw_direct ({rw_direct:.5f}) when NBD floor is binding. "
-            f"guarantor_rw_irb = {rw_irb:.5f}"
+            f"rw_direct ({rw_direct:.5f}). guarantor_rw_irb = {rw_irb:.5f}"
         )
 
-        # Assert: floor is strictly binding (NBD raises the RW above PSM value)
-        assert post_nbd > rw_irb, (
-            f"P1.157 Art. 160(4): NBD floor must be BINDING — "
-            f"guarantor_rw_post_nbd ({post_nbd:.5f}) must be > "
-            f"guarantor_rw_irb ({rw_irb:.5f}). "
-            f"This is the core P1.157 requirement."
+        # Assert: NBD-floored value is never below the raw PSM RW
+        assert post_nbd >= rw_irb, (
+            f"P1.157 Art. 160(4): guarantor_rw_post_nbd ({post_nbd:.5f}) must be "
+            f">= guarantor_rw_irb ({rw_irb:.5f}). "
         )
 
     def test_p1_157_guarantor_rw_post_nbd_value(

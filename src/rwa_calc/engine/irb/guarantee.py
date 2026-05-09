@@ -364,26 +364,16 @@ def _apply_parameter_substitution(
             .otherwise(pl.lit(firb_lgd_senior))
         )
 
-        # Compute IRB risk weight from guarantor's PD and F-IRB supervisory LGD
+        # Compute IRB risk weight from guarantor's PD and F-IRB supervisory LGD.
+        # Per Art. 236(1)(a)(i) (PRA PS1/26): the PSM substitutes the guarantor's
+        # PD/LGD AND derives the correlation R from the GUARANTOR's exposure
+        # class context, not the borrower's. ``_parametric_irb_risk_weight_expr``
+        # reads ``exposure_class``, ``turnover_m``, ``requires_fi_scalar`` and
+        # ``is_qrre_transactor`` from the LazyFrame — so we compute both
+        # ``guarantor_rw_irb`` (PSM) and ``rw_direct`` (Art. 160(4) NBD floor)
+        # inside a single swap-restore window where those columns hold the
+        # guarantor's values.
         sme_turnover_m = float(config.thresholds.sme_turnover_threshold) / 1_000_000
-        guarantor_rw_irb = _parametric_irb_risk_weight_expr(
-            pd_expr=guarantor_pd_floored,
-            lgd=guarantor_lgd_expr,
-            scaling_factor=scaling_factor,
-            eur_gbp_rate=eur_gbp_rate,
-            is_b31=config.is_basel_3_1,
-            sme_turnover_threshold_m=sme_turnover_m,
-        )
-
-        # Materialise guarantor_rw_irb so the "no better than direct" pass can
-        # read it back as a column without re-doing the substitution maths.
-        lf = lf.with_columns(guarantor_rw_irb.alias("guarantor_rw_irb"))
-
-        # Compute RW_direct (Art. 160(4) "no better than direct" floor):
-        # the IRB risk weight that would apply to the guarantor as a DIRECT
-        # borrower, using the guarantor's own exposure class for the
-        # correlation curve and maturity adjustment, with the same floored
-        # PD and F-IRB supervisory LGD as the substitution.
         lf = _apply_no_better_than_direct_floor(
             lf,
             guarantor_pd_floored=guarantor_pd_floored,
@@ -434,16 +424,18 @@ def _apply_no_better_than_direct_floor(
     is_b31: bool,
     sme_turnover_threshold_m: float,
 ) -> pl.LazyFrame:
-    """Compute ``RW_direct`` and ``guarantor_rw_post_nbd`` per Art. 160(4).
+    """Compute ``guarantor_rw_irb``, ``rw_direct`` and ``guarantor_rw_post_nbd``.
 
     ``_parametric_irb_risk_weight_expr`` reads the borrower's exposure-class
     and correlation-driving columns (``exposure_class``, ``turnover_m``,
-    ``requires_fi_scalar``, ``is_qrre_transactor``) from the LazyFrame. To
-    compute the *direct-to-guarantor* risk weight we temporarily swap those
-    columns to guarantor-specific values, evaluate the expression, then
-    restore the borrower's originals.
+    ``requires_fi_scalar``, ``is_qrre_transactor``) from the LazyFrame. Per
+    Art. 236(1)(a)(i) (PRA PS1/26) the PSM correlation must be derived from
+    the **guarantor's** class context, and per Art. 160(4) the same applies
+    to the "no better than direct" floor — so we compute both inside a single
+    swap-restore window where those columns hold guarantor-specific values.
 
-    Adds two columns:
+    Adds three columns:
+    - ``guarantor_rw_irb``: PSM RW from guarantor's PD/LGD/correlation.
     - ``rw_direct``: IRB RW the guarantor would attract as a direct borrower.
     - ``guarantor_rw_post_nbd``: max(guarantor_rw_irb, rw_direct).
     """
@@ -465,8 +457,9 @@ def _apply_no_better_than_direct_floor(
 
     # Swap in guarantor-driving values. Guarantor-specific turnover is not
     # carried through CRM today, so disable the SME correlation adjustment
-    # by setting turnover_m to NULL. Ditto requires_fi_scalar (no FI scalar
-    # uplift for the guarantor's direct curve unless explicitly modelled).
+    # by setting turnover_m to NULL. Ditto requires_fi_scalar (the FI scalar
+    # is a property of the borrower's own corporate exposure under
+    # Art. 153(2) and does not transfer to the guarantor's PSM correlation).
     swap_cols = [
         pl.col("guarantor_exposure_class").alias("exposure_class"),
         pl.lit(None).cast(pl.Float64).alias("turnover_m"),
@@ -478,6 +471,18 @@ def _apply_no_better_than_direct_floor(
     lf = lf.with_columns(swap_cols)
 
     # Evaluate the parametric IRB RW with the guarantor's class context.
+    # Both the PSM RW (Art. 236(1)(a)(i)) and the NBD direct RW (Art. 160(4))
+    # use the same guarantor-class formula here — the guarantor_rw_irb /
+    # rw_direct split is preserved for downstream reporting and the
+    # max-horizontal floor below.
+    psm_rw_expr = _parametric_irb_risk_weight_expr(
+        pd_expr=guarantor_pd_floored,
+        lgd=guarantor_lgd_expr,
+        scaling_factor=scaling_factor,
+        eur_gbp_rate=eur_gbp_rate,
+        is_b31=is_b31,
+        sme_turnover_threshold_m=sme_turnover_threshold_m,
+    )
     rw_direct_expr = _parametric_irb_risk_weight_expr(
         pd_expr=guarantor_pd_floored,
         lgd=guarantor_lgd_expr,
@@ -486,7 +491,12 @@ def _apply_no_better_than_direct_floor(
         is_b31=is_b31,
         sme_turnover_threshold_m=sme_turnover_threshold_m,
     )
-    lf = lf.with_columns(rw_direct_expr.alias("rw_direct"))
+    lf = lf.with_columns(
+        [
+            psm_rw_expr.alias("guarantor_rw_irb"),
+            rw_direct_expr.alias("rw_direct"),
+        ]
+    )
 
     # Restore the borrower's original class-driving columns.
     restore_cols = [

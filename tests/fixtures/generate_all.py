@@ -159,6 +159,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_93",
             _generate_p193,
         ),
+        (
+            "P1.159 (PSM correlation re-derivation reads guarantor class Art. 236(1)(a)(i))",
+            "p1_159",
+            _generate_p1159,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -776,6 +781,19 @@ def _generate_p193(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_93", None)
+
+
+def _generate_p1159(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.159 fixtures (PSM correlation re-derivation reads guarantor class Art. 236(1)(a)(i))."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_159 import save_p1159_fixtures
+
+        saved = save_p1159_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_159", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
