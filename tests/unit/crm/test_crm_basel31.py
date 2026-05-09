@@ -188,18 +188,26 @@ class TestBasel31ReceivablesHaircut:
         CRR Art. 230: uses C*/C** threshold mechanism (no HC concept)
     """
 
-    def test_crr_receivables_haircut_20pct(self) -> None:
-        """CRR receivables haircut stays at 20% (OC-ratio-derived approximation)."""
-        assert COLLATERAL_HAIRCUTS["receivables"] == Decimal("0.20")
+    def test_crr_receivables_no_haircut(self) -> None:
+        """CRR Art. 224 has no receivables row — Hc=0 (P1.165).
+
+        Receivables are non-financial collateral per Art. 199(5); CRR Art. 230
+        provides the entire treatment via the LGD* / 1.25x OC mechanism.
+        Basel 3.1 Art. 230(2) HC=40% sits in BASEL31_COLLATERAL_HAIRCUTS only.
+        """
+        assert COLLATERAL_HAIRCUTS["receivables"] == Decimal("0")
 
     def test_b31_receivables_haircut_40pct(self) -> None:
         """Basel 3.1 receivables haircut is 40% per Art. 230(2)."""
         assert BASEL31_COLLATERAL_HAIRCUTS["receivables"] == Decimal("0.40")
 
     def test_lookup_receivables_haircut_crr(self) -> None:
-        """lookup_collateral_haircut returns 20% for CRR receivables."""
+        """lookup_collateral_haircut returns 0 for CRR receivables (P1.165).
+
+        CRR Art. 224 has no receivables row; Art. 230 owns the treatment.
+        """
         result = lookup_collateral_haircut("receivables", is_basel_3_1=False)
-        assert result == Decimal("0.20")
+        assert result == Decimal("0")
 
     def test_lookup_receivables_haircut_b31(self) -> None:
         """lookup_collateral_haircut returns 40% for B31 receivables."""
@@ -219,11 +227,15 @@ class TestBasel31ReceivablesHaircut:
         assert rec_row["haircut"][0] == pytest.approx(0.40)
 
     def test_crr_receivables_haircut_in_dataframe(self) -> None:
-        """CRR haircut DataFrame has 20% for receivables row."""
+        """CRR haircut DataFrame has 0% for receivables row (P1.165).
+
+        Art. 224 has no receivables row; CRR Art. 230 LGD* / 1.25x OC mechanism
+        provides the entire treatment.
+        """
         df = get_haircut_table(is_basel_3_1=False)
         rec_row = df.filter(pl.col("collateral_type") == "receivables")
         assert rec_row.shape[0] == 1
-        assert rec_row["haircut"][0] == pytest.approx(0.20)
+        assert rec_row["haircut"][0] == pytest.approx(0.0)
 
     def test_b31_single_haircut_receivables_40pct(self) -> None:
         """HaircutCalculator.calculate_single_haircut applies 40% for B31 receivables."""
@@ -237,8 +249,12 @@ class TestBasel31ReceivablesHaircut:
         assert result.collateral_haircut == Decimal("0.40")
         assert result.adjusted_value == Decimal("600000")
 
-    def test_crr_single_haircut_receivables_20pct(self) -> None:
-        """HaircutCalculator.calculate_single_haircut applies 20% for CRR receivables."""
+    def test_crr_single_haircut_receivables_no_haircut(self) -> None:
+        """HaircutCalculator.calculate_single_haircut applies 0% for CRR receivables (P1.165).
+
+        Art. 224 has no receivables row; the Art. 230 LGD* / OC mechanism
+        downstream is the only applicable reduction.
+        """
         calc = HaircutCalculator(is_basel_3_1=False)
         result = calc.calculate_single_haircut(
             collateral_type="receivables",
@@ -246,8 +262,8 @@ class TestBasel31ReceivablesHaircut:
             collateral_currency="GBP",
             exposure_currency="GBP",
         )
-        assert result.collateral_haircut == Decimal("0.20")
-        assert result.adjusted_value == Decimal("800000")
+        assert result.collateral_haircut == Decimal("0")
+        assert result.adjusted_value == Decimal("1000000")
 
     def test_b31_receivables_with_fx_mismatch(self) -> None:
         """B31 receivables: 40% HC + 8% FX = 48% total, adjusted = 520,000."""

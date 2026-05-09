@@ -189,6 +189,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_145",
             _generate_p1145,
         ),
+        (
+            "P1.165 (CRR receivables collateral, F-IRB, no Art. 224 volatility haircut)",
+            "p1_165",
+            _generate_p1165,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -885,6 +890,19 @@ def _generate_p1145(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_145", None)
+
+
+def _generate_p1165(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.165 fixtures (CRR receivables collateral, F-IRB, no Art. 224 volatility haircut)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_165 import save_p1165_fixtures
+
+        saved = save_p1165_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_165", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

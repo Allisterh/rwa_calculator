@@ -253,9 +253,13 @@ class TestCollateralHaircuts:
         """Other equity has 25% haircut."""
         assert COLLATERAL_HAIRCUTS["equity_other"] == Decimal("0.25")
 
-    def test_receivables_twenty_percent(self) -> None:
-        """CRR receivables haircut is 20% (OC-ratio-derived approximation)."""
-        assert COLLATERAL_HAIRCUTS["receivables"] == Decimal("0.20")
+    def test_receivables_no_haircut(self) -> None:
+        """CRR Art. 224 has no receivables row — Hc=0 (P1.165).
+
+        Receivables are non-financial collateral per Art. 199(5); the entire
+        CRR treatment is via Art. 230 (LGDS 35% senior, OC 1.25x).
+        """
+        assert COLLATERAL_HAIRCUTS["receivables"] == Decimal("0")
 
     def test_other_physical_forty_percent(self) -> None:
         """Other physical collateral has 40% haircut."""
