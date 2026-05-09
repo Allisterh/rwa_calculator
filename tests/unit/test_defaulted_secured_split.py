@@ -354,7 +354,14 @@ class TestDefaultedEdgeCases:
     """Edge cases and cross-cutting concerns."""
 
     def test_high_risk_unaffected(self, sa_calculator, crr_config):
-        """HIGH_RISK exposure → 150% via Art. 128, defaulted override skipped."""
+        """HIGH_RISK exposure under UK CRR → 100% via residual fall-through.
+
+        Art. 128 omitted by SI 2021/1078 reg. 6(3)(a) effective 1 Jan 2022, so
+        HIGH_RISK has no live RW rule under UK CRR (P2.14). The Art. 112
+        priority guard at engine/sa/namespace.py keeps the defaulted-override
+        suppression — the row falls through to OTHER 100% rather than the
+        Art. 127 100%/150% provision split.
+        """
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("100000"),
@@ -364,7 +371,7 @@ class TestDefaultedEdgeCases:
             collateral_re_value=Decimal("80000"),
             config=crr_config,
         )
-        assert result["risk_weight"] == pytest.approx(1.50)
+        assert result["risk_weight"] == pytest.approx(1.00)
 
     def test_non_defaulted_unaffected(self, sa_calculator, crr_config):
         """Non-defaulted corporate → normal RW, defaulted override does not fire."""
