@@ -124,6 +124,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_128",
             _generate_p1128,
         ),
+        (
+            "P1.186 (CRR Art. 224(2)(a) FX haircut H_fx default liquidation scaling)",
+            "p1_186",
+            _generate_p1186,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -650,6 +655,19 @@ def _generate_p1128(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_128", None)
+
+
+def _generate_p1186(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.186 fixtures (CRR Art. 224(2)(a) FX haircut H_fx default liquidation scaling)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_186 import save_p1186_fixtures
+
+        saved = save_p1186_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_186", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
