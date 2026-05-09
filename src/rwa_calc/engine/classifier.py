@@ -1259,19 +1259,37 @@ class ExposureClassifier:
             permission_valid & (pl.col("mp_approach") == ApproachType.SLOTTING.value)
         ).alias("_slotting_match")
 
-        # Add match flags then aggregate: group by all original columns,
-        # take max of the match flags (any valid AIRB/FIRB/slotting permission → True)
-        result = joined.with_columns(airb_permitted, firb_permitted, slotting_permitted)
+        # SA-precedence (P1.145, CRR Art. 150(1) PPU carve-out): when the same
+        # (model_id, exposure_class) yields both an IRB permission row and a
+        # standardised row, the standardised row wins. AIRB-wins via .max()
+        # would silently expand IRB scope beyond the firm's permission.
+        sa_block = (
+            permission_valid & (pl.col("mp_approach") == ApproachType.SA.value)
+        ).alias("_sa_block_match")
 
-        # Aggregate back to one row per exposure using .over() to avoid group_by
+        # Add match flags then aggregate: group by all original columns,
+        # take max of the match flags (any valid AIRB/FIRB/slotting permission → True),
+        # then AND-NOT the SA block to apply the SA-precedence rule.
+        result = joined.with_columns(
+            airb_permitted, firb_permitted, slotting_permitted, sa_block
+        )
+
+        # Aggregate back to one row per exposure using .over() to avoid group_by.
+        # SA-precedence override is applied AFTER the .max() roll-up so any SA
+        # row with permission_valid=True flips all IRB flags to False.
         result = result.with_columns(
-            pl.col("_airb_match").max().over("exposure_reference").alias("model_airb_permitted"),
-            pl.col("_firb_match").max().over("exposure_reference").alias("model_firb_permitted"),
-            pl.col("_slotting_match")
-            .max()
-            .over("exposure_reference")
-            .alias("model_slotting_permitted"),
+            pl.col("_sa_block_match").max().over("exposure_reference").alias("_sa_block"),
             pl.col("_mp_row_joined").max().over("exposure_reference").alias("_mp_joined_any"),
+        ).with_columns(
+            (pl.col("_airb_match").max().over("exposure_reference") & ~pl.col("_sa_block")).alias(
+                "model_airb_permitted"
+            ),
+            (pl.col("_firb_match").max().over("exposure_reference") & ~pl.col("_sa_block")).alias(
+                "model_firb_permitted"
+            ),
+            (
+                pl.col("_slotting_match").max().over("exposure_reference") & ~pl.col("_sa_block")
+            ).alias("model_slotting_permitted"),
         )
 
         # Diagnostic column: tag WHY a row did not get an IRB permission match.
@@ -1296,20 +1314,53 @@ class ExposureClassifier:
             .alias("_model_permission_diagnostic")
         )
 
-        # Drop the join columns and keep only one row per exposure
-        result = result.select(
-            pl.exclude(
-                "mp_exposure_class",
-                "mp_approach",
-                "mp_country_codes",
-                "mp_excluded_book_codes",
-                "_airb_match",
-                "_firb_match",
-                "_slotting_match",
-                "_mp_row_joined",
-                "_mp_joined_any",
+        # Drop the join columns and keep one row per exposure deterministically
+        # (P1.145, Step 3): sort by a total-order key so that whichever row of
+        # the duplicate-permission join survives `unique(keep="first")` does
+        # not depend on the physical row order of the input parquet. The
+        # priority key keeps the most-informative diagnostic on the surviving
+        # row (null > filter_rejected > unmatched_model_id > null_model_id).
+        diagnostic_priority = (
+            pl.when(pl.col("_model_permission_diagnostic").is_null())
+            .then(pl.lit(0))
+            .when(pl.col("_model_permission_diagnostic") == "filter_rejected")
+            .then(pl.lit(1))
+            .when(pl.col("_model_permission_diagnostic") == "unmatched_model_id")
+            .then(pl.lit(2))
+            .otherwise(pl.lit(3))
+            .alias("_diagnostic_priority")
+        )
+        result = (
+            result.with_columns(diagnostic_priority)
+            .sort(
+                [
+                    "exposure_reference",
+                    "_diagnostic_priority",
+                    "mp_approach",
+                    "mp_country_codes",
+                    "mp_excluded_book_codes",
+                ],
+                nulls_last=True,
+                maintain_order=True,
             )
-        ).unique(subset=["exposure_reference"], keep="first")
+            .unique(subset=["exposure_reference"], keep="first", maintain_order=True)
+            .select(
+                pl.exclude(
+                    "mp_exposure_class",
+                    "mp_approach",
+                    "mp_country_codes",
+                    "mp_excluded_book_codes",
+                    "_airb_match",
+                    "_firb_match",
+                    "_slotting_match",
+                    "_sa_block_match",
+                    "_sa_block",
+                    "_mp_row_joined",
+                    "_mp_joined_any",
+                    "_diagnostic_priority",
+                )
+            )
+        )
 
         return result
 
