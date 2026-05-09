@@ -134,6 +134,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_96",
             _generate_p196,
         ),
+        (
+            "P1.118 (CRR Art. 166(9) F-IRB 20% CCF short-term trade LC exception)",
+            "p1_118",
+            _generate_p1118,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -660,6 +665,19 @@ def _generate_p1128(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_128", None)
+
+
+def _generate_p1118(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.118 fixtures (CRR Art. 166(9) F-IRB 20% CCF short-term trade LC)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_118 import save_p1118_fixtures
+
+        saved = save_p1118_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_118", None)
 
 
 def _generate_p1186(output_dir: Path) -> list[tuple[str, int]]:

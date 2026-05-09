@@ -298,13 +298,40 @@ class IRBLazyFrame:
 
             # Art. 162(3) 1-day M floor for daily-margined SFTs/derivatives,
             # margin lending, and short-term self-liquidating trade transactions.
+            #
+            # Per CRR Art. 162(3) second sub-paragraph point (b), self-liquidating
+            # short-term trade-finance transactions with residual maturity <= 1y
+            # are eligible for the one-day maturity floor.  The engine derives
+            # has_one_day_maturity_floor=True from is_short_term_trade_lc=True
+            # under CRR (PS1/26 wording differs and is intentionally out of scope
+            # here).  An explicit caller-supplied True is preserved by ORing the
+            # derived flag onto the input column.
             one_day_years = 1.0 / 365.0
-            if "has_one_day_maturity_floor" in names:
-                maturity_expr = (
-                    pl.when(pl.col("has_one_day_maturity_floor").fill_null(False))
-                    .then(pl.lit(one_day_years))
-                    .otherwise(maturity_expr)
+            input_floor_flag = (
+                pl.col("has_one_day_maturity_floor").fill_null(False)
+                if "has_one_day_maturity_floor" in names
+                else pl.lit(False)
+            )
+            if config.is_crr and "is_short_term_trade_lc" in names and "maturity_date" in names:
+                residual_years = (
+                    pl.when(pl.col("maturity_date").is_not_null())
+                    .then(_exact_fractional_years_expr(config.reporting_date, "maturity_date"))
+                    .otherwise(pl.lit(None, dtype=pl.Float64))
                 )
+                derived_floor_flag = (
+                    pl.col("is_short_term_trade_lc").fill_null(False)
+                    & residual_years.is_not_null()
+                    & (residual_years <= 1.0)
+                )
+                effective_floor_flag = input_floor_flag | derived_floor_flag
+            else:
+                effective_floor_flag = input_floor_flag
+
+            maturity_expr = (
+                pl.when(effective_floor_flag)
+                .then(pl.lit(one_day_years))
+                .otherwise(maturity_expr)
+            )
 
             # Explicit firm-supplied effective_maturity — highest priority.
             # Clipped to [1 day, 5 years]; nulls fall through to the chain above.
@@ -316,6 +343,9 @@ class IRBLazyFrame:
                 )
 
             exprs.append(maturity_expr.alias("maturity"))
+            # Persist the derived flag so downstream consumers (formulas.py
+            # _maturity_adjustment_expr_from_pd, line 709) see the carve-out.
+            exprs.append(effective_floor_flag.alias("has_one_day_maturity_floor"))
 
         # Turnover for SME correlation adjustment
         if "turnover_m" not in names:
@@ -337,7 +367,11 @@ class IRBLazyFrame:
         # Art. 162(3) carve-out flag — read by _maturity_adjustment_expr_from_pd
         # to suppress the 1y M floor for daily-margined SFTs/derivatives, margin
         # lending, and short-term self-liquidating trade transactions.
-        if "has_one_day_maturity_floor" not in names:
+        # When the maturity branch above ran, it has already appended the
+        # derived flag; we only need to default-False if neither the input
+        # column nor the derived expression were materialised.
+        already_set = "maturity" not in names
+        if "has_one_day_maturity_floor" not in names and not already_set:
             exprs.append(pl.lit(False).alias("has_one_day_maturity_floor"))
 
         if exprs:
