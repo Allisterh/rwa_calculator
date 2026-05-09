@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING
 from rwa_calc.domain.enums import ErrorCategory, ErrorSeverity
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import polars as pl
 
 
@@ -163,6 +165,7 @@ ERROR_TYPE_MISMATCH = "DQ003"
 ERROR_DUPLICATE_KEY = "DQ004"
 ERROR_ORPHAN_REFERENCE = "DQ005"
 ERROR_INVALID_COLUMN_VALUE = "DQ006"
+ERROR_OPTIONAL_FILE_UNREADABLE = "DQ007"
 
 # Hierarchy error codes
 ERROR_CIRCULAR_HIERARCHY = "HIE001"
@@ -355,4 +358,30 @@ def re_split_warning(
         category=ErrorCategory.CLASSIFICATION,
         exposure_reference=exposure_reference,
         regulatory_reference=regulatory_reference,
+    )
+
+
+def optional_file_load_error(
+    *, relative_path: str | Path, field_name: str, exc: Exception
+) -> CalculationError:
+    """Create a DQ007 warning for an optional input file that could not be loaded.
+
+    Used by the loader's optional-file path: when an optional parquet/CSV
+    exists but cannot be read (corrupt bytes, OSError, ComputeError, etc.),
+    the loader returns ``None`` for the bundle field and appends one of
+    these warnings so the absence is visible in the audit trail rather
+    than swallowed silently. Missing files (FileNotFoundError) are not
+    reported via this factory — those are the legitimate "not configured"
+    case.
+    """
+    return CalculationError(
+        code=ERROR_OPTIONAL_FILE_UNREADABLE,
+        severity=ErrorSeverity.WARNING,
+        category=ErrorCategory.DATA_QUALITY,
+        message=(
+            f"Optional input file '{relative_path}' could not be loaded: "
+            f"{type(exc).__name__}: {exc}; treating as absent"
+        ),
+        field_name=field_name,
+        actual_value=str(relative_path),
     )

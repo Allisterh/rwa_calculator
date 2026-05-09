@@ -32,7 +32,7 @@ import polars as pl
 
 from rwa_calc.config.data_sources import DataSourceRegistry
 from rwa_calc.contracts.bundles import RawDataBundle
-from rwa_calc.contracts.errors import CalculationError
+from rwa_calc.contracts.errors import CalculationError, optional_file_load_error
 from rwa_calc.contracts.protocols import LoaderProtocol
 from rwa_calc.data.column_spec import (
     ColumnSpec,
@@ -258,20 +258,49 @@ def _load_file_optional(
     base_path: Path,
     scan_fn: ScanFn,
     enforce_schemas: bool,
+    errors: list[CalculationError],
+    field_name: str,
     relative_path: str | Path | None,
     schema: dict[str, pl.DataType] | None = None,
 ) -> pl.LazyFrame | None:
-    """Load an optional file — returns None if missing, empty, or unreadable."""
+    """Load an optional file — returns None if missing, empty, or unreadable.
+
+    A missing file (``FileNotFoundError``) is the legitimate
+    "optional not configured" case and is logged at DEBUG only.
+    Any other failure (corrupt parquet, OSError, PermissionError,
+    Polars ``ComputeError``, schema-cast failure) appends a single
+    DQ007 ``CalculationError`` to *errors* and emits one WARNING
+    log line — the field is still treated as absent so the
+    pipeline can continue.
+    """
     if relative_path is None:
         return None
     try:
         lf = normalize_columns(scan_fn(base_path / relative_path))
+        # Force schema resolution so corrupt parquet / scan failures
+        # surface here rather than being swallowed by ``has_rows``'
+        # broad except clause downstream.
+        lf.collect_schema()
         if not has_rows(lf):
             return None
         if enforce_schemas and schema is not None:
             lf = enforce_schema(lf, schema, strict=False)
         return lf
-    except Exception:
+    except FileNotFoundError:
+        logger.debug("optional input %s not present; treating as absent", relative_path)
+        return None
+    except Exception as exc:
+        logger.warning(
+            "optional input %s could not be loaded (%s: %s); treating as absent",
+            relative_path,
+            type(exc).__name__,
+            exc,
+        )
+        errors.append(
+            optional_file_load_error(
+                relative_path=relative_path, field_name=field_name, exc=exc
+            )
+        )
         return None
 
 
@@ -293,33 +322,56 @@ def _run_bundle_validation(bundle: RawDataBundle) -> list[CalculationError]:
 def _build_bundle(
     load: Callable[[str | Path | None, dict[str, pl.DataType] | None], pl.LazyFrame],
     load_optional: Callable[
-        [str | Path | None, dict[str, pl.DataType] | None], pl.LazyFrame | None
+        [list[CalculationError], str, str | Path | None, dict[str, pl.DataType] | None],
+        pl.LazyFrame | None,
     ],
     config: DataSourceConfig,
 ) -> RawDataBundle:
-    """Build a RawDataBundle — single implementation shared by all loaders."""
+    """Build a RawDataBundle — single implementation shared by all loaders.
+
+    Optional-file load failures (corrupt parquet, OSError, etc.) are
+    accumulated into ``load_errors`` via ``_load_file_optional`` and
+    merged with the categorical-validation errors before constructing
+    the final bundle.
+    """
+    load_errors: list[CalculationError] = []
+
+    def _opt(
+        field_name: str,
+        relative_path: str | Path | None,
+        schema: dict[str, pl.DataType] | None,
+    ) -> pl.LazyFrame | None:
+        return load_optional(load_errors, field_name, relative_path, schema)
+
     bundle = RawDataBundle(
         facilities=load(config.facilities_file, FACILITY_SCHEMA),
         loans=load(config.loans_file, LOAN_SCHEMA),
         counterparties=load(config.counterparties_file, COUNTERPARTY_SCHEMA),
         facility_mappings=load(config.facility_mappings_file, FACILITY_MAPPING_SCHEMA),
-        org_mappings=load_optional(config.org_mappings_file, ORG_MAPPING_SCHEMA),
+        org_mappings=_opt("org_mappings", config.org_mappings_file, ORG_MAPPING_SCHEMA),
         lending_mappings=load(config.lending_mappings_file, LENDING_MAPPING_SCHEMA),
-        contingents=load_optional(config.contingents_file, CONTINGENTS_SCHEMA),
-        collateral=load_optional(config.collateral_file, COLLATERAL_SCHEMA),
-        guarantees=load_optional(config.guarantees_file, GUARANTEE_SCHEMA),
-        provisions=load_optional(config.provisions_file, PROVISION_SCHEMA),
-        ratings=load_optional(config.ratings_file, RATINGS_SCHEMA),
-        equity_exposures=load_optional(config.equity_exposures_file, EQUITY_EXPOSURE_SCHEMA),
-        ciu_holdings=load_optional(config.ciu_holdings_file, CIU_HOLDINGS_SCHEMA),
-        specialised_lending=load_optional(
-            config.specialised_lending_file, SPECIALISED_LENDING_SCHEMA
+        contingents=_opt("contingents", config.contingents_file, CONTINGENTS_SCHEMA),
+        collateral=_opt("collateral", config.collateral_file, COLLATERAL_SCHEMA),
+        guarantees=_opt("guarantees", config.guarantees_file, GUARANTEE_SCHEMA),
+        provisions=_opt("provisions", config.provisions_file, PROVISION_SCHEMA),
+        ratings=_opt("ratings", config.ratings_file, RATINGS_SCHEMA),
+        equity_exposures=_opt(
+            "equity_exposures", config.equity_exposures_file, EQUITY_EXPOSURE_SCHEMA
         ),
-        fx_rates=load_optional(config.fx_rates_file, FX_RATES_SCHEMA),
-        model_permissions=load_optional(config.model_permissions_file, MODEL_PERMISSIONS_SCHEMA),
+        ciu_holdings=_opt("ciu_holdings", config.ciu_holdings_file, CIU_HOLDINGS_SCHEMA),
+        specialised_lending=_opt(
+            "specialised_lending",
+            config.specialised_lending_file,
+            SPECIALISED_LENDING_SCHEMA,
+        ),
+        fx_rates=_opt("fx_rates", config.fx_rates_file, FX_RATES_SCHEMA),
+        model_permissions=_opt(
+            "model_permissions", config.model_permissions_file, MODEL_PERMISSIONS_SCHEMA
+        ),
     )
-    errors = _run_bundle_validation(bundle)
-    return replace(bundle, errors=errors) if errors else bundle
+    validation_errors = _run_bundle_validation(bundle)
+    combined = load_errors + validation_errors
+    return replace(bundle, errors=combined) if combined else bundle
 
 
 # ---------------------------------------------------------------------------
@@ -366,8 +418,16 @@ class ParquetLoader(LoaderProtocol):
         relative_path: str | Path | None,
         schema: dict[str, pl.DataType] | None = None,
     ) -> pl.LazyFrame | None:
+        # Standalone convenience entry point — discard any DQ007 since
+        # there is no bundle to attach to in this path.
         return _load_file_optional(
-            self.base_path, pl.scan_parquet, self.enforce_schemas, relative_path, schema
+            self.base_path,
+            pl.scan_parquet,
+            self.enforce_schemas,
+            [],
+            "",
+            relative_path,
+            schema,
         )
 
     def load(self) -> RawDataBundle:
@@ -421,8 +481,16 @@ class CSVLoader(LoaderProtocol):
         relative_path: str | Path | None,
         schema: dict[str, pl.DataType] | None = None,
     ) -> pl.LazyFrame | None:
+        # Standalone convenience entry point — discard any DQ007 since
+        # there is no bundle to attach to in this path.
         return _load_file_optional(
-            self.base_path, self._scan_csv, self.enforce_schemas, relative_path, schema
+            self.base_path,
+            self._scan_csv,
+            self.enforce_schemas,
+            [],
+            "",
+            relative_path,
+            schema,
         )
 
     def load(self) -> RawDataBundle:
