@@ -106,6 +106,12 @@ DATA_SOURCES = [
         description="Equity investment exposures",
     ),
     DataSourceFile(
+        id="ciu_holdings",
+        relative_path=Path("equity/ciu_holdings"),
+        requirement=RequirementLevel.OPTIONAL,
+        description="CIU look-through holdings for Art. 132(3) equity treatment",
+    ),
+    DataSourceFile(
         id="specialised_lending",
         relative_path=Path("ratings/specialised_lending"),
         requirement=RequirementLevel.OPTIONAL,

@@ -215,6 +215,7 @@ class DataSourceConfig:
             org_mappings_file=get_p("org_mapping"),
             lending_mappings_file=get_p("lending_mapping"),
             equity_exposures_file=get_p("equity"),
+            ciu_holdings_file=get_p("ciu_holdings"),
             specialised_lending_file=get_p("specialised_lending"),
             fx_rates_file=get_p("fx_rates"),
             model_permissions_file=get_p("model_permissions"),
