@@ -121,6 +121,8 @@ def apply_guarantees(
         cp_select_cols.append(
             pl.col("is_ccp_client_cleared").alias("guarantor_is_ccp_client_cleared")
         )
+    if "scra_grade" in cp_schema.names():
+        cp_select_cols.append(pl.col("scra_grade").alias("guarantor_scra_grade"))
 
     exposures = exposures.join(
         counterparty_lookup.select(cp_select_cols),
@@ -138,6 +140,8 @@ def apply_guarantees(
         missing_guarantor_cols.append(
             pl.lit(None).cast(pl.Boolean).alias("guarantor_is_ccp_client_cleared")
         )
+    if "guarantor_scra_grade" not in post_join_names:
+        missing_guarantor_cols.append(pl.lit(None).cast(pl.String).alias("guarantor_scra_grade"))
     if missing_guarantor_cols:
         exposures = exposures.with_columns(missing_guarantor_cols)
 

@@ -727,6 +727,7 @@ def _ensure_guarantee_substitution_columns(exposures: pl.LazyFrame) -> pl.LazyFr
         guarantor_exposure_class        — derived from guarantor_entity_type
         guarantor_country_code          — null String
         guarantor_is_ccp_client_cleared — null Boolean
+        guarantor_scra_grade            — null String (B31 SCRA dispatch fallback)
     """
     schema_names = exposures.collect_schema().names()
     to_add: list[pl.Expr] = []
@@ -744,6 +745,8 @@ def _ensure_guarantee_substitution_columns(exposures: pl.LazyFrame) -> pl.LazyFr
         to_add.append(pl.lit(None).cast(pl.String).alias("guarantor_country_code"))
     if "guarantor_is_ccp_client_cleared" not in schema_names:
         to_add.append(pl.lit(None).cast(pl.Boolean).alias("guarantor_is_ccp_client_cleared"))
+    if "guarantor_scra_grade" not in schema_names:
+        to_add.append(pl.lit(None).cast(pl.Utf8).alias("guarantor_scra_grade"))
 
     return exposures.with_columns(to_add) if to_add else exposures
 
@@ -863,6 +866,7 @@ def _build_guarantor_rw_expr(
                 "guarantor_cqs",
                 is_basel_3_1,
                 short_term_flag_col=institution_short_term_flag_col,
+                scra_grade_col="guarantor_scra_grade",
             )
         )
         # PSE guarantors — Art. 116(2) Table 2A for rated, sovereign-derived for unrated.

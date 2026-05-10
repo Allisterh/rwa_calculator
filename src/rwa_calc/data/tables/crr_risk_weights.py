@@ -229,6 +229,7 @@ def build_institution_guarantor_rw_expr(
     cqs_col: str,
     is_basel_3_1: bool,
     short_term_flag_col: str | None = None,
+    scra_grade_col: str | None = None,
 ) -> pl.Expr:
     """Build a CQS → institution risk weight expression from the canonical dicts.
 
@@ -248,10 +249,25 @@ def build_institution_guarantor_rw_expr(
             rows where the column evaluates True route to the Art. 120(2)
             Table 4 short-term dict (residual maturity ≤ 3 months); rows where
             the column is False or null use the long-term Table 3 dict.
+        scra_grade_col: Optional name of a Utf8 column carrying the guarantor's
+            SCRA grade ("A" / "A_ENHANCED" / "B" / "C"). When provided AND
+            ``is_basel_3_1`` is True, rows whose CQS column is null (i.e.
+            unrated under ECRA) dispatch via PRA PS1/26 Art. 121 Table 5 SCRA
+            grades using ``B31_SCRA_RISK_WEIGHTS`` (long-term) or
+            ``B31_SCRA_SHORT_TERM_RISK_WEIGHTS`` (short-term branch when the
+            ``short_term_flag_col`` evaluates True). A null/missing SCRA grade
+            falls back to ``B31_SCRA_RISK_WEIGHTS["C"]`` per CRE20.21
+            conservative-fallback. The CRR path and the rated B31 path
+            (CQS 1-6) are entirely unaffected.
 
     Returns:
         Float64 Polars expression evaluating to the institution RW.
     """
+    from rwa_calc.data.tables.b31_risk_weights import (
+        B31_SCRA_RISK_WEIGHTS,
+        B31_SCRA_SHORT_TERM_RISK_WEIGHTS,
+    )
+
     long_term = (
         INSTITUTION_RISK_WEIGHTS_B31_ECRA if is_basel_3_1 else INSTITUTION_RISK_WEIGHTS_CRR
     )
@@ -261,9 +277,23 @@ def build_institution_guarantor_rw_expr(
         else INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR
     )
     col = pl.col(cqs_col)
+    use_scra = is_basel_3_1 and scra_grade_col is not None
 
-    def _branch(table: dict[CQS, Decimal]) -> pl.Expr:
+    def _scra_branch(table: dict[str, Decimal]) -> pl.Expr:
+        scra = pl.col(scra_grade_col)  # type: ignore[arg-type]
+        # CRE20.21 conservative fallback: null/missing SCRA grade -> Grade C.
         return (
+            pl.when(scra == "A_ENHANCED")
+            .then(pl.lit(float(table["A_ENHANCED"])))
+            .when(scra == "A")
+            .then(pl.lit(float(table["A"])))
+            .when(scra == "B")
+            .then(pl.lit(float(table["B"])))
+            .otherwise(pl.lit(float(table["C"])))
+        )
+
+    def _branch(table: dict[CQS, Decimal], scra_table: dict[str, Decimal]) -> pl.Expr:
+        rated = (
             pl.when(col == 1)
             .then(pl.lit(float(table[CQS.CQS1])))
             .when(col == 2)
@@ -276,12 +306,19 @@ def build_institution_guarantor_rw_expr(
             .then(pl.lit(float(table[CQS.CQS6])))
             .otherwise(pl.lit(float(table[CQS.UNRATED])))
         )
+        if not use_scra:
+            return rated
+        # B31 + SCRA available: route unrated (null CQS) rows via SCRA grades.
+        return pl.when(col.is_null()).then(_scra_branch(scra_table)).otherwise(rated)
+
+    long_branch = _branch(long_term, B31_SCRA_RISK_WEIGHTS)
+    short_branch = _branch(short_term, B31_SCRA_SHORT_TERM_RISK_WEIGHTS)
 
     if short_term_flag_col is None:
-        return _branch(long_term)
+        return long_branch
 
     is_short_term = pl.col(short_term_flag_col).fill_null(False)
-    return pl.when(is_short_term).then(_branch(short_term)).otherwise(_branch(long_term))
+    return pl.when(is_short_term).then(short_branch).otherwise(long_branch)
 
 
 # =============================================================================

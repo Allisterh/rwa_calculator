@@ -234,6 +234,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_122",
             _generate_p1122,
         ),
+        (
+            "P1.95 (B31 SCRA-grade dispatch for unrated institution guarantor)",
+            "p1_95",
+            _generate_p195,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -1186,6 +1191,19 @@ def _generate_p1122(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_122", None)
+
+
+def _generate_p195(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.95 fixtures (B31 SCRA-grade dispatch for unrated institution guarantor)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_95 import save_p195_fixtures
+
+        saved = save_p195_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_95", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
