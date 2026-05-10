@@ -13,7 +13,7 @@ Key responsibilities:
 - LTV-band risk weight lookup for residential RE (general + income-producing)
 - LTV-band risk weight lookup for commercial RE (general + income-producing)
 - ADC exposure risk weight (150% / 100% pre-sold)
-- Revised CQS-based corporate risk weights (CQS3: 75%, CQS5: 100%)
+- Revised CQS-based corporate risk weights (CQS3: 75%, CQS5: 150%)
 - SCRA-based institution risk weights for unrated exposures (Grade A/B/C)
 - Investment-grade corporate treatment (65%)
 - SME corporate treatment (85%)
@@ -387,7 +387,7 @@ def get_b31_combined_cqs_risk_weights() -> pl.DataFrame:
     """
     Get combined CQS-based risk weight table for Basel 3.1 joins.
 
-    Uses Basel 3.1 corporate weights (CQS3=75%, CQS5=100%) and PRA PS1/26
+    Uses Basel 3.1 corporate weights (CQS3=75%, CQS5=150%) and PRA PS1/26
     Art. 120 ECRA institution weights (CQS 2 = 30%).
 
     Returns:
