@@ -28,6 +28,7 @@ import polars as pl
 from rwa_calc.data.tables.crr_risk_weights import (
     QCCP_CLIENT_CLEARED_RW,
     QCCP_PROPRIETARY_RW,
+    build_corporate_guarantor_rw_expr,
     build_institution_guarantor_rw_expr,
 )
 from rwa_calc.data.tables.eu_sovereign import (
@@ -266,19 +267,12 @@ def _compute_guarantor_rw_sa(
             # RW driven from INSTITUTION_RISK_WEIGHTS_CRR / _B31_ECRA.
             .when(_gec.is_in(["institution", "mdb"]))
             .then(build_institution_guarantor_rw_expr("guarantor_cqs", config.is_basel_3_1))
-            # Corporate guarantors (corporate, company)
+            # Corporate guarantors (corporate, company). RW driven from
+            # CORPORATE_RISK_WEIGHTS (CRR Art. 122 Table 5) or
+            # B31_CORPORATE_RISK_WEIGHTS (PRA PS1/26 Art. 122(2) Table 6) —
+            # under B3.1, CQS 3 = 75% (not 100%).
             .when(_gec.is_in(["corporate", "corporate_sme"]))
-            .then(
-                pl.when(pl.col("guarantor_cqs") == 1)
-                .then(pl.lit(0.20))
-                .when(pl.col("guarantor_cqs") == 2)
-                .then(pl.lit(0.50))
-                .when(pl.col("guarantor_cqs").is_in([3, 4]))
-                .then(pl.lit(1.0))
-                .when(pl.col("guarantor_cqs").is_in([5, 6]))
-                .then(pl.lit(1.50))
-                .otherwise(pl.lit(1.0))
-            )
+            .then(build_corporate_guarantor_rw_expr("guarantor_cqs", config.is_basel_3_1))
             .otherwise(pl.lit(None).cast(pl.Float64))
             .alias("guarantor_rw_sa"),
         ]

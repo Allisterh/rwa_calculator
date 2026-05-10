@@ -492,6 +492,64 @@ def _create_corporate_df() -> pl.DataFrame:
     return _build_cqs_rw_df(CORPORATE_RISK_WEIGHTS, "CORPORATE")
 
 
+def build_corporate_guarantor_rw_expr(
+    cqs_col: str,
+    is_basel_3_1: bool,
+) -> pl.Expr:
+    """Build a CQS → corporate risk weight expression from the canonical dicts.
+
+    Used by SA and IRB guarantee substitution to look up the RW to apply to the
+    guaranteed portion when the guarantor is a corporate. Drives values from
+    ``CORPORATE_RISK_WEIGHTS`` (CRR Art. 122 Table 5) or
+    ``B31_CORPORATE_RISK_WEIGHTS`` (PRA PS1/26 Art. 122(2) Table 6) so there is
+    a single source of truth — and B3.1 corporate CQS3 correctly maps to 75%
+    (Table 6) instead of CRR Table 5's 100%.
+
+    Args:
+        cqs_col: Name of the integer CQS column on the frame.
+        is_basel_3_1: Select PS1/26 Art. 122(2) Table 6 when True, CRR Art. 122
+            Table 5 when False.
+
+    Returns:
+        Float64 Polars expression evaluating to the corporate RW.
+    """
+    from rwa_calc.data.tables.b31_risk_weights import B31_CORPORATE_RISK_WEIGHTS
+
+    col = pl.col(cqs_col)
+    if is_basel_3_1:
+        rw_1 = float(B31_CORPORATE_RISK_WEIGHTS[1])
+        rw_2 = float(B31_CORPORATE_RISK_WEIGHTS[2])
+        rw_3 = float(B31_CORPORATE_RISK_WEIGHTS[3])
+        rw_4 = float(B31_CORPORATE_RISK_WEIGHTS[4])
+        rw_5 = float(B31_CORPORATE_RISK_WEIGHTS[5])
+        rw_6 = float(B31_CORPORATE_RISK_WEIGHTS[6])
+        rw_unrated = float(B31_CORPORATE_RISK_WEIGHTS[None])
+    else:
+        rw_1 = float(CORPORATE_RISK_WEIGHTS[CQS.CQS1])
+        rw_2 = float(CORPORATE_RISK_WEIGHTS[CQS.CQS2])
+        rw_3 = float(CORPORATE_RISK_WEIGHTS[CQS.CQS3])
+        rw_4 = float(CORPORATE_RISK_WEIGHTS[CQS.CQS4])
+        rw_5 = float(CORPORATE_RISK_WEIGHTS[CQS.CQS5])
+        rw_6 = float(CORPORATE_RISK_WEIGHTS[CQS.CQS6])
+        rw_unrated = float(CORPORATE_RISK_WEIGHTS[CQS.UNRATED])
+
+    return (
+        pl.when(col == 1)
+        .then(pl.lit(rw_1))
+        .when(col == 2)
+        .then(pl.lit(rw_2))
+        .when(col == 3)
+        .then(pl.lit(rw_3))
+        .when(col == 4)
+        .then(pl.lit(rw_4))
+        .when(col == 5)
+        .then(pl.lit(rw_5))
+        .when(col == 6)
+        .then(pl.lit(rw_6))
+        .otherwise(pl.lit(rw_unrated))
+    )
+
+
 # =============================================================================
 # RETAIL RISK WEIGHT (CRR Art. 123)
 # =============================================================================
