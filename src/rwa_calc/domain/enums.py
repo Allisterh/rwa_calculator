@@ -478,10 +478,17 @@ class EquityType(StrEnum):
     """Subordinated debt / non-equity own funds - 100% CRR SA / 150% B31 SA (Art. 133(1))"""
 
     CIU = "ciu"
-    """Collective investment undertakings - 150% CRR SA (Art. 132(2)) / 250% listed or 400% unlisted B31 SA"""
+    """Collective investment undertakings - 1,250% fallback under both CRR and B31 SA (Art. 132(2)) when neither look-through (Art. 132A(1)) nor mandate-based (Art. 132A(2)) approach is applied"""
 
     OTHER = "other"
     """Other equity exposures - 100% CRR SA (Art. 133(2)) / 250% B31 SA / 370% IRB Simple"""
+
+
+EquityType.CIU.__doc__ = (
+    "Collective investment undertakings - 1,250% fallback under both CRR "
+    "and B31 SA (Art. 132(2)) when neither look-through (Art. 132A(1)) nor "
+    "mandate-based (Art. 132A(2)) approach is applied"
+)
 
 
 class EquityApproach(StrEnum):
