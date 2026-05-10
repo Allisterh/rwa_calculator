@@ -448,7 +448,10 @@ class TestOutputFloorSummary:
         assert summary.floor_threshold == pytest.approx(72_500.0, rel=0.001)
         assert summary.shortfall == pytest.approx(22_500.0, rel=0.001)
         assert summary.portfolio_floor_binding is True
-        assert summary.total_rwa_post_floor == pytest.approx(72_500.0, rel=0.001)
+        # P2.20: modelled-only post-floor scope. ``total_rwa_post_floor`` now
+        # means the genuine portfolio total (incl. SA + equity); this single-
+        # IRB scenario asserts the modelled subset via ``floored_modelled_rwa``.
+        assert summary.floored_modelled_rwa == pytest.approx(72_500.0, rel=0.001)
 
     def test_summary_when_floor_not_binding(
         self, aggregator: OutputAggregator, b31_config: CalculationConfig
@@ -473,7 +476,8 @@ class TestOutputFloorSummary:
         assert summary.s_trea == pytest.approx(100_000.0, rel=0.001)
         assert summary.shortfall == pytest.approx(0.0, abs=0.01)
         assert summary.portfolio_floor_binding is False
-        assert summary.total_rwa_post_floor == pytest.approx(80_000.0, rel=0.001)
+        # P2.20: modelled-only post-floor; floor not binding so equals U-TREA.
+        assert summary.floored_modelled_rwa == pytest.approx(80_000.0, rel=0.001)
 
     def test_summary_excludes_sa_from_totals(
         self, aggregator: OutputAggregator, b31_config: CalculationConfig

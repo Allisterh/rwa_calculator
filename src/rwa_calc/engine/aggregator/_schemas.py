@@ -34,6 +34,25 @@ FLOOR_ELIGIBLE_APPROACHES: frozenset[str] = IRB_APPROACHES | frozenset(
     }
 )
 
+# Standardised Approach (SA) approach identifiers — covers the ApproachType.SA
+# enum value plus the uppercase fallback label used by aggregator outputs and
+# test fixtures.  Used by the portfolio-level summary to compute total SA RWA.
+SA_APPROACHES: frozenset[str] = frozenset(
+    {
+        "standardised",  # ApproachType.SA.value
+        "SA",  # Aggregator/test fallback label
+    }
+)
+
+# Equity approach identifiers — equity exposures are tagged with "EQUITY" by
+# the equity-prep stage; the lowercase enum value is included for consistency.
+EQUITY_APPROACHES: frozenset[str] = frozenset(
+    {
+        "equity",  # ApproachType.EQUITY.value
+        "EQUITY",  # Aggregator equity-prep tag (see _equity_prep.py)
+    }
+)
+
 # T2 credit cap rate per CRR Art. 62(d): 0.6% of IRB credit-risk RWA.
 T2_CREDIT_CAP_RATE = 0.006
 

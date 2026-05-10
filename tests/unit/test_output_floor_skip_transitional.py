@@ -270,7 +270,8 @@ class TestEndToEndSkipTransitional:
         assert summary.floor_pct == pytest.approx(0.725)
         assert summary.portfolio_floor_binding is True
         assert summary.shortfall == pytest.approx(22_500.0)
-        assert summary.total_rwa_post_floor == pytest.approx(72_500.0)
+        # P2.20: modelled-only post-floor scope (IRB only in this fixture).
+        assert summary.floored_modelled_rwa == pytest.approx(72_500.0)
 
     def test_default_applies_transitional_rate(self) -> None:
         """Without skip, a 2027 reporting date uses 60% floor.
@@ -294,7 +295,8 @@ class TestEndToEndSkipTransitional:
         assert summary.floor_pct == pytest.approx(0.60)
         assert summary.portfolio_floor_binding is True
         assert summary.shortfall == pytest.approx(10_000.0)
-        assert summary.total_rwa_post_floor == pytest.approx(60_000.0)
+        # P2.20: modelled-only post-floor scope (IRB only in this fixture).
+        assert summary.floored_modelled_rwa == pytest.approx(60_000.0)
 
     def test_skipped_vs_default_higher_floor_impact(self) -> None:
         """Skipped transitional always produces >= the transitional floor impact.

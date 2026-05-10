@@ -8720,7 +8720,8 @@ class TestOF0200FloorIndicatorRows:
             floor_threshold=580.0,
             shortfall=0.0,
             portfolio_floor_binding=False,
-            total_rwa_post_floor=1000.0,
+            # P2.20: modelled-only post-floor scope (IRB-only summary fixture).
+            floored_modelled_rwa=1000.0,
             of_adj=50.0,
         )
         gen = COREPGenerator()
@@ -8743,7 +8744,8 @@ class TestOF0200FloorIndicatorRows:
             floor_threshold=580.0,
             shortfall=0.0,
             portfolio_floor_binding=False,
-            total_rwa_post_floor=1000.0,
+            # P2.20: modelled-only post-floor scope (IRB-only summary fixture).
+            floored_modelled_rwa=1000.0,
             of_adj=123.45,
         )
         gen = COREPGenerator()

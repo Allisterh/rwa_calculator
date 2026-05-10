@@ -380,12 +380,17 @@ class OutputFloorSummary:
         floor_threshold: x * s_trea + of_adj — the minimum acceptable RWA
         shortfall: max(0, floor_threshold - u_trea) — add-on when floor binds
         portfolio_floor_binding: True when the portfolio floor binds
-        total_rwa_post_floor: u_trea + shortfall (= max(u_trea, floor_threshold))
+        floored_modelled_rwa: u_trea + shortfall (= max(u_trea, floor_threshold))
+            — modelled-only post-floor RWA. Excludes SA and equity rows.
+        total_rwa_post_floor: Genuine portfolio total post-floor RWA
+            = floored_modelled_rwa + sa_rwa_total + equity_rwa_total.
         of_adj: Output Floor Adjustment per Art. 92 para 2A
         irb_t2_credit: Art. 62(d) IRB T2 credit (capped at 0.6% of IRB RWA)
         irb_cet1_deduction: Art. 36(1)(d) + Art. 40 CET1 deductions
         gcra_amount: General credit risk adjustments (capped at 1.25% of S-TREA)
         sa_t2_credit: Art. 62(c) SA T2 credit
+        sa_rwa_total: Sum of ``rwa_final`` across SA rows in the portfolio
+        equity_rwa_total: Sum of ``rwa_final`` across equity rows in the portfolio
 
     References:
     - PRA PS1/26 Art. 92 para 2A
@@ -398,12 +403,15 @@ class OutputFloorSummary:
     floor_threshold: float
     shortfall: float
     portfolio_floor_binding: bool
-    total_rwa_post_floor: float
+    floored_modelled_rwa: float
     of_adj: float = 0.0
     irb_t2_credit: float = 0.0
     irb_cet1_deduction: float = 0.0
     gcra_amount: float = 0.0
     sa_t2_credit: float = 0.0
+    sa_rwa_total: float = 0.0
+    equity_rwa_total: float = 0.0
+    total_rwa_post_floor: float = 0.0
 
 
 @dataclass(frozen=True)

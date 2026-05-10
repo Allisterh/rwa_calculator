@@ -390,10 +390,11 @@ class TestOfAdjAggregator:
         assert hasattr(summary, "sa_t2_credit")
 
     def test_of_adj_rwa_post_floor_correct(self, aggregator: OutputAggregator) -> None:
-        """total_rwa_post_floor = u_trea + shortfall when floor binds.
+        """floored_modelled_rwa = u_trea + shortfall when floor binds.
 
         With OF-ADJ = 3.75m: threshold = 76.25m, shortfall = 76.25m - 50m = 26.25m.
-        total_rwa_post_floor = 50m + 26.25m = 76.25m.
+        floored_modelled_rwa = 50m + 26.25m = 76.25m. P2.20 renamed this from
+        ``total_rwa_post_floor`` (which now means the genuine portfolio total).
         """
         config = _b31_config()
         irb = _irb_frame(rwa=50_000_000.0, sa_rwa=100_000_000.0, excess=500_000.0)
@@ -401,7 +402,7 @@ class TestOfAdjAggregator:
 
         summary = result.output_floor_summary
         assert summary is not None
-        assert summary.total_rwa_post_floor == pytest.approx(
+        assert summary.floored_modelled_rwa == pytest.approx(
             summary.u_trea + summary.shortfall, rel=0.001
         )
 

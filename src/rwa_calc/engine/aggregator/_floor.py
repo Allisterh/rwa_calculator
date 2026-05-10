@@ -43,7 +43,12 @@ import polars as pl
 
 from rwa_calc.contracts.bundles import OutputFloorSummary
 from rwa_calc.data.tables.output_floor import GCRA_CAP_RATE as _GCRA_CAP_RATE_DECIMAL
-from rwa_calc.engine.aggregator._schemas import FLOOR_ELIGIBLE_APPROACHES, FLOOR_IMPACT_SCHEMA
+from rwa_calc.engine.aggregator._schemas import (
+    EQUITY_APPROACHES,
+    FLOOR_ELIGIBLE_APPROACHES,
+    FLOOR_IMPACT_SCHEMA,
+    SA_APPROACHES,
+)
 from rwa_calc.engine.aggregator._utils import col_or_default, empty_frame, resolve_rwa_col
 
 # GCRA cap: 1.25% of S-TREA per Art. 92 para 2A definition.
@@ -136,6 +141,7 @@ def apply_floor_with_impact(
         sa_cols = set(sa_results.collect_schema().names())
         sa_rwa_col = resolve_rwa_col(sa_cols)
         if not sa_rwa_col:
+            sa_rwa_total, equity_rwa_total = _portfolio_sa_equity_totals(combined)
             summary = OutputFloorSummary(
                 u_trea=0.0,
                 s_trea=0.0,
@@ -143,12 +149,15 @@ def apply_floor_with_impact(
                 floor_threshold=0.0,
                 shortfall=0.0,
                 portfolio_floor_binding=False,
-                total_rwa_post_floor=0.0,
+                floored_modelled_rwa=0.0,
                 of_adj=of_adj,
                 irb_t2_credit=irb_t2_credit,
                 irb_cet1_deduction=irb_cet1_deduction,
                 gcra_amount=gcra_amount,
                 sa_t2_credit=sa_t2_credit,
+                sa_rwa_total=sa_rwa_total,
+                equity_rwa_total=equity_rwa_total,
+                total_rwa_post_floor=sa_rwa_total + equity_rwa_total,
             )
             return combined, empty_frame(FLOOR_IMPACT_SCHEMA), summary
 
@@ -232,12 +241,33 @@ def apply_floor_with_impact(
     # Extract portfolio-level summary (requires one collect — acceptable at
     # the aggregator boundary per project convention).  fill_null handles
     # the edge case of zero-row input (all sums are null → 0.0).
+    #
+    # SA and equity row totals are computed from the same frame so that the
+    # genuine portfolio total (total_rwa_post_floor) reflects every approach,
+    # not just the floor-eligible (modelled) subset.  See P2.20.
+    sa_approaches = list(SA_APPROACHES)
+    equity_approaches = list(EQUITY_APPROACHES)
+    is_sa = pl.col("approach_applied").is_in(sa_approaches)
+    is_equity = pl.col("approach_applied").is_in(equity_approaches)
+
     summary_row = result.select(
         pl.col("_u_trea").first().fill_null(0.0),
         pl.col("_s_trea").first().fill_null(0.0),
         pl.col("_floor_threshold").first().fill_null(0.0),
         pl.col("_shortfall").first().fill_null(0.0),
         pl.col("_portfolio_floor_binds").first().fill_null(False),
+        pl.when(is_sa)
+        .then(pl.col("rwa_pre_floor"))
+        .otherwise(0.0)
+        .sum()
+        .fill_null(0.0)
+        .alias("_sa_rwa_total"),
+        pl.when(is_equity)
+        .then(pl.col("rwa_pre_floor"))
+        .otherwise(0.0)
+        .sum()
+        .fill_null(0.0)
+        .alias("_equity_rwa_total"),
     ).collect()
 
     u_trea = float(summary_row["_u_trea"][0])
@@ -245,6 +275,9 @@ def apply_floor_with_impact(
     floor_threshold = float(summary_row["_floor_threshold"][0])
     shortfall = float(summary_row["_shortfall"][0])
     binding = bool(summary_row["_portfolio_floor_binds"][0])
+    sa_rwa_total = float(summary_row["_sa_rwa_total"][0])
+    equity_rwa_total = float(summary_row["_equity_rwa_total"][0])
+    floored_modelled_rwa = u_trea + shortfall
 
     summary = OutputFloorSummary(
         u_trea=u_trea,
@@ -253,12 +286,15 @@ def apply_floor_with_impact(
         floor_threshold=floor_threshold,
         shortfall=shortfall,
         portfolio_floor_binding=binding,
-        total_rwa_post_floor=u_trea + shortfall,
+        floored_modelled_rwa=floored_modelled_rwa,
         of_adj=of_adj,
         irb_t2_credit=irb_t2_credit,
         irb_cet1_deduction=irb_cet1_deduction,
         gcra_amount=gcra_amount,
         sa_t2_credit=sa_t2_credit,
+        sa_rwa_total=sa_rwa_total,
+        equity_rwa_total=equity_rwa_total,
+        total_rwa_post_floor=floored_modelled_rwa + sa_rwa_total + equity_rwa_total,
     )
 
     # Drop internal columns
@@ -289,3 +325,35 @@ def apply_floor_with_impact(
     ).filter(pl.col("approach_applied").is_in(floor_eligible_approaches))
 
     return result, floor_impact, summary
+
+
+def _portfolio_sa_equity_totals(combined: pl.LazyFrame) -> tuple[float, float]:
+    """Sum ``rwa_final`` across SA and equity rows for the portfolio total.
+
+    Used by the early-return path of :func:`apply_floor_with_impact` when SA
+    results are unavailable but the combined frame may still contain SA or
+    equity rows that must be reflected in ``total_rwa_post_floor`` (P2.20).
+
+    Returns ``(0.0, 0.0)`` when the frame lacks the required columns.
+    """
+    cols = set(combined.collect_schema().names())
+    if "approach_applied" not in cols or "rwa_final" not in cols:
+        return 0.0, 0.0
+
+    is_sa = pl.col("approach_applied").is_in(list(SA_APPROACHES))
+    is_equity = pl.col("approach_applied").is_in(list(EQUITY_APPROACHES))
+    totals = combined.select(
+        pl.when(is_sa)
+        .then(pl.col("rwa_final"))
+        .otherwise(0.0)
+        .sum()
+        .fill_null(0.0)
+        .alias("sa_total"),
+        pl.when(is_equity)
+        .then(pl.col("rwa_final"))
+        .otherwise(0.0)
+        .sum()
+        .fill_null(0.0)
+        .alias("equity_total"),
+    ).collect()
+    return float(totals["sa_total"][0]), float(totals["equity_total"][0])

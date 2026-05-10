@@ -450,11 +450,15 @@ class TestOutputFloorAtScale:
         assert 0.50 <= ofs.floor_pct <= 0.725, f"Floor pct out of range: {ofs.floor_pct}"
 
     def test_total_rwa_post_floor_gte_u_trea(self, b31_irb_result_10k: AggregatedResultBundle):
-        """Post-floor RWA >= U-TREA (floor can only increase capital)."""
+        """Post-floor modelled RWA >= U-TREA (floor can only increase capital).
+
+        P2.20: the modelled-only invariant lives on ``floored_modelled_rwa``;
+        ``total_rwa_post_floor`` is the genuine portfolio total (incl. SA + equity).
+        """
         ofs = b31_irb_result_10k.output_floor_summary
         assert ofs is not None
-        assert ofs.total_rwa_post_floor >= ofs.u_trea - 1.0, (
-            f"Post-floor {ofs.total_rwa_post_floor} < U-TREA {ofs.u_trea}"
+        assert ofs.floored_modelled_rwa >= ofs.u_trea - 1.0, (
+            f"Post-floor modelled {ofs.floored_modelled_rwa} < U-TREA {ofs.u_trea}"
         )
 
     def test_no_output_floor_for_crr(self, crr_irb_result_10k: AggregatedResultBundle):
@@ -727,7 +731,8 @@ class TestLargeScale100K:
         assert ofs is not None, "Output floor summary should exist for B31 IRB"
         assert ofs.u_trea > 0
         assert ofs.s_trea > 0
-        assert ofs.total_rwa_post_floor >= ofs.u_trea - 1.0
+        # P2.20: modelled-only post-floor invariant (>= U-TREA).
+        assert ofs.floored_modelled_rwa >= ofs.u_trea - 1.0
 
 
 # =============================================================================
