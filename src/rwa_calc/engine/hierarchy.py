@@ -34,7 +34,11 @@ from rwa_calc.contracts.bundles import (
     RawDataBundle,
     ResolvedHierarchyBundle,
 )
-from rwa_calc.contracts.errors import ERROR_HIERARCHY_DEPTH, CalculationError
+from rwa_calc.contracts.errors import (
+    ERROR_DUPLICATE_KEY,
+    ERROR_HIERARCHY_DEPTH,
+    CalculationError,
+)
 from rwa_calc.data.column_spec import (
     ColumnSpec,
     apply_boolean_column_defaults,
@@ -203,6 +207,14 @@ class HierarchyResolver:
                     "child_counterparty_reference": pl.String,
                 }
             )
+
+        # Deduplicate org_mappings on child_counterparty_reference (first-row-
+        # wins by input order). Without this, downstream joins fan out — one
+        # exposure on the duplicated child becomes one row per parent. Emit a
+        # DQ004 WARNING per duplicated child so operators can trace the bad
+        # rows back to their input file.
+        org_mappings, dup_errors = _dedup_org_mappings(org_mappings)
+        errors.extend(dup_errors)
 
         # Build ultimate parent mapping (LazyFrame). The frame carries an
         # internal ``truncated`` column flagging chains that hit ``max_depth``;
@@ -2972,6 +2984,60 @@ def _filter_mappings_by_child_type(
     return facility_mappings.unique(subset=["child_reference", "parent_facility_reference"]).filter(
         pl.col("child_type").fill_null("").str.to_lowercase() == child_type
     )
+
+
+def _dedup_org_mappings(
+    org_mappings: pl.LazyFrame,
+) -> tuple[pl.LazyFrame, list[CalculationError]]:
+    """Deduplicate ``org_mappings`` on ``child_counterparty_reference``.
+
+    Retains the first row (by input order) for each duplicated child and emits
+    one ``ERROR_DUPLICATE_KEY`` WARNING per affected child so operators can
+    trace back to the offending input rows. Materialises the (typically small)
+    mapping table once because we need to detect duplicates and rebuild a
+    deterministic single-row-per-child frame; the result is returned as a
+    LazyFrame for downstream joins.
+    """
+    collected = org_mappings.collect()
+    if collected.height == 0:
+        return collected.lazy(), []
+
+    # Tag each row with its position so first-row-wins is deterministic.
+    indexed = collected.with_row_index("_om_idx")
+    dup_children = (
+        indexed.group_by("child_counterparty_reference")
+        .agg(pl.len().alias("_om_count"))
+        .filter(pl.col("_om_count") > 1)
+        .get_column("child_counterparty_reference")
+        .to_list()
+    )
+
+    if not dup_children:
+        return collected.lazy(), []
+
+    deduped = (
+        indexed.sort("_om_idx")
+        .unique(subset=["child_counterparty_reference"], keep="first", maintain_order=True)
+        .drop("_om_idx")
+    )
+
+    errors: list[CalculationError] = [
+        CalculationError(
+            code=ERROR_DUPLICATE_KEY,
+            message=(
+                f"Duplicate child_counterparty_reference '{child}' in "
+                f"org_mappings; retaining first row (deterministic by input "
+                f"order) and discarding remaining rows."
+            ),
+            severity=ErrorSeverity.WARNING,
+            category=ErrorCategory.DATA_QUALITY,
+            counterparty_reference=child,
+            field_name="child_counterparty_reference",
+            actual_value=child,
+        )
+        for child in dup_children
+    ]
+    return deduped.lazy(), errors
 
 
 def _extract_hierarchy_depth_errors(
