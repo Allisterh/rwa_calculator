@@ -116,6 +116,7 @@ IRB_EXPOSURE_CLASS_ROWS: dict[str, tuple[str, str]] = {
 # waterfall from original exposure through CRM to final RWEA.
 CRR_C07_COLUMNS: list[COREPColumn] = [
     COREPColumn("0010", "Original exposure pre conversion factors", "Exposure"),
+    COREPColumn("0020", "Exposures deducted from own funds", "Exposure"),
     COREPColumn("0030", "(-) Value adjustments and provisions", "Exposure"),
     COREPColumn("0040", "Exposure net of value adjustments and provisions", "Exposure"),
     COREPColumn("0050", "(-) Guarantees", "CRM Substitution: Unfunded"),
@@ -156,6 +157,7 @@ CRR_C07_COLUMNS: list[COREPColumn] = [
 # changes 0160 from 0% CCF to 10% CCF.
 B31_C07_COLUMNS: list[COREPColumn] = [
     COREPColumn("0010", "Original exposure pre conversion factors", "Exposure"),
+    COREPColumn("0020", "Exposures deducted from own funds", "Exposure"),
     COREPColumn("0030", "(-) Value adjustments and provisions", "Exposure"),
     COREPColumn(
         "0035", "(-) Adjustment due to on-balance sheet netting", "Exposure"

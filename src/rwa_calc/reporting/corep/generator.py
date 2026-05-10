@@ -3136,6 +3136,10 @@ def _compute_c07_values(
     # 0010: Original exposure pre conversion factors
     values["0010"] = _safe_sum_eager(data, cols, "drawn_amount", "undrawn_amount")
 
+    # 0020: Exposures deducted from own funds (CRR Art. 111(1)(b))
+    # None when own_funds_deduction_amount is not provided in the input data.
+    values["0020"] = _col_sum_eager(data, cols, "own_funds_deduction_amount")
+
     # 0030: (-) Value adjustments and provisions
     values["0030"] = _safe_sum_eager(data, cols, "scra_provision_amount", "gcra_provision_amount")
 
