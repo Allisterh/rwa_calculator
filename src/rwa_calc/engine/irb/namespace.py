@@ -188,10 +188,7 @@ class IRBLazyFrame:
         seniority_based_lgd_expr = (
             pl.when(
                 has_seniority
-                and pl.col("seniority")
-                .fill_null("senior")
-                .str.to_lowercase()
-                .str.contains("sub")
+                and pl.col("seniority").fill_null("senior").str.to_lowercase().str.contains("sub")
             )
             .then(pl.lit(sub_lgd))
             .otherwise(default_lgd_expr)
@@ -235,8 +232,7 @@ class IRBLazyFrame:
                 pr_subtype = pl.col("purchased_receivables_subtype")
                 lgd_input_expr = (
                     pl.when(
-                        (pl.col("approach") == ApproachType.FIRB.value)
-                        & pr_subtype.is_not_null()
+                        (pl.col("approach") == ApproachType.FIRB.value) & pr_subtype.is_not_null()
                     )
                     .then(pl.col("lgd"))
                     .when(pl.col("approach") == ApproachType.FIRB.value)
@@ -373,9 +369,7 @@ class IRBLazyFrame:
                 effective_floor_flag = input_floor_flag
 
             maturity_expr = (
-                pl.when(effective_floor_flag)
-                .then(pl.lit(one_day_years))
-                .otherwise(maturity_expr)
+                pl.when(effective_floor_flag).then(pl.lit(one_day_years)).otherwise(maturity_expr)
             )
 
             # Explicit firm-supplied effective_maturity — highest priority.

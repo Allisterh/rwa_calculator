@@ -76,9 +76,7 @@ class DataPathValidator:
         self._check_mandatory(path, request.data_format, files_found, files_missing, errors)
         self._check_optional(path, request.data_format, files_found)
         if request.permission_mode == "irb":
-            self._check_irb_required(
-                path, request.data_format, files_found, files_missing, errors
-            )
+            self._check_irb_required(path, request.data_format, files_found, files_missing, errors)
 
         return ValidationResponse(
             valid=len(errors) == 0,

@@ -298,9 +298,7 @@ def _load_file_optional(
             exc,
         )
         errors.append(
-            optional_file_load_error(
-                relative_path=relative_path, field_name=field_name, exc=exc
-            )
+            optional_file_load_error(relative_path=relative_path, field_name=field_name, exc=exc)
         )
         return None
 

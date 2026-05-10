@@ -2192,14 +2192,8 @@ class HierarchyResolver:
         # facilities of the same counterparty and broadcast to every exposure
         # of that counterparty (including drawn loans without a facility link).
         if "has_short_term_ecai" in fac_cols:
-            cp_st_ecai = (
-                facilities.group_by("counterparty_reference")
-                .agg(
-                    pl.col("has_short_term_ecai")
-                    .fill_null(False)
-                    .any()
-                    .alias("_cp_has_st_ecai")
-                )
+            cp_st_ecai = facilities.group_by("counterparty_reference").agg(
+                pl.col("has_short_term_ecai").fill_null(False).any().alias("_cp_has_st_ecai")
             )
             exposures = exposures.join(
                 cp_st_ecai,
@@ -2221,10 +2215,7 @@ class HierarchyResolver:
         # facility) and only fills nulls from the counterparty-level OR.
         if "is_short_term_trade_lc" in fac_cols:
             cp_trade_lc = facilities.group_by("counterparty_reference").agg(
-                pl.col("is_short_term_trade_lc")
-                .fill_null(False)
-                .any()
-                .alias("_cp_trade_lc")
+                pl.col("is_short_term_trade_lc").fill_null(False).any().alias("_cp_trade_lc")
             )
             exposures = exposures.join(
                 cp_trade_lc,

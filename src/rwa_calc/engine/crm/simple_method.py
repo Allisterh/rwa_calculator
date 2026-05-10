@@ -359,7 +359,10 @@ def compute_fcsm_columns(
             fac_aggs.append(pl.lit(False).alias("_fac_is_sft"))
         if has_cmp_col:
             fac_aggs.append(
-                pl.col("cp_is_core_market_participant").fill_null(False).max().alias("_fac_cp_is_cmp")
+                pl.col("cp_is_core_market_participant")
+                .fill_null(False)
+                .max()
+                .alias("_fac_cp_is_cmp")
             )
         else:
             fac_aggs.append(pl.lit(False).alias("_fac_cp_is_cmp"))
@@ -397,7 +400,10 @@ def compute_fcsm_columns(
             cp_aggs.append(pl.lit(False).alias("_cp_is_sft"))
         if has_cmp_col:
             cp_aggs.append(
-                pl.col("cp_is_core_market_participant").fill_null(False).max().alias("_cp_cp_is_cmp")
+                pl.col("cp_is_core_market_participant")
+                .fill_null(False)
+                .max()
+                .alias("_cp_cp_is_cmp")
             )
         else:
             cp_aggs.append(pl.lit(False).alias("_cp_cp_is_cmp"))

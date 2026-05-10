@@ -610,17 +610,14 @@ def _b31_append_corporate_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl.E
     has_st_ecai = pl.col("has_short_term_ecai").fill_null(False)
     original_mty = pl.col("original_maturity_years").fill_null(1.0)
     in_st_window = original_mty <= 0.25
-    return (
-        chain.when(is_corporate & is_rated & has_st_ecai & in_st_window)
-        .then(
-            pl.when(pl.col("cqs") == 1)
-            .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs1"]))
-            .when(pl.col("cqs") == 2)
-            .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs2"]))
-            .when(pl.col("cqs") == 3)
-            .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs3"]))
-            .otherwise(pl.lit(_SA_B31_RW["corp_st_ecai_high"]))
-        )
+    return chain.when(is_corporate & is_rated & has_st_ecai & in_st_window).then(
+        pl.when(pl.col("cqs") == 1)
+        .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs1"]))
+        .when(pl.col("cqs") == 2)
+        .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs2"]))
+        .when(pl.col("cqs") == 3)
+        .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs3"]))
+        .otherwise(pl.lit(_SA_B31_RW["corp_st_ecai_high"]))
     )
 
 
@@ -633,9 +630,7 @@ def _crr_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     #                     counterparty RW (Art. 124(1) -> Art. 122 corporate CQS)
     # When LTV <= 50% the clamp drives secured_share = 1.0 so the average collapses
     # to the preferential 50% RW, matching the pre-split behaviour.
-    cre_secured_share = pl.min_horizontal(
-        pl.lit(1.0), _SA_CRR_RW["cre_ltv_threshold"] / ltv_safe
-    )
+    cre_secured_share = pl.min_horizontal(pl.lit(1.0), _SA_CRR_RW["cre_ltv_threshold"] / ltv_safe)
     cre_residual_share = pl.lit(1.0) - cre_secured_share
     # CRR Art. 124(1): the residual leg attracts the counterparty's UNSECURED
     # risk weight, i.e. the Art. 122 corporate CQS lookup — NOT a fixed 100%.
@@ -655,8 +650,7 @@ def _crr_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
         .then(
             pl.when(pl.col("has_income_cover").fill_null(False))
             .then(
-                _SA_CRR_RW["cre_rw_low"] * cre_secured_share
-                + cre_residual_rw * cre_residual_share
+                _SA_CRR_RW["cre_rw_low"] * cre_secured_share + cre_residual_rw * cre_residual_share
             )
             .otherwise(pl.lit(_SA_CRR_RW["cre_rw_standard"]))
         )
@@ -1763,9 +1757,8 @@ class SALazyFrame:
         # so it is always populated here.
         short_term_flag_col = "_inst_guarantor_short_term"
         if "original_maturity_years" in exposures.collect_schema().names():
-            short_term_expr = (
-                pl.col("original_maturity_years").is_not_null()
-                & (pl.col("original_maturity_years") <= 0.25)
+            short_term_expr = pl.col("original_maturity_years").is_not_null() & (
+                pl.col("original_maturity_years") <= 0.25
             )
         else:
             short_term_expr = pl.lit(False)

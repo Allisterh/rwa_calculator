@@ -1302,16 +1302,14 @@ class ExposureClassifier:
         # (model_id, exposure_class) yields both an IRB permission row and a
         # standardised row, the standardised row wins. AIRB-wins via .max()
         # would silently expand IRB scope beyond the firm's permission.
-        sa_block = (
-            permission_valid & (pl.col("mp_approach") == ApproachType.SA.value)
-        ).alias("_sa_block_match")
+        sa_block = (permission_valid & (pl.col("mp_approach") == ApproachType.SA.value)).alias(
+            "_sa_block_match"
+        )
 
         # Add match flags then aggregate: group by all original columns,
         # take max of the match flags (any valid AIRB/FIRB/slotting permission → True),
         # then AND-NOT the SA block to apply the SA-precedence rule.
-        result = joined.with_columns(
-            airb_permitted, firb_permitted, slotting_permitted, sa_block
-        )
+        result = joined.with_columns(airb_permitted, firb_permitted, slotting_permitted, sa_block)
 
         # Aggregate back to one row per exposure using .over() to avoid group_by.
         # SA-precedence override is applied AFTER the .max() roll-up so any SA
@@ -1780,9 +1778,7 @@ class ExposureClassifier:
             if "is_under_construction" in schema_names
             else pl.lit(False)
         )
-        is_adc_product = pl.col("_pt_upper").is_in(
-            ["DEVELOPMENT_FINANCE", "CONSTRUCTION_LOAN"]
-        )
+        is_adc_product = pl.col("_pt_upper").is_in(["DEVELOPMENT_FINANCE", "CONSTRUCTION_LOAN"])
         # Corporate gate: entity types treated as corporate under SA Art. 112(1)(g).
         is_corporate_entity = pl.col("cp_entity_type").is_in(
             ["corporate", "company", "specialised_lending"]
@@ -1793,9 +1789,7 @@ class ExposureClassifier:
             else pl.lit(False)
         )
         derived = (
-            is_corporate_entity
-            & ~is_natural_person
-            & (is_under_construction | is_adc_product)
+            is_corporate_entity & ~is_natural_person & (is_under_construction | is_adc_product)
         )
 
         if "is_adc" in schema_names:

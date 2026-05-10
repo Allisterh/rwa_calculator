@@ -268,9 +268,7 @@ def build_institution_guarantor_rw_expr(
         B31_SCRA_SHORT_TERM_RISK_WEIGHTS,
     )
 
-    long_term = (
-        INSTITUTION_RISK_WEIGHTS_B31_ECRA if is_basel_3_1 else INSTITUTION_RISK_WEIGHTS_CRR
-    )
+    long_term = INSTITUTION_RISK_WEIGHTS_B31_ECRA if is_basel_3_1 else INSTITUTION_RISK_WEIGHTS_CRR
     short_term = (
         INSTITUTION_SHORT_TERM_RISK_WEIGHTS_B31_ECRA
         if is_basel_3_1

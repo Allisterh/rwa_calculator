@@ -165,9 +165,7 @@ class HaircutCalculator:
         if has_reval_freq:
             n_r = pl.col("revaluation_frequency_days").fill_null(1).cast(pl.Float64)
             reval_factor = (
-                pl.when(n_r > 1.0)
-                .then(((n_r + liq - 1.0) / liq).sqrt())
-                .otherwise(pl.lit(1.0))
+                pl.when(n_r > 1.0).then(((n_r + liq - 1.0) / liq).sqrt()).otherwise(pl.lit(1.0))
             )
         else:
             reval_factor = pl.lit(1.0)
@@ -373,10 +371,7 @@ class HaircutCalculator:
         )
 
         # Liquidation-period scaling: Art. 226(2). is_sft=True → 5d; else 20d.
-        if "is_sft" in names:
-            sft_flag = pl.col("is_sft").fill_null(False)
-        else:
-            sft_flag = pl.lit(False)
+        sft_flag = pl.col("is_sft").fill_null(False) if "is_sft" in names else pl.lit(False)
         liq = (
             pl.when(sft_flag)
             .then(pl.lit(float(LIQUIDATION_PERIOD_REPO)))

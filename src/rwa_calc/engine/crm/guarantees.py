@@ -1300,9 +1300,11 @@ def _apply_maturity_mismatch_to_guarantees(
     # "no info" and yields no scaling.
     if has_guar_original_maturity and has_guar_maturity_date:
         t_from_date = exact_fractional_years_expr(config.reporting_date, "maturity_date")
-        t_raw = pl.when(pl.col("original_maturity_years").is_not_null()).then(
-            pl.col("original_maturity_years")
-        ).otherwise(t_from_date)
+        t_raw = (
+            pl.when(pl.col("original_maturity_years").is_not_null())
+            .then(pl.col("original_maturity_years"))
+            .otherwise(t_from_date)
+        )
     elif has_guar_original_maturity:
         t_raw = pl.col("original_maturity_years")
     else:
@@ -1315,14 +1317,12 @@ def _apply_maturity_mismatch_to_guarantees(
     t_eff = pl.max_horizontal(t_raw, floor)
     t_eff_safe = pl.when(t_raw.is_null()).then(pl.lit(None, dtype=pl.Float64)).otherwise(t_eff)
     T_eff = pl.max_horizontal(pl.min_horizontal(pl.col("_exp_T"), cap), floor)
-    T_eff_safe = pl.when(pl.col("_exp_T").is_null()).then(pl.lit(None, dtype=pl.Float64)).otherwise(
-        T_eff
+    T_eff_safe = (
+        pl.when(pl.col("_exp_T").is_null()).then(pl.lit(None, dtype=pl.Float64)).otherwise(T_eff)
     )
 
     # Mismatch only applies when t < T (else no scaling).
-    is_mismatch = (
-        t_eff_safe.is_not_null() & T_eff_safe.is_not_null() & (t_eff_safe < T_eff_safe)
-    )
+    is_mismatch = t_eff_safe.is_not_null() & T_eff_safe.is_not_null() & (t_eff_safe < T_eff_safe)
     scale = (t_eff_safe - floor) / (T_eff_safe - floor)
     scale_safe = pl.when(is_mismatch).then(scale).otherwise(pl.lit(1.0))
 

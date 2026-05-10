@@ -301,11 +301,7 @@ class Pillar3Generator:
             values.setdefault("b", None)
             # Auto-shim: own funds = a * 0.08, except for ratio rows where
             # column c is intentionally None (a is itself a percentage).
-            if (
-                ref not in ratio_refs
-                and values.get("a") is not None
-                and values.get("c") is None
-            ):
+            if ref not in ratio_refs and values.get("a") is not None and values.get("c") is None:
                 values["c"] = float(values["a"] or 0.0) * 0.08
 
             rows_out.append(_make_row(row_def, values, column_refs))
