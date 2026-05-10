@@ -1830,6 +1830,14 @@ class HierarchyResolver:
             ("exposure_collateral_type", pl.String),
             ("exposure_security_cqs", pl.Int8),
             ("exposure_security_residual_maturity_years", pl.Float64),
+            # CRR Art. 159(1)(c)/(d) Pool B inputs — additional value adjustments
+            # (AVAs per Art. 34) and other own funds reductions enter the per-
+            # exposure Pool B exactly once at the IRB EL shortfall stage
+            # (engine/irb/adjustments.py compute_el_shortfall_excess). Without
+            # explicit pass-through the unified select would drop them and
+            # Pool B would silently lose components (c) and (d).
+            ("ava_amount", pl.Float64),
+            ("other_own_funds_reductions", pl.Float64),
         ):
             if col_name in loan_cols:
                 loan_select_exprs.append(pl.col(col_name).cast(col_dtype, strict=False))

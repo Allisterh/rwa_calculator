@@ -239,6 +239,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_95",
             _generate_p195,
         ),
+        (
+            "P1.127 (CRR Art. 159 Pool B EL shortfall — AVA + other_OFR no double-count)",
+            "p1_127",
+            _generate_p1127,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -1204,6 +1209,19 @@ def _generate_p195(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_95", None)
+
+
+def _generate_p1127(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.127 fixtures (CRR Art. 159 Pool B EL shortfall — AVA + other_OFR no double-count)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_127 import save_p1127_fixtures
+
+        saved = save_p1127_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_127", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

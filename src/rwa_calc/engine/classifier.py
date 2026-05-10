@@ -627,8 +627,15 @@ class ExposureClassifier:
                 # --- Mortgage flag ---
                 self._build_is_mortgage_expr(schema_names),
                 # --- Default flags ---
-                (pl.col("cp_default_status") == True)  # noqa: E712
-                .alias("is_defaulted"),
+                # Per-exposure default detection per CRR Art. 178 / Art. 158(5):
+                # an exposure is defaulted when EITHER (a) the counterparty is in
+                # default (cp_default_status), OR (b) a row-level ``is_defaulted``
+                # flag has been set upstream (e.g. by the loan parquet), OR
+                # (c) ``beel > 0`` — best-estimate-EL is only defined for defaulted
+                # exposures (Art. 158(5)), so a non-zero BEEL is the conventional
+                # per-exposure regulatory signal of default. Counterparty-level
+                # default still propagates to all that counterparty's exposures.
+                self._build_is_defaulted_expr(schema_names),
                 # Art. 112 Table A2: HIGH_RISK (priority 4) takes precedence over
                 # DEFAULTED (priority 5). A defaulted high-risk item retains 150% per
                 # Art. 128, not the provision-based 100%/150% of Art. 127.
@@ -1794,6 +1801,34 @@ class ExposureClassifier:
         if "is_adc" in schema_names:
             return pl.coalesce(pl.col("is_adc"), derived).fill_null(False).alias("is_adc")
         return derived.alias("is_adc")
+
+    @staticmethod
+    def _build_is_defaulted_expr(schema_names: set[str]) -> pl.Expr:
+        """Build per-exposure ``is_defaulted`` flag.
+
+        Combines three signals so default detection works at any granularity:
+        - counterparty-level ``cp_default_status`` (propagates to all that
+          counterparty's exposures);
+        - explicit row-level ``is_defaulted`` carried on the loan/contingent
+          parquet (lets a single-default exposure on an otherwise non-defaulted
+          counterparty trigger the Art. 153(1)(ii) / 154(1)(i) defaulted
+          treatment);
+        - ``beel > 0`` — CRR Art. 158(5) defines BEEL only for defaulted
+          exposures, so a non-zero best-estimate-EL is the conventional
+          per-exposure regulatory signal of default.
+
+        Any one of the three being true sets ``is_defaulted=True``.
+        """
+        cp_default = pl.col("cp_default_status") == True  # noqa: E712
+        row_default = (
+            pl.col("is_defaulted").fill_null(False)
+            if "is_defaulted" in schema_names
+            else pl.lit(False)
+        )
+        beel_default = (
+            pl.col("beel").fill_null(0.0) > 0.0 if "beel" in schema_names else pl.lit(False)
+        )
+        return (cp_default | row_default | beel_default).alias("is_defaulted")
 
     @staticmethod
     def _build_is_mortgage_expr(schema_names: set[str]) -> pl.Expr:
