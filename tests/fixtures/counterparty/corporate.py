@@ -632,6 +632,23 @@ def create_corporate_counterparties() -> pl.DataFrame:
             "is_managed_as_retail": False,
         },
         # =============================================================================
+        # CRR-A13: Commercial RE 80% LTV — Art. 126(2)(d) proportion split
+        # Revenue £120m → above SME threshold (EUR 50m / ~£44m) → no SME SF.
+        # Unrated → CQS = NULL → CORPORATE_RISK_WEIGHTS[CQS.UNRATED] = 100%.
+        # =============================================================================
+        {
+            "counterparty_reference": "CORP_CRE_002",
+            "counterparty_name": "Commercial Property Investor 2 Ltd",
+            "entity_type": "corporate",
+            "country_code": "GB",
+            "annual_revenue": 120_000_000.0,  # £120m — large corporate (no SME factor)
+            "total_assets": 200_000_000.0,
+            "default_status": False,
+            "sector_code": "68.20",  # Renting and operating of own real estate
+            "apply_fi_scalar": False,
+            "is_managed_as_retail": False,
+        },
+        # =============================================================================
         # CRR-A8: Off-Balance Sheet CCF test (unrated corporate = 100% RW)
         # Counterparty for CONT_CCF_001 contingent fixture
         # =============================================================================
@@ -664,9 +681,54 @@ def create_corporate_counterparties() -> pl.DataFrame:
             "apply_fi_scalar": False,
             "is_managed_as_retail": False,
         },
+        # =============================================================================
+        # P1.101 / CRR-D-REVAL: Non-Daily Revaluation Haircut Adjustment (Art. 226(1))
+        # Unrated corporate (100% SA RW under CRR Art. 122) borrowing £1m GBP SFT.
+        # Collateral: £800k corp_bond CQS 1, 4.5y residual, revaluation_frequency=5 days.
+        # Art. 226(1) scales H_m by sqrt((N+T_m-1)/T_m) where N=5, T_m=5.
+        # =============================================================================
+        {
+            "counterparty_reference": "CP_CRM_REVAL",
+            "counterparty_name": "Reval Haircut Test Corporate Ltd",
+            "entity_type": "corporate",
+            "country_code": "GB",
+            "annual_revenue": 90_000_000.0,  # Large corporate (unrated)
+            "total_assets": 70_000_000.0,
+            "default_status": False,
+            "sector_code": "64.19",
+            "apply_fi_scalar": False,
+            "is_managed_as_retail": False,
+        },
+        # =============================================================================
+        # P2.22 / CRR regression guard: SME + infrastructure overlap
+        # Corporate SME (revenue £30m < EUR 50m threshold) that is also an
+        # infrastructure borrower — exercises the min_horizontal branch in
+        # supporting_factors.py that selects 0.75 over 0.7619.
+        #
+        # Hand-calc: EAD=1,500,000; RW=1.00 (Art. 122 unrated corporate);
+        #   RWA_pre=1,500,000; SME factor eligible (0.7619); infra factor
+        #   eligible (0.75); engine min_horizontal selects 0.75;
+        #   RWA_final=1,125,000.
+        # =============================================================================
+        {
+            "counterparty_reference": "CP_SME_INFRA_001",
+            "counterparty_name": "SME Infrastructure Solutions Ltd",
+            "entity_type": "corporate",
+            "country_code": "GB",
+            "annual_revenue": 30_000_000.0,  # £30m — below EUR 50m (~£43.66m) SME threshold
+            "total_assets": 25_000_000.0,
+            "default_status": False,
+            "sector_code": "42.21",  # Construction of utility projects
+            "apply_fi_scalar": False,
+            "is_managed_as_retail": False,
+        },
     ]
 
-    return pl.DataFrame(corporates, schema=dtypes_of(COUNTERPARTY_SCHEMA))
+    df = pl.DataFrame(corporates, schema=dtypes_of(COUNTERPARTY_SCHEMA))
+    # eca_score: null for all corporate rows — ECA scores apply only to sovereigns
+    # (CRR Art. 137(1)).  Column added here until engine-implementer registers it
+    # in COUNTERPARTY_SCHEMA so pl.concat in generate_all.py sees consistent schemas.
+    return df.with_columns(pl.lit(None).cast(pl.Int8).alias("eca_score"))
 
 
 def save_corporate_counterparties(output_dir: Path | None = None) -> Path:

@@ -67,12 +67,15 @@ COLLATERAL_HAIRCUTS: dict[str, Decimal] = {
     # Equity
     "equity_main_index": Decimal("0.15"),
     "equity_other": Decimal("0.25"),
-    # Non-financial collateral
-    # CRR Art. 230 uses C*/C** threshold mechanism (Table 5), not HC-based formula.
-    # These values are ad-hoc approximations since the code applies haircuts uniformly.
-    # Receivables: effective discount from 1.25x OC ratio ≈ 20%.
+    # Non-financial collateral — Art. 224 has no receivables row (Art. 224 lists
+    # only financial collateral). Receivables are recognised under F-IRB through
+    # the Art. 230 LGD* / OC mechanism (LGDS = 35% senior, OC = 1.25x, no
+    # minimum threshold) — see firb_lgd.py.
     "real_estate": Decimal("0.00"),
-    "receivables": Decimal("0.20"),
+    # No Art. 224 haircut for receivables; Art. 199(5) classes them as
+    # non-financial collateral and Art. 230 provides the entire CRR treatment
+    # via the LGD* / 1.25x OC mechanism — see firb_lgd.py.
+    "receivables": Decimal("0"),
     "other_physical": Decimal("0.40"),
 }
 

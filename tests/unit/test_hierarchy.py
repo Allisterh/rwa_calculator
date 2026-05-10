@@ -23,6 +23,8 @@ from rwa_calc.contracts.bundles import (
     ResolvedHierarchyBundle,
 )
 from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.contracts.errors import ERROR_DUPLICATE_KEY
+from rwa_calc.domain.enums import ErrorCategory, ErrorSeverity
 from rwa_calc.engine.hierarchy import HierarchyResolver
 
 if TYPE_CHECKING:
@@ -6701,3 +6703,275 @@ class TestMOFAndFacilityShare:
         assert wet["nominal_amount"][0] == pytest.approx(300_000.0)
         # Total undrawn = parent headroom = £1m - £200k = £800k
         assert float(rows["nominal_amount"].sum()) == pytest.approx(800_000.0)
+
+
+# =============================================================================
+# Org Mappings Duplicate Child Tests (P2.24)
+# =============================================================================
+
+
+class TestOrgMappingDuplicateChild:
+    """Tests for org_mappings dedup and DQ004 emission (P2.24).
+
+    Bug: when two org_mappings rows share the same child_counterparty_reference
+    but point to different parents, the join in
+    _enrich_counterparties_with_hierarchy fans out — producing duplicate
+    counterparty rows and duplicate exposure rows.
+
+    Fix: the resolver must deduplicate org_mappings on child_counterparty_reference
+    (first-row-wins), emit exactly one DQ004 WARNING per duplicated child, and
+    store only the canonical single-row parent in parent_mappings.
+    """
+
+    def test_duplicate_child_in_org_mappings_emits_dq004_and_no_row_fanout(
+        self,
+        resolver: HierarchyResolver,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """Two org_mappings rows with the same child produce DQ004 and no fan-out.
+
+        Arrange:
+            - 3 counterparties: CHILD_CP (corporate), PARENT_A, PARENT_B
+            - 1 loan on CHILD_CP: LOAN_DUP
+            - 2 org_mappings rows: PARENT_A->CHILD_CP and PARENT_B->CHILD_CP
+            - lending_mappings=None (not relevant to this scenario)
+        Act:
+            resolver.resolve(bundle, crr_config)
+        Assert:
+            1. result.exposures for LOAN_DUP has height == 1 (no row fan-out).
+            2. result.counterparty_lookup.counterparties for CHILD_CP has height == 1.
+            3. result.counterparty_lookup.parent_mappings for CHILD_CP has height == 1.
+            4. Exactly one DQ004 error in result.hierarchy_errors for CHILD_CP.
+            5. That DQ004 has severity=WARNING and category=DATA_QUALITY.
+            6. The retained parent in parent_mappings for CHILD_CP is PARENT_A
+               (deterministic first-row-wins).
+        """
+        # Arrange
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["CHILD_CP", "PARENT_A", "PARENT_B"],
+                "counterparty_name": ["Subsidiary Ltd", "Parent Alpha", "Parent Beta"],
+                "entity_type": ["corporate", "corporate", "corporate"],
+                "country_code": ["GB", "GB", "GB"],
+                "annual_revenue": [100_000_000.0, 0.0, 0.0],
+                "total_assets": [500_000_000.0, 0.0, 0.0],
+                "default_status": [False, False, False],
+                "sector_code": ["INDUSTRIAL", "INDUSTRIAL", "INDUSTRIAL"],
+                "apply_fi_scalar": [False, False, False],
+                "is_managed_as_retail": [False, False, False],
+            }
+        ).lazy()
+
+        loans = pl.DataFrame(
+            {
+                "loan_reference": ["LOAN_DUP"],
+                "product_type": ["TERM_LOAN"],
+                "book_code": ["BANKING"],
+                "counterparty_reference": ["CHILD_CP"],
+                "value_date": [date(2024, 1, 1)],
+                "maturity_date": [date(2027, 1, 1)],
+                "currency": ["GBP"],
+                "drawn_amount": [1_000_000.0],
+                "lgd": [0.45],
+                "seniority": ["senior"],
+            }
+        ).lazy()
+
+        # Duplicate child: CHILD_CP appears twice — trigger for DQ004
+        org_mappings = pl.DataFrame(
+            {
+                "parent_counterparty_reference": ["PARENT_A", "PARENT_B"],
+                "child_counterparty_reference": ["CHILD_CP", "CHILD_CP"],
+            }
+        ).lazy()
+
+        bundle = RawDataBundle(
+            facilities=None,
+            loans=loans,
+            contingents=None,
+            counterparties=counterparties,
+            collateral=None,
+            guarantees=None,
+            provisions=None,
+            ratings=None,
+            facility_mappings=pl.LazyFrame(
+                schema={
+                    "parent_facility_reference": pl.String,
+                    "child_reference": pl.String,
+                    "child_type": pl.String,
+                }
+            ),
+            org_mappings=org_mappings,
+            lending_mappings=pl.LazyFrame(
+                schema={
+                    "parent_counterparty_reference": pl.String,
+                    "child_counterparty_reference": pl.String,
+                }
+            ),
+        )
+
+        # Act
+        result = resolver.resolve(bundle, crr_config)
+
+        # Assert 1: no row fan-out in exposures for LOAN_DUP
+        exposure_rows = result.exposures.collect().filter(
+            pl.col("exposure_reference") == "LOAN_DUP"
+        )
+        assert len(exposure_rows) == 1, (
+            f"Expected 1 row for LOAN_DUP, got {len(exposure_rows)}. "
+            f"org_mappings duplicate child likely caused fan-out."
+        )
+
+        # Assert 2: no fan-out in counterparties for CHILD_CP
+        cp_rows = result.counterparty_lookup.counterparties.collect().filter(
+            pl.col("counterparty_reference") == "CHILD_CP"
+        )
+        assert len(cp_rows) == 1, (
+            f"Expected 1 counterparty row for CHILD_CP, got {len(cp_rows)}. "
+            f"Duplicate org_mappings caused counterparty fan-out."
+        )
+
+        # Assert 3: no fan-out in parent_mappings for CHILD_CP
+        pm_rows = result.counterparty_lookup.parent_mappings.collect().filter(
+            pl.col("child_counterparty_reference") == "CHILD_CP"
+        )
+        assert len(pm_rows) == 1, (
+            f"Expected 1 parent_mappings row for CHILD_CP, got {len(pm_rows)}. "
+            f"Duplicate org_mappings not deduplicated before storing parent_mappings."
+        )
+
+        # Assert 4 & 5: exactly one DQ004 WARNING / DATA_QUALITY for CHILD_CP
+        dq004_errors = [
+            e
+            for e in result.hierarchy_errors
+            if e.code == ERROR_DUPLICATE_KEY and e.counterparty_reference == "CHILD_CP"
+        ]
+        assert len(dq004_errors) == 1, (
+            f"Expected exactly 1 DQ004 error for CHILD_CP, got {len(dq004_errors)}. "
+            f"All hierarchy_errors: {result.hierarchy_errors}"
+        )
+        err = dq004_errors[0]
+        assert err.severity == ErrorSeverity.WARNING, (
+            f"DQ004 must be WARNING severity, got {err.severity!r}"
+        )
+        assert err.category == ErrorCategory.DATA_QUALITY, (
+            f"DQ004 must have DATA_QUALITY category, got {err.category!r}"
+        )
+
+        # Assert 6: deterministic first-row-wins — PARENT_A is retained
+        assert pm_rows["parent_counterparty_reference"][0] == "PARENT_A", (
+            f"Expected PARENT_A retained (first-row-wins), "
+            f"got {pm_rows['parent_counterparty_reference'][0]!r}"
+        )
+
+    def test_single_row_org_mappings_emits_no_dq004(
+        self,
+        resolver: HierarchyResolver,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """Control arm: single-row org_mappings for CHILD_CP emits no DQ004.
+
+        Arrange:
+            - Same 3 counterparties and 1 loan as the duplicate test.
+            - Only 1 org_mappings row: PARENT_A->CHILD_CP
+        Act:
+            resolver.resolve(bundle, crr_config)
+        Assert:
+            - Zero DQ004 errors in result.hierarchy_errors.
+            - LOAN_DUP has height == 1 in exposures.
+            - CHILD_CP has height == 1 in counterparties.
+            - CHILD_CP has height == 1 in parent_mappings.
+        """
+        # Arrange
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["CHILD_CP", "PARENT_A", "PARENT_B"],
+                "counterparty_name": ["Subsidiary Ltd", "Parent Alpha", "Parent Beta"],
+                "entity_type": ["corporate", "corporate", "corporate"],
+                "country_code": ["GB", "GB", "GB"],
+                "annual_revenue": [100_000_000.0, 0.0, 0.0],
+                "total_assets": [500_000_000.0, 0.0, 0.0],
+                "default_status": [False, False, False],
+                "sector_code": ["INDUSTRIAL", "INDUSTRIAL", "INDUSTRIAL"],
+                "apply_fi_scalar": [False, False, False],
+                "is_managed_as_retail": [False, False, False],
+            }
+        ).lazy()
+
+        loans = pl.DataFrame(
+            {
+                "loan_reference": ["LOAN_DUP"],
+                "product_type": ["TERM_LOAN"],
+                "book_code": ["BANKING"],
+                "counterparty_reference": ["CHILD_CP"],
+                "value_date": [date(2024, 1, 1)],
+                "maturity_date": [date(2027, 1, 1)],
+                "currency": ["GBP"],
+                "drawn_amount": [1_000_000.0],
+                "lgd": [0.45],
+                "seniority": ["senior"],
+            }
+        ).lazy()
+
+        # Single row — no duplicate
+        org_mappings = pl.DataFrame(
+            {
+                "parent_counterparty_reference": ["PARENT_A"],
+                "child_counterparty_reference": ["CHILD_CP"],
+            }
+        ).lazy()
+
+        bundle = RawDataBundle(
+            facilities=None,
+            loans=loans,
+            contingents=None,
+            counterparties=counterparties,
+            collateral=None,
+            guarantees=None,
+            provisions=None,
+            ratings=None,
+            facility_mappings=pl.LazyFrame(
+                schema={
+                    "parent_facility_reference": pl.String,
+                    "child_reference": pl.String,
+                    "child_type": pl.String,
+                }
+            ),
+            org_mappings=org_mappings,
+            lending_mappings=pl.LazyFrame(
+                schema={
+                    "parent_counterparty_reference": pl.String,
+                    "child_counterparty_reference": pl.String,
+                }
+            ),
+        )
+
+        # Act
+        result = resolver.resolve(bundle, crr_config)
+
+        # Assert: zero DQ004 errors
+        dq004_errors = [e for e in result.hierarchy_errors if e.code == ERROR_DUPLICATE_KEY]
+        assert len(dq004_errors) == 0, (
+            f"Expected no DQ004 errors for clean single-row org_mappings, "
+            f"got {len(dq004_errors)}: {dq004_errors}"
+        )
+
+        # Assert: shapes are correct (1 row each)
+        assert (
+            result.exposures.collect().filter(pl.col("exposure_reference") == "LOAN_DUP").height
+            == 1
+        ), "LOAN_DUP should appear exactly once in clean scenario."
+
+        assert (
+            result.counterparty_lookup.counterparties.collect()
+            .filter(pl.col("counterparty_reference") == "CHILD_CP")
+            .height
+            == 1
+        ), "CHILD_CP should appear exactly once in counterparties for clean scenario."
+
+        assert (
+            result.counterparty_lookup.parent_mappings.collect()
+            .filter(pl.col("child_counterparty_reference") == "CHILD_CP")
+            .height
+            == 1
+        ), "CHILD_CP should appear exactly once in parent_mappings for clean scenario."

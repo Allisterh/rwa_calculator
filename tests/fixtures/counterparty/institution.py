@@ -232,9 +232,29 @@ def create_institution_counterparties() -> pl.DataFrame:
             "apply_fi_scalar": False,
             "is_managed_as_retail": False,
         },
+        # CRR-D15 — institution counterparty for covered-bond repo-style CRM scenario.
+        # CQS 2 drives borrower RW = 50% under CRR Art. 120 Table 3 (standard band).
+        # apply_fi_scalar=False: no FI correlation scalar on this exposure.
+        {
+            "counterparty_reference": "CP_D15",
+            "counterparty_name": "RepoCounterparty Bank Plc",
+            "entity_type": "institution",
+            "country_code": "GB",
+            "annual_revenue": None,
+            "total_assets": None,
+            "default_status": False,
+            "sector_code": "64.19",
+            "apply_fi_scalar": False,
+            "is_managed_as_retail": False,
+            "institution_cqs": 2,
+        },
     ]
 
-    return pl.DataFrame(institutions, schema=dtypes_of(COUNTERPARTY_SCHEMA))
+    df = pl.DataFrame(institutions, schema=dtypes_of(COUNTERPARTY_SCHEMA))
+    # eca_score: null for all institution rows — ECA scores apply only to sovereigns
+    # (CRR Art. 137(1)).  Column added here until engine-implementer registers it
+    # in COUNTERPARTY_SCHEMA so pl.concat in generate_all.py sees consistent schemas.
+    return df.with_columns(pl.lit(None).cast(pl.Int8).alias("eca_score"))
 
 
 def save_institution_counterparties(output_dir: Path | None = None) -> Path:

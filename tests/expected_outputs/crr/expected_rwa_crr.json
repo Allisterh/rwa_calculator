@@ -2,7 +2,7 @@
   "framework": "CRR",
   "version": "2.0",
   "effective_until": "2026-12-31",
-  "generated_at": "2026-04-26T16:18:49.232829",
+  "generated_at": "2026-05-07T23:51:17.790636",
   "regulatory_references": {
     "primary": "UK CRR (Regulation (EU) No 575/2013 as retained)",
     "supporting_factors": "CRR Art. 501 (SME), Art. 501a (Infrastructure)",
@@ -15,7 +15,7 @@
   "scenario_groups": {
     "CRR-A": {
       "name": "Standardised Approach",
-      "count": 10
+      "count": 11
     },
     "CRR-B": {
       "name": "Foundation IRB",
@@ -27,11 +27,11 @@
     },
     "CRR-D": {
       "name": "Credit Risk Mitigation",
-      "count": 6
+      "count": 7
     },
     "CRR-E": {
       "name": "Specialised Lending (Slotting)",
-      "count": 8
+      "count": 9
     },
     "CRR-F": {
       "name": "Supporting Factors (Tiered SME)",
@@ -56,7 +56,7 @@
     "Slotting: Strong=Good=70% (Basel 3.1 Strong=50%)",
     "HVCRE same weights as non-HVCRE under CRR"
   ],
-  "scenario_count": 47,
+  "scenario_count": 51,
   "scenarios": [
     {
       "scenario_id": "CRR-A1",
@@ -225,6 +225,54 @@
       "expected_loss": null,
       "regulatory_reference": "CRR Art. 126",
       "calculation_notes": "50% RW (LTV 40% <= 50% with income cover)"
+    },
+    {
+      "scenario_id": "CRR-A13",
+      "scenario_group": "CRR-A",
+      "description": "Commercial RE 80% LTV - Art. 126(2)(d) proportion split",
+      "regulatory_framework": "CRR",
+      "approach": "SA",
+      "exposure_class": "COMMERCIAL_MORTGAGE",
+      "exposure_reference": "LOAN_CRE_002",
+      "counterparty_reference": "CORP_CRE_002",
+      "ead": 800000.0,
+      "pd": null,
+      "lgd": null,
+      "maturity": null,
+      "cqs": null,
+      "ltv": 0.8,
+      "turnover": null,
+      "risk_weight": 0.6875,
+      "rwa_before_sf": 550000.0,
+      "supporting_factor": 1.0,
+      "rwa_after_sf": 550000.0,
+      "expected_loss": null,
+      "regulatory_reference": "CRR Art. 126(2)(d)",
+      "calculation_notes": "80% LTV: secured_share=0.625, residual_share=0.375. avg_RW=0.5*0.625+1.0*0.375=0.6875"
+    },
+    {
+      "scenario_id": "CRR-A14-ECA",
+      "scenario_group": "CRR-A",
+      "description": "Unrated sovereign with ECA MEIP score 2 - 20% RW (Art. 137)",
+      "regulatory_framework": "CRR",
+      "approach": "SA",
+      "exposure_class": "CENTRAL_GOVT_CENTRAL_BANK",
+      "exposure_reference": "LN_CRR_A14_ECA_001",
+      "counterparty_reference": "SOV_KZ_001",
+      "ead": 5000000.0,
+      "pd": null,
+      "lgd": null,
+      "maturity": null,
+      "cqs": null,
+      "ltv": null,
+      "turnover": null,
+      "risk_weight": 0.20,
+      "rwa_before_sf": 1000000.0,
+      "supporting_factor": 1.0,
+      "rwa_after_sf": 1000000.0,
+      "expected_loss": null,
+      "regulatory_reference": "CRR Art. 137(1)-(2) Table 9",
+      "calculation_notes": "No ECAI rating; eca_score=2 triggers Art. 137 MEIP path -> 20% RW direct from Table 9"
     },
     {
       "scenario_id": "CRR-A8",
@@ -683,6 +731,30 @@
       "calculation_notes": "FX mismatch (EUR vs GBP), Hfx 11.314% (20-day secured lending per Art. 224(2)(a) + Art. 226(2))"
     },
     {
+      "scenario_id": "CRR-D-REVAL",
+      "scenario_group": "CRR-D",
+      "description": "Non-daily revaluation haircut adjustment (Art. 226(1)) - corp bond CQS1, 5-day reval",
+      "regulatory_framework": "CRR",
+      "approach": "SA-CRM",
+      "exposure_class": "CORPORATE",
+      "exposure_reference": "LOAN_CRM_REVAL",
+      "counterparty_reference": "CP_CRM_REVAL",
+      "ead": 230357.86553761643,
+      "pd": null,
+      "lgd": null,
+      "maturity": null,
+      "cqs": null,
+      "ltv": null,
+      "turnover": null,
+      "risk_weight": 1.0,
+      "rwa_before_sf": 230357.86553761643,
+      "supporting_factor": 1.0,
+      "rwa_after_sf": 230357.86553761643,
+      "expected_loss": null,
+      "regulatory_reference": "CRR Art. 226(1), Art. 226(2), Art. 224",
+      "calculation_notes": "corp_bond CQS1 1-5y: H_n=4%. SFT T_m=5d: H_m=4%*sqrt(0.5)=2.8284%. Non-daily reval N=5d: H=H_m*sqrt((5+5-1)/5)=H_m*sqrt(1.8)=3.7947%. C*=800000*(1-0.037947)=769642.13. EAD=230357.87. Counterfactual without Art.226(1): EAD=222627.42."
+    },
+    {
       "scenario_id": "CRR-E1",
       "scenario_group": "CRR-E",
       "description": "Project finance - Strong (70% RW)",
@@ -757,7 +829,7 @@
     {
       "scenario_id": "CRR-E4",
       "scenario_group": "CRR-E",
-      "description": "HVCRE - Strong (95% RW)",
+      "description": "HVCRE - Strong (70% RW, Table 1)",
       "regulatory_framework": "CRR",
       "approach": "Slotting",
       "exposure_class": "SPECIALISED_LENDING_HVCRE",
@@ -770,13 +842,13 @@
       "cqs": null,
       "ltv": null,
       "turnover": null,
-      "risk_weight": 0.95,
-      "rwa_before_sf": 4750000.0,
+      "risk_weight": 0.7,
+      "rwa_before_sf": 3500000.0,
       "supporting_factor": 1.0,
-      "rwa_after_sf": 4750000.0,
+      "rwa_after_sf": 3500000.0,
       "expected_loss": null,
       "regulatory_reference": "CRR Art. 153(5)",
-      "calculation_notes": "HVCRE Strong, >=2.5yr: 95% RW (Table 2)"
+      "calculation_notes": "HVCRE Strong, >=2.5yr: 70% RW (Table 1 \u2014 UK CRR has no HVCRE Table 2)"
     },
     {
       "scenario_id": "CRR-E5",
@@ -829,12 +901,36 @@
     {
       "scenario_id": "CRR-E7",
       "scenario_group": "CRR-E",
-      "description": "HVCRE - Strong, <2.5yr (70% RW)",
+      "description": "HVCRE - Strong, <2.5yr (50% RW, Table 1)",
       "regulatory_framework": "CRR",
       "approach": "Slotting",
       "exposure_class": "SPECIALISED_LENDING_HVCRE",
       "exposure_reference": "LOAN_SL_HVCRE_002",
       "counterparty_reference": "SL_HVCRE_STRONG_SHORT",
+      "ead": 5000000.0,
+      "pd": null,
+      "lgd": null,
+      "maturity": null,
+      "cqs": null,
+      "ltv": null,
+      "turnover": null,
+      "risk_weight": 0.5,
+      "rwa_before_sf": 2500000.0,
+      "supporting_factor": 1.0,
+      "rwa_after_sf": 2500000.0,
+      "expected_loss": null,
+      "regulatory_reference": "CRR Art. 153(5)",
+      "calculation_notes": "HVCRE Strong, <2.5yr: 50% RW (Table 1 \u2014 UK CRR has no HVCRE Table 2)"
+    },
+    {
+      "scenario_id": "CRR-E8",
+      "scenario_group": "CRR-E",
+      "description": "HVCRE - Good, <2.5yr (70% RW, Table 1)",
+      "regulatory_framework": "CRR",
+      "approach": "Slotting",
+      "exposure_class": "SPECIALISED_LENDING_HVCRE",
+      "exposure_reference": "LOAN_SL_HVCRE_003",
+      "counterparty_reference": "SL_HVCRE_GOOD_SHORT",
       "ead": 5000000.0,
       "pd": null,
       "lgd": null,
@@ -848,17 +944,17 @@
       "rwa_after_sf": 3500000.0,
       "expected_loss": null,
       "regulatory_reference": "CRR Art. 153(5)",
-      "calculation_notes": "HVCRE Strong, <2.5yr: 70% RW (Table 2)"
+      "calculation_notes": "HVCRE Good, <2.5yr: 70% RW (Table 1 \u2014 UK CRR has no HVCRE Table 2)"
     },
     {
-      "scenario_id": "CRR-E8",
+      "scenario_id": "CRR-E9",
       "scenario_group": "CRR-E",
-      "description": "HVCRE - Good, <2.5yr (95% RW)",
+      "description": "HVCRE Strong >=2.5yr \u2014 UK CRR Table 1 fix (70% RW)",
       "regulatory_framework": "CRR",
       "approach": "Slotting",
-      "exposure_class": "SPECIALISED_LENDING_HVCRE",
-      "exposure_reference": "LOAN_SL_HVCRE_003",
-      "counterparty_reference": "SL_HVCRE_GOOD_SHORT",
+      "exposure_class": "SPECIALISED_LENDING",
+      "exposure_reference": "LOAN_SL_HVCRE_TABLE1_FIX",
+      "counterparty_reference": "SL_HVCRE_TABLE1_FIX",
       "ead": 5000000.0,
       "pd": null,
       "lgd": null,
@@ -866,13 +962,13 @@
       "cqs": null,
       "ltv": null,
       "turnover": null,
-      "risk_weight": 0.95,
-      "rwa_before_sf": 4750000.0,
+      "risk_weight": 0.7,
+      "rwa_before_sf": 3500000.0,
       "supporting_factor": 1.0,
-      "rwa_after_sf": 4750000.0,
-      "expected_loss": null,
+      "rwa_after_sf": 3500000.0,
+      "expected_loss": 20000.0,
       "regulatory_reference": "CRR Art. 153(5)",
-      "calculation_notes": "HVCRE Good, <2.5yr: 95% RW (Table 2)"
+      "calculation_notes": "HVCRE Strong, >=2.5yr: 70% RW (Table 1). UK CRR has no HVCRE sub-class; is_hvcre=True preserved in audit trail. EL = 5,000,000 x 0.4% = 20,000."
     },
     {
       "scenario_id": "CRR-F1",

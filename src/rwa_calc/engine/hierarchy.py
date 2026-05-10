@@ -34,7 +34,11 @@ from rwa_calc.contracts.bundles import (
     RawDataBundle,
     ResolvedHierarchyBundle,
 )
-from rwa_calc.contracts.errors import CalculationError
+from rwa_calc.contracts.errors import (
+    ERROR_DUPLICATE_KEY,
+    ERROR_HIERARCHY_DEPTH,
+    CalculationError,
+)
 from rwa_calc.data.column_spec import (
     ColumnSpec,
     apply_boolean_column_defaults,
@@ -51,7 +55,7 @@ from rwa_calc.data.tables.crr_risk_weights import (
     RETAIL_RISK_WEIGHT,
 )
 from rwa_calc.data.tables.entity_class_mapping import ENTITY_TYPES_BY_SA_CLASS
-from rwa_calc.domain.enums import CQS, ExposureClass
+from rwa_calc.domain.enums import CQS, ErrorCategory, ErrorSeverity, ExposureClass
 from rwa_calc.engine.fx_converter import FXConverter
 from rwa_calc.engine.utils import has_required_columns, partition_by_nullable
 
@@ -204,8 +208,21 @@ class HierarchyResolver:
                 }
             )
 
-        # Build ultimate parent mapping (LazyFrame)
+        # Deduplicate org_mappings on child_counterparty_reference (first-row-
+        # wins by input order). Without this, downstream joins fan out — one
+        # exposure on the duplicated child becomes one row per parent. Emit a
+        # DQ004 WARNING per duplicated child so operators can trace the bad
+        # rows back to their input file.
+        org_mappings, dup_errors = _dedup_org_mappings(org_mappings)
+        errors.extend(dup_errors)
+
+        # Build ultimate parent mapping (LazyFrame). The frame carries an
+        # internal ``truncated`` column flagging chains that hit ``max_depth``;
+        # we synthesise one HIE003 WARNING per truncated row and then drop the
+        # column so downstream consumers see the published schema.
         ultimate_parents = self._build_ultimate_parent_lazy(org_mappings)
+        errors.extend(_extract_hierarchy_depth_errors(ultimate_parents))
+        ultimate_parents = ultimate_parents.drop("truncated")
 
         # If ratings is None, create empty LazyFrame with expected schema
         if ratings is None:
@@ -260,8 +277,12 @@ class HierarchyResolver:
 
         Returns LazyFrame with columns:
         - counterparty_reference: The entity
-        - ultimate_parent_reference: Its ultimate parent
+        - ultimate_parent_reference: Its deepest reachable parent (the true
+          root, or the parent at ``max_depth`` if the chain was truncated)
         - hierarchy_depth: Number of levels traversed
+        - truncated: True iff the chain was cut off at ``max_depth``; consumed
+          by ``_build_counterparty_lookup`` to synthesise HIE003 WARNINGs and
+          stripped before the LazyFrame is exposed on ``CounterpartyLookup``.
         """
         edges = (
             org_mappings.select(
@@ -533,12 +554,14 @@ class HierarchyResolver:
         if facility_edges.height == 0:
             return empty_result
 
+        # The HIE003 channel is counterparty-scoped; drop the new ``truncated``
+        # marker column so the facility lookup keeps its established schema.
         resolved = _resolve_graph_eager(
             facility_edges,
             child_col="child_facility_reference",
             parent_col="parent_facility_reference",
             max_depth=max_depth,
-        )
+        ).drop("truncated")
 
         return resolved.rename(
             {
@@ -807,6 +830,7 @@ class HierarchyResolver:
                 "is_obs_commitment": pl.Boolean,
                 "is_payroll_loan": pl.Boolean,
                 "is_buy_to_let": pl.Boolean,
+                "is_under_construction": pl.Boolean,
                 "has_one_day_maturity_floor": pl.Boolean,
                 "is_sft": pl.Boolean,
                 "has_netting_agreement": pl.Boolean,
@@ -1149,6 +1173,15 @@ class HierarchyResolver:
                 pl.col("is_buy_to_let").fill_null(False)
                 if "is_buy_to_let" in facility_cols
                 else pl.lit(False).alias("is_buy_to_let")
+            ),
+            # PRA PS1/26 Art. 124(3) / Art. 124K: under-construction flag drives
+            # ADC classification derivation in the classifier. Facility-level
+            # value flows through to facility_undrawn rows so commitments to
+            # development-finance facilities also surface the flag.
+            (
+                pl.col("is_under_construction").fill_null(False)
+                if "is_under_construction" in facility_cols
+                else pl.lit(False).alias("is_under_construction")
             ),
             (
                 pl.col("has_one_day_maturity_floor").fill_null(False)
@@ -1767,6 +1800,13 @@ class HierarchyResolver:
                 if "is_buy_to_let" in loan_cols
                 else pl.lit(False).alias("is_buy_to_let")
             ),
+            # PRA PS1/26 Art. 124(3) / Art. 124K: under-construction flag drives
+            # ADC classification derivation in the classifier.
+            (
+                pl.col("is_under_construction").fill_null(False)
+                if "is_under_construction" in loan_cols
+                else pl.lit(False).alias("is_under_construction")
+            ),
             (
                 pl.col("has_one_day_maturity_floor").fill_null(False)
                 if "has_one_day_maturity_floor" in loan_cols
@@ -1790,6 +1830,40 @@ class HierarchyResolver:
             # facility_termination_date is facility-level; inherited via facility join later
             pl.lit(None).cast(pl.Date).alias("facility_termination_date"),
         ]
+        # Optional CLASSIFIER_OUTPUT_SCHEMA pass-through columns. CRE / RRE
+        # acceptance fixtures (e.g. P1.181 Art. 126(2)(d) proportion split)
+        # carry these on the loan row instead of a separate collateral row;
+        # without explicit pass-through ``select`` would drop them and the
+        # downstream SA real-estate branch would mis-route the exposure.
+        for col_name, col_dtype in (
+            ("ltv", pl.Float64),
+            ("property_type", pl.String),
+            ("has_income_cover", pl.Boolean),
+            ("is_qualifying_re", pl.Boolean),
+            ("prior_charge_ltv", pl.Float64),
+            ("is_defaulted", pl.Boolean),
+            ("qualifies_as_retail", pl.Boolean),
+            # PRA PS1/26 Art. 161(1)(e)/(f)/(g): purchased receivables F-IRB LGD subtype.
+            ("purchased_receivables_subtype", pl.String),
+            # CRR Art. 223(5) FCCM exposure volatility haircut (HE) inputs — used
+            # by the CRM engine to gross up E by (1 + HE) when the exposure is
+            # itself a debt security (typically SFTs lending out a bond). The CRM
+            # path keys off these fields per loan; without explicit pass-through
+            # the select would drop them and HE would default to 0.
+            ("exposure_collateral_type", pl.String),
+            ("exposure_security_cqs", pl.Int8),
+            ("exposure_security_residual_maturity_years", pl.Float64),
+            # CRR Art. 159(1)(c)/(d) Pool B inputs — additional value adjustments
+            # (AVAs per Art. 34) and other own funds reductions enter the per-
+            # exposure Pool B exactly once at the IRB EL shortfall stage
+            # (engine/irb/adjustments.py compute_el_shortfall_excess). Without
+            # explicit pass-through the unified select would drop them and
+            # Pool B would silently lose components (c) and (d).
+            ("ava_amount", pl.Float64),
+            ("other_own_funds_reductions", pl.Float64),
+        ):
+            if col_name in loan_cols:
+                loan_select_exprs.append(pl.col(col_name).cast(col_dtype, strict=False))
         return loans.select(loan_select_exprs)
 
     def _coerce_contingents_to_unified(
@@ -1893,6 +1967,13 @@ class HierarchyResolver:
                 pl.lit(False).alias(
                     "is_buy_to_let"
                 ),  # BTL is a property lending characteristic, not for contingents
+                # PRA PS1/26 Art. 124(3) / Art. 124K: under-construction flag drives
+                # ADC classification derivation in the classifier.
+                (
+                    pl.col("is_under_construction").fill_null(False)
+                    if "is_under_construction" in cont_cols
+                    else pl.lit(False).alias("is_under_construction")
+                ),
                 (
                     pl.col("has_one_day_maturity_floor").fill_null(False)
                     if "has_one_day_maturity_floor" in cont_cols
@@ -2128,6 +2209,56 @@ class HierarchyResolver:
             default_cols.append(pl.lit(None).cast(pl.Float64).alias("facility_limit"))
         if default_cols:
             exposures = exposures.with_columns(default_cols)
+
+        # PRA PS1/26 Art. 120(2B) Table 4A: ``has_short_term_ecai`` describes
+        # the counterparty's ECAI rating, so OR-aggregate the flag across all
+        # facilities of the same counterparty and broadcast to every exposure
+        # of that counterparty (including drawn loans without a facility link).
+        if "has_short_term_ecai" in fac_cols:
+            cp_st_ecai = facilities.group_by("counterparty_reference").agg(
+                pl.col("has_short_term_ecai").fill_null(False).any().alias("_cp_has_st_ecai")
+            )
+            exposures = exposures.join(
+                cp_st_ecai,
+                on="counterparty_reference",
+                how="left",
+            ).with_columns(pl.col("_cp_has_st_ecai").fill_null(False).alias("has_short_term_ecai"))
+            exposures = exposures.drop("_cp_has_st_ecai")
+        else:
+            exposures = exposures.with_columns(pl.lit(False).alias("has_short_term_ecai"))
+
+        # PRA PS1/26 Art. 121(4): the SCRA short-term window extends to self-
+        # liquidating trade-finance LCs. The flag lives on the facility row;
+        # drawn loans booked under a trade-LC facility have no facility_reference
+        # column to inherit from, so OR-aggregate the flag across the facilities
+        # of the same counterparty and broadcast it to every exposure of that
+        # counterparty — same precedent as ``has_short_term_ecai`` above.
+        # Coalesce preserves any explicit per-row value (e.g. on the synthetic
+        # facility_undrawn rows that already carry the flag from their source
+        # facility) and only fills nulls from the counterparty-level OR.
+        if "is_short_term_trade_lc" in fac_cols:
+            cp_trade_lc = facilities.group_by("counterparty_reference").agg(
+                pl.col("is_short_term_trade_lc").fill_null(False).any().alias("_cp_trade_lc")
+            )
+            exposures = exposures.join(
+                cp_trade_lc,
+                on="counterparty_reference",
+                how="left",
+            )
+            if "is_short_term_trade_lc" in exposures.collect_schema().names():
+                exposures = exposures.with_columns(
+                    pl.coalesce(
+                        pl.col("is_short_term_trade_lc"),
+                        pl.col("_cp_trade_lc"),
+                    )
+                    .fill_null(False)
+                    .alias("is_short_term_trade_lc")
+                )
+            else:
+                exposures = exposures.with_columns(
+                    pl.col("_cp_trade_lc").fill_null(False).alias("is_short_term_trade_lc")
+                )
+            exposures = exposures.drop("_cp_trade_lc")
 
         return exposures
 
@@ -2568,16 +2699,28 @@ class HierarchyResolver:
         # Requires beneficiary_reference and property_ltv columns
         required_cols = {"beneficiary_reference", "property_ltv"}
         if not has_required_columns(collateral, required_cols):
-            # No valid LTV data available, add null columns
-            return exposures.with_columns(
-                [
-                    pl.lit(None).cast(pl.Float64).alias("ltv"),
-                    pl.lit(None).cast(pl.Utf8).alias("property_type"),
-                    pl.lit(False).alias("has_income_cover"),
-                    pl.lit(None).cast(pl.Boolean).alias("is_qualifying_re"),
-                    pl.lit(None).cast(pl.Float64).alias("prior_charge_ltv"),
-                ]
-            )
+            # No valid LTV data available, add null columns — but only for
+            # columns the caller has not already populated on the exposure
+            # row. Loan / contingent fixtures may carry exposure-level
+            # ``ltv`` / ``property_type`` / ``has_income_cover`` /
+            # ``is_qualifying_re`` / ``prior_charge_ltv`` values
+            # (e.g. CRE Art. 126(2)(d) scenarios where the LTV and income-
+            # cover flags live on the loan rather than a collateral row);
+            # overwriting them here would silently break the SA real-estate
+            # branch downstream.
+            existing = set(exposures.collect_schema().names())
+            defaults: list[pl.Expr] = []
+            if "ltv" not in existing:
+                defaults.append(pl.lit(None).cast(pl.Float64).alias("ltv"))
+            if "property_type" not in existing:
+                defaults.append(pl.lit(None).cast(pl.Utf8).alias("property_type"))
+            if "has_income_cover" not in existing:
+                defaults.append(pl.lit(False).alias("has_income_cover"))
+            if "is_qualifying_re" not in existing:
+                defaults.append(pl.lit(None).cast(pl.Boolean).alias("is_qualifying_re"))
+            if "prior_charge_ltv" not in existing:
+                defaults.append(pl.lit(None).cast(pl.Float64).alias("prior_charge_ltv"))
+            return exposures.with_columns(defaults) if defaults else exposures
 
         # Check which optional columns exist on collateral
         collateral_schema = collateral.collect_schema()
@@ -2843,6 +2986,99 @@ def _filter_mappings_by_child_type(
     )
 
 
+def _dedup_org_mappings(
+    org_mappings: pl.LazyFrame,
+) -> tuple[pl.LazyFrame, list[CalculationError]]:
+    """Deduplicate ``org_mappings`` on ``child_counterparty_reference``.
+
+    Retains the first row (by input order) for each duplicated child and emits
+    one ``ERROR_DUPLICATE_KEY`` WARNING per affected child so operators can
+    trace back to the offending input rows. Materialises the (typically small)
+    mapping table once because we need to detect duplicates and rebuild a
+    deterministic single-row-per-child frame; the result is returned as a
+    LazyFrame for downstream joins.
+    """
+    collected = org_mappings.collect()
+    if collected.height == 0:
+        return collected.lazy(), []
+
+    # Tag each row with its position so first-row-wins is deterministic.
+    indexed = collected.with_row_index("_om_idx")
+    dup_children = (
+        indexed.group_by("child_counterparty_reference")
+        .agg(pl.len().alias("_om_count"))
+        .filter(pl.col("_om_count") > 1)
+        .get_column("child_counterparty_reference")
+        .to_list()
+    )
+
+    if not dup_children:
+        return collected.lazy(), []
+
+    deduped = (
+        indexed.sort("_om_idx")
+        .unique(subset=["child_counterparty_reference"], keep="first", maintain_order=True)
+        .drop("_om_idx")
+    )
+
+    errors: list[CalculationError] = [
+        CalculationError(
+            code=ERROR_DUPLICATE_KEY,
+            message=(
+                f"Duplicate child_counterparty_reference '{child}' in "
+                f"org_mappings; retaining first row (deterministic by input "
+                f"order) and discarding remaining rows."
+            ),
+            severity=ErrorSeverity.WARNING,
+            category=ErrorCategory.DATA_QUALITY,
+            counterparty_reference=child,
+            field_name="child_counterparty_reference",
+            actual_value=child,
+        )
+        for child in dup_children
+    ]
+    return deduped.lazy(), errors
+
+
+def _extract_hierarchy_depth_errors(
+    ultimate_parents: pl.LazyFrame,
+) -> list[CalculationError]:
+    """Synthesise HIE003 WARNINGs from the ``truncated`` column.
+
+    Materialises the (small) lookup frame, picks the rows whose chain was cut
+    off by the depth guard, and emits one ``ERROR_HIERARCHY_DEPTH`` per row.
+    Chains that terminate naturally (or hit the cycle break) are flagged
+    ``truncated == False`` upstream and produce no error here, preserving the
+    invariant that depth ``<= max_depth`` chains never warn.
+    """
+    truncated_rows = (
+        ultimate_parents.filter(pl.col("truncated"))
+        .select(["counterparty_reference", "ultimate_parent_reference", "hierarchy_depth"])
+        .collect()
+    )
+    errors: list[CalculationError] = []
+    for row in truncated_rows.iter_rows(named=True):
+        entity = row["counterparty_reference"]
+        deepest = row["ultimate_parent_reference"]
+        max_depth = row["hierarchy_depth"]
+        errors.append(
+            CalculationError(
+                code=ERROR_HIERARCHY_DEPTH,
+                message=(
+                    f"Counterparty hierarchy chain for '{entity}' exceeds "
+                    f"max_depth={max_depth}; resolved ultimate_parent_reference "
+                    f"truncated to '{deepest}'. Check org_mappings for chains "
+                    f"deeper than max_depth levels."
+                ),
+                severity=ErrorSeverity.WARNING,
+                category=ErrorCategory.HIERARCHY,
+                counterparty_reference=entity,
+                actual_value=deepest,
+            )
+        )
+    return errors
+
+
 def _resolve_graph_eager(
     edges: pl.DataFrame,
     child_col: str,
@@ -2863,7 +3099,14 @@ def _resolve_graph_eager(
         max_depth: Safety limit to prevent infinite loops on bad data
 
     Returns:
-        DataFrame with columns: entity (Utf8), root (Utf8), depth (Int32)
+        DataFrame with columns:
+        - entity (Utf8): The traversed child
+        - root (Utf8): The deepest reachable parent (true root if reached,
+          otherwise the parent at depth ``max_depth`` when truncated)
+        - depth (Int32): Number of levels traversed
+        - truncated (Boolean): True iff the traversal exited because of the
+          ``max_depth`` guard rather than reaching the natural root. Callers
+          use this column to synthesise HIE003 WARNINGs.
     """
     child_series = edges[child_col].to_list()
     parent_series = edges[parent_col].to_list()
@@ -2876,6 +3119,7 @@ def _resolve_graph_eager(
     entities: list[str] = []
     roots: list[str] = []
     depths: list[int] = []
+    truncated: list[bool] = []
 
     for entity in parent_of:
         current = entity
@@ -2888,13 +3132,29 @@ def _resolve_graph_eager(
             visited.add(next_parent)
             current = next_parent
             depth += 1
+        # Truncation: depth limit reached AND chain still has further parents.
+        # Natural termination (current not in parent_of) and cycle-detected
+        # break both leave the loop without tripping this branch, so neither
+        # produces a spurious HIE003.
+        was_truncated = depth == max_depth and current in parent_of
         entities.append(entity)
         roots.append(current)
         depths.append(depth)
+        truncated.append(was_truncated)
 
     return pl.DataFrame(
-        {"entity": entities, "root": roots, "depth": depths},
-        schema={"entity": pl.String, "root": pl.String, "depth": pl.Int32},
+        {
+            "entity": entities,
+            "root": roots,
+            "depth": depths,
+            "truncated": truncated,
+        },
+        schema={
+            "entity": pl.String,
+            "root": pl.String,
+            "depth": pl.Int32,
+            "truncated": pl.Boolean,
+        },
     )
 
 

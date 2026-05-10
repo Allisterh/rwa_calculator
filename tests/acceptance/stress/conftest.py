@@ -133,6 +133,7 @@ def generate_stress_counterparties(n: int, seed: int = 42) -> pl.LazyFrame:
                 "sovereign_cqs": pl.Series([None] * n, dtype=pl.Int32),
                 "local_currency": pl.Series([None] * n, dtype=pl.String),
                 "institution_cqs": pl.Series([None] * n, dtype=pl.Int8),
+                "eca_score": pl.Series([None] * n, dtype=pl.Int8),
             }
         )
         .cast(dtypes_of(COUNTERPARTY_SCHEMA))

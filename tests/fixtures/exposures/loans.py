@@ -62,6 +62,7 @@ class Loan:
     seniority: str  # senior, subordinated - affects F-IRB LGD (45% vs 75%)
     has_netting_agreement: bool = False  # CRR Art. 195: on-balance sheet netting
     netting_facility_reference: str | None = None  # Facility the netting agreement applies to
+    is_sft: bool = False  # CRR Art. 162(1): SFT flag — drives T_m=5 in haircut scaling
 
     def to_dict(self) -> dict:
         return {
@@ -79,6 +80,7 @@ class Loan:
             "seniority": self.seniority,
             "has_netting_agreement": self.has_netting_agreement,
             "netting_facility_reference": self.netting_facility_reference,
+            "is_sft": self.is_sft,
         }
 
 
@@ -841,6 +843,7 @@ def _commercial_re_loans() -> list[Loan]:
 
     CRR Art. 126: Commercial RE with LTV <= 50% and income cover gets 50% RW.
     Scenario CRR-A7: £400,000 loan at 40% LTV with income cover.
+    Scenario CRR-A13: £800,000 loan at 80% LTV — Art. 126(2)(d) proportion split.
     """
     return [
         # CRR-A7: Commercial RE - 50% RW (LTV 40%, income cover met)
@@ -855,6 +858,26 @@ def _commercial_re_loans() -> list[Loan]:
             maturity_date=date(2031, 1, 1),
             currency="GBP",
             drawn_amount=400_000.0,
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # CRR-A13: Commercial RE - 80% LTV → proportion split (Art. 126(2)(d))
+        # Property value £1m, loan £800k → LTV 80%
+        # Art. 126(2)(d): portion ≤ 50% of property value (£500k) → 50% RW
+        #                  portion > 50% of property value (£300k) → 100% RW (corporate)
+        # Income-producing property meeting 1.5x interest coverage
+        # Counterparty is large corporate (revenue £120m > SME threshold) → no SME SF
+        Loan(
+            loan_reference="LOAN_CRE_002",
+            product_type="CRE_LOAN",
+            book_code="CORP_LENDING",
+            counterparty_reference="CORP_CRE_002",
+            value_date=VALUE_DATE,
+            maturity_date=date(2031, 1, 1),
+            currency="GBP",
+            drawn_amount=800_000.0,
             interest=0.0,
             lgd=0.45,
             beel=0.0,
@@ -1000,6 +1023,27 @@ def _crm_scenario_loans() -> list[Loan]:
             counterparty_reference="CORP_UR_001",  # Unrated corporate - 100% RW
             value_date=VALUE_DATE,
             maturity_date=date(2029, 1, 1),  # 3yr maturity
+            currency="GBP",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # =====================================================================
+        # D15: Covered bond collateral, Art. 207(2) repo-style transaction.
+        # GBP 1m repo cash leg to CQS 2 UK institution (CP_D15).
+        # Collateral: £600k covered bond (institution issuer CQS 1, 2yr residual).
+        # Liquidation period = 5 days (SFT/repo — Art. 224(2)(a)).
+        # Borrower RW = 50% (CRR Art. 120, CQS 2 standard band).
+        # =====================================================================
+        Loan(
+            loan_reference="LOAN_CRM_D15",
+            product_type="repo",
+            book_code="FI_LENDING",
+            counterparty_reference="CP_D15",  # CQS 2 institution — 50% RW
+            value_date=date(2025, 1, 1),
+            maturity_date=date(2026, 6, 30),
             currency="GBP",
             drawn_amount=1_000_000.0,
             interest=0.0,
@@ -1176,6 +1220,26 @@ def _slotting_scenario_loans() -> list[Loan]:
             drawn_amount=5_000_000.0,
             interest=0.0,
             lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # =============================================================================
+        # CRR-E9: HVCRE - Strong, long maturity (>=2.5yr) — UK CRR Table 1 fix
+        # £5m HVCRE, Strong = 70% RW (CRR Art. 153(5) Table 1, >=2.5yr)
+        # UK CRR has no HVCRE sub-class; is_hvcre=True exposes must use Table 1 weights.
+        # Post-fix: engine routes HVCRE exposures to Table 1 (not EU Table 2).
+        # =============================================================================
+        Loan(
+            loan_reference="LOAN_SL_HVCRE_TABLE1_FIX",
+            product_type="HVCRE",
+            book_code="SPECIALISED_LENDING",
+            counterparty_reference="SL_HVCRE_TABLE1_FIX",
+            value_date=VALUE_DATE,
+            maturity_date=date(2031, 1, 1),  # 5yr maturity (>=2.5yr)
+            currency="GBP",
+            drawn_amount=5_000_000.0,
+            interest=0.0,
+            lgd=0.45,  # Not used for slotting
             beel=0.0,
             seniority="senior",
         ),
@@ -1488,6 +1552,32 @@ def _supporting_factor_scenario_loans() -> list[Loan]:
             maturity_date=date(2029, 6, 30),
             currency="GBP",
             drawn_amount=SME_EXPOSURE_THRESHOLD_GBP,  # Exactly at threshold
+            interest=0.0,
+            lgd=0.45,
+            beel=0.0,
+            seniority="senior",
+        ),
+        # =============================================================================
+        # P2.22 / CRR regression guard: SME + infrastructure overlap
+        # £1.5m infrastructure loan to an SME corporate (revenue £30m).
+        # The classifier will set:
+        #   is_sme=True       (annual_revenue £30m < EUR 50m / ~£43.66m threshold)
+        #   is_infrastructure=True  (product_type contains "INFRASTRUCTURE")
+        # Both supporting factors are eligible; engine min_horizontal picks 0.75.
+        #
+        # Hand-calc: EAD=1,500,000; RW=1.00 (Art. 122 unrated corporate);
+        #   RWA_pre=1,500,000; SME factor 0.7619; infra factor 0.75;
+        #   min_horizontal = 0.75; RWA_final = 1,125,000.
+        # =============================================================================
+        Loan(
+            loan_reference="LOAN_SME_INFRA_001",
+            product_type="INFRASTRUCTURE_LOAN",
+            book_code="CORP_LENDING",
+            counterparty_reference="CP_SME_INFRA_001",
+            value_date=VALUE_DATE,
+            maturity_date=date(2036, 1, 1),
+            currency="GBP",
+            drawn_amount=1_500_000.0,  # £1.5m — below EUR 2.5m tier-1 threshold
             interest=0.0,
             lgd=0.45,
             beel=0.0,
@@ -1948,6 +2038,33 @@ def _dedicated_test_loans() -> list[Loan]:
             lgd=0.45,  # Not used under SA
             beel=0.0,
             seniority="senior",
+        ),
+        # =============================================================================
+        # P1.101 / CRR-D-REVAL: Non-Daily Revaluation Haircut Adjustment (Art. 226(1))
+        # £1m GBP SFT (is_sft=True) to unrated corporate CP_CRM_REVAL.
+        # is_sft=True → T_m=5 in haircut scaling (haircuts.py SFT branch).
+        # Maturity 2030-01-01 — ends before collateral residual to avoid mismatch.
+        # Collateral: COLL_CRM_REVAL (£800k corp_bond CQS 1, 4.5y, 5-day reval).
+        # Art. 226(1) reval factor: sqrt((5+5-1)/5) = sqrt(1.8) applied on top of
+        # the SFT-scaled haircut H_m = 4% × sqrt(5/10) = 2.828%.
+        # Final H = 2.828% × sqrt(1.8) = 3.795%.
+        # EAD = 1,000,000 − 800,000 × (1 − 0.03795) ≈ 230,357.87.
+        # SA RWA = 230,357.87 (unrated corporate, 100% RW).
+        # =============================================================================
+        Loan(
+            loan_reference="LOAN_CRM_REVAL",
+            product_type="repo",
+            book_code="FI_LENDING",
+            counterparty_reference="CP_CRM_REVAL",
+            value_date=VALUE_DATE,
+            maturity_date=date(2030, 1, 1),
+            currency="GBP",
+            drawn_amount=1_000_000.0,
+            interest=0.0,
+            lgd=0.45,  # Not used under SA
+            beel=0.0,
+            seniority="senior",
+            is_sft=True,  # Art. 226(2): SFT → T_m=5 days for haircut period scaling
         ),
     ]
 

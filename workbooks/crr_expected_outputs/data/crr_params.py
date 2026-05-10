@@ -214,8 +214,9 @@ CRR_HAIRCUTS: dict[str, Decimal] = {
     # Equity
     "equity_main_index": Decimal("0.15"),  # Main index (e.g., FTSE 100)
     "equity_other": Decimal("0.25"),  # Other listed equity
-    # Other
-    "receivables": Decimal("0.20"),
+    # Other — receivables: no Art. 224 haircut; CRR Art. 230 LGD* / 1.25x OC
+    # mechanism handles the entire treatment (P1.165).
+    "receivables": Decimal("0"),
     "other_physical": Decimal("0.40"),
 }
 

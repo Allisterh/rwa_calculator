@@ -91,7 +91,10 @@ class ExposureClass(StrEnum):
     """Exposures to PSEs (CRR Art. 112(c), CRE20.7-15)"""
 
     MDB = "mdb"
-    """Exposures to MDBs and international organisations (CRR Art. 117-118)"""
+    """Exposures to MDBs (CRR Art. 117)"""
+
+    INTERNATIONAL_ORGANISATION = "international_organisation"
+    """Exposures to named international organisations (CRR Art. 112(1)(e), Art. 118)"""
 
     RGLA = "rgla"
     """Regional government and local authorities (CRR Art. 115)"""
@@ -475,10 +478,17 @@ class EquityType(StrEnum):
     """Subordinated debt / non-equity own funds - 100% CRR SA / 150% B31 SA (Art. 133(1))"""
 
     CIU = "ciu"
-    """Collective investment undertakings - 150% CRR SA (Art. 132(2)) / 250% listed or 400% unlisted B31 SA"""
+    """Collective investment undertakings - 1,250% fallback under both CRR and B31 SA (Art. 132(2)) when neither look-through (Art. 132A(1)) nor mandate-based (Art. 132A(2)) approach is applied"""
 
     OTHER = "other"
     """Other equity exposures - 100% CRR SA (Art. 133(2)) / 250% B31 SA / 370% IRB Simple"""
+
+
+EquityType.CIU.__doc__ = (
+    "Collective investment undertakings - 1,250% fallback under both CRR "
+    "and B31 SA (Art. 132(2)) when neither look-through (Art. 132A(1)) nor "
+    "mandate-based (Art. 132A(2)) approach is applied"
+)
 
 
 class EquityApproach(StrEnum):

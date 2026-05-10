@@ -18,9 +18,13 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from rwa_calc.contracts.errors import (
+    ERROR_EAD_NULL,
     ERROR_INVALID_COLUMN_VALUE,
     ERROR_MATURITY_INVALID,
     ERROR_MISSING_FIELD,
+    ERROR_RW_ABOVE_CAP,
+    ERROR_RW_NEGATIVE,
+    ERROR_RWA_NEGATIVE,
     ERROR_TYPE_MISMATCH,
     CalculationError,
     ErrorCategory,
@@ -30,6 +34,7 @@ from rwa_calc.data.column_spec import ColumnSpec
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.bundles import (
+        AggregatedResultBundle,
         ClassifiedExposuresBundle,
         CRMAdjustedBundle,
         RawDataBundle,
@@ -817,3 +822,139 @@ def _validate_table_columns_batched(
         )
 
     return errors
+
+
+# =============================================================================
+# AGGREGATED OUTPUT BOUNDS VALIDATOR
+# =============================================================================
+
+
+# Per-bound configuration: (column, predicate-builder, error code, category, ref, message)
+_AGG_BOUND_SPECS: tuple[
+    tuple[str, str, ErrorCategory, str | None, str],
+    ...,
+] = (
+    (
+        "risk_weight",
+        ERROR_RW_ABOVE_CAP,
+        ErrorCategory.BUSINESS_RULE,
+        "CRR Art. 92(3); CRE31.5 (RW <= 1250%)",
+        "risk_weight exceeds 1250% cap (12.5)",
+    ),
+    (
+        "risk_weight",
+        ERROR_RW_NEGATIVE,
+        ErrorCategory.BUSINESS_RULE,
+        "CRR Art. 153; CRE31",
+        "risk_weight is negative",
+    ),
+    (
+        "rwa_final",
+        ERROR_RWA_NEGATIVE,
+        ErrorCategory.BUSINESS_RULE,
+        "CRR Art. 92(3)",
+        "rwa_final is negative beyond float64 round-off (< -1e-9)",
+    ),
+    (
+        "ead_final",
+        ERROR_EAD_NULL,
+        ErrorCategory.DATA_QUALITY,
+        None,
+        "ead_final is null",
+    ),
+)
+
+
+def validate_aggregated_bundle(
+    bundle: AggregatedResultBundle,
+    sample_cap: int = 5,
+) -> list[CalculationError]:
+    """
+    Validate regulatory output bounds on AggregatedResultBundle.results.
+
+    Checks four bound violations per the architect's spec:
+
+    - OUT001: ``risk_weight > 12.5`` (1250% cap; CRR Art. 92(3); CRE31.5)
+    - OUT002: ``risk_weight < 0``    (CRR Art. 153; CRE31)
+    - OUT003: ``rwa_final < -1e-9``  (float64 round-off tolerance; CRR Art. 92(3))
+    - OUT004: ``ead_final`` is null   (data quality)
+
+    For each bound, up to ``sample_cap`` per-row errors are emitted with
+    ``exposure_reference`` populated. If the violation count exceeds the
+    cap, a single summary error is appended noting the omitted-row count.
+
+    Missing target columns are silently skipped; an empty results frame
+    returns ``[]``. Never raises — errors are accumulated, not thrown.
+
+    Args:
+        bundle: AggregatedResultBundle to inspect.
+        sample_cap: Maximum per-row errors emitted per bound (default 5).
+
+    Returns:
+        List of CalculationError objects (empty if all bounds satisfied).
+    """
+    results_lf = bundle.results
+    schema_names = set(results_lf.collect_schema().names())
+
+    errors: list[CalculationError] = []
+    for column, code, category, regulatory_reference, message in _AGG_BOUND_SPECS:
+        if column not in schema_names:
+            continue
+        if "exposure_reference" not in schema_names:
+            continue
+
+        predicate = _bound_predicate(column, code)
+        offending = (
+            results_lf.filter(predicate)
+            .select("exposure_reference", pl.col(column).alias("_bound_value"))
+            .collect()
+        )
+        total = offending.height
+        if total == 0:
+            continue
+
+        sampled = offending.head(sample_cap)
+        for row in sampled.iter_rows(named=True):
+            errors.append(
+                CalculationError(
+                    code=code,
+                    message=f"{message} (value={row['_bound_value']})",
+                    severity=ErrorSeverity.ERROR,
+                    category=category,
+                    exposure_reference=row["exposure_reference"],
+                    regulatory_reference=regulatory_reference,
+                    field_name=column,
+                    actual_value=str(row["_bound_value"]),
+                )
+            )
+
+        if total > sample_cap:
+            omitted = total - sample_cap
+            errors.append(
+                CalculationError(
+                    code=code,
+                    message=(
+                        f"{message}: {omitted} additional row(s) omitted beyond "
+                        f"sample_cap={sample_cap}"
+                    ),
+                    severity=ErrorSeverity.ERROR,
+                    category=category,
+                    regulatory_reference=regulatory_reference,
+                    field_name=column,
+                )
+            )
+
+    return errors
+
+
+def _bound_predicate(column: str, code: str) -> pl.Expr:
+    """Build the Polars predicate that flags rows violating a given bound."""
+    if code == ERROR_RW_ABOVE_CAP:
+        return pl.col(column).is_not_null() & (pl.col(column) > 12.5)
+    if code == ERROR_RW_NEGATIVE:
+        return pl.col(column).is_not_null() & (pl.col(column) < 0.0)
+    if code == ERROR_RWA_NEGATIVE:
+        return pl.col(column).is_not_null() & (pl.col(column) < -1e-9)
+    if code == ERROR_EAD_NULL:
+        return pl.col(column).is_null()
+    raise ValueError(f"Unknown bound code: {code}")

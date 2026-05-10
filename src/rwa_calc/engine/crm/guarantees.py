@@ -36,6 +36,7 @@ from rwa_calc.engine.ccf import (
     on_balance_ead,
     sa_ccf_expression,
 )
+from rwa_calc.engine.utils import exact_fractional_years_expr
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
@@ -93,6 +94,14 @@ def apply_guarantees(
     guarantees = _apply_fx_haircut_to_guarantees(guarantees, exposures)
     guarantees = _apply_restructuring_haircut_to_guarantees(guarantees)
 
+    # CRR Art. 239(3): maturity mismatch adjustment for unfunded credit
+    # protection. When the protection's residual maturity t is shorter than
+    # the exposure's effective maturity T, the covered amount G is scaled by
+    # (t - 0.25) / (T - 0.25), with T capped at 5y. Applied before splitting
+    # so the reduced amount_covered propagates through cap-at-EAD.
+    if config.is_crr:
+        guarantees = _apply_maturity_mismatch_to_guarantees(guarantees, exposures, config)
+
     exposures = exposures.with_columns(
         pl.col("exposure_reference").alias("parent_exposure_reference"),
     )
@@ -112,6 +121,8 @@ def apply_guarantees(
         cp_select_cols.append(
             pl.col("is_ccp_client_cleared").alias("guarantor_is_ccp_client_cleared")
         )
+    if "scra_grade" in cp_schema.names():
+        cp_select_cols.append(pl.col("scra_grade").alias("guarantor_scra_grade"))
 
     exposures = exposures.join(
         counterparty_lookup.select(cp_select_cols),
@@ -129,6 +140,8 @@ def apply_guarantees(
         missing_guarantor_cols.append(
             pl.lit(None).cast(pl.Boolean).alias("guarantor_is_ccp_client_cleared")
         )
+    if "guarantor_scra_grade" not in post_join_names:
+        missing_guarantor_cols.append(pl.lit(None).cast(pl.String).alias("guarantor_scra_grade"))
     if missing_guarantor_cols:
         exposures = exposures.with_columns(missing_guarantor_cols)
 
@@ -281,7 +294,7 @@ def apply_guarantees(
             .otherwise(pl.col("exposure_class"))
             .alias("post_crm_exposure_class_guaranteed"),
             # Flag indicating whether exposure has an effective guarantee
-            (pl.col("guaranteed_portion") > 0).alias("is_guaranteed"),
+            (pl.col("guaranteed_portion").fill_null(0.0) > 0).alias("is_guaranteed"),
         ]
     )
 
@@ -402,6 +415,11 @@ def _apply_guarantee_splits(
     # Preserve includes_restructuring for CDS restructuring exclusion haircut (Art. 233(2)).
     if "includes_restructuring" in guar_cols:
         agg_exprs.append(pl.col("includes_restructuring").first().alias("includes_restructuring"))
+    # Preserve guarantor_seniority for IRB PSM F-IRB LGD routing (PRA PS1/26
+    # Art. 161(1)(aa)/(b)/(d)). Drives per-row LGD selection in
+    # engine/irb/guarantee.py::_apply_parameter_substitution.
+    if "guarantor_seniority" in guar_cols:
+        agg_exprs.append(pl.col("guarantor_seniority").first().alias("guarantor_seniority"))
     # Preserve haircut columns (applied before split in apply_guarantees pipeline)
     if "guarantee_fx_haircut" in guar_cols:
         agg_exprs.append(pl.col("guarantee_fx_haircut").first().alias("guarantee_fx_haircut"))
@@ -430,6 +448,8 @@ def _apply_guarantee_splits(
         guar_select.append("guarantee_currency")
     if "includes_restructuring" in guar_cols:
         guar_select.append("includes_restructuring")
+    if "guarantor_seniority" in guar_cols:
+        guar_select.append("guarantor_seniority")
     if "guarantee_fx_haircut" in guar_cols:
         guar_select.append("guarantee_fx_haircut")
     if "guarantee_restructuring_haircut" in guar_cols:
@@ -458,6 +478,7 @@ def _apply_guarantee_splits(
             "protection_type",
             "guarantee_currency",
             "includes_restructuring",
+            "guarantor_seniority",
             "guarantee_fx_haircut",
             "guarantee_restructuring_haircut",
             "guarantee_amount",
@@ -480,6 +501,7 @@ def _apply_guarantee_splits(
         pl.lit(None).cast(pl.String).alias("protection_type"),
         pl.lit(None).cast(pl.String).alias("guarantee_currency"),
         pl.lit(None).cast(pl.Boolean).alias("includes_restructuring"),
+        pl.lit(None).cast(pl.String).alias("guarantor_seniority"),
         pl.lit(0.0).alias("guarantee_fx_haircut"),
         pl.lit(0.0).alias("guarantee_restructuring_haircut"),
     )
@@ -581,6 +603,7 @@ def _apply_guarantee_splits(
         pl.lit(None).cast(pl.String).alias("protection_type"),
         pl.lit(None).cast(pl.String).alias("guarantee_currency"),
         pl.lit(None).cast(pl.Boolean).alias("includes_restructuring"),
+        pl.lit(None).cast(pl.String).alias("guarantor_seniority"),
         pl.lit(0.0).alias("guarantee_fx_haircut"),
         pl.lit(0.0).alias("guarantee_restructuring_haircut"),
         pl.concat_str(
@@ -1211,6 +1234,108 @@ def _apply_restructuring_exclusion_haircut(exposures: pl.LazyFrame) -> pl.LazyFr
     )
 
     return exposures
+
+
+def _apply_maturity_mismatch_to_guarantees(
+    guarantees: pl.LazyFrame,
+    exposures: pl.LazyFrame,
+    config: CalculationConfig,
+) -> pl.LazyFrame:
+    """
+    Apply CRR Art. 239(3) maturity mismatch scaling to guarantee amounts.
+
+    When the protection's residual maturity ``t`` is shorter than the
+    exposure's effective maturity ``T``, the covered amount ``G`` is scaled:
+
+        GA = G* × (t - 0.25) / (T - 0.25)
+
+    with ``T`` capped at 5.0 years and both ``t`` and ``T`` floored at 0.25
+    (so any t < 0.25 yields zero coverage; the >=1y original-maturity floor
+    in Art. 237(2)(a) is enforced separately upstream). Scaling is applied
+    to ``amount_covered`` and ``percentage_covered`` before the split, so
+    the reduced nominal protection value propagates through cap-at-EAD.
+
+    The protection residual maturity ``t`` is derived from the guarantee
+    row's ``maturity_date`` if present, otherwise from
+    ``original_maturity_years``. The exposure residual ``T`` is derived
+    from the exposure's ``maturity_date``.
+
+    References:
+        CRR Art. 237(2): minimum maturity / mismatch eligibility
+        CRR Art. 238(1): maturity of credit protection
+        CRR Art. 239(3): maturity mismatch adjustment formula
+    """
+    guar_schema = guarantees.collect_schema()
+    guar_cols = guar_schema.names()
+    exp_schema = exposures.collect_schema()
+    exp_cols = exp_schema.names()
+
+    # Need exposure maturity_date and at least one of guarantee maturity_date
+    # / original_maturity_years to compute t and T.
+    if "maturity_date" not in exp_cols:
+        return guarantees
+    has_guar_maturity_date = "maturity_date" in guar_cols
+    has_guar_original_maturity = "original_maturity_years" in guar_cols
+    if not (has_guar_maturity_date or has_guar_original_maturity):
+        return guarantees
+
+    # Bring exposure residual maturity (years) onto each guarantee row.
+    exp_T_expr = exact_fractional_years_expr(config.reporting_date, "maturity_date").alias("_exp_T")
+    exp_lookup = exposures.select(
+        pl.col("exposure_reference"),
+        exp_T_expr,
+    )
+
+    guarantees = guarantees.join(
+        exp_lookup,
+        left_on="beneficiary_reference",
+        right_on="exposure_reference",
+        how="left",
+    )
+
+    # Compute t (Art. 238(1)). Prefer the explicit regulatory input
+    # ``original_maturity_years`` when present (it is the authoritative
+    # contract term written by upstream loaders); fall back to
+    # ``maturity_date`` minus reporting date when missing. Null t means
+    # "no info" and yields no scaling.
+    if has_guar_original_maturity and has_guar_maturity_date:
+        t_from_date = exact_fractional_years_expr(config.reporting_date, "maturity_date")
+        t_raw = (
+            pl.when(pl.col("original_maturity_years").is_not_null())
+            .then(pl.col("original_maturity_years"))
+            .otherwise(t_from_date)
+        )
+    elif has_guar_original_maturity:
+        t_raw = pl.col("original_maturity_years")
+    else:
+        t_raw = exact_fractional_years_expr(config.reporting_date, "maturity_date")
+
+    # Apply Art. 239(3) floors / caps:
+    #   t floored at 0.25, T capped at 5.0 and floored at 0.25.
+    floor = pl.lit(0.25)
+    cap = pl.lit(5.0)
+    t_eff = pl.max_horizontal(t_raw, floor)
+    t_eff_safe = pl.when(t_raw.is_null()).then(pl.lit(None, dtype=pl.Float64)).otherwise(t_eff)
+    T_eff = pl.max_horizontal(pl.min_horizontal(pl.col("_exp_T"), cap), floor)
+    T_eff_safe = (
+        pl.when(pl.col("_exp_T").is_null()).then(pl.lit(None, dtype=pl.Float64)).otherwise(T_eff)
+    )
+
+    # Mismatch only applies when t < T (else no scaling).
+    is_mismatch = t_eff_safe.is_not_null() & T_eff_safe.is_not_null() & (t_eff_safe < T_eff_safe)
+    scale = (t_eff_safe - floor) / (T_eff_safe - floor)
+    scale_safe = pl.when(is_mismatch).then(scale).otherwise(pl.lit(1.0))
+
+    scale_exprs: list[pl.Expr] = []
+    if "amount_covered" in guar_cols:
+        scale_exprs.append((pl.col("amount_covered") * scale_safe).alias("amount_covered"))
+    if "percentage_covered" in guar_cols:
+        scale_exprs.append((pl.col("percentage_covered") * scale_safe).alias("percentage_covered"))
+
+    if scale_exprs:
+        guarantees = guarantees.with_columns(scale_exprs)
+
+    return guarantees.drop("_exp_T")
 
 
 def _drop_columns_if_present(lf: pl.LazyFrame, cols: list[str]) -> pl.LazyFrame:

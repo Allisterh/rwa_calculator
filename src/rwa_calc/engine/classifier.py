@@ -362,6 +362,10 @@ class ExposureClassifier:
         if "local_currency" in cp_col_names:
             select_cols.append(pl.col("local_currency").alias("cp_local_currency"))
 
+        # ECA / MEIP score for unrated sovereign Art. 137(1)-(2) Table 9 path.
+        if "eca_score" in cp_col_names:
+            select_cols.append(pl.col("eca_score").alias("cp_eca_score"))
+
         # Covered bond issuer institution CQS (Art. 129(5) derivation)
         if "institution_cqs" in cp_col_names:
             select_cols.append(pl.col("institution_cqs").alias("cp_institution_cqs"))
@@ -537,7 +541,7 @@ class ExposureClassifier:
 
         Sets: exposure_class_sa, exposure_class_irb, exposure_class, is_mortgage,
               is_defaulted, exposure_class_for_sa, is_infrastructure,
-              qualifies_as_retail, retail_threshold_exclusion_applied
+              qualifies_as_retail, retail_threshold_exclusion_applied, is_adc
 
         Art. 123A enforcement (Basel 3.1 only):
         - Art. 123A(1)(a): SME entities (revenue > 0 and < threshold) auto-qualify
@@ -546,6 +550,17 @@ class ExposureClassifier:
           retail pool (cp_is_managed_as_retail=True). Null defaults to True for
           backward compatibility.
         - CRR: threshold check only (no Art. 123A).
+
+        ADC derivation (PRA PS1/26 Art. 124(3) / Art. 124K):
+        - Derives ``is_adc=True`` for corporate (non-natural-person) exposures
+          whose financed property is under construction (``is_under_construction``
+          on the loan/facility) or whose product type signals development finance.
+        - Natural persons fail the corporate gate even when
+          ``is_under_construction=True``.
+        - Any pre-existing non-null ``is_adc`` on the input row (e.g. propagated
+          from collateral by upstream stages) takes precedence via
+          ``pl.coalesce`` so the derivation cannot override an explicit
+          user-supplied flag.
         """
         max_retail_exposure = float(config.thresholds.retail_max_exposure)
 
@@ -568,6 +583,20 @@ class ExposureClassifier:
                 pl.col("product_type").str.to_uppercase().alias("_pt_upper"),
             ]
         )
+
+        # CRR Art. 128 (high-risk class, 150%) was OMITTED from the UK onshored
+        # CRR text by SI 2021/1078 reg. 6(3)(a) with effect from 1 January 2022.
+        # Under CRR, entity types that map to HIGH_RISK fall through to the
+        # residual OTHER class. The 150% high-risk treatment is re-introduced
+        # under PRA PS1/26 Basel 3.1 (Art. 128), so the SA-class label is
+        # preserved as HIGH_RISK in that regime.
+        if not config.is_basel_3_1:
+            exposures = exposures.with_columns(
+                pl.when(pl.col("_sa_class") == ExposureClass.HIGH_RISK.value)
+                .then(pl.lit(ExposureClass.OTHER.value))
+                .otherwise(pl.col("_sa_class"))
+                .alias("_sa_class"),
+            )
 
         sl_class = pl.lit(ExposureClass.SPECIALISED_LENDING.value)
         # Art. 112 Table A2: Under SA, specialised lending is a corporate sub-type
@@ -598,8 +627,15 @@ class ExposureClassifier:
                 # --- Mortgage flag ---
                 self._build_is_mortgage_expr(schema_names),
                 # --- Default flags ---
-                (pl.col("cp_default_status") == True)  # noqa: E712
-                .alias("is_defaulted"),
+                # Per-exposure default detection per CRR Art. 178 / Art. 158(5):
+                # an exposure is defaulted when EITHER (a) the counterparty is in
+                # default (cp_default_status), OR (b) a row-level ``is_defaulted``
+                # flag has been set upstream (e.g. by the loan parquet), OR
+                # (c) ``beel > 0`` — best-estimate-EL is only defined for defaulted
+                # exposures (Art. 158(5)), so a non-zero BEEL is the conventional
+                # per-exposure regulatory signal of default. Counterparty-level
+                # default still propagates to all that counterparty's exposures.
+                self._build_is_defaulted_expr(schema_names),
                 # Art. 112 Table A2: HIGH_RISK (priority 4) takes precedence over
                 # DEFAULTED (priority 5). A defaulted high-risk item retains 150% per
                 # Art. 128, not the provision-based 100%/150% of Art. 127.
@@ -614,6 +650,12 @@ class ExposureClassifier:
                 .alias("exposure_class_for_sa"),
                 # --- Infrastructure flag (uses _pt_upper) ---
                 pl.col("_pt_upper").str.contains("INFRASTRUCTURE").alias("is_infrastructure"),
+                # --- ADC classification (PRA PS1/26 Art. 124(3) / Art. 124K) ---
+                # Derive ``is_adc`` from the loan/facility ``is_under_construction``
+                # flag (or a development-finance product_type) gated on a corporate
+                # / non-natural-person counterparty. Coalesce with any pre-existing
+                # ``is_adc`` value so an explicit user-supplied flag wins.
+                self._build_is_adc_expr(schema_names),
                 # --- Retail threshold check + Art. 123A conditions (B31) ---
                 self._build_qualifies_as_retail_expr(config, schema_names, max_retail_exposure),
                 pl.when(pl.col("residential_collateral_value") > 0)
@@ -648,11 +690,18 @@ class ExposureClassifier:
         sme_threshold_gbp = float(config.thresholds.sme_turnover_threshold)
         qrre_max_limit = float(config.thresholds.qrre_max_limit)
 
+        # PRA PS1/26 Art. 124(3) / Art. 124K: ADC exposures retain the CORPORATE
+        # class and route to the 150% Art. 124K(1) ADC RW — they must not be
+        # reclassified to CORPORATE_SME. ``is_adc`` is always present after
+        # ``_derive_independent_flags``.
+        is_adc = pl.col("is_adc").fill_null(False)
+
         # Conditions reused across expressions (reading the independent-flag columns)
         is_corporate_sme = (
             (pl.col("exposure_class") == ExposureClass.CORPORATE.value)
             & (pl.col("cp_annual_revenue") < sme_threshold_gbp)
             & (pl.col("cp_annual_revenue") > 0)
+            & ~is_adc
         )
         is_retail_sme = (
             (pl.col("exposure_class") == ExposureClass.RETAIL_OTHER.value)
@@ -950,7 +999,9 @@ class ExposureClassifier:
         existing whole-loan path (CRR ``_apply_residential_mortgage_rw`` /
         B3.1 ``b31_residential_rw_expr``). Higher-priority Art. 112 classes
         (defaulted, equity, covered bond, high-risk) are also excluded — they
-        must never be downgraded.
+        must never be downgraded. ADC-flagged rows (PRA PS1/26 Art. 124(3)) are
+        also excluded so the 150% Art. 124K(1) ADC RW applies to the whole
+        exposure rather than a loan-split residential / corporate residual.
         """
         existing_re_classes = [
             _SECURED_TARGET_RESIDENTIAL,
@@ -975,7 +1026,13 @@ class ExposureClassifier:
             else pl.lit(False)
         )
 
-        is_candidate = is_eligible_class & primitives["has_property"] & ~is_income_producing
+        # PRA PS1/26 Art. 124(3) / Art. 124K: ADC exposures route to the 150%
+        # ADC path on the whole exposure — they must not be loan-split.
+        is_adc = pl.col("is_adc").fill_null(False)
+
+        is_candidate = (
+            is_eligible_class & primitives["has_property"] & ~is_income_producing & ~is_adc
+        )
 
         is_natural_person = (
             pl.col("cp_is_natural_person").fill_null(False)
@@ -1241,19 +1298,35 @@ class ExposureClassifier:
             permission_valid & (pl.col("mp_approach") == ApproachType.SLOTTING.value)
         ).alias("_slotting_match")
 
-        # Add match flags then aggregate: group by all original columns,
-        # take max of the match flags (any valid AIRB/FIRB/slotting permission → True)
-        result = joined.with_columns(airb_permitted, firb_permitted, slotting_permitted)
+        # SA-precedence (P1.145, CRR Art. 150(1) PPU carve-out): when the same
+        # (model_id, exposure_class) yields both an IRB permission row and a
+        # standardised row, the standardised row wins. AIRB-wins via .max()
+        # would silently expand IRB scope beyond the firm's permission.
+        sa_block = (permission_valid & (pl.col("mp_approach") == ApproachType.SA.value)).alias(
+            "_sa_block_match"
+        )
 
-        # Aggregate back to one row per exposure using .over() to avoid group_by
+        # Add match flags then aggregate: group by all original columns,
+        # take max of the match flags (any valid AIRB/FIRB/slotting permission → True),
+        # then AND-NOT the SA block to apply the SA-precedence rule.
+        result = joined.with_columns(airb_permitted, firb_permitted, slotting_permitted, sa_block)
+
+        # Aggregate back to one row per exposure using .over() to avoid group_by.
+        # SA-precedence override is applied AFTER the .max() roll-up so any SA
+        # row with permission_valid=True flips all IRB flags to False.
         result = result.with_columns(
-            pl.col("_airb_match").max().over("exposure_reference").alias("model_airb_permitted"),
-            pl.col("_firb_match").max().over("exposure_reference").alias("model_firb_permitted"),
-            pl.col("_slotting_match")
-            .max()
-            .over("exposure_reference")
-            .alias("model_slotting_permitted"),
+            pl.col("_sa_block_match").max().over("exposure_reference").alias("_sa_block"),
             pl.col("_mp_row_joined").max().over("exposure_reference").alias("_mp_joined_any"),
+        ).with_columns(
+            (pl.col("_airb_match").max().over("exposure_reference") & ~pl.col("_sa_block")).alias(
+                "model_airb_permitted"
+            ),
+            (pl.col("_firb_match").max().over("exposure_reference") & ~pl.col("_sa_block")).alias(
+                "model_firb_permitted"
+            ),
+            (
+                pl.col("_slotting_match").max().over("exposure_reference") & ~pl.col("_sa_block")
+            ).alias("model_slotting_permitted"),
         )
 
         # Diagnostic column: tag WHY a row did not get an IRB permission match.
@@ -1278,20 +1351,53 @@ class ExposureClassifier:
             .alias("_model_permission_diagnostic")
         )
 
-        # Drop the join columns and keep only one row per exposure
-        result = result.select(
-            pl.exclude(
-                "mp_exposure_class",
-                "mp_approach",
-                "mp_country_codes",
-                "mp_excluded_book_codes",
-                "_airb_match",
-                "_firb_match",
-                "_slotting_match",
-                "_mp_row_joined",
-                "_mp_joined_any",
+        # Drop the join columns and keep one row per exposure deterministically
+        # (P1.145, Step 3): sort by a total-order key so that whichever row of
+        # the duplicate-permission join survives `unique(keep="first")` does
+        # not depend on the physical row order of the input parquet. The
+        # priority key keeps the most-informative diagnostic on the surviving
+        # row (null > filter_rejected > unmatched_model_id > null_model_id).
+        diagnostic_priority = (
+            pl.when(pl.col("_model_permission_diagnostic").is_null())
+            .then(pl.lit(0))
+            .when(pl.col("_model_permission_diagnostic") == "filter_rejected")
+            .then(pl.lit(1))
+            .when(pl.col("_model_permission_diagnostic") == "unmatched_model_id")
+            .then(pl.lit(2))
+            .otherwise(pl.lit(3))
+            .alias("_diagnostic_priority")
+        )
+        result = (
+            result.with_columns(diagnostic_priority)
+            .sort(
+                [
+                    "exposure_reference",
+                    "_diagnostic_priority",
+                    "mp_approach",
+                    "mp_country_codes",
+                    "mp_excluded_book_codes",
+                ],
+                nulls_last=True,
+                maintain_order=True,
             )
-        ).unique(subset=["exposure_reference"], keep="first")
+            .unique(subset=["exposure_reference"], keep="first", maintain_order=True)
+            .select(
+                pl.exclude(
+                    "mp_exposure_class",
+                    "mp_approach",
+                    "mp_country_codes",
+                    "mp_excluded_book_codes",
+                    "_airb_match",
+                    "_firb_match",
+                    "_slotting_match",
+                    "_sa_block_match",
+                    "_sa_block",
+                    "_mp_row_joined",
+                    "_mp_joined_any",
+                    "_diagnostic_priority",
+                )
+            )
+        )
 
         return result
 
@@ -1492,9 +1598,16 @@ class ExposureClassifier:
         # ``B31_SOVEREIGN_LIKE_ENTITY_TYPES`` for the full list.
         b31_sa_only = pl.col("cp_entity_type").is_in(list(B31_SOVEREIGN_LIKE_ENTITY_TYPES))
 
-        new_airb = airb_expr & ~b31_airb_blocked & ~b31_sa_only
+        # Art. 155 / CRE60 / PRA PS1/26: equity exposures are SA-only under
+        # Basel 3.1 (IRB equity approaches withdrawn from 1 Jan 2027). Block
+        # both A-IRB and F-IRB so the decision ladder falls through to the
+        # equity branch in ``_build_approach_expr``.
+        b31_equity_sa_only = pl.col("exposure_class_irb") == ExposureClass.EQUITY.value
+        b31_sa_only_combined = b31_sa_only | b31_equity_sa_only
+
+        new_airb = airb_expr & ~b31_airb_blocked & ~b31_sa_only_combined
         new_firb_clear = firb_clear_expr | (firb_expr & b31_airb_blocked)
-        new_firb = firb_expr & ~b31_sa_only
+        new_firb = firb_expr & ~b31_sa_only_combined
         return new_airb, new_firb, new_firb_clear
 
     @staticmethod
@@ -1640,6 +1753,76 @@ class ExposureClassifier:
     # =========================================================================
     # Expression builders (static helpers returning pl.Expr)
     # =========================================================================
+
+    @staticmethod
+    def _build_is_adc_expr(schema_names: set[str]) -> pl.Expr:
+        """Build is_adc derivation expression (PRA PS1/26 Art. 124(3) / Art. 124K).
+
+        Derives ``is_adc=True`` when:
+            - the financed property is under construction
+              (``is_under_construction=True`` on the loan/facility), OR
+            - ``product_type`` indicates development finance / construction,
+        AND the borrower passes the corporate gate:
+            - counterparty entity_type is one of {corporate, company,
+              specialised_lending}, AND
+            - counterparty is NOT a natural person.
+
+        Any pre-existing non-null ``is_adc`` (e.g. propagated from collateral
+        upstream) wins via ``pl.coalesce`` — the derivation only fires when
+        ``is_adc`` is null on the input row.
+
+        Returns a ``pl.Expr`` aliased ``is_adc`` (Boolean).
+        """
+        is_under_construction = (
+            pl.col("is_under_construction").fill_null(False)
+            if "is_under_construction" in schema_names
+            else pl.lit(False)
+        )
+        is_adc_product = pl.col("_pt_upper").is_in(["DEVELOPMENT_FINANCE", "CONSTRUCTION_LOAN"])
+        # Corporate gate: entity types treated as corporate under SA Art. 112(1)(g).
+        is_corporate_entity = pl.col("cp_entity_type").is_in(
+            ["corporate", "company", "specialised_lending"]
+        )
+        is_natural_person = (
+            pl.col("cp_is_natural_person").fill_null(False)
+            if "cp_is_natural_person" in schema_names
+            else pl.lit(False)
+        )
+        derived = (
+            is_corporate_entity & ~is_natural_person & (is_under_construction | is_adc_product)
+        )
+
+        if "is_adc" in schema_names:
+            return pl.coalesce(pl.col("is_adc"), derived).fill_null(False).alias("is_adc")
+        return derived.alias("is_adc")
+
+    @staticmethod
+    def _build_is_defaulted_expr(schema_names: set[str]) -> pl.Expr:
+        """Build per-exposure ``is_defaulted`` flag.
+
+        Combines three signals so default detection works at any granularity:
+        - counterparty-level ``cp_default_status`` (propagates to all that
+          counterparty's exposures);
+        - explicit row-level ``is_defaulted`` carried on the loan/contingent
+          parquet (lets a single-default exposure on an otherwise non-defaulted
+          counterparty trigger the Art. 153(1)(ii) / 154(1)(i) defaulted
+          treatment);
+        - ``beel > 0`` — CRR Art. 158(5) defines BEEL only for defaulted
+          exposures, so a non-zero best-estimate-EL is the conventional
+          per-exposure regulatory signal of default.
+
+        Any one of the three being true sets ``is_defaulted=True``.
+        """
+        cp_default = pl.col("cp_default_status") == True  # noqa: E712
+        row_default = (
+            pl.col("is_defaulted").fill_null(False)
+            if "is_defaulted" in schema_names
+            else pl.lit(False)
+        )
+        beel_default = (
+            pl.col("beel").fill_null(0.0) > 0.0 if "beel" in schema_names else pl.lit(False)
+        )
+        return (cp_default | row_default | beel_default).alias("is_defaulted")
 
     @staticmethod
     def _build_is_mortgage_expr(schema_names: set[str]) -> pl.Expr:

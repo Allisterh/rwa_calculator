@@ -83,6 +83,8 @@ from rwa_calc.data.tables.b31_equity_rw import B31_SA_EQUITY_RISK_WEIGHTS
 from rwa_calc.data.tables.b31_risk_weights import (
     B31_CORPORATE_INVESTMENT_GRADE_RW,
     B31_CORPORATE_NON_INVESTMENT_GRADE_RW,
+    B31_CORPORATE_RISK_WEIGHTS,
+    B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS,
     B31_CORPORATE_SME_RW,
     B31_COVERED_BOND_UNRATED_FROM_SCRA,
     B31_CURRENCY_MISMATCH_MULTIPLIER,
@@ -91,6 +93,7 @@ from rwa_calc.data.tables.b31_risk_weights import (
     B31_DEFAULTED_RESI_RE_NON_INCOME_RW,
     B31_DEFAULTED_RW_HIGH_PROVISION,
     B31_DEFAULTED_RW_LOW_PROVISION,
+    B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS,
     B31_ECRA_SHORT_TERM_RISK_WEIGHTS,
     B31_HIGH_RISK_RW,
     B31_RETAIL_NON_REGULATORY_RW,
@@ -112,14 +115,17 @@ from rwa_calc.data.tables.crr_risk_weights import (
     COMMERCIAL_RE_PARAMS,
     CORPORATE_RISK_WEIGHTS,
     COVERED_BOND_UNRATED_DERIVATION,
+    COVERED_BOND_UNRATED_DERIVATION_CRR,
     CRR_CORPORATE_SME_RW,
     CRR_DEFAULTED_PROVISION_THRESHOLD,
     CRR_DEFAULTED_RW_HIGH_PROVISION,
     CRR_DEFAULTED_RW_LOW_PROVISION,
     CRR_NON_REGULATORY_RETAIL_RW,
+    ECA_MEIP_RISK_WEIGHTS,
     HIGH_RISK_RW,
     INSTITUTION_RISK_WEIGHTS_B31_ECRA,
     INSTITUTION_RISK_WEIGHTS_CRR,
+    INSTITUTION_RISK_WEIGHTS_SOVEREIGN_DERIVED,
     INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR,
     INSTITUTION_SHORT_TERM_UNRATED_RW_CRR,
     IO_ZERO_RW,
@@ -182,6 +188,7 @@ SA_INPUT_CONTRACT: dict[str, ColumnSpec] = {
     "is_qualifying_re": ColumnSpec(pl.Boolean, required=False),
     "prior_charge_ltv": ColumnSpec(pl.Float64, default=0.0, required=False),
     "is_short_term_trade_lc": ColumnSpec(pl.Boolean, default=False, required=False),
+    "has_short_term_ecai": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_qrre_transactor": ColumnSpec(pl.Boolean, default=False, required=False),
     "sl_type": ColumnSpec(pl.String, required=False),
@@ -266,6 +273,18 @@ _SA_B31_RW: dict[str, float] = {
     "ecra_st_low": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[1]),
     "ecra_st_mid": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[4]),
     "ecra_st_high": float(B31_ECRA_SHORT_TERM_RISK_WEIGHTS[6]),
+    # Table 4A (PRA PS1/26 Art. 120(2B)) — dedicated short-term ECAI assessment.
+    # CQS 1=20%, CQS 2=50%, CQS 3=100%, CQS 4-5=150%.
+    "ecra_st_ecai_cqs1": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[1]),
+    "ecra_st_ecai_cqs2": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[2]),
+    "ecra_st_ecai_cqs3": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[3]),
+    "ecra_st_ecai_high": float(B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS[4]),
+    # Table 6A (PRA PS1/26 Art. 122(3)) — corporate dedicated short-term ECAI.
+    # CQS 1=20%, CQS 2=50%, CQS 3=100%, CQS 4-6/Others=150%.
+    "corp_st_ecai_cqs1": float(B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS[1]),
+    "corp_st_ecai_cqs2": float(B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS[2]),
+    "corp_st_ecai_cqs3": float(B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS[3]),
+    "corp_st_ecai_high": float(B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS[4]),
     # SCRA unrated institution weights (CRE20.16-21) — long-term
     "scra_a": float(B31_SCRA_RISK_WEIGHTS["A"]),
     "scra_ae": float(B31_SCRA_RISK_WEIGHTS["A_ENHANCED"]),
@@ -354,6 +373,26 @@ def _cqs_table_lookup_expr(
 
 
 # ---------------------------------------------------------------------------
+# ECA / MEIP direct sovereign RW (CRR Art. 137(1)-(2) Table 9)
+# ---------------------------------------------------------------------------
+
+
+def _eca_meip_rw_expr() -> pl.Expr:
+    """Build Polars expression mapping ``cp_eca_score`` (0-7) to sovereign RW.
+
+    Maps directly to ``ECA_MEIP_RISK_WEIGHTS`` per CRR Art. 137(2) Table 9 —
+    no intermediate CQS step. When ``cp_eca_score`` is null or out of range
+    the expression returns null so callers can defer to the standard
+    Art. 114 unrated fallback.
+    """
+    col = pl.col("cp_eca_score")
+    expr = pl.when(col == 0).then(pl.lit(float(ECA_MEIP_RISK_WEIGHTS[0])))
+    for score in range(1, 8):
+        expr = expr.when(col == score).then(pl.lit(float(ECA_MEIP_RISK_WEIGHTS[score])))
+    return expr.otherwise(pl.lit(None, dtype=pl.Float64))
+
+
+# ---------------------------------------------------------------------------
 # Covered bond unrated derivation helpers (CRR Art. 129(5))
 # ---------------------------------------------------------------------------
 
@@ -374,16 +413,18 @@ def _crr_unrated_cb_rw_expr() -> pl.Expr:
     """
     inst_table = INSTITUTION_RISK_WEIGHTS_CRR
 
-    # Pre-compute CQS → CB RW by chaining institution RW through the derivation table
+    # Pre-compute CQS → CB RW by chaining institution RW through the derivation table.
+    # CRR Art. 129(5) admits only four sub-paragraphs (a)-(d); use the CRR-specific
+    # 4-key dict so (b) maps 0.50 -> 0.20, not the B31 value 0.25.
     cqs_to_cb_rw: dict[int, float] = {}
     for cqs_val in [CQS.CQS1, CQS.CQS2, CQS.CQS3, CQS.CQS4, CQS.CQS5, CQS.CQS6]:
         inst_rw = inst_table[cqs_val]
-        cb_rw = COVERED_BOND_UNRATED_DERIVATION[inst_rw]
+        cb_rw = COVERED_BOND_UNRATED_DERIVATION_CRR[inst_rw]
         cqs_to_cb_rw[int(cqs_val)] = float(cb_rw)
 
     # Unrated institution: sovereign-derived
     unrated_inst_rw = inst_table[CQS.UNRATED]
-    unrated_cb_rw = float(COVERED_BOND_UNRATED_DERIVATION[unrated_inst_rw])
+    unrated_cb_rw = float(COVERED_BOND_UNRATED_DERIVATION_CRR[unrated_inst_rw])
 
     # Build when/then chain from cp_institution_cqs
     expr = pl.when(pl.col("cp_institution_cqs") == 1).then(pl.lit(cqs_to_cb_rw[1]))
@@ -492,19 +533,29 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
     is_rated = pl.col("cqs").is_not_null() & (pl.col("cqs") > 0)
     is_unrated = pl.col("cqs").is_null() | (pl.col("cqs") <= 0)
     original_mty = pl.col("original_maturity_years").fill_null(1.0)
+    has_st_ecai = pl.col("has_short_term_ecai").fill_null(False)
+    in_st_window = (original_mty <= 0.25) | (
+        pl.col("is_short_term_trade_lc").fill_null(False) & (original_mty <= 0.5)
+    )
     return (
+        # ECRA short-term rated institutions with a dedicated short-term ECAI
+        # assessment (Table 4A, PRA PS1/26 Art. 120(2B)).
+        # CQS 1 = 20%, CQS 2 = 50%, CQS 3 = 100%, CQS 4-5 = 150%.
+        chain.when(is_institution & is_rated & has_st_ecai & in_st_window)
+        .then(
+            pl.when(pl.col("cqs") == 1)
+            .then(pl.lit(_SA_B31_RW["ecra_st_ecai_cqs1"]))
+            .when(pl.col("cqs") == 2)
+            .then(pl.lit(_SA_B31_RW["ecra_st_ecai_cqs2"]))
+            .when(pl.col("cqs") == 3)
+            .then(pl.lit(_SA_B31_RW["ecra_st_ecai_cqs3"]))
+            .otherwise(pl.lit(_SA_B31_RW["ecra_st_ecai_high"]))
+        )
         # ECRA short-term rated institutions (Table 4, Art. 120(2)).
         # Keys on ORIGINAL maturity <= 3m -> CQS 1-3 = 20%, CQS 4-5 = 50%,
         # CQS 6 = 150%. Art. 120(2A) extends Table 4 to ORIGINAL maturity
         # <= 6m for exposures arising from the movement of goods.
-        chain.when(
-            is_institution
-            & is_rated
-            & (
-                (original_mty <= 0.25)
-                | (pl.col("is_short_term_trade_lc").fill_null(False) & (original_mty <= 0.5))
-            )
-        )
+        .when(is_institution & is_rated & in_st_window)
         .then(
             pl.when(pl.col("cqs") <= 3)
             .then(pl.lit(_SA_B31_RW["ecra_st_low"]))
@@ -516,7 +567,10 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
         # ORIGINAL maturity <= 3m -> Grade A/A_ENHANCED = 20%, B = 50%, C = 150%.
         # Null SCRA grade defaults to Grade C (conservative treatment per
         # PRA PS1/26 Art. 120A).
-        .when(is_institution & is_unrated & (original_mty <= 0.25))
+        # Art. 121(4): the short-term window is extended to ORIGINAL maturity
+        # <= 6m for self-liquidating trade-finance LCs, mirroring the ECRA
+        # extension at Art. 120(2A) — reuses the same in_st_window gate.
+        .when(is_institution & is_unrated & in_st_window)
         .then(
             pl.when(pl.col("cp_scra_grade").is_in(["A", "A_ENHANCED"]))
             .then(pl.lit(_SA_B31_RW["scra_st_a"]))
@@ -538,19 +592,66 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
     )
 
 
+def _b31_append_corporate_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+    """Append Basel 3.1 Art. 122(3) Table 6A short-term corporate ECAI branch.
+
+    Fires only for rated CORPORATE exposures with a dedicated short-term ECAI
+    assessment (``has_short_term_ecai=True``) and original maturity ≤ 3 months.
+    Unlike the institution Art. 121(5) extension, Art. 122(3) does NOT extend
+    the gate to trade-finance ≤ 6 months — it remains original maturity ≤ 0.25y.
+
+    Excludes SME corporates (which use the dedicated 85% SME RW path) so the
+    Table 6A lookup only applies to general corporates rated by an ECAI.
+    """
+    is_corporate = uc.str.contains("CORPORATE", literal=True) & ~uc.str.contains(
+        "SME", literal=True
+    )
+    is_rated = pl.col("cqs").is_not_null() & (pl.col("cqs") > 0)
+    has_st_ecai = pl.col("has_short_term_ecai").fill_null(False)
+    original_mty = pl.col("original_maturity_years").fill_null(1.0)
+    in_st_window = original_mty <= 0.25
+    return chain.when(is_corporate & is_rated & has_st_ecai & in_st_window).then(
+        pl.when(pl.col("cqs") == 1)
+        .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs1"]))
+        .when(pl.col("cqs") == 2)
+        .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs2"]))
+        .when(pl.col("cqs") == 3)
+        .then(pl.lit(_SA_B31_RW["corp_st_ecai_cqs3"]))
+        .otherwise(pl.lit(_SA_B31_RW["corp_st_ecai_high"]))
+    )
+
+
 def _crr_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     """Append CRR commercial-then-residential RE branches (Art. 125-126)."""
     ltv_safe = pl.col("ltv").fill_null(1.0)
+    # CRR Art. 126(2)(d) proportion split for CRE with income cover and LTV > 50%:
+    #   secured_share   = min(1.0, 50% / LTV)  -> portion attracting 50% RW
+    #   residual_share  = 1.0 - secured_share  -> portion attracting unsecured
+    #                     counterparty RW (Art. 124(1) -> Art. 122 corporate CQS)
+    # When LTV <= 50% the clamp drives secured_share = 1.0 so the average collapses
+    # to the preferential 50% RW, matching the pre-split behaviour.
+    cre_secured_share = pl.min_horizontal(pl.lit(1.0), _SA_CRR_RW["cre_ltv_threshold"] / ltv_safe)
+    cre_residual_share = pl.lit(1.0) - cre_secured_share
+    # CRR Art. 124(1): the residual leg attracts the counterparty's UNSECURED
+    # risk weight, i.e. the Art. 122 corporate CQS lookup — NOT a fixed 100%.
+    # Look up counterparty CQS against CORPORATE_RISK_WEIGHTS directly (rather
+    # than via the join-derived ``risk_weight``) so the rule still fires when
+    # the upstream class lookup did not resolve to CORPORATE (e.g. exposures
+    # reclassified to COMMERCIAL_MORTGAGE by the real-estate splitter).
+    cre_residual_rw = _cqs_table_lookup_expr(
+        "cqs",
+        CORPORATE_RISK_WEIGHTS,
+        pl.lit(float(CORPORATE_RISK_WEIGHTS[CQS.UNRATED])),
+    )
     return (
         # Commercial RE must precede residential — see _is_commercial_re_class.
         # CRR Art. 126: LTV + income cover.
         chain.when(_is_commercial_re_class(uc))
         .then(
-            pl.when(
-                (ltv_safe <= _SA_CRR_RW["cre_ltv_threshold"])
-                & pl.col("has_income_cover").fill_null(False)
+            pl.when(pl.col("has_income_cover").fill_null(False))
+            .then(
+                _SA_CRR_RW["cre_rw_low"] * cre_secured_share + cre_residual_rw * cre_residual_share
             )
-            .then(pl.lit(_SA_CRR_RW["cre_rw_low"]))
             .otherwise(pl.lit(_SA_CRR_RW["cre_rw_standard"]))
         )
         # CRR Art. 125 LTV split.
@@ -620,6 +721,7 @@ def _ensure_guarantee_substitution_columns(exposures: pl.LazyFrame) -> pl.LazyFr
         guarantor_exposure_class        — derived from guarantor_entity_type
         guarantor_country_code          — null String
         guarantor_is_ccp_client_cleared — null Boolean
+        guarantor_scra_grade            — null String (B31 SCRA dispatch fallback)
     """
     schema_names = exposures.collect_schema().names()
     to_add: list[pl.Expr] = []
@@ -637,6 +739,8 @@ def _ensure_guarantee_substitution_columns(exposures: pl.LazyFrame) -> pl.LazyFr
         to_add.append(pl.lit(None).cast(pl.String).alias("guarantor_country_code"))
     if "guarantor_is_ccp_client_cleared" not in schema_names:
         to_add.append(pl.lit(None).cast(pl.Boolean).alias("guarantor_is_ccp_client_cleared"))
+    if "guarantor_scra_grade" not in schema_names:
+        to_add.append(pl.lit(None).cast(pl.Utf8).alias("guarantor_scra_grade"))
 
     return exposures.with_columns(to_add) if to_add else exposures
 
@@ -668,7 +772,11 @@ def _build_domestic_guarantor_expr(schema_names: list[str]) -> pl.Expr:
     return build_domestic_cgcb_guarantor_expr("guarantor_country_code", ccy_expr)
 
 
-def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool) -> pl.Expr:
+def _build_guarantor_rw_expr(
+    is_domestic_guarantor: pl.Expr,
+    is_basel_3_1: bool,
+    institution_short_term_flag_col: str | None = None,
+) -> pl.Expr:
     """Build the full when/then chain that maps a guarantor to its RW.
 
     Uses ``guarantor_exposure_class`` (derived from ENTITY_TYPE_TO_SA_CLASS by
@@ -682,7 +790,9 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
         CCP (CRR Art. 306, CRE54.14-15)
         Named MDB (Art. 117(2)) / International Organisation (Art. 118)
         MDB Table 2B (Art. 117(1))
-        Institution (ECRA / SCRA via build_institution_guarantor_rw_expr)
+        Institution (ECRA / SCRA via build_institution_guarantor_rw_expr —
+            short-term Art. 120(2) Table 4 when the borrower exposure's
+            residual maturity ≤ 3 months, otherwise long-term Table 3)
         PSE (Art. 116(2) Table 2A, sovereign-derived for unrated)
         RGLA (Art. 115(1)(b) Table 1B, sovereign-derived for unrated)
         Corporate (Art. 122 corporate CQS table)
@@ -725,14 +835,12 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
             .then(pl.lit(_SA_SHARED_RW["qccp_client_cleared"]))
             .otherwise(pl.lit(_SA_SHARED_RW["qccp_proprietary"]))
         )
+        # International Organisation (Art. 118): 0% unconditional.
+        .when(gec == "international_organisation")
+        .then(pl.lit(_SA_SHARED_RW["io"]))
         # Named MDB (Art. 117(2)): 0% unconditional.
         .when((gec == "mdb") & (pl.col("guarantor_entity_type").fill_null("") == "mdb_named"))
         .then(pl.lit(_SA_SHARED_RW["mdb_named"]))
-        # International Organisation (Art. 118): 0% unconditional.
-        .when(
-            (gec == "mdb") & (pl.col("guarantor_entity_type").fill_null("") == "international_org")
-        )
-        .then(pl.lit(_SA_SHARED_RW["io"]))
         # Rated / unrated non-named MDB — Table 2B (Art. 117(1)).
         .when(gec == "mdb")
         .then(
@@ -744,9 +852,17 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
         )
         # Institution guarantors — RW driven from INSTITUTION_RISK_WEIGHTS_CRR /
         # INSTITUTION_RISK_WEIGHTS_B31_ECRA so the dicts remain the single source
-        # of truth.
+        # of truth. When the borrower exposure's residual maturity ≤ 3 months
+        # (CRR/PS1/26 Art. 120(2)), the short-term Table 4 dicts apply instead.
         .when(gec == "institution")
-        .then(build_institution_guarantor_rw_expr("guarantor_cqs", is_basel_3_1))
+        .then(
+            build_institution_guarantor_rw_expr(
+                "guarantor_cqs",
+                is_basel_3_1,
+                short_term_flag_col=institution_short_term_flag_col,
+                scra_grade_col="guarantor_scra_grade",
+            )
+        )
         # PSE guarantors — Art. 116(2) Table 2A for rated, sovereign-derived for unrated.
         .when(gec == "pse")
         .then(
@@ -766,11 +882,14 @@ def _build_guarantor_rw_expr(is_domestic_guarantor: pl.Expr, is_basel_3_1: bool)
             )
         )
         # Corporate guarantors — Art. 122 corporate CQS table.
+        # Basel 3.1 (PRA PS1/26 Art. 122(2) Table 6): CQS3 = 75% (CRR: 100%);
+        # PRA retains CQS5 = 150%. Gated on framework so CRR runs are
+        # unchanged.
         .when(gec.is_in(["corporate", "corporate_sme"]))
         .then(
             _cqs_table_lookup_expr(
                 "guarantor_cqs",
-                CORPORATE_RISK_WEIGHTS,
+                B31_CORPORATE_RISK_WEIGHTS if is_basel_3_1 else CORPORATE_RISK_WEIGHTS,
                 corporate_unrated,
             )
         )
@@ -839,6 +958,23 @@ def _prepare_risk_weight_lookup(
     # Cache uppercase-class once and map detailed classes onto CQS-lookup
     # classes. Sentinel -1 for null CQS so the left join matches.
     upper = pl.col("exposure_class").str.to_uppercase()
+
+    # CRR Art. 117(1) / PRA PS1/26 Art. 117(1)(a): non-named MDBs are treated
+    # as institutions, so their primary CQS source is ``cp_institution_cqs``
+    # (the MDB's own ECAI rating expressed as a CQS). When the exposure has
+    # no top-level ``cqs`` (no rating attached at the rating-mapping stage)
+    # but the counterparty carries an ``institution_cqs``, lift it into
+    # ``cqs`` here so the downstream CQS-keyed branches and joins see it.
+    # Named MDBs (mdb_named) bypass CQS entirely later — coalescing here is
+    # harmless for them.
+    is_mdb_class = upper == "MDB"
+    exposures = exposures.with_columns(
+        pl.when(is_mdb_class & pl.col("cqs").is_null())
+        .then(pl.col("cp_institution_cqs"))
+        .otherwise(pl.col("cqs"))
+        .alias("cqs")
+    )
+
     exposures = exposures.with_columns(
         [
             pl.when(upper.str.contains("CENTRAL_GOVT", literal=True))
@@ -965,18 +1101,19 @@ def _apply_b31_risk_weight_overrides(
                 _SA_SHARED_RW["rgla_unrated"],
             )
         )
+        # International Organisation -> 0% (Art. 118).
+        .when(uc == "INTERNATIONAL_ORGANISATION")
+        .then(pl.lit(_SA_SHARED_RW["io"]))
         # Named MDB -> 0% (Art. 117(2)).
         .when((uc == "MDB") & (pl.col("cp_entity_type").fill_null("") == "mdb_named"))
         .then(pl.lit(_SA_SHARED_RW["mdb_named"]))
-        # International Organisation -> 0% (Art. 118).
-        .when((uc == "MDB") & (pl.col("cp_entity_type").fill_null("") == "international_org"))
-        .then(pl.lit(_SA_SHARED_RW["io"]))
         # Unrated non-named MDB -> 50% (Art. 117(1), Table 2B).
         .when((uc == "MDB") & (pl.col("cqs").is_null() | (pl.col("cqs") <= 0)))
         .then(pl.lit(_SA_SHARED_RW["mdb_unrated"]))
     )
 
     chain = _b31_append_institution_maturity_branches(chain, uc)
+    chain = _b31_append_corporate_maturity_branches(chain, uc)
 
     # Corporate / retail / misc tail of the chain.
     is_unrated_corporate = (
@@ -1083,6 +1220,15 @@ def _apply_crr_risk_weight_overrides(
         # Art. 114(3)/(4): Domestic CGCB -> 0% RW (overrides all CQS).
         pl.when(uc.str.contains("CENTRAL_GOVT", literal=True) & is_domestic_currency)
         .then(pl.lit(0.0))
+        # Art. 137(1)-(2) Table 9: nominated ECA / MEIP score → direct sovereign
+        # RW when no ECAI rating is present. Takes precedence over the Art. 114
+        # unrated 100% fallback but not over the Art. 114(3)/(4) domestic 0%.
+        .when(
+            uc.str.contains("CENTRAL_GOVT", literal=True)
+            & (pl.col("cqs").is_null() | (pl.col("cqs") <= 0))
+            & pl.col("cp_eca_score").is_not_null()
+        )
+        .then(_eca_meip_rw_expr())
         # QCCP trade exposures (CRR Art. 306, CRE54.14-15).
         .when(pl.col("cp_entity_type") == "ccp")
         .then(
@@ -1156,15 +1302,30 @@ def _apply_crr_risk_weight_overrides(
                 _SA_SHARED_RW["rgla_unrated"],
             )
         )
+        # International Organisation -> 0% (Art. 118).
+        .when(uc == "INTERNATIONAL_ORGANISATION")
+        .then(pl.lit(_SA_SHARED_RW["io"]))
         # Named MDB -> 0% (Art. 117(2)).
         .when((uc == "MDB") & (pl.col("cp_entity_type").fill_null("") == "mdb_named"))
         .then(pl.lit(_SA_SHARED_RW["mdb_named"]))
-        # International Organisation -> 0% (Art. 118).
-        .when((uc == "MDB") & (pl.col("cp_entity_type").fill_null("") == "international_org"))
-        .then(pl.lit(_SA_SHARED_RW["io"]))
-        # Unrated non-named MDB -> 50% (Art. 117(1), Table 2B).
+        # CRR Art. 117(1): non-named MDBs are treated as institutions and use
+        # the institution risk weight tables (Art. 120 Table 3 if rated, Art.
+        # 121 Table 5 sovereign-derived if unrated). The dedicated Basel 3.1
+        # Table 2B path (PRA PS1/26 Art. 117(1)(a)) does NOT apply under CRR.
+        # The Art. 119(2)/120(2)/121(3) short-term carve-outs are excluded for
+        # MDBs by Art. 117(1), so no short-term branch is consulted here.
+        # Rated non-named MDB: Art. 120 Table 3 (institution own CQS).
+        .when((uc == "MDB") & pl.col("cqs").is_not_null() & (pl.col("cqs") > 0))
+        .then(build_institution_guarantor_rw_expr("cqs", is_basel_3_1=False))
+        # Unrated non-named MDB: Art. 121 Table 5 sovereign-derived; Art. 121
+        # fallback (100%) when the MDB's home sovereign CQS is unknown.
         .when((uc == "MDB") & (pl.col("cqs").is_null() | (pl.col("cqs") <= 0)))
-        .then(pl.lit(_SA_SHARED_RW["mdb_unrated"]))
+        .then(
+            _sovereign_derived_rw_expr(
+                INSTITUTION_RISK_WEIGHTS_SOVEREIGN_DERIVED,
+                float(INSTITUTION_RISK_WEIGHTS_CRR[CQS.UNRATED]),
+            )
+        )
     )
 
     chain = _crr_append_institution_maturity_branches(chain, uc)
@@ -1179,9 +1340,12 @@ def _apply_crr_risk_weight_overrides(
             & (pl.col("cqs").is_null() | (pl.col("cqs") <= 0))
         )
         .then(_crr_unrated_cb_rw_expr())
-        # High-risk items (Art. 128).
-        .when(uc == "HIGH_RISK")
-        .then(pl.lit(_SA_CRR_RW["high_risk"]))
+        # CRR Art. 128 (high-risk items, 150%) was OMITTED from UK onshored CRR
+        # by SI 2021/1078 reg. 6(3)(a) with effect from 1 January 2022. Exposures
+        # that map to HIGH_RISK under the entity-type table therefore fall through
+        # to the OTHER (residual) class at 100% under UK CRR. The 150% treatment
+        # is re-introduced under PRA PS1/26 Basel 3.1 — see
+        # _apply_b31_risk_weight_overrides.
         # Other Items (Art. 134): sub-type-specific risk weights.
         .when(
             (uc == "OTHER")
@@ -1325,10 +1489,22 @@ def _apply_defaulted_risk_weight(
             & ~pl.col("has_income_cover").fill_null(False)
         )
 
-        # PS1/26 Art. 127(1): denominator is the outstanding amount of the
-        # item or facility — ead_final post-CRM reduction.
+        # PS1/26 Art. 127(1): denominator is "the outstanding amount of the
+        # item or facility" — gross outstanding (pre-CRM, pre-provision).
+        # Reconstruct from ead_gross (post-CCF, post-provision, pre-CRM) plus
+        # provision_deducted; fall back to the pre-CRM ead column when
+        # ead_gross is absent (single-exposure unit-test path), which yields
+        # the same gross outstanding when no FCCM collateral has been applied.
+        _schema_names = exposures.collect_schema().names()
+        if "ead_gross" in _schema_names:
+            gross_outstanding = pl.col("ead_gross") + pl.col("provision_deducted")
+        else:
+            gross_outstanding = ead + pl.col("provision_deducted")
         provision_rw = (
-            pl.when(pl.col("provision_allocated") >= _SA_B31_RW["defaulted_threshold"] * ead)
+            pl.when(
+                pl.col("provision_allocated")
+                >= _SA_B31_RW["defaulted_threshold"] * gross_outstanding
+            )
             .then(pl.lit(_SA_B31_RW["defaulted_high"]))
             .otherwise(pl.lit(_SA_B31_RW["defaulted_low"]))
         )
@@ -1572,11 +1748,31 @@ class SALazyFrame:
         # Art. 114(3)/(4) domestic CGCB-guarantor currency check.
         is_domestic_guarantor = _build_domestic_guarantor_expr(exposures.collect_schema().names())
 
+        # CRR/PS1/26 Art. 120(2) Table 4 short-term institution guarantor flag.
+        # The substituted exposure's original maturity (≤ 3 months / 0.25y)
+        # drives the short-term carve-out — same convention as the direct
+        # institution short-term branches elsewhere in this module (Art. 120(2),
+        # Art. 121(3)). ``original_maturity_years`` is derived earlier in
+        # ``apply_risk_weights`` from (maturity_date - value_date) when absent,
+        # so it is always populated here.
+        short_term_flag_col = "_inst_guarantor_short_term"
+        if "original_maturity_years" in exposures.collect_schema().names():
+            short_term_expr = pl.col("original_maturity_years").is_not_null() & (
+                pl.col("original_maturity_years") <= 0.25
+            )
+        else:
+            short_term_expr = pl.lit(False)
+        exposures = exposures.with_columns(
+            short_term_expr.fill_null(False).alias(short_term_flag_col),
+        )
+
         # Look up guarantor's RW based on exposure class + CQS.
         exposures = exposures.with_columns(
-            _build_guarantor_rw_expr(is_domestic_guarantor, config.is_basel_3_1).alias(
-                "guarantor_rw"
-            ),
+            _build_guarantor_rw_expr(
+                is_domestic_guarantor,
+                config.is_basel_3_1,
+                institution_short_term_flag_col=short_term_flag_col,
+            ).alias("guarantor_rw"),
         )
 
         # Check if guarantee is beneficial (guarantor RW < borrower RW)
@@ -1689,7 +1885,14 @@ class SALazyFrame:
 
         has_mismatch = pl.col(income_col).is_not_null() & (pl.col(income_col) != pl.col("currency"))
 
-        mismatch_applies = is_retail_or_re & has_mismatch
+        # Art. 123B(2) / CRE20.93: the 1.5x mismatch multiplier is suppressed when
+        # the exposure is hedged against currency risk. Default to False (unhedged)
+        # when the column is missing or null.
+        is_hedged_expr = (
+            pl.col("is_hedged").fill_null(False) if "is_hedged" in cols else pl.lit(False)
+        )
+
+        mismatch_applies = is_retail_or_re & has_mismatch & ~is_hedged_expr
 
         return self._lf.with_columns(
             [

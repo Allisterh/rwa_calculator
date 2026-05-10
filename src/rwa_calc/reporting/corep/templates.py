@@ -81,7 +81,7 @@ SA_EXPOSURE_CLASS_ROWS: dict[str, tuple[str, str]] = {
     "rgla": ("0020", "Regional governments or local authorities"),
     "pse": ("0030", "Public sector entities"),
     "mdb": ("0040", "Multilateral development banks"),
-    "international_org": ("0050", "International organisations"),
+    "international_organisation": ("0050", "International organisations"),
     "institution": ("0060", "Institutions"),
     "corporate": ("0070", "Corporates"),
     "corporate_sme": ("0071", "  Of which: SME corporates"),
@@ -116,6 +116,7 @@ IRB_EXPOSURE_CLASS_ROWS: dict[str, tuple[str, str]] = {
 # waterfall from original exposure through CRM to final RWEA.
 CRR_C07_COLUMNS: list[COREPColumn] = [
     COREPColumn("0010", "Original exposure pre conversion factors", "Exposure"),
+    COREPColumn("0020", "Exposures deducted from own funds", "Exposure"),
     COREPColumn("0030", "(-) Value adjustments and provisions", "Exposure"),
     COREPColumn("0040", "Exposure net of value adjustments and provisions", "Exposure"),
     COREPColumn("0050", "(-) Guarantees", "CRM Substitution: Unfunded"),
@@ -156,6 +157,7 @@ CRR_C07_COLUMNS: list[COREPColumn] = [
 # changes 0160 from 0% CCF to 10% CCF.
 B31_C07_COLUMNS: list[COREPColumn] = [
     COREPColumn("0010", "Original exposure pre conversion factors", "Exposure"),
+    COREPColumn("0020", "Exposures deducted from own funds", "Exposure"),
     COREPColumn("0030", "(-) Value adjustments and provisions", "Exposure"),
     COREPColumn(
         "0035", "(-) Adjustment due to on-balance sheet netting", "Exposure"
@@ -1537,7 +1539,7 @@ CRR_C09_01_ROWS: list[COREPRow] = [
     COREPRow("0020", "Regional governments or local authorities", "rgla"),
     COREPRow("0030", "Public sector entities", "pse"),
     COREPRow("0040", "Multilateral development banks", "mdb"),
-    COREPRow("0050", "International organisations", "international_org"),
+    COREPRow("0050", "International organisations", "international_organisation"),
     COREPRow("0060", "Institutions", "institution"),
     COREPRow("0070", "Corporates", "corporate"),
     COREPRow("0075", "  of which: SME", "corporate_sme"),
@@ -1568,7 +1570,7 @@ B31_C09_01_ROWS: list[COREPRow] = [
     COREPRow("0020", "Regional governments or local authorities", "rgla"),
     COREPRow("0030", "Public sector entities", "pse"),
     COREPRow("0040", "Multilateral development banks", "mdb"),
-    COREPRow("0050", "International organisations", "international_org"),
+    COREPRow("0050", "International organisations", "international_organisation"),
     COREPRow("0060", "Institutions", "institution"),
     COREPRow("0070", "Corporates", "corporate"),
     COREPRow("0075", "  of which: SME", "corporate_sme"),
@@ -1724,7 +1726,7 @@ C09_01_SA_CLASS_MAP: dict[str, str] = {
     "rgla": "rgla",
     "pse": "pse",
     "mdb": "mdb",
-    "international_org": "international_org",
+    "international_organisation": "international_organisation",
     "institution": "institution",
     "corporate": "corporate",
     "corporate_sme": "corporate",

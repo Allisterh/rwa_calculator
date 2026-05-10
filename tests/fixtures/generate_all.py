@@ -80,9 +80,179 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
         ),
         ("P1.156 (PSM guarantor LGD seniority/FSE-aware Art. 236/161)", "p1_156", _generate_p1156),
         (
+            "P1.157 (PSM 'no better than direct' PD floor Art. 160(4))",
+            "p1_157",
+            _generate_p1157,
+        ),
+        (
             "P1.182 (long-established PE/VC 250% vs 400% business-age split)",
             "p1_182",
             _generate_p1182,
+        ),
+        (
+            "P1.100 (CRR Art. 137 ECA MEIP score 2 → 20% sovereign RW)",
+            "p1_100",
+            _generate_p1100,
+        ),
+        (
+            "P1.101 (CRR Art. 226(1) non-daily revaluation haircut adjustment)",
+            "p1_101",
+            _generate_p1101,
+        ),
+        (
+            "P1.104 (CRR Art. 239(1) FCSM binary maturity-mismatch eligibility)",
+            "p1_104_art_239_1_fcsm_maturity",
+            _generate_p1104,
+        ),
+        (
+            "P1.181 (CRR Art. 126(2)(d) commercial RE proportion split)",
+            "p1_181",
+            _generate_p1181,
+        ),
+        (
+            "P1.105 (B31 Art. 120(2B) Table 4A short-term institution ECAI RW)",
+            "p1_105",
+            _generate_p1105,
+        ),
+        (
+            "P1.103 (B31 Art. 122(3) Table 6A short-term corporate ECAI RW)",
+            "p1_103",
+            _generate_p1103,
+        ),
+        (
+            "P1.128 (B31 Art. 121(4) SCRA short-term trade finance exception)",
+            "p1_128",
+            _generate_p1128,
+        ),
+        (
+            "P1.186 (CRR Art. 224(2)(a) FX haircut H_fx default liquidation scaling)",
+            "p1_186",
+            _generate_p1186,
+        ),
+        (
+            "P1.96 (CRR Art. 197/207(2) covered-bond collateral haircut routing)",
+            "p1_96",
+            _generate_p196,
+        ),
+        (
+            "P1.118 (CRR Art. 166(9) F-IRB 20% CCF short-term trade LC exception)",
+            "p1_118",
+            _generate_p1118,
+        ),
+        (
+            "P1.120 (B31 Art. 127(1) defaulted corporate FCCM cash, gross denominator fix)",
+            "p1_120",
+            _generate_p1120,
+        ),
+        (
+            "P1.151 (B31 Art. 161(1)(e)/(f)/(g) purchased receivables F-IRB LGD routing)",
+            "p1_151",
+            _generate_p1151,
+        ),
+        (
+            "P1.184 (CRR Art. 117(1) MDB non-named institution routing)",
+            "p1_184",
+            _generate_p1184,
+        ),
+        (
+            "P1.154 (CRR Art. 118 international org vs Art. 117 non-named MDB routing)",
+            "p1_154",
+            _generate_p1154,
+        ),
+        (
+            "P1.154-B31 (B31 Art. 118 IO discriminator vs Art. 117(1)(a) Table 2B MDB CQS 2 = 30%)",
+            "p1_154_b31",
+            _generate_p1154b31,
+        ),
+        (
+            "P1.93 (B31 Art. 222(4) FCSM SFT 0%/10% carve-out + Art. 222(6) non-SFT gating)",
+            "p1_93",
+            _generate_p193,
+        ),
+        (
+            "P1.159 (PSM correlation re-derivation reads guarantor class Art. 236(1)(a)(i))",
+            "p1_159",
+            _generate_p1159,
+        ),
+        (
+            "P2.14 (CRR Art. 128 high-risk omitted SI 2021/1078 → residual 100% RW)",
+            "p2_14",
+            _generate_p214,
+        ),
+        (
+            "P1.110 (B31 SA RWSM corporate CQS-3 guarantor RW = 75% Art. 122(2) Table 6)",
+            "p1_110",
+            _generate_p1110,
+        ),
+        (
+            "P1.109 (CRR Art. 239(3) maturity mismatch scaling on unfunded protection)",
+            "p1_109",
+            _generate_p1109,
+        ),
+        (
+            "P1.160 (PSM LGD routing by guarantor_seniority — subordinated Art. 161(1)(b))",
+            "p1_160",
+            _generate_p1160,
+        ),
+        (
+            "P1.145 (deterministic dedup of duplicate model_permissions rows)",
+            "p1_145",
+            _generate_p1145,
+        ),
+        (
+            "P1.165 (CRR receivables collateral, F-IRB, no Art. 224 volatility haircut)",
+            "p1_165",
+            _generate_p1165,
+        ),
+        (
+            "P1.147 (ValidationRequest IRB mode requires model_permissions)",
+            "api_validation",
+            _generate_p1147,
+        ),
+        (
+            "P2.39 (equity SA-only enforcement — Art. 147A classifier guard)",
+            "p2_39",
+            _generate_p239,
+        ),
+        (
+            "P1.123 (CRR Art. 223(5) FCCM exposure volatility haircut HE for SFT exposures)",
+            "p1_123",
+            _generate_p1123,
+        ),
+        (
+            "P1.140 (B31 Art. 124(3)/124K ADC classification derivation via is_under_construction)",
+            "p1_140",
+            _generate_p1140,
+        ),
+        (
+            "P1.161 (PRA Art. 191A(2)(e)(i) funded-only look-through two-layer protection)",
+            "p1_161",
+            _generate_p1161,
+        ),
+        (
+            "P1.122 (CRR Art. 120(2) Table 4 short-term institution guarantor substitution)",
+            "p1_122",
+            _generate_p1122,
+        ),
+        (
+            "P1.95 (B31 SCRA-grade dispatch for unrated institution guarantor)",
+            "p1_95",
+            _generate_p195,
+        ),
+        (
+            "P1.127 (CRR Art. 159 Pool B EL shortfall — AVA + other_OFR no double-count)",
+            "p1_127",
+            _generate_p1127,
+        ),
+        (
+            "P2.18 (B31 Art. 226(1) 20-day secured-lending / FX-mismatch / weekly reval)",
+            "p2_18",
+            _generate_p218,
+        ),
+        (
+            "P1.94a (is_hedged flag gates Art. 123B currency-mismatch multiplier)",
+            "p1_94a",
+            _generate_p194a,
         ),
     ]
 
@@ -495,6 +665,19 @@ def _generate_p1156(output_dir: Path) -> list[tuple[str, int]]:
         sys.modules.pop("p1_156", None)
 
 
+def _generate_p1157(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.157 fixtures (PSM 'no better than direct' PD floor Art. 160(4))."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_157 import save_p1157_fixtures
+
+        saved = save_p1157_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_157", None)
+
+
 def _generate_p1182(output_dir: Path) -> list[tuple[str, int]]:
     """Generate P1.182 fixtures (long-established PE/VC 250% vs 400% business-age split)."""
     sys.path.insert(0, str(output_dir))
@@ -506,6 +689,581 @@ def _generate_p1182(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_182", None)
+
+
+def _generate_p1100(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.100 fixtures (CRR Art. 137 ECA MEIP score 2 → 20% sovereign RW)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_100 import save_p1100_fixtures
+
+        saved = save_p1100_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_100", None)
+
+
+def _generate_p1101(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.101 fixtures (CRR Art. 226(1) non-daily revaluation haircut adjustment)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_101 import save_p1101_fixtures
+
+        saved = save_p1101_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_101", None)
+
+
+def _generate_p1104(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.104 fixtures (CRR Art. 239(1) FCSM binary maturity-mismatch eligibility)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_104 import save_p1104_fixtures
+
+        saved = save_p1104_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_104", None)
+
+
+def _generate_p1181(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.181 fixtures (CRR Art. 126(2)(d) commercial RE proportion split)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_181 import save_p1181_fixtures
+
+        saved = save_p1181_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_181", None)
+
+
+def _generate_p1105(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.105 fixtures (B31 Art. 120(2B) Table 4A short-term ECAI institution RW)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_105 import save_p1105_fixtures
+
+        saved = save_p1105_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_105", None)
+
+
+def _generate_p1103(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.103 fixtures (B31 Art. 122(3) Table 6A short-term ECAI corporate RW)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_103 import save_p1103_fixtures
+
+        saved = save_p1103_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_103", None)
+
+
+def _generate_p1128(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.128 fixtures (B31 Art. 121(4) SCRA short-term trade finance exception)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_128 import save_p1128_fixtures
+
+        saved = save_p1128_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_128", None)
+
+
+def _generate_p1118(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.118 fixtures (CRR Art. 166(9) F-IRB 20% CCF short-term trade LC)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_118 import save_p1118_fixtures
+
+        saved = save_p1118_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_118", None)
+
+
+def _generate_p1186(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.186 fixtures (CRR Art. 224(2)(a) FX haircut H_fx default liquidation scaling)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_186 import save_p1186_fixtures
+
+        saved = save_p1186_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_186", None)
+
+
+def _generate_p196(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.96 fixtures (CRR Art. 197/207(2) covered-bond collateral haircut routing)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_96 import save_p196_fixtures
+
+        saved = save_p196_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_96", None)
+
+
+def _generate_p1120(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.120 fixtures (B31 Art. 127(1) defaulted corporate FCCM cash, gross denominator fix)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_120 import save_p1120_fixtures
+
+        saved = save_p1120_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_120", None)
+
+
+def _generate_p1151(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.151 fixtures (B31 Art. 161(1)(e)/(f)/(g) purchased receivables LGD routing)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_151 import save_p1151_fixtures
+
+        saved = save_p1151_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_151", None)
+
+
+def _generate_p1184(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.184 fixtures (CRR Art. 117(1) MDB non-named institution routing)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_184 import save_p1184_fixtures
+
+        saved = save_p1184_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_184", None)
+
+
+def _generate_p1154(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.154 fixtures (CRR Art. 118 international org vs Art. 117 non-named MDB)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_154 import save_p1154_fixtures
+
+        saved = save_p1154_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_154", None)
+
+
+def _generate_p1154b31(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.154-B31 fixtures (B31 Art. 118 IO discriminator vs Art. 117(1)(a) Table 2B MDB)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_154_b31 import save_p1154b31_fixtures
+
+        data_dir = output_dir / "data"
+        saved = save_p1154b31_fixtures(data_dir)
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_154_b31", None)
+
+
+def _generate_p193(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.93 fixtures (B31 Art. 222(4) FCSM SFT 0%/10% carve-out + Art. 222(6))."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_93 import save_p193_fixtures
+
+        saved = save_p193_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_93", None)
+
+
+def _generate_p1159(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.159 fixtures (PSM correlation re-derivation reads guarantor class Art. 236(1)(a)(i))."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_159 import save_p1159_fixtures
+
+        saved = save_p1159_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_159", None)
+
+
+def _generate_p214(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P2.14 fixtures (CRR Art. 128 high-risk omitted via SI 2021/1078)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_14 import save_p214_fixtures
+
+        saved = save_p214_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_14", None)
+
+
+def _generate_p1110(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.110 fixtures (B31 SA RWSM corporate CQS-3 guarantor RW = 75%)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_110 import save_p1110_fixtures
+
+        data_dir = output_dir / "data"
+        saved = save_p1110_fixtures(data_dir)
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_110", None)
+
+
+def _generate_p1109(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.109 fixtures (CRR Art. 239(3) maturity mismatch on unfunded protection)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_109 import save_p1109_fixtures
+
+        saved = save_p1109_fixtures(output_dir / "data")
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_109", None)
+
+
+def _generate_p1160(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.160 fixtures (PSM LGD routing by guarantor_seniority — subordinated case)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_160 import save_p1160_fixtures
+
+        saved = save_p1160_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_160", None)
+
+
+def _generate_p1145(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.145 fixtures (deterministic dedup of duplicate model_permissions rows)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_145 import save_p1145_fixtures
+
+        saved = save_p1145_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_145", None)
+
+
+def _generate_p1165(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.165 fixtures (CRR receivables collateral, F-IRB, no Art. 224 volatility haircut)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_165 import save_p1165_fixtures
+
+        saved = save_p1165_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_165", None)
+
+
+def _generate_p1147(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P1.147 builder imports (Python-only builder — no persistent parquet output).
+
+    P1.147 tests the API/validation-plumbing path: DataPathValidator must append
+    config/model_permissions.parquet to files_missing and emit a VAL003 APIError
+    when permission_mode="irb" and that file is absent.
+
+    The fixture writes files into a caller-supplied temporary directory at test
+    time (via write_mandatory_minimum), not into a fixed subdirectory. This
+    function smoke-checks the import and confirms the builder round-trips
+    correctly into a tempfile directory without error.
+    """
+    import tempfile
+
+    sys.path.insert(0, str(output_dir))
+    try:
+        from build_mandatory_only import (  # noqa: PLC0415
+            COUNTERPARTY_REF,
+            FACILITY_REF,
+            LOAN_REF,
+            write_mandatory_minimum,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            from pathlib import Path as _Path  # noqa: PLC0415
+
+            result = write_mandatory_minimum(_Path(tmp))
+            parquets = list(result.rglob("*.parquet"))
+            if len(parquets) != 5:
+                raise AssertionError(
+                    f"Expected 5 mandatory parquet files, got {len(parquets)}: {parquets}"
+                )
+            mp = result / "config" / "model_permissions.parquet"
+            if mp.exists():
+                raise AssertionError("config/model_permissions.parquet must NOT be written")
+
+            # Confirm the three scenario constants are exported
+            for const_name, val in [
+                ("COUNTERPARTY_REF", COUNTERPARTY_REF),
+                ("LOAN_REF", LOAN_REF),
+                ("FACILITY_REF", FACILITY_REF),
+            ]:
+                if not isinstance(val, str) or not val:
+                    raise AssertionError(f"{const_name} must be a non-empty string")
+
+        return [("(python-only builder — no persistent parquet)", 0)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("build_mandatory_only", None)
+
+
+def _generate_p239(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P2.39 builder imports (no parquet output — Python-only builder).
+
+    P2.39 tests classifier routing for the equity SA-only guard: the classifier
+    must enforce SA-only for equity exposures regardless of IRBPermissions
+    configuration.  Like P1.125 and P1.126, this is a Python-only builder that
+    constructs in-memory LazyFrames.  This function smoke-checks both named
+    scenario bundles and verifies the critical schema invariants.
+
+    The equity exposure EX_EQ_147A_H sits on bundle.exposures (the main
+    LazyFrame), NOT on bundle.equity_exposures.  This routes it through
+    _build_approach_expr() in classifier.py — the unit under test.
+    """
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_39 import (  # noqa: F401
+            COUNTERPARTY_REF,
+            EQUITY_EXPOSURE_REF,
+            make_scenario_b31_bundle,
+            make_scenario_crr_bundle,
+        )
+
+        # Smoke-check: both bundles must construct without raising.
+        bundle_b31 = make_scenario_b31_bundle()
+        bundle_crr = make_scenario_crr_bundle()
+
+        # Invariant 1: equity_exposures must be None on both bundles — the equity
+        # row lives on bundle.exposures, not on the equity_exposures path.
+        for label, bundle in [("B31", bundle_b31), ("CRR", bundle_crr)]:
+            if bundle.equity_exposures is not None:
+                raise AssertionError(
+                    f"Scenario {label}: equity_exposures must be None "
+                    "(equity row must be on main exposures LazyFrame)"
+                )
+
+        # Invariant 2: EX_EQ_147A_H must appear in bundle.exposures (main frame).
+        for label, bundle in [("B31", bundle_b31), ("CRR", bundle_crr)]:
+            exp_df = bundle.exposures.collect()
+            refs = exp_df["exposure_reference"].to_list()
+            if EQUITY_EXPOSURE_REF not in refs:
+                raise AssertionError(
+                    f"Scenario {label}: bundle.exposures must contain {EQUITY_EXPOSURE_REF!r}"
+                )
+
+        # Invariant 3: EX_EQ_147A_H row must have exposure_class="equity" and
+        # exposure_class_irb="equity" on the main exposures frame.
+        for label, bundle in [("B31", bundle_b31), ("CRR", bundle_crr)]:
+            exp_df = bundle.exposures.collect()
+            eq_row = exp_df.filter(pl.col("exposure_reference") == EQUITY_EXPOSURE_REF)
+            if "exposure_class" in eq_row.columns:
+                ec = eq_row["exposure_class"][0]
+                if ec != "equity":
+                    raise AssertionError(
+                        f"Scenario {label}: EX_EQ_147A_H exposure_class must be 'equity' "
+                        f"(got {ec!r})"
+                    )
+            if "exposure_class_irb" in eq_row.columns:
+                ec_irb = eq_row["exposure_class_irb"][0]
+                if ec_irb != "equity":
+                    raise AssertionError(
+                        f"Scenario {label}: EX_EQ_147A_H exposure_class_irb must be 'equity' "
+                        f"(got {ec_irb!r})"
+                    )
+
+        # Invariant 4: counterparty must be present and reference CP_EQ_147A_H.
+        for label, bundle in [("B31", bundle_b31), ("CRR", bundle_crr)]:
+            cp_df = bundle.counterparty_lookup.counterparties.collect()
+            cp_refs = cp_df["counterparty_reference"].to_list()
+            if COUNTERPARTY_REF not in cp_refs:
+                raise AssertionError(
+                    f"Scenario {label}: counterparties must contain {COUNTERPARTY_REF!r}"
+                )
+
+        # Invariant 5: counterparty entity_type must be "equity" (drives classifier
+        # to derive exposure_class="equity" via ENTITY_TYPE_TO_SA_CLASS mapping).
+        for label, bundle in [("B31", bundle_b31), ("CRR", bundle_crr)]:
+            cp_df = bundle.counterparty_lookup.counterparties.collect()
+            et = cp_df["entity_type"][0]
+            if et != "equity":
+                raise AssertionError(
+                    f"Scenario {label}: counterparty entity_type must be 'equity' (got {et!r})"
+                )
+
+        # Invariant 6: is_financial_sector_entity must be False (avoids FSE branch).
+        for label, bundle in [("B31", bundle_b31), ("CRR", bundle_crr)]:
+            cp_df = bundle.counterparty_lookup.counterparties.collect()
+            if "is_financial_sector_entity" not in cp_df.columns:
+                raise AssertionError(
+                    f"Scenario {label}: is_financial_sector_entity must be present"
+                )
+            if cp_df["is_financial_sector_entity"][0] is not False:
+                raise AssertionError(f"Scenario {label}: is_financial_sector_entity must be False")
+
+        # Invariant 7: model_permissions must be None on both bundles (config-side permissions only).
+        for label, bundle in [("B31", bundle_b31), ("CRR", bundle_crr)]:
+            if bundle.model_permissions is not None:
+                raise AssertionError(
+                    f"Scenario {label}: model_permissions must be None on the bundle "
+                    "(IRBPermissions are config-side for this scenario)"
+                )
+
+        # No parquet files written — report zero files, zero records.
+        return [("(python-only builder — no parquet)", 0)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_39", None)
+
+
+def _generate_p1123(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.123 fixtures (CRR Art. 223(5) FCCM exposure volatility haircut HE)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_123 import save_p1123_fixtures
+
+        saved = save_p1123_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_123", None)
+
+
+def _generate_p1140(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.140 fixtures (B31 Art. 124(3)/124K ADC classification via is_under_construction)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_140 import save_p1140_fixtures
+
+        saved = save_p1140_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_140", None)
+
+
+def _generate_p1161(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.161 fixtures (PRA Art. 191A(2)(e)(i) funded-only look-through)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_161 import save_p1161_fixtures
+
+        saved = save_p1161_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_161", None)
+
+
+def _generate_p1122(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.122 fixtures (CRR Art. 120(2) Table 4 short-term institution guarantor substitution)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_122 import save_p1122_fixtures
+
+        data_dir = output_dir / "data"
+        saved = save_p1122_fixtures(data_dir)
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_122", None)
+
+
+def _generate_p195(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.95 fixtures (B31 SCRA-grade dispatch for unrated institution guarantor)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_95 import save_p195_fixtures
+
+        saved = save_p195_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_95", None)
+
+
+def _generate_p1127(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.127 fixtures (CRR Art. 159 Pool B EL shortfall — AVA + other_OFR no double-count)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_127 import save_p1127_fixtures
+
+        saved = save_p1127_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_127", None)
+
+
+def _generate_p218(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P2.18 fixtures (B31 Art. 226(1) 20-day secured-lending / FX-mismatch / weekly reval)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_18 import save_p218_fixtures
+
+        saved = save_p218_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_18", None)
+
+
+def _generate_p194a(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.94a fixtures (is_hedged flag gates Art. 123B currency-mismatch multiplier)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_94a import save_p194a_fixtures
+
+        saved = save_p194a_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_94a", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

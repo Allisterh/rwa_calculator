@@ -79,6 +79,10 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     "ccf_modelled": ColumnSpec(pl.Float64, required=False),
     "ead_modelled": ColumnSpec(pl.Float64, required=False),
     "is_short_term_trade_lc": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 120(2B) Table 4A: True when the institution exposure
+    # carries a dedicated short-term ECAI assessment (vs a long-term rating
+    # applied to a short-term exposure under Art. 120(2) Table 4).
+    "has_short_term_ecai": ColumnSpec(pl.Boolean, default=False, required=False),
     # CRR Art. 166(8)(d) vs Art. 166(10): True for credit lines / NIFs / RUFs
     # (75% F-IRB CCF), False for issued OBS items (Art. 166(10) — 50% MR / 20% MLR).
     # Facilities default to True because a facility row is, by construction, a
@@ -86,6 +90,12 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     "is_obs_commitment": ColumnSpec(pl.Boolean, default=True, required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_buy_to_let": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
+    # under construction. Drives the ADC ("Acquisition, Development and
+    # Construction") classification path in the classifier. Combined with the
+    # corporate (non-natural-person) gate, a True value derives is_adc=True so
+    # the SA branch routes to the 150% Art. 124K(1) ADC risk weight.
+    "is_under_construction": ColumnSpec(pl.Boolean, default=False, required=False),
     "has_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sft": ColumnSpec(pl.Boolean, default=False, required=False),
     "facility_termination_date": ColumnSpec(pl.Date, required=False),
@@ -93,6 +103,13 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     # supersedes the maturity_date-derived M and bypasses the 1-year floor —
     # firm-owned judgement for short-term carve-outs.
     "effective_maturity": ColumnSpec(pl.Float64, required=False),
+    # PRA PS1/26 Art. 161(1)(e)/(f)/(g): purchased-receivables F-IRB LGD routing.
+    # Null for non-purchased-receivables exposures (default). When set, takes
+    # precedence over the seniority-based LGD selector:
+    #   "senior"        -> Art. 161(1)(e) LGD = 40% (B3.1) / 45% (CRR)
+    #   "subordinated"  -> Art. 161(1)(f) LGD = 100%
+    #   "dilution_risk" -> Art. 161(1)(g) LGD = 100% (B3.1) / 75% (CRR)
+    "purchased_receivables_subtype": ColumnSpec(pl.String, required=False),
 }
 
 LOAN_SCHEMA: dict[str, ColumnSpec] = {
@@ -112,6 +129,10 @@ LOAN_SCHEMA: dict[str, ColumnSpec] = {
     "seniority": ColumnSpec(pl.String, default="senior", required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_buy_to_let": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
+    # under construction — drives the ADC classification derivation in the
+    # classifier (combined with a corporate / non-natural-person gate).
+    "is_under_construction": ColumnSpec(pl.Boolean, default=False, required=False),
     "has_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sft": ColumnSpec(pl.Boolean, default=False, required=False),
     "effective_maturity": ColumnSpec(pl.Float64, required=False),
@@ -119,6 +140,25 @@ LOAN_SCHEMA: dict[str, ColumnSpec] = {
     "netting_facility_reference": ColumnSpec(pl.String, required=False),
     "due_diligence_performed": ColumnSpec(pl.Boolean, default=False, required=False),
     "due_diligence_override_rw": ColumnSpec(pl.Float64, required=False),
+    # PRA PS1/26 Art. 123B(2) / CRE20.93: loan-level hedge flag that suppresses
+    # the 1.5x retail/RE currency-mismatch multiplier when True. Defaults to
+    # False (unhedged — multiplier fires under FX mismatch).
+    "is_hedged": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 161(1)(e)/(f)/(g): purchased-receivables F-IRB LGD routing.
+    # Null for non-purchased-receivables exposures (default). When set, takes
+    # precedence over the seniority-based LGD selector:
+    #   "senior"        -> Art. 161(1)(e) LGD = 40% (B3.1) / 45% (CRR)
+    #   "subordinated"  -> Art. 161(1)(f) LGD = 100%
+    #   "dilution_risk" -> Art. 161(1)(g) LGD = 100% (B3.1) / 75% (CRR)
+    "purchased_receivables_subtype": ColumnSpec(pl.String, required=False),
+    # CRR Art. 223(5) FCCM exposure volatility haircut (HE) inputs. Populated when
+    # the exposure itself is a debt security (typical for SFTs where the firm lends
+    # out a bond — the bond carries its own price-volatility risk on the exposure
+    # side). Null/cash/standard loan exposures derive HE = 0. The same Art. 224
+    # Table 1 used for HC governs HE — keyed off these three fields.
+    "exposure_collateral_type": ColumnSpec(pl.String, required=False),
+    "exposure_security_cqs": ColumnSpec(pl.Int8, required=False),
+    "exposure_security_residual_maturity_years": ColumnSpec(pl.Float64, required=False),
     # Note: CCF fields (risk_type, ccf_modelled, is_short_term_trade_lc) are NOT included
     # because CCF only applies to off-balance sheet items (undrawn commitments, contingents).
     # Drawn loans are already on-balance sheet, so EAD = drawn_amount + interest directly.
@@ -148,12 +188,30 @@ CONTINGENTS_SCHEMA: dict[str, ColumnSpec] = {
     # Override to True for genuine commitment-style contingents (e.g., an
     # NIF / RUF booked as a contingent), in which case Art. 166(8)(d) -> 75% applies.
     "is_obs_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
+    # under construction — drives the ADC classification derivation in the
+    # classifier (combined with a corporate / non-natural-person gate).
+    "is_under_construction": ColumnSpec(pl.Boolean, default=False, required=False),
     "has_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sft": ColumnSpec(pl.Boolean, default=False, required=False),
     "effective_maturity": ColumnSpec(pl.Float64, required=False),
     "bs_type": ColumnSpec(pl.String, default="OFB", required=False),
     "due_diligence_performed": ColumnSpec(pl.Boolean, default=False, required=False),
     "due_diligence_override_rw": ColumnSpec(pl.Float64, required=False),
+    # PRA PS1/26 Art. 161(1)(e)/(f)/(g): purchased-receivables F-IRB LGD routing.
+    # Null for non-purchased-receivables exposures (default). When set, takes
+    # precedence over the seniority-based LGD selector:
+    #   "senior"        -> Art. 161(1)(e) LGD = 40% (B3.1) / 45% (CRR)
+    #   "subordinated"  -> Art. 161(1)(f) LGD = 100%
+    #   "dilution_risk" -> Art. 161(1)(g) LGD = 100% (B3.1) / 75% (CRR)
+    "purchased_receivables_subtype": ColumnSpec(pl.String, required=False),
+    # CRR Art. 223(5) FCCM exposure volatility haircut (HE) inputs — see
+    # LOAN_SCHEMA for full notes. Mirrored on contingents for symmetry with
+    # the loans schema; populated only when the contingent exposure is itself
+    # a debt security under an SFT.
+    "exposure_collateral_type": ColumnSpec(pl.String, required=False),
+    "exposure_security_cqs": ColumnSpec(pl.Int8, required=False),
+    "exposure_security_residual_maturity_years": ColumnSpec(pl.Float64, required=False),
 }
 
 COUNTERPARTY_SCHEMA: dict[str, ColumnSpec] = {
@@ -210,6 +268,18 @@ COUNTERPARTY_SCHEMA: dict[str, ColumnSpec] = {
     "sovereign_cqs": ColumnSpec(pl.Int32, required=False),
     "local_currency": ColumnSpec(pl.String, required=False),
     "institution_cqs": ColumnSpec(pl.Int8, required=False),
+    # CRR Art. 137(1)-(2) Table 9: nominated ECA's minimum export insurance
+    # premium (MEIP) score 0-7 used as a direct sovereign risk-weight input
+    # when no ECAI rating is available. Null when ECA path is not used.
+    "eca_score": ColumnSpec(pl.Int8, required=False),
+    # CRR Art. 227(3) / PRA PS1/26 Art. 227(3): True when the counterparty is
+    # enumerated as a core market participant (sovereigns/CBs eligible for 0%
+    # RW under Art. 114, supervised institutions and investment firms, certain
+    # insurance undertakings, regulated CIUs subject to capital requirements,
+    # regulated pension funds, recognised clearing organisations). Drives the
+    # Art. 222(4) FCSM SFT carve-out: 0% RW (CMP) vs 10% RW (non-CMP).
+    # Defaults to False (conservative — non-CMP treatment).
+    "is_core_market_participant": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
@@ -228,6 +298,12 @@ COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
     "original_maturity_years": ColumnSpec(pl.Float64, required=False),
     "is_eligible_financial_collateral": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_eligible_irb_collateral": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 191A(2)(d)-(f): two-layer protection look-through.
+    # Optional reference to the counterparty that posted the collateral (e.g.
+    # the guarantor for guarantee-anchored collateral). When the engine
+    # honours an Art. 191A(2)(e)(i) "funded-only" election, the collateral is
+    # re-anchored from the guarantee onto the original obligor exposure.
+    "posted_by_counterparty_reference": ColumnSpec(pl.String, required=False),
     # CRR Art. 181 / CRE36 / Basel 3.1 Art. 169A: AIRB own LGD already reflects
     # the collateral effect, so collateral incorporated into the firm's internal
     # LGD model must not contribute CRM benefit to non-AIRB exposures of the
@@ -251,6 +327,12 @@ COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
     # corporate / retail class. Not used under Basel 3.1.
     "rental_to_interest_ratio": ColumnSpec(pl.Float64, required=False),
     "liquidation_period_days": ColumnSpec(pl.Int32, required=False),
+    # CRR Art. 226(1) / PRA PS1/26 Art. 226(1): non-daily mark-to-market or
+    # non-daily-remargining adjustment. When N_R > 1 the supervisory haircut
+    # is scaled by sqrt((N_R + T_m - 1) / T_m) where T_m is the liquidation
+    # period in business days. Null is treated as daily revaluation (N_R=1)
+    # with no scaling applied.
+    "revaluation_frequency_days": ColumnSpec(pl.Int32, required=False),
     "qualifies_for_zero_haircut": ColumnSpec(pl.Boolean, default=False, required=False),
     "insurer_risk_weight": ColumnSpec(pl.Float64, required=False),
     "credit_event_reduction": ColumnSpec(pl.Float64, default=0.0, required=False),
@@ -277,6 +359,21 @@ GUARANTEE_SCHEMA: dict[str, ColumnSpec] = {
     # in PSM (parameter substitution) — Art. 161(1)(a)/(aa)/(b). Allowed
     # values: "senior", "subordinated". Engine treats missing as "senior".
     "guarantor_seniority": ColumnSpec(pl.String, required=False),
+    # PRA PS1/26 Art. 191A(2)(d)-(f): two-layer protection look-through.
+    # Flags a guarantee whose obligation is itself collateralised by the
+    # guarantor (e.g. cash pledged against the guarantee).  When True and
+    # ``look_through_election`` is "funded_only", the engine suppresses
+    # the guarantee row (no Art. 235 RWSM substitution) and re-anchors the
+    # guarantor-posted collateral directly onto the original obligor exposure.
+    "is_collateralised_by_guarantor": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 191A(2)(e)(i): election on how to recognise the
+    # two-layer protection. Allowed values:
+    #   "none"        — default; recognise the guarantee normally (no look-through).
+    #   "funded_only" — recognise ONLY the funded collateral; suppress the
+    #                   guarantee and re-anchor the collateral on the obligor.
+    #   "both"        — out of scope for the current implementation; treated
+    #                   as "none" with a CRM warning.
+    "look_through_election": ColumnSpec(pl.String, default="none", required=False),
 }
 
 PROVISION_SCHEMA: dict[str, ColumnSpec] = {
@@ -517,6 +614,9 @@ VALID_ENTITY_TYPES = {
 
 VALID_SENIORITY = {"senior", "subordinated"}
 
+# PRA PS1/26 Art. 161(1)(e)/(f)/(g): purchased-receivables F-IRB LGD sub-types.
+VALID_PURCHASED_RECEIVABLES_SUBTYPES = {"senior", "subordinated", "dilution_risk"}
+
 # RGLA / PSE entity types whose SA exposure class differs from their IRB
 # exposure class (CRR Art. 147(3)/147(4)(b)). Used by the classifier's
 # IRB-class sync (these are excluded from the SA-class sync because their
@@ -688,7 +788,12 @@ VALID_EQUITY_TYPES = {
     "other",
 }
 
-VALID_BENEFICIARY_TYPES = {"counterparty", "loan", "facility", "contingent"}
+VALID_BENEFICIARY_TYPES = {"counterparty", "loan", "facility", "contingent", "guarantee"}
+
+# PRA PS1/26 Art. 191A(2)(e)(i): allowed values for the look-through election
+# on a two-layer protection guarantee. "funded_only" is the only path
+# implemented today — "both" is reserved for future work (treated as "none").
+VALID_LOOK_THROUGH_ELECTIONS = {"none", "funded_only", "both"}
 
 VALID_PROTECTION_TYPES = {"guarantee", "credit_derivative"}
 
@@ -711,15 +816,20 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
         "seniority": VALID_SENIORITY,
         "risk_type": VALID_RISK_TYPES_INPUT,
         "underlying_risk_type": VALID_RISK_TYPES_INPUT,
+        "purchased_receivables_subtype": VALID_PURCHASED_RECEIVABLES_SUBTYPES,
     },
     "loans": {
         "seniority": VALID_SENIORITY,
+        "purchased_receivables_subtype": VALID_PURCHASED_RECEIVABLES_SUBTYPES,
+        "exposure_collateral_type": VALID_COLLATERAL_TYPES,
     },
     "contingents": {
         "seniority": VALID_SENIORITY,
         "bs_type": VALID_BS_TYPES,
         "risk_type": VALID_RISK_TYPES_INPUT,
         "underlying_risk_type": VALID_RISK_TYPES_INPUT,
+        "purchased_receivables_subtype": VALID_PURCHASED_RECEIVABLES_SUBTYPES,
+        "exposure_collateral_type": VALID_COLLATERAL_TYPES,
     },
     "counterparties": {
         "entity_type": VALID_ENTITY_TYPES,
@@ -751,6 +861,7 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
     "guarantees": {
         "beneficiary_type": VALID_BENEFICIARY_TYPES,
         "protection_type": VALID_PROTECTION_TYPES,
+        "look_through_election": VALID_LOOK_THROUGH_ELECTIONS,
     },
     "facility_mappings": {
         "child_type": VALID_CHILD_TYPES,
@@ -790,6 +901,12 @@ HIERARCHY_OUTPUT_SCHEMA: dict[str, ColumnSpec] = {
     "cp_sovereign_cqs": ColumnSpec(pl.Int32, required=False),
     "cp_local_currency": ColumnSpec(pl.String, required=False),
     "cp_institution_cqs": ColumnSpec(pl.Int8, required=False),
+    # CRR Art. 137(1)-(2) Table 9 — nominated ECA MEIP score (0-7).
+    "cp_eca_score": ColumnSpec(pl.Int8, required=False),
+    # CRR Art. 227(3) / PRA PS1/26 Art. 227(3) — core market participant flag
+    # propagated from COUNTERPARTY_SCHEMA. Used by the FCSM SFT carve-out
+    # (Art. 222(4)) to select 0% RW (True) vs 10% RW (False).
+    "cp_is_core_market_participant": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 # Columns produced by the CRM stage: collateral value buckets and provision

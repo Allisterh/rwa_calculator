@@ -156,12 +156,30 @@ class HaircutCalculator:
             liq = sft_default.cast(pl.Float64)
         scaling_factor = (liq / 10.0).sqrt()
 
-        # Scale collateral haircut by liquidation period
+        # Art. 226(1): non-daily mark-to-market / non-daily-remargining adjustment.
+        # When revaluation_frequency_days (N_R) > 1, scale the haircut upward by
+        # sqrt((N_R + T_m - 1) / T_m). Null or N_R <= 1 leaves the multiplier at 1.0.
+        # PS1/26 carries Art. 226(1) forward unchanged so the same gate applies under
+        # Basel 3.1 — selection is on collateral input, not framework.
+        has_reval_freq = "revaluation_frequency_days" in schema.names()
+        if has_reval_freq:
+            n_r = pl.col("revaluation_frequency_days").fill_null(1).cast(pl.Float64)
+            reval_factor = (
+                pl.when(n_r > 1.0).then(((n_r + liq - 1.0) / liq).sqrt()).otherwise(pl.lit(1.0))
+            )
+        else:
+            reval_factor = pl.lit(1.0)
+
+        # Scale collateral haircut by liquidation period, then apply the Art. 226(1)
+        # non-daily-revaluation multiplier (order matters per the spec composition
+        # H = H_n × sqrt(T_m/10) × sqrt((N_R + T_m - 1)/T_m)).
         # Non-financial collateral (real_estate, receivables, other_physical) uses Art. 230
         # HC values, not Art. 224 — do not scale those. However, the table join already
         # returns the correct base value; scaling only affects financial collateral and gold.
         collateral = collateral.with_columns(
-            (pl.col("collateral_haircut") * scaling_factor).alias("collateral_haircut")
+            (pl.col("collateral_haircut") * scaling_factor * reval_factor).alias(
+                "collateral_haircut"
+            )
         )
 
         # Apply FX haircut (also subject to liquidation period scaling per Art. 224 Table 4).
@@ -176,9 +194,12 @@ class HaircutCalculator:
         schema_names = collateral.collect_schema().names()
         has_zero_flag = "_is_zero_haircut" in schema_names
         coll_ccy_col = "original_currency" if "original_currency" in schema_names else "currency"
+        # Art. 226(1) symmetry: FX haircut is also subject to the non-daily-
+        # revaluation scaling — apply ``reval_factor`` after the Art. 226(2)
+        # liquidation-period factor, mirroring the collateral haircut path.
         fx_expr = (
             pl.when(pl.col(coll_ccy_col) != pl.col("exposure_currency"))
-            .then(pl.lit(fx_base) * scaling_factor)
+            .then(pl.lit(fx_base) * scaling_factor * reval_factor)
             .otherwise(pl.lit(0.0))
         )
         if has_zero_flag:
@@ -238,6 +259,137 @@ class HaircutCalculator:
         )
 
         return collateral
+
+    def apply_exposure_haircut(
+        self,
+        exposures: pl.LazyFrame,
+    ) -> pl.LazyFrame:
+        """
+        Add ``exposure_volatility_haircut`` (HE) column per CRR Art. 223(5).
+
+        HE is drawn from the same Art. 224 Table 1 as HC and is non-zero when
+        the exposure itself is a debt security — typical for SFTs where the
+        firm lends out a bond. Cash exposures and standard loan exposures (no
+        ``exposure_collateral_type``) carry HE = 0.
+
+        Liquidation-period scaling (Art. 226(2)) mirrors the collateral-side
+        path: ``is_sft=True`` → 5 days (Art. 224(2)(c)), else → 20 days
+        (Art. 224(2)(a)). Non-SFT rows carry HE = 0 because Art. 223(5) only
+        applies the exposure-side haircut for SFTs lending securities.
+
+        References:
+            CRR Art. 223(5): E* = max(0, E(1 + HE) - CVA(1 - HC - HFX))
+            CRR Art. 224 Table 1: supervisory haircuts (10-day base)
+            CRR Art. 224(2)(a)/(c): liquidation periods (20d / 5d)
+            CRR Art. 226(2): H_m = H_n × sqrt(T_m / 10)
+        """
+        schema = exposures.collect_schema()
+        names = schema.names()
+
+        # When the exposure-side columns are absent (legacy callers), the HE
+        # column collapses to 0.0 — preserves prior behaviour.
+        if "exposure_collateral_type" not in names:
+            return exposures.with_columns(pl.lit(0.0).alias("exposure_volatility_haircut"))
+
+        is_b31 = self._is_basel_3_1
+        ct = pl.col("exposure_collateral_type").str.to_lowercase()
+
+        # Map exposure security type to the canonical haircut-table key. Cash
+        # collapses to HE = 0, equity / non-bond rows fall through to "other".
+        # We only model bond securities here — other types are exotic on the
+        # exposure side and HE remains 0 conservatively.
+        norm_type = (
+            pl.when(ct.is_in(["govt_bond", "sovereign_bond", "government_bond", "gilt"]))
+            .then(pl.lit("govt_bond"))
+            .when(ct.is_in(["corp_bond", "corporate_bond"]))
+            .then(pl.lit("corp_bond"))
+            .otherwise(pl.lit(None, dtype=pl.String))
+        )
+
+        # Reuse the collateral maturity-band classifier but key off the
+        # exposure-side residual-maturity column.
+        if "exposure_security_residual_maturity_years" in names:
+            mat = pl.col("exposure_security_residual_maturity_years")
+        else:
+            mat = pl.lit(None, dtype=pl.Float64)
+        if is_b31:
+            band = (
+                pl.when(mat.is_null())
+                .then(pl.lit("10y_plus"))
+                .when(mat <= 1.0)
+                .then(pl.lit("0_1y"))
+                .when(mat <= 3.0)
+                .then(pl.lit("1_3y"))
+                .when(mat <= 5.0)
+                .then(pl.lit("3_5y"))
+                .when(mat <= 10.0)
+                .then(pl.lit("5_10y"))
+                .otherwise(pl.lit("10y_plus"))
+            )
+        else:
+            band = (
+                pl.when(mat.is_null())
+                .then(pl.lit("5y_plus"))
+                .when(mat <= 1.0)
+                .then(pl.lit("0_1y"))
+                .when(mat <= 5.0)
+                .then(pl.lit("1_5y"))
+                .otherwise(pl.lit("5y_plus"))
+            )
+
+        if "exposure_security_cqs" in names:
+            cqs_expr = pl.col("exposure_security_cqs").cast(pl.Int8).fill_null(-1)
+        else:
+            cqs_expr = pl.lit(-1).cast(pl.Int8)
+
+        exposures = exposures.with_columns(
+            [
+                norm_type.alias("_he_lookup_type"),
+                cqs_expr.alias("_he_lookup_cqs"),
+                band.alias("_he_lookup_maturity_band"),
+            ]
+        )
+
+        # Reuse the haircut table; only bond rows (cqs IS NOT NULL) are joined
+        # on. Equity / cash / null types miss the join → haircut becomes null
+        # → HE = 0.
+        ht = (
+            self._haircut_table.lazy()
+            .filter(pl.col("collateral_type").is_in(["govt_bond", "corp_bond"]))
+            .select(
+                pl.col("collateral_type").alias("_he_lookup_type"),
+                pl.col("cqs").cast(pl.Int8).alias("_he_lookup_cqs"),
+                pl.col("maturity_band").alias("_he_lookup_maturity_band"),
+                pl.col("haircut").alias("_he_haircut"),
+            )
+        )
+
+        exposures = exposures.join(
+            ht,
+            on=["_he_lookup_type", "_he_lookup_cqs", "_he_lookup_maturity_band"],
+            how="left",
+        )
+
+        # Liquidation-period scaling: Art. 226(2). is_sft=True → 5d; else 20d.
+        sft_flag = pl.col("is_sft").fill_null(False) if "is_sft" in names else pl.lit(False)
+        liq = (
+            pl.when(sft_flag)
+            .then(pl.lit(float(LIQUIDATION_PERIOD_REPO)))
+            .otherwise(pl.lit(float(LIQUIDATION_PERIOD_SECURED_LENDING)))
+        )
+        scaling_factor = (liq / 10.0).sqrt()
+
+        # HE only applies on the SFT path (Art. 223(5) — exposures lending out
+        # debt securities). Non-SFT rows force HE = 0 even if a bond was tagged.
+        he_expr = (
+            pl.when(sft_flag & pl.col("_he_haircut").is_not_null())
+            .then(pl.col("_he_haircut") * scaling_factor)
+            .otherwise(pl.lit(0.0))
+        )
+
+        return exposures.with_columns(he_expr.alias("exposure_volatility_haircut")).drop(
+            ["_he_lookup_type", "_he_lookup_cqs", "_he_lookup_maturity_band", "_he_haircut"]
+        )
 
     @staticmethod
     def _maturity_band_expression(is_basel_3_1: bool) -> pl.Expr:
@@ -361,6 +513,20 @@ class HaircutCalculator:
             is_corp & ((cqs_val >= 4) | cqs_val.is_null())
         )
 
+        # P1.96 — CRR Art. 197 / Art. 207(2): covered bonds are NOT in the
+        # Art. 197(1) closed list of eligible financial collateral. They become
+        # eligible only under Art. 207(2) for repo / SFT / capital-markets-driven
+        # / secured-lending transactions. On non-SFT paths the collateral must
+        # be flagged ineligible so the existing _bond_ineligible machinery
+        # zeros value_after_haircut and overrides is_eligible_financial_collateral.
+        is_raw_covered_bond = pl.col("collateral_type").str.to_lowercase() == "covered_bond"
+        if "exposure_is_sft" in schema.names():
+            sft_flag = pl.col("exposure_is_sft").fill_null(False)
+        else:
+            sft_flag = pl.lit(False)
+        _ineligible_covered_bond_non_sft = is_raw_covered_bond & ~sft_flag
+        _ineligible_bond = _ineligible_bond | _ineligible_covered_bond_non_sft
+
         # Art. 227(2)(a): eligible for zero haircut if cash/deposit or CQS ≤ 1 sovereign bond
         _zero_type_eligible = pl.col("_lookup_type").is_in(["cash"]) | (
             (pl.col("_lookup_type") == "govt_bond")
@@ -417,7 +583,7 @@ class HaircutCalculator:
                 | ((ct == "bond") & (pl.col("issuer_type").str.to_lowercase() == "sovereign"))
             )
             .then(pl.lit("govt_bond"))
-            .when(ct.is_in(["corp_bond", "corporate_bond"]))
+            .when(ct.is_in(["corp_bond", "corporate_bond", "covered_bond"]))
             .then(pl.lit("corp_bond"))
             .when(ct.is_in(["equity", "shares", "stock"]))
             .then(pl.lit("equity"))

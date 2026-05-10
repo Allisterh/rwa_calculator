@@ -112,6 +112,38 @@ def _create_cgcb_df() -> pl.DataFrame:
 
 
 # =============================================================================
+# ECA / MEIP DIRECT SOVEREIGN RISK WEIGHTS (CRR Art. 137(1)-(2) Table 9)
+# =============================================================================
+#
+# When a firm nominates an Export Credit Agency (ECA) under Art. 137(1) the
+# ECA's minimum export insurance premium (MEIP) score is mapped directly to a
+# sovereign risk weight via Table 9 — there is no intermediate CQS step. The
+# table is consulted only when the sovereign has no ECAI rating; the ECA path
+# overrides the Art. 114 unrated 100% fallback.
+#
+# Table 9 — MEIP score → risk weight:
+#     0 →   0%
+#     1 →   0%
+#     2 →  20%
+#     3 →  50%
+#     4 → 100%
+#     5 → 100%
+#     6 → 100%
+#     7 → 150%
+
+ECA_MEIP_RISK_WEIGHTS: dict[int, Decimal] = {
+    0: Decimal("0.00"),
+    1: Decimal("0.00"),
+    2: Decimal("0.20"),
+    3: Decimal("0.50"),
+    4: Decimal("1.00"),
+    5: Decimal("1.00"),
+    6: Decimal("1.00"),
+    7: Decimal("1.50"),
+}
+
+
+# =============================================================================
 # INSTITUTION RISK WEIGHTS (CRR Art. 120 Table 3 / PRA PS1/26 Art. 120 ECRA)
 # =============================================================================
 
@@ -136,7 +168,8 @@ INSTITUTION_RISK_WEIGHTS_B31_ECRA: dict[CQS, Decimal] = {
 }
 
 # CRR Art. 120(2) Table 4: rated institution, residual maturity <= 3 months.
-# Differs from B31 Table 4, which applies 20% uniformly across CQS 1-5.
+# Numerically identical to PRA PS1/26 Art. 120(2) Table 4 ECRA short-term;
+# kept as a separate dict for symmetry with the long-term CRR/B31 split.
 INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR: dict[CQS, Decimal] = {
     CQS.CQS1: Decimal("0.20"),
     CQS.CQS2: Decimal("0.20"),
@@ -144,11 +177,41 @@ INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR: dict[CQS, Decimal] = {
     CQS.CQS4: Decimal("0.50"),
     CQS.CQS5: Decimal("0.50"),
     CQS.CQS6: Decimal("1.50"),
+    CQS.UNRATED: Decimal("0.20"),  # Art. 121(3): unrated short-term institution = 20%
+}
+
+# PRA PS1/26 Art. 120(2) Table 4: short-term ECRA rated institution
+# (residual maturity <= 3 months). Numerically identical to CRR Table 4 across
+# CQS 1-6; the unrated fallback maps to SCRA Grade A short-term (20%).
+INSTITUTION_SHORT_TERM_RISK_WEIGHTS_B31_ECRA: dict[CQS, Decimal] = {
+    CQS.CQS1: Decimal("0.20"),
+    CQS.CQS2: Decimal("0.20"),
+    CQS.CQS3: Decimal("0.20"),
+    CQS.CQS4: Decimal("0.50"),
+    CQS.CQS5: Decimal("0.50"),
+    CQS.CQS6: Decimal("1.50"),
+    CQS.UNRATED: Decimal("0.20"),  # PS1/26 SCRA Grade A short-term fallback = 20%
 }
 
 # CRR Art. 121(3): unrated institution, original effective maturity <= 3 months.
 # Overrides the Table 5 sovereign-derived fallback.
 INSTITUTION_SHORT_TERM_UNRATED_RW_CRR = Decimal("0.20")
+
+# CRR Art. 121 Table 5: sovereign-derived risk weights for unrated institutions.
+# Maps the institution's home-jurisdiction sovereign CQS to the institution RW.
+# Also reused for non-named MDBs under Art. 117(1) (institution treatment) when
+# the MDB itself is unrated and a sovereign CQS is available for the MDB's
+# country of incorporation. Numeric values match Art. 116(1) Table 2 / Art.
+# 115(1)(a) Table 1A by design — the sovereign-derived shape is shared across
+# institutions, PSEs and RGLAs in CRR.
+INSTITUTION_RISK_WEIGHTS_SOVEREIGN_DERIVED: dict[CQS, Decimal] = {
+    CQS.CQS1: Decimal("0.20"),
+    CQS.CQS2: Decimal("0.50"),
+    CQS.CQS3: Decimal("1.00"),
+    CQS.CQS4: Decimal("1.00"),
+    CQS.CQS5: Decimal("1.00"),
+    CQS.CQS6: Decimal("1.50"),
+}
 
 
 def _create_institution_df(is_basel_3_1: bool = False) -> pl.DataFrame:
@@ -165,37 +228,95 @@ def _create_institution_df(is_basel_3_1: bool = False) -> pl.DataFrame:
 def build_institution_guarantor_rw_expr(
     cqs_col: str,
     is_basel_3_1: bool,
+    short_term_flag_col: str | None = None,
+    scra_grade_col: str | None = None,
 ) -> pl.Expr:
     """Build a CQS → institution risk weight expression from the canonical dicts.
 
     Used by SA and IRB guarantee substitution to look up the RW to apply to the
     guaranteed portion when the guarantor is an institution. Drives values from
-    ``INSTITUTION_RISK_WEIGHTS_CRR`` / ``INSTITUTION_RISK_WEIGHTS_B31_ECRA`` so
-    there is a single source of truth.
+    ``INSTITUTION_RISK_WEIGHTS_CRR`` / ``INSTITUTION_RISK_WEIGHTS_B31_ECRA``
+    (long-term, Art. 120 Table 3) or
+    ``INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR`` /
+    ``INSTITUTION_SHORT_TERM_RISK_WEIGHTS_B31_ECRA`` (short-term, Art. 120(2)
+    Table 4) so there is a single source of truth.
 
     Args:
         cqs_col: Name of the integer CQS column on the frame.
         is_basel_3_1: Select PS1/26 ECRA table when True, CRR Art. 120 Table 3
             when False.
+        short_term_flag_col: Optional name of a Boolean column. When provided,
+            rows where the column evaluates True route to the Art. 120(2)
+            Table 4 short-term dict (residual maturity ≤ 3 months); rows where
+            the column is False or null use the long-term Table 3 dict.
+        scra_grade_col: Optional name of a Utf8 column carrying the guarantor's
+            SCRA grade ("A" / "A_ENHANCED" / "B" / "C"). When provided AND
+            ``is_basel_3_1`` is True, rows whose CQS column is null (i.e.
+            unrated under ECRA) dispatch via PRA PS1/26 Art. 121 Table 5 SCRA
+            grades using ``B31_SCRA_RISK_WEIGHTS`` (long-term) or
+            ``B31_SCRA_SHORT_TERM_RISK_WEIGHTS`` (short-term branch when the
+            ``short_term_flag_col`` evaluates True). A null/missing SCRA grade
+            falls back to ``B31_SCRA_RISK_WEIGHTS["C"]`` per CRE20.21
+            conservative-fallback. The CRR path and the rated B31 path
+            (CQS 1-6) are entirely unaffected.
 
     Returns:
         Float64 Polars expression evaluating to the institution RW.
     """
-    table = INSTITUTION_RISK_WEIGHTS_B31_ECRA if is_basel_3_1 else INSTITUTION_RISK_WEIGHTS_CRR
-    col = pl.col(cqs_col)
-    return (
-        pl.when(col == 1)
-        .then(pl.lit(float(table[CQS.CQS1])))
-        .when(col == 2)
-        .then(pl.lit(float(table[CQS.CQS2])))
-        .when(col == 3)
-        .then(pl.lit(float(table[CQS.CQS3])))
-        .when(col.is_in([4, 5]))
-        .then(pl.lit(float(table[CQS.CQS4])))
-        .when(col == 6)
-        .then(pl.lit(float(table[CQS.CQS6])))
-        .otherwise(pl.lit(float(table[CQS.UNRATED])))
+    from rwa_calc.data.tables.b31_risk_weights import (
+        B31_SCRA_RISK_WEIGHTS,
+        B31_SCRA_SHORT_TERM_RISK_WEIGHTS,
     )
+
+    long_term = INSTITUTION_RISK_WEIGHTS_B31_ECRA if is_basel_3_1 else INSTITUTION_RISK_WEIGHTS_CRR
+    short_term = (
+        INSTITUTION_SHORT_TERM_RISK_WEIGHTS_B31_ECRA
+        if is_basel_3_1
+        else INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR
+    )
+    col = pl.col(cqs_col)
+    use_scra = is_basel_3_1 and scra_grade_col is not None
+
+    def _scra_branch(table: dict[str, Decimal]) -> pl.Expr:
+        scra = pl.col(scra_grade_col)  # type: ignore[arg-type]
+        # CRE20.21 conservative fallback: null/missing SCRA grade -> Grade C.
+        return (
+            pl.when(scra == "A_ENHANCED")
+            .then(pl.lit(float(table["A_ENHANCED"])))
+            .when(scra == "A")
+            .then(pl.lit(float(table["A"])))
+            .when(scra == "B")
+            .then(pl.lit(float(table["B"])))
+            .otherwise(pl.lit(float(table["C"])))
+        )
+
+    def _branch(table: dict[CQS, Decimal], scra_table: dict[str, Decimal]) -> pl.Expr:
+        rated = (
+            pl.when(col == 1)
+            .then(pl.lit(float(table[CQS.CQS1])))
+            .when(col == 2)
+            .then(pl.lit(float(table[CQS.CQS2])))
+            .when(col == 3)
+            .then(pl.lit(float(table[CQS.CQS3])))
+            .when(col.is_in([4, 5]))
+            .then(pl.lit(float(table[CQS.CQS4])))
+            .when(col == 6)
+            .then(pl.lit(float(table[CQS.CQS6])))
+            .otherwise(pl.lit(float(table[CQS.UNRATED])))
+        )
+        if not use_scra:
+            return rated
+        # B31 + SCRA available: route unrated (null CQS) rows via SCRA grades.
+        return pl.when(col.is_null()).then(_scra_branch(scra_table)).otherwise(rated)
+
+    long_branch = _branch(long_term, B31_SCRA_RISK_WEIGHTS)
+    short_branch = _branch(short_term, B31_SCRA_SHORT_TERM_RISK_WEIGHTS)
+
+    if short_term_flag_col is None:
+        return long_branch
+
+    is_short_term = pl.col(short_term_flag_col).fill_null(False)
+    return pl.when(is_short_term).then(short_branch).otherwise(long_branch)
 
 
 # =============================================================================
@@ -305,8 +426,15 @@ def _create_rgla_df() -> pl.DataFrame:
 # MULTILATERAL DEVELOPMENT BANK RISK WEIGHTS (CRR Art. 117 / PRA PS1/26 Art. 117)
 # =============================================================================
 
-# Art. 117(1), Table 2B: Rated MDB risk weights (own CQS).
-# Differs from institution table: CQS 2 = 30% (same as UK inst), unrated = 50% (not 40%).
+# PRA PS1/26 Art. 117(1)(a) Table 2B: Basel 3.1 dedicated MDB risk weights
+# (own CQS). Used ONLY under the Basel 3.1 framework (is_basel_3_1=True).
+#
+# Under CRR Art. 117(1), non-named MDBs are treated as institutions and routed
+# through INSTITUTION_RISK_WEIGHTS_CRR (rated) or
+# INSTITUTION_RISK_WEIGHTS_SOVEREIGN_DERIVED / Art. 121 fallback (unrated) — this
+# table is unreachable under CRR after the Art. 117(1) institution-routing fix.
+#
+# Differs from institution table: CQS 2 = 30% (vs CRR 50%), unrated = 50% (not 40%).
 MDB_RISK_WEIGHTS_TABLE_2B: dict[CQS, Decimal] = {
     CQS.CQS1: Decimal("0.20"),
     CQS.CQS2: Decimal("0.30"),
@@ -536,17 +664,41 @@ COVERED_BOND_RISK_WEIGHTS: dict[CQS, Decimal] = {
     CQS.CQS6: Decimal("1.00"),  # CCC+ and below
 }
 
-# Unrated covered bond derivation from issuer institution risk weight
-# (CRR Art. 129(5), PRA PS1/26 Art. 129)
-COVERED_BOND_UNRATED_DERIVATION: dict[Decimal, Decimal] = {
-    Decimal("0.20"): Decimal("0.10"),
-    Decimal("0.30"): Decimal("0.15"),
-    Decimal("0.40"): Decimal("0.20"),
-    Decimal("0.50"): Decimal("0.25"),
-    Decimal("0.75"): Decimal("0.35"),
-    Decimal("1.00"): Decimal("0.50"),
-    Decimal("1.50"): Decimal("1.00"),
+# Unrated covered bond derivation from issuer institution risk weight.
+#
+# CRR Art. 129(5)(a)-(d) enumerates exactly four sub-paragraphs and therefore
+# admits only four institution-RW inputs {0.20, 0.50, 1.00, 1.50}. Crucially,
+# CRR Art. 129(5)(b) maps 0.50 -> 0.20 — NOT 0.25 (the latter is the PRA
+# PS1/26 value).
+#
+# PRA PS1/26 Art. 129(5)(a)/(aa)/(ab)/(b)/(ba)/(c)/(d) extends the table to
+# seven inputs, adding 0.30 (ECRA CQS2), 0.40 (SCRA Grade A) and 0.75
+# (SCRA Grade B), and changes (b) to 0.50 -> 0.25.
+#
+# The two regimes are stored as separate dicts so callers cannot accidentally
+# pick up a B31-only key (or the wrong (b) value) under CRR.
+# COVERED_BOND_UNRATED_DERIVATION remains as a backward-compatible alias of
+# the B31 super-set dict.
+COVERED_BOND_UNRATED_DERIVATION_CRR: dict[Decimal, Decimal] = {
+    Decimal("0.20"): Decimal("0.10"),  # CRR Art. 129(5)(a)
+    Decimal("0.50"): Decimal("0.20"),  # CRR Art. 129(5)(b) — note: NOT 0.25 (B31 value)
+    Decimal("1.00"): Decimal("0.50"),  # CRR Art. 129(5)(c)
+    Decimal("1.50"): Decimal("1.00"),  # CRR Art. 129(5)(d)
 }
+
+COVERED_BOND_UNRATED_DERIVATION_B31: dict[Decimal, Decimal] = {
+    Decimal("0.20"): Decimal("0.10"),  # PS1/26 Art. 129(5)(a)
+    Decimal("0.30"): Decimal("0.15"),  # PS1/26 Art. 129(5)(aa) — ECRA CQS2
+    Decimal("0.40"): Decimal("0.20"),  # PS1/26 Art. 129(5)(ab) — SCRA Grade A
+    Decimal("0.50"): Decimal("0.25"),  # PS1/26 Art. 129(5)(b)
+    Decimal("0.75"): Decimal("0.35"),  # PS1/26 Art. 129(5)(ba) — SCRA Grade B
+    Decimal("1.00"): Decimal("0.50"),  # PS1/26 Art. 129(5)(c)
+    Decimal("1.50"): Decimal("1.00"),  # PS1/26 Art. 129(5)(d)
+}
+
+# Backward-compatible alias — points at the B31 super-set dict so existing
+# callers (e.g. the B31 ECRA path in _b31_unrated_cb_rw_expr) keep working.
+COVERED_BOND_UNRATED_DERIVATION: dict[Decimal, Decimal] = COVERED_BOND_UNRATED_DERIVATION_B31
 
 
 def _create_covered_bond_df() -> pl.DataFrame:

@@ -298,6 +298,13 @@ def _apply_parameter_substitution(
     - subordinated guarantor       -> 0.75  (Art. 161(1)(b), both frameworks)
     - senior + FSE guarantor (B31) -> 0.45  (Art. 161(1)(a))
     - senior + non-FSE guarantor   -> 0.40 B31 / 0.45 CRR (Art. 161(1)(aa)/(a))
+
+    Also enforces the "no better than direct" output floor (Art. 160(4)):
+    after computing ``guarantor_rw_irb`` from PSM, derive ``RW_direct`` —
+    the IRB risk weight the guarantor would attract as a *direct* borrower
+    (using the guarantor's own exposure class, floored PD, and F-IRB LGD)
+    — and expose ``guarantor_rw_post_nbd = max(guarantor_rw_irb, RW_direct)``.
+    The downstream beneficial-gate uses ``guarantor_rw_post_nbd``.
     """
     if use_parameter_substitution:
         from rwa_calc.data.tables.firb_lgd import get_firb_lgd_table_for_framework
@@ -328,9 +335,18 @@ def _apply_parameter_substitution(
         if ensure_cols:
             lf = lf.with_columns(ensure_cols)
 
-        # Floor the guarantor's PD using same floor rules as borrower
-        has_transactor = "is_qrre_transactor" in lf.collect_schema().names()
-        pd_floor_expr = _pd_floor_expression(config, has_transactor_col=has_transactor)
+        # Floor the guarantor's PD using the GUARANTOR's exposure class context
+        # (Art. 160(4) / 163(1)): the guaranteed portion is economically
+        # equivalent to a direct exposure to the guarantor, so the guarantor's
+        # class floor governs. For a corporate guarantor under B31 the floor is
+        # 0.0005 (Art. 163(1)(a)) — not the borrower's QRRE-revolver floor of
+        # 0.0010. Guarantors are not QRRE in our model, so the transactor flag
+        # is intentionally disabled for the guarantor floor.
+        pd_floor_expr = _pd_floor_expression(
+            config,
+            has_transactor_col=False,
+            exposure_class_col="guarantor_exposure_class",
+        )
         guarantor_pd_floored = pl.max_horizontal(pl.col("guarantor_pd"), pd_floor_expr)
 
         scaling_factor = 1.06 if config.is_crr else 1.0
@@ -348,11 +364,20 @@ def _apply_parameter_substitution(
             .otherwise(pl.lit(firb_lgd_senior))
         )
 
-        # Compute IRB risk weight from guarantor's PD and F-IRB supervisory LGD
+        # Compute IRB risk weight from guarantor's PD and F-IRB supervisory LGD.
+        # Per Art. 236(1)(a)(i) (PRA PS1/26): the PSM substitutes the guarantor's
+        # PD/LGD AND derives the correlation R from the GUARANTOR's exposure
+        # class context, not the borrower's. ``_parametric_irb_risk_weight_expr``
+        # reads ``exposure_class``, ``turnover_m``, ``requires_fi_scalar`` and
+        # ``is_qrre_transactor`` from the LazyFrame — so we compute both
+        # ``guarantor_rw_irb`` (PSM) and ``rw_direct`` (Art. 160(4) NBD floor)
+        # inside a single swap-restore window where those columns hold the
+        # guarantor's values.
         sme_turnover_m = float(config.thresholds.sme_turnover_threshold) / 1_000_000
-        guarantor_rw_irb = _parametric_irb_risk_weight_expr(
-            pd_expr=guarantor_pd_floored,
-            lgd=guarantor_lgd_expr,
+        lf = _apply_no_better_than_direct_floor(
+            lf,
+            guarantor_pd_floored=guarantor_pd_floored,
+            guarantor_lgd_expr=guarantor_lgd_expr,
             scaling_factor=scaling_factor,
             eur_gbp_rate=eur_gbp_rate,
             is_b31=config.is_basel_3_1,
@@ -360,7 +385,8 @@ def _apply_parameter_substitution(
         )
 
         # Select method: IRB guarantor under Basel 3.1 -> parameter substitution,
-        # SA guarantor -> SA RW substitution
+        # SA guarantor -> SA RW substitution. The "no better than direct" floor
+        # applies to the IRB-substituted RW only.
         is_irb_guarantor = (pl.col("guarantor_approach").fill_null("") == "irb") & pl.col(
             "guarantor_pd"
         ).is_not_null()
@@ -368,7 +394,7 @@ def _apply_parameter_substitution(
         return lf.with_columns(
             [
                 pl.when(is_irb_guarantor)
-                .then(guarantor_rw_irb)
+                .then(pl.col("guarantor_rw_post_nbd"))
                 .otherwise(pl.col("guarantor_rw_sa"))
                 .alias("guarantor_rw"),
                 # Track which method is being used per-row
@@ -385,6 +411,119 @@ def _apply_parameter_substitution(
             pl.col("guarantor_rw_sa").alias("guarantor_rw"),
             pl.lit(False).alias("_is_pd_substitution"),
         ]
+    )
+
+
+def _apply_no_better_than_direct_floor(
+    lf: pl.LazyFrame,
+    *,
+    guarantor_pd_floored: pl.Expr,
+    guarantor_lgd_expr: pl.Expr,
+    scaling_factor: float,
+    eur_gbp_rate: float,
+    is_b31: bool,
+    sme_turnover_threshold_m: float,
+) -> pl.LazyFrame:
+    """Compute ``guarantor_rw_irb``, ``rw_direct`` and ``guarantor_rw_post_nbd``.
+
+    ``_parametric_irb_risk_weight_expr`` reads the borrower's exposure-class
+    and correlation-driving columns (``exposure_class``, ``turnover_m``,
+    ``requires_fi_scalar``, ``is_qrre_transactor``) from the LazyFrame. Per
+    Art. 236(1)(a)(i) (PRA PS1/26) the PSM correlation must be derived from
+    the **guarantor's** class context, and per Art. 160(4) the same applies
+    to the "no better than direct" floor — so we compute both inside a single
+    swap-restore window where those columns hold guarantor-specific values.
+
+    Adds three columns:
+    - ``guarantor_rw_irb``: PSM RW from guarantor's PD/LGD/correlation.
+    - ``rw_direct``: IRB RW the guarantor would attract as a direct borrower.
+    - ``guarantor_rw_post_nbd``: max(guarantor_rw_irb, rw_direct).
+    """
+    schema_names = lf.collect_schema().names()
+
+    # Stash the borrower's class-driving columns so we can restore them after
+    # computing the guarantor-direct RW. The maturity column is left as-is —
+    # the parametric formula caps M at 5y and floors at 1y; using the
+    # borrower's M is conservative for the direct-to-guarantor RW.
+    stash_cols = [
+        pl.col("exposure_class").alias("_nbd_borrower_exposure_class"),
+        pl.col("turnover_m").alias("_nbd_borrower_turnover_m"),
+        pl.col("requires_fi_scalar").alias("_nbd_borrower_requires_fi_scalar"),
+    ]
+    if "is_qrre_transactor" in schema_names:
+        stash_cols.append(pl.col("is_qrre_transactor").alias("_nbd_borrower_is_qrre_transactor"))
+
+    lf = lf.with_columns(stash_cols)
+
+    # Swap in guarantor-driving values. Guarantor-specific turnover is not
+    # carried through CRM today, so disable the SME correlation adjustment
+    # by setting turnover_m to NULL. Ditto requires_fi_scalar (the FI scalar
+    # is a property of the borrower's own corporate exposure under
+    # Art. 153(2) and does not transfer to the guarantor's PSM correlation).
+    swap_cols = [
+        pl.col("guarantor_exposure_class").alias("exposure_class"),
+        pl.lit(None).cast(pl.Float64).alias("turnover_m"),
+        pl.lit(False).alias("requires_fi_scalar"),
+    ]
+    if "is_qrre_transactor" in schema_names:
+        swap_cols.append(pl.lit(False).alias("is_qrre_transactor"))
+
+    lf = lf.with_columns(swap_cols)
+
+    # Evaluate the parametric IRB RW with the guarantor's class context.
+    # Both the PSM RW (Art. 236(1)(a)(i)) and the NBD direct RW (Art. 160(4))
+    # use the same guarantor-class formula here — the guarantor_rw_irb /
+    # rw_direct split is preserved for downstream reporting and the
+    # max-horizontal floor below.
+    psm_rw_expr = _parametric_irb_risk_weight_expr(
+        pd_expr=guarantor_pd_floored,
+        lgd=guarantor_lgd_expr,
+        scaling_factor=scaling_factor,
+        eur_gbp_rate=eur_gbp_rate,
+        is_b31=is_b31,
+        sme_turnover_threshold_m=sme_turnover_threshold_m,
+    )
+    rw_direct_expr = _parametric_irb_risk_weight_expr(
+        pd_expr=guarantor_pd_floored,
+        lgd=guarantor_lgd_expr,
+        scaling_factor=scaling_factor,
+        eur_gbp_rate=eur_gbp_rate,
+        is_b31=is_b31,
+        sme_turnover_threshold_m=sme_turnover_threshold_m,
+    )
+    lf = lf.with_columns(
+        [
+            psm_rw_expr.alias("guarantor_rw_irb"),
+            rw_direct_expr.alias("rw_direct"),
+        ]
+    )
+
+    # Restore the borrower's original class-driving columns.
+    restore_cols = [
+        pl.col("_nbd_borrower_exposure_class").alias("exposure_class"),
+        pl.col("_nbd_borrower_turnover_m").alias("turnover_m"),
+        pl.col("_nbd_borrower_requires_fi_scalar").alias("requires_fi_scalar"),
+    ]
+    if "is_qrre_transactor" in schema_names:
+        restore_cols.append(
+            pl.col("_nbd_borrower_is_qrre_transactor").alias("is_qrre_transactor"),
+        )
+    lf = lf.with_columns(restore_cols)
+
+    # Drop the stash columns and emit the NBD-floored guarantor RW.
+    drop_cols = [
+        "_nbd_borrower_exposure_class",
+        "_nbd_borrower_turnover_m",
+        "_nbd_borrower_requires_fi_scalar",
+    ]
+    if "is_qrre_transactor" in schema_names:
+        drop_cols.append("_nbd_borrower_is_qrre_transactor")
+    lf = lf.drop(drop_cols)
+
+    return lf.with_columns(
+        pl.max_horizontal(pl.col("guarantor_rw_irb"), pl.col("rw_direct")).alias(
+            "guarantor_rw_post_nbd"
+        ),
     )
 
 
@@ -436,8 +575,12 @@ def _apply_double_default(
         & _is_airb
     )
 
-    # Floor guarantor PD
-    pd_floor_expr_dd = _pd_floor_expression(config, has_transactor_col=False)
+    # Floor guarantor PD using the guarantor's own class floor (Art. 163(1)).
+    pd_floor_expr_dd = _pd_floor_expression(
+        config,
+        has_transactor_col=False,
+        exposure_class_col="guarantor_exposure_class",
+    )
     guarantor_pd_floored_dd = pl.max_horizontal(pl.col("guarantor_pd"), pd_floor_expr_dd)
 
     # Double default multiplier: (0.15 + 160 x PD_g)
@@ -511,8 +654,13 @@ def _adjust_expected_loss(
         )
         firb_lgd_subordinated = float(firb_lgd_table["subordinated"])
 
-        has_transactor = "is_qrre_transactor" in lf.collect_schema().names()
-        pd_floor_expr = _pd_floor_expression(config, has_transactor_col=has_transactor)
+        # Mirror the guarantor-context PD floor used in _apply_parameter_substitution
+        # so EL is computed against the same floored guarantor PD as RW.
+        pd_floor_expr = _pd_floor_expression(
+            config,
+            has_transactor_col=False,
+            exposure_class_col="guarantor_exposure_class",
+        )
         guarantor_pd_floored = pl.max_horizontal(pl.col("guarantor_pd"), pd_floor_expr)
 
         _is_irb_non_dd = pl.col("_is_pd_substitution") & ~pl.col("_is_dd_applied")
@@ -565,9 +713,8 @@ def _adjust_expected_loss(
 
 def _add_guarantee_status_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     """Add guarantee status and method tracking columns for reporting."""
-    is_beneficial_guaranteed = (pl.col("guaranteed_portion").fill_null(0) > 0) & (
-        pl.col("is_guarantee_beneficial")
-    )
+    has_guaranteed_portion = pl.col("guaranteed_portion").fill_null(0) > 0
+    is_beneficial_guaranteed = has_guaranteed_portion & pl.col("is_guarantee_beneficial")
 
     return lf.with_columns(
         [
@@ -581,9 +728,15 @@ def _add_guarantee_status_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
             .then(pl.lit("PD_PARAMETER_SUBSTITUTION"))
             .otherwise(pl.lit("SA_RW_SUBSTITUTION"))
             .alias("guarantee_status"),
+            # guarantee_method_used reports the substitution PATH taken: PSM is
+            # recorded whenever the parameter-substitution route was followed
+            # (IRB guarantor with internal PD), independent of the beneficial
+            # gate. The GUARANTEE_NOT_APPLIED_NON_BENEFICIAL signal lives on
+            # ``guarantee_status``. PRA PS1/26 Art. 236(1)(a): an IRB guarantor
+            # always traverses parameter substitution.
             pl.when(is_beneficial_guaranteed & pl.col("_is_dd_applied"))
             .then(pl.lit("DOUBLE_DEFAULT"))
-            .when(is_beneficial_guaranteed & pl.col("_is_pd_substitution"))
+            .when(has_guaranteed_portion & pl.col("_is_pd_substitution"))
             .then(pl.lit("PD_PARAMETER_SUBSTITUTION"))
             .when(is_beneficial_guaranteed)
             .then(pl.lit("SA_RW_SUBSTITUTION"))

@@ -466,8 +466,8 @@ class TestCRRC07ColumnDefinitions:
     """Tests for CRR C 07.00 column definitions (correct 4-digit refs)."""
 
     def test_crr_c07_has_24_data_columns(self) -> None:
-        """CRR C 07.00 has 27 columns covering full SA waterfall."""
-        assert len(CRR_C07_COLUMNS) == 27
+        """CRR C 07.00 has 28 columns covering full SA waterfall."""
+        assert len(CRR_C07_COLUMNS) == 28
 
     def test_crr_c07_uses_4_digit_refs(self) -> None:
         """All CRR C 07.00 column refs are 4 digits."""
@@ -515,8 +515,8 @@ class TestB31C07ColumnDefinitions:
     """Tests for Basel 3.1 OF 07.00 column definitions."""
 
     def test_b31_c07_has_correct_column_count(self) -> None:
-        """B3.1 OF 07.00 has 27 columns (adds 3, removes 3 vs CRR)."""
-        assert len(B31_C07_COLUMNS) == 27
+        """B3.1 OF 07.00 has 28 columns (adds 4, removes 3 vs CRR)."""
+        assert len(B31_C07_COLUMNS) == 28
 
     def test_b31_c07_uses_4_digit_refs(self) -> None:
         """All B3.1 OF 07.00 column refs are 4 digits."""
@@ -2339,6 +2339,146 @@ class TestOnBSNetting:
 
 
 # =============================================================================
+# Fixtures for own-funds deduction column (P2.12)
+# =============================================================================
+
+
+def _sa_results_with_own_funds_deduction() -> pl.LazyFrame:
+    """SA results with own_funds_deduction_amount for P2.12 testing."""
+    return pl.LazyFrame(
+        {
+            "exposure_reference": ["SA_CORP_OFD_1"],
+            "approach_applied": ["standardised"],
+            "exposure_class": ["corporate"],
+            "drawn_amount": [1000.0],
+            "undrawn_amount": [0.0],
+            "ead_final": [1000.0],
+            "rwa_final": [1000.0],
+            "rwa_pre_factor": [1000.0],
+            "risk_weight": [1.0],
+            "scra_provision_amount": [30.0],
+            "gcra_provision_amount": [0.0],
+            "collateral_adjusted_value": [0.0],
+            "guaranteed_portion": [0.0],
+            "sa_cqs": [None],
+            "bs_type": ["OB"],
+            "ccf_applied": [None],
+            "own_funds_deduction_amount": [200.0],
+        }
+    )
+
+
+def _sa_results_without_own_funds_deduction() -> pl.LazyFrame:
+    """SA results WITHOUT own_funds_deduction_amount for P2.12 absent-column test."""
+    return pl.LazyFrame(
+        {
+            "exposure_reference": ["SA_CORP_NO_OFD_1"],
+            "approach_applied": ["standardised"],
+            "exposure_class": ["corporate"],
+            "drawn_amount": [1000.0],
+            "undrawn_amount": [0.0],
+            "ead_final": [1000.0],
+            "rwa_final": [1000.0],
+            "risk_weight": [1.0],
+            "scra_provision_amount": [30.0],
+            "gcra_provision_amount": [0.0],
+            "collateral_adjusted_value": [0.0],
+            "guaranteed_portion": [0.0],
+            "sa_cqs": [None],
+        }
+    )
+
+
+class TestC0700Col0020:
+    """P2.12: COREP C 07.00 col 0020 — Exposures deducted from own funds.
+
+    Why: CRR Art. 111(1)(b) and Basel 3.1 SA rules require that exposures
+    deducted from own funds are reported separately in the C 07.00 waterfall
+    (between col 0010 Original exposure and col 0030 Provisions). Without col
+    0020, the deduction is invisible in COREP reporting and auditors cannot
+    reconcile the EAD waterfall.
+    """
+
+    def test_crr_c0700_has_col_0020_with_value(self) -> None:
+        """CRR C 07.00 corporate row reports own_funds_deduction_amount in col 0020."""
+        # Arrange
+        gen = COREPGenerator()
+        lf = _sa_results_with_own_funds_deduction()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(lf, framework="CRR")
+        corp = _get_total_row(bundle.c07_00["corporate"])
+
+        # Assert: col 0020 present and carries the expected deduction value
+        cols = corp.columns
+        assert "0020" in cols, f"Col 0020 missing from CRR C 07.00 output; got: {cols}"
+        idx_0020 = cols.index("0020")
+        idx_0010 = cols.index("0010")
+        idx_0030 = cols.index("0030")
+        assert idx_0010 < idx_0020 < idx_0030
+        assert corp["0020"][0] == pytest.approx(200.0)
+
+    def test_b31_of0700_has_col_0020_with_value(self) -> None:
+        """Basel 3.1 OF 07.00 corporate row reports own_funds_deduction_amount in col 0020."""
+        # Arrange
+        gen = COREPGenerator()
+        lf = _sa_results_with_own_funds_deduction()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(lf, framework="BASEL_3_1")
+        corp = _get_total_row(bundle.c07_00["corporate"])
+
+        # Assert: col 0020 present and carries the expected deduction value
+        cols = corp.columns
+        assert "0020" in cols, f"Col 0020 missing from B3.1 OF 07.00 output; got: {cols}"
+        idx_0020 = cols.index("0020")
+        idx_0010 = cols.index("0010")
+        idx_0030 = cols.index("0030")
+        assert idx_0010 < idx_0020 < idx_0030
+        assert corp["0020"][0] == pytest.approx(200.0)
+
+    def test_c0700_col_0020_is_none_when_field_absent(self) -> None:
+        """Without own_funds_deduction_amount in data, col 0020 is None."""
+        # Arrange
+        gen = COREPGenerator()
+        lf = _sa_results_without_own_funds_deduction()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(lf, framework="BASEL_3_1")
+        corp = _get_total_row(bundle.c07_00["corporate"])
+
+        # Assert: column is present but value is None (same pattern as col 0035 test)
+        assert "0020" in corp.columns, (
+            f"Col 0020 missing from B3.1 OF 07.00 output; got: {corp.columns}"
+        )
+        assert corp["0020"][0] is None
+
+    def test_col_0020_in_template_definition_between_0010_and_0030(self) -> None:
+        """CRR_C07_COLUMNS and B31_C07_COLUMNS both contain a col 0020 between 0010 and 0030."""
+        # Arrange / Act — use the imported column definitions directly
+        for col_list in (CRR_C07_COLUMNS, B31_C07_COLUMNS):
+            refs = [c.ref for c in col_list]
+
+            # Assert presence
+            assert "0020" in refs, f"Column 0020 missing from {col_list!r}"
+
+            # Assert ordering
+            idx_0020 = refs.index("0020")
+            idx_0010 = refs.index("0010")
+            idx_0030 = refs.index("0030")
+            assert idx_0010 < idx_0020 < idx_0030, (
+                f"Col 0020 not between 0010 and 0030 in column list: "
+                f"0010@{idx_0010}, 0020@{idx_0020}, 0030@{idx_0030}"
+            )
+
+            # Assert name
+            col_0020 = next(c for c in col_list if c.ref == "0020")
+            assert col_0020.name == "Exposures deducted from own funds", (
+                f"Expected 'Exposures deducted from own funds', got {col_0020.name!r}"
+            )
+
+
+# =============================================================================
 # Fixtures for specialised lending detail rows (Task 3G)
 # =============================================================================
 
@@ -4087,12 +4227,27 @@ class TestOF0201CreditRiskRow:
         # E1=700, E2=1400, E3=100, E4=1050 → 3250
         assert cr_row["0020"][0] == pytest.approx(3250.0)
 
-    def test_u_trea_equals_modelled(self) -> None:
-        """Col 0030 (U-TREA) equals col 0010 for credit-risk-only calculator."""
+    def test_u_trea_is_sum_of_modelled_and_sa(self) -> None:
+        """P2.42: Col 0030 (U-TREA) must equal col 0010 + col 0020 (Annex II §1.3.2).
+
+        Arrange: four exposures with rwa_pre_floor sum=3000, sa_rwa sum=3250.
+        Act:     generate OF 02.01 under BASEL_3_1 framework.
+        Assert:  col 0030 == col 0010 + col 0020 == 6250.0.
+        """
+        # Arrange
         gen = COREPGenerator()
         bundle = gen.generate_from_lazyframe(_b31_results_with_floor(), framework="BASEL_3_1")
         cr_row = bundle.of_02_01.filter(pl.col("row_ref") == "0010")
-        assert cr_row["0030"][0] == cr_row["0010"][0]
+
+        # Act / Assert
+        # Regulatory requirement: U-TREA = modelled_TREA + SA_TREA (Annex II §1.3.2)
+        # col 0010 (modelled) = 500+1500+100+900 = 3000
+        # col 0020 (SA)       = 700+1400+100+1050 = 3250
+        # col 0030 (U-TREA)   = 3000 + 3250 = 6250
+        assert cr_row["0030"][0] == pytest.approx(cr_row["0010"][0] + cr_row["0020"][0]), (
+            "U-TREA (col 0030) must equal col 0010 + col 0020 per Annex II §1.3.2"
+        )
+        assert cr_row["0030"][0] == pytest.approx(6250.0)
 
     def test_s_trea_equals_sa(self) -> None:
         """Col 0040 (S-TREA) equals col 0020 for credit-risk-only calculator."""

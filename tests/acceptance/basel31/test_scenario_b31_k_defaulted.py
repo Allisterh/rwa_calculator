@@ -448,23 +448,27 @@ class TestB31K7_CorporateDefaultedWithCollateral:
 
 class TestB31K8_ProvisionDenominatorDifference:
     """
-    B31-K8: B31 provision denominator = unsecured EAD, NOT EAD + provision_deducted.
+    B31-K8: B31 provision denominator = gross outstanding (Art. 127(1)), per P1.120.
 
-    This tests the B31-specific denominator. Under CRR, provision_deducted inflates
-    the denominator, making the 20% threshold harder to meet. Under B31, only the
-    current unsecured EAD matters.
+    Per PRA PS1/26 Art. 127(1) the denominator is "the outstanding amount of the
+    item or facility" — gross outstanding, reconstructed as ead + provision_deducted
+    when ead_gross is not present in the dataframe.  This is structurally identical
+    to the CRR Art. 127(1) denominator under these inputs (no FCCM collateral has
+    been applied), so the B31 and CRR branches both give 150%.  The two branches
+    diverge when FCCM cash/securities collateral has reduced ``ead_final`` below
+    ``ead_gross`` — see P1.120 acceptance test for that case.
 
-    Input: Corporate, EAD=80,000 (post-deduction), provision_deducted=20,000,
-           provision_allocated=16,500
-    Expected (B31): 16,500 >= 20% × 80,000 = 16,000 → 100% ✓
-    Contrast (CRR): 16,500 < 20% × (80,000 + 20,000) = 20,000 → 150%
-    RWA = 80,000 × 1.0 = 80,000
+    Input: Corporate, EAD=80,000, provision_deducted=20,000, provision_allocated=16,500
+    Gross outstanding (B31, P1.120 fix) = 80,000 + 20,000 = 100,000
+    B31:  16,500 < 20% × 100,000 = 20,000 → 150%
+    CRR:  16,500 < 20% × (80,000 + 20,000) = 20,000 → 150%
+    RWA = 80,000 × 1.5 = 120,000
     """
 
-    def test_b31_k8_risk_weight_100pct(
+    def test_b31_k8_risk_weight_150pct(
         self, sa_calculator: SACalculator, b31_config: CalculationConfig
     ) -> None:
-        """B31 denominator: provision meets threshold using unsecured EAD only."""
+        """B31 denominator (post-P1.120 fix): provision below threshold of gross outstanding."""
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("80000"),
@@ -474,11 +478,11 @@ class TestB31K8_ProvisionDenominatorDifference:
             provision_deducted=Decimal("20000"),
             config=b31_config,
         )
-        # B31: 16,500 >= 0.2 × 80,000 = 16,000 → 100%
-        assert result["risk_weight"] == pytest.approx(1.00, abs=1e-4)
+        # B31 post-P1.120: 16,500 < 0.2 × 100,000 = 20,000 → 150%
+        assert result["risk_weight"] == pytest.approx(1.50, abs=1e-4)
 
     def test_b31_k8_rwa(self, sa_calculator: SACalculator, b31_config: CalculationConfig) -> None:
-        """B31 denominator: RWA = EAD × 100%."""
+        """B31 denominator: RWA = EAD × 150%."""
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("80000"),
@@ -488,7 +492,7 @@ class TestB31K8_ProvisionDenominatorDifference:
             provision_deducted=Decimal("20000"),
             config=b31_config,
         )
-        assert result["rwa"] == pytest.approx(80_000.0, rel=1e-4)
+        assert result["rwa"] == pytest.approx(120_000.0, rel=1e-4)
 
     def test_b31_k8_crr_contrast_would_give_150pct(self, sa_calculator: SACalculator) -> None:
         """Under CRR, same inputs give 150% due to larger denominator."""

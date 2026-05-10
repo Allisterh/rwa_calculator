@@ -5,7 +5,8 @@ Canonical home for both the CRR and Basel 3.1 Foundation IRB supervisory LGD
 tables, plus the CRR Art. 230 / CRE32.9-12 overcollateralisation ratios and
 minimum thresholds (identical under both frameworks). Framework selection
 happens at the call site via ``CalculationConfig`` or the ``is_basel_3_1``
-flag on the lookup helpers.
+flag on the lookup helpers — the public DataFrame entry point
+``get_firb_lgd_table(is_basel_3_1=...)`` dispatches to the correct table.
 
 Reference:
     CRR Art. 161: LGD for Foundation IRB approach (CRR values)
@@ -46,6 +47,10 @@ FIRB_SUPERVISORY_LGD: dict[str, Decimal] = {
     "residential_re_subordinated": Decimal("0.65"),  # 65% (senior: 35%)
     "commercial_re_subordinated": Decimal("0.65"),  # 65% (senior: 35%)
     "other_physical_subordinated": Decimal("0.70"),  # 70% (senior: 40%)
+    # Purchased receivables sub-types — CRR Art. 161(1)(e)/(f)/(g)
+    "purchased_receivables_senior": Decimal("0.45"),  # CRR Art. 161(1)(e): 45%
+    "purchased_receivables_subordinated": Decimal("1.00"),  # CRR Art. 161(1)(f): 100%
+    "dilution_risk": Decimal("0.75"),  # CRR Art. 161(1)(g): 75% (raised to 100% in B3.1)
 }
 
 # Basel 3.1 revised supervisory LGD values (CRE32.9-12, PRA PS1/26)
@@ -69,6 +74,10 @@ BASEL31_FIRB_SUPERVISORY_LGD: dict[str, Decimal] = {
     "commercial_re": Decimal("0.20"),  # 20% (CRR: 35%)
     # Secured by other physical collateral
     "other_physical": Decimal("0.25"),  # 25% (CRR: 40%)
+    # Purchased receivables sub-types — PRA PS1/26 Art. 161(1)(e)/(f)/(g)
+    "purchased_receivables_senior": Decimal("0.40"),  # Art. 161(1)(e): 40% (B3.1 senior)
+    "purchased_receivables_subordinated": Decimal("1.00"),  # Art. 161(1)(f): 100%
+    "dilution_risk": Decimal("1.00"),  # Art. 161(1)(g): 100% (PS1/26 raised from CRR 75%)
 }
 
 
@@ -218,6 +227,28 @@ _CRR_FIRB_ROW_SPECS: tuple[_FirbRowSpec, ...] = (
         "other_physical",
         "Other eligible physical collateral (subordinated)",
     ),
+    # Purchased receivables sub-types — Art. 161(1)(e)/(f)/(g)
+    (
+        "purchased_receivables",
+        "senior",
+        "purchased_receivables_senior",
+        "financial",
+        "Senior purchased receivables (Art. 161(1)(e))",
+    ),
+    (
+        "purchased_receivables",
+        "subordinated",
+        "purchased_receivables_subordinated",
+        "financial",
+        "Subordinated purchased receivables (Art. 161(1)(f))",
+    ),
+    (
+        "purchased_receivables",
+        "dilution_risk",
+        "dilution_risk",
+        "financial",
+        "Dilution risk of purchased receivables (Art. 161(1)(g))",
+    ),
 )
 
 
@@ -322,6 +353,31 @@ _B31_FIRB_ROW_SPECS: tuple[_B31FirbRowSpec, ...] = (
         "other_physical",
         "Other eligible physical collateral (CRR: 40%)",
     ),
+    # Purchased receivables sub-types — Art. 161(1)(e)/(f)/(g) under PS1/26
+    (
+        "purchased_receivables",
+        "senior",
+        False,
+        "purchased_receivables_senior",
+        "financial",
+        "Senior purchased receivables (Art. 161(1)(e))",
+    ),
+    (
+        "purchased_receivables",
+        "subordinated",
+        False,
+        "purchased_receivables_subordinated",
+        "financial",
+        "Subordinated purchased receivables (Art. 161(1)(f))",
+    ),
+    (
+        "purchased_receivables",
+        "dilution_risk",
+        False,
+        "dilution_risk",
+        "financial",
+        "Dilution risk of purchased receivables (Art. 161(1)(g)) — B3.1 100%",
+    ),
 )
 
 
@@ -391,14 +447,35 @@ def _create_firb_lgd_df() -> pl.DataFrame:
     )
 
 
-def get_firb_lgd_table() -> pl.DataFrame:
+def get_firb_lgd_table(is_basel_3_1: bool = False) -> pl.DataFrame:
     """
     Get F-IRB supervisory LGD lookup table.
 
+    Dispatches to the CRR table by default, or to the Basel 3.1 table when
+    ``is_basel_3_1=True``. The two tables have intentionally distinct schemas:
+
+    - CRR: columns ``collateral_type, seniority, lgd, overcollateralisation_ratio,
+      min_threshold, description``.
+    - Basel 3.1: additionally includes ``is_fse`` to distinguish financial
+      sector entities from other corporates per Art. 161(1)(a) vs (aa).
+
+    Args:
+        is_basel_3_1: True for Basel 3.1 values (PRA PS1/26 Art. 161 / CRE32.9-12),
+            False for CRR Art. 161 / Art. 230 Table 5 values.
+
     Returns:
-        DataFrame with columns: collateral_type, seniority, lgd, description
+        DataFrame with the LGD lookup rows for the selected framework.
     """
+    if is_basel_3_1:
+        return _create_b31_firb_lgd_df()
     return _create_firb_lgd_df()
+
+
+# Resolve the lazy ``from __future__ import annotations`` strings into real
+# types so that ``inspect.signature(get_firb_lgd_table)`` exposes the actual
+# ``bool`` / ``pl.DataFrame`` objects rather than forward-reference strings.
+# Engine call sites and the P1.179 dispatch contract test rely on this.
+get_firb_lgd_table.__annotations__ = {"is_basel_3_1": bool, "return": pl.DataFrame}
 
 
 def lookup_firb_lgd(
@@ -751,16 +828,6 @@ def _create_b31_firb_lgd_df() -> pl.DataFrame:
         FIRB_OVERCOLLATERALISATION_RATIOS,
         FIRB_MIN_COLLATERALISATION_THRESHOLDS,
     )
-
-
-def get_b31_firb_lgd_table() -> pl.DataFrame:
-    """Get Basel 3.1 F-IRB supervisory LGD lookup table.
-
-    Returns:
-        DataFrame with columns: collateral_type, seniority, is_fse, lgd,
-        overcollateralisation_ratio, min_threshold, description
-    """
-    return _create_b31_firb_lgd_df()
 
 
 def lookup_b31_firb_lgd(

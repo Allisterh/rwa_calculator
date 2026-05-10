@@ -198,9 +198,9 @@ B31_SCRA_SHORT_TERM_RISK_WEIGHTS: dict[str, Decimal] = {
 # CQS 4-5 receive 50%; CQS 6 receives 150%.
 # Trade finance ≤ 6 months also qualifies for short-term treatment (Art. 121(5)).
 #
-# NOTE: Table 4A (short-term ECAI assessment) uses different weights:
-# CQS 1=20%, CQS 2=50%, CQS 3=100%, other=150%.
-# Table 4A requires a `has_short_term_ecai` flag not yet in schema.
+# Table 4A (PRA PS1/26 Art. 120(2B)) is the dedicated short-term ECAI
+# assessment table — used when the institution carries a short-term-specific
+# ECAI rating (signalled by `has_short_term_ecai=True` on the exposure).
 # =============================================================================
 
 B31_ECRA_SHORT_TERM_RISK_WEIGHTS: dict[int, Decimal] = {
@@ -210,6 +210,37 @@ B31_ECRA_SHORT_TERM_RISK_WEIGHTS: dict[int, Decimal] = {
     4: Decimal("0.50"),  # CQS 4 short-term (Table 4)
     5: Decimal("0.50"),  # CQS 5 short-term (Table 4)
     6: Decimal("1.50"),  # CQS 6 short-term (Table 4) — unchanged
+}
+
+# PRA PS1/26 Art. 120(2B) Table 4A: short-term ECAI assessment risk weights.
+# Applies when the institution exposure carries a dedicated short-term ECAI
+# rating (`has_short_term_ecai=True`), not a long-term rating mapped onto a
+# short-term exposure (Table 4). Mapping has only 5 CQS bands — bands 4-5
+# both attract 150%.
+B31_ECRA_SHORT_TERM_ECAI_RISK_WEIGHTS: dict[int, Decimal] = {
+    1: Decimal("0.20"),  # CQS 1 (Table 4A)
+    2: Decimal("0.50"),  # CQS 2 (Table 4A)
+    3: Decimal("1.00"),  # CQS 3 (Table 4A)
+    4: Decimal("1.50"),  # CQS 4 (Table 4A)
+    5: Decimal("1.50"),  # CQS 5 (Table 4A)
+}
+
+# PRA PS1/26 Art. 122(3) Table 6A: short-term corporate ECAI assessment risk
+# weights. Applies when a corporate exposure carries a dedicated short-term
+# ECAI rating (`has_short_term_ecai=True`) AND original maturity ≤ 3 months,
+# instead of mapping the long-term Table 6 weights onto the short-term
+# exposure. Corporate analogue of Table 4A (institutions). The CRR has no
+# short-term corporate ECAI table, so this is Basel-3.1-only. Note: unlike
+# Art. 121(5) for institutions, Art. 122(3) does NOT extend the gate to
+# trade-finance ≤ 6 months — the short-term gate is original maturity
+# ≤ 3 months only. CQS 4-6 / Others all attract 150%.
+B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS: dict[int, Decimal] = {
+    1: Decimal("0.20"),  # CQS 1 (Table 6A)
+    2: Decimal("0.50"),  # CQS 2 (Table 6A)
+    3: Decimal("1.00"),  # CQS 3 (Table 6A)
+    4: Decimal("1.50"),  # CQS 4 / Others (Table 6A)
+    5: Decimal("1.50"),  # CQS 5 / Others (Table 6A)
+    6: Decimal("1.50"),  # CQS 6 / Others (Table 6A)
 }
 
 # =============================================================================

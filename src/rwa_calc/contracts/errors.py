@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING
 from rwa_calc.domain.enums import ErrorCategory, ErrorSeverity
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import polars as pl
 
 
@@ -163,6 +165,7 @@ ERROR_TYPE_MISMATCH = "DQ003"
 ERROR_DUPLICATE_KEY = "DQ004"
 ERROR_ORPHAN_REFERENCE = "DQ005"
 ERROR_INVALID_COLUMN_VALUE = "DQ006"
+ERROR_OPTIONAL_FILE_UNREADABLE = "DQ007"
 
 # Hierarchy error codes
 ERROR_CIRCULAR_HIERARCHY = "HIE001"
@@ -186,6 +189,8 @@ ERROR_CURRENCY_MISMATCH = "CRM003"
 ERROR_COLLATERAL_OVERALLOCATION = "CRM004"
 ERROR_INVALID_GUARANTEE = "CRM005"
 ERROR_AIRB_MODEL_COLLATERAL_MISDIRECTED = "CRM006"
+ERROR_LOOK_THROUGH_APPLIED = "CRM007"
+ERROR_LOOK_THROUGH_NOT_IMPLEMENTED = "CRM008"
 
 # IRB error codes
 ERROR_PD_OUT_OF_RANGE = "IRB001"
@@ -214,6 +219,12 @@ ERROR_RE_CRR_RENTAL_COVERAGE_FAILED = "RE004"
 # Configuration error codes
 ERROR_INVALID_CONFIG = "CFG001"
 ERROR_MISSING_PERMISSION = "CFG002"
+
+# Aggregated output bound error codes (validate_aggregated_bundle)
+ERROR_RW_ABOVE_CAP = "OUT001"
+ERROR_RW_NEGATIVE = "OUT002"
+ERROR_RWA_NEGATIVE = "OUT003"
+ERROR_EAD_NULL = "OUT004"
 
 
 # =============================================================================
@@ -347,4 +358,30 @@ def re_split_warning(
         category=ErrorCategory.CLASSIFICATION,
         exposure_reference=exposure_reference,
         regulatory_reference=regulatory_reference,
+    )
+
+
+def optional_file_load_error(
+    *, relative_path: str | Path, field_name: str, exc: Exception
+) -> CalculationError:
+    """Create a DQ007 warning for an optional input file that could not be loaded.
+
+    Used by the loader's optional-file path: when an optional parquet/CSV
+    exists but cannot be read (corrupt bytes, OSError, ComputeError, etc.),
+    the loader returns ``None`` for the bundle field and appends one of
+    these warnings so the absence is visible in the audit trail rather
+    than swallowed silently. Missing files (FileNotFoundError) are not
+    reported via this factory — those are the legitimate "not configured"
+    case.
+    """
+    return CalculationError(
+        code=ERROR_OPTIONAL_FILE_UNREADABLE,
+        severity=ErrorSeverity.WARNING,
+        category=ErrorCategory.DATA_QUALITY,
+        message=(
+            f"Optional input file '{relative_path}' could not be loaded: "
+            f"{type(exc).__name__}: {exc}; treating as absent"
+        ),
+        field_name=field_name,
+        actual_value=str(relative_path),
     )
