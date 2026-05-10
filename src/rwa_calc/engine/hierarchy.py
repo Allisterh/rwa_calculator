@@ -64,6 +64,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# QRRE-relevant facility-level columns that must be coupled across two sites:
+#   Site A — `_undrawn_select_expressions` projects these from the facility frame
+#            when synthesising `facility_undrawn` exposure rows.
+#   Site B — `_propagate_facility_qrre_columns` joins+coalesces these from the
+#            facility frame onto the unified exposure frame (loans / contingents).
+# The two operations are intentionally different shapes (project vs. join+coalesce)
+# and must not be merged — this constant simply pins the column set both sites
+# agree on so they cannot drift out of sync.
+_FACILITY_QRRE_COUPLED_COLUMNS: tuple[str, ...] = (
+    "is_revolving",
+    "is_qrre_transactor",
+    "facility_limit",
+    "facility_termination_date",
+)
+
 
 class HierarchyResolver:
     """
@@ -2112,7 +2127,13 @@ class HierarchyResolver:
         Always returns a frame where ``is_revolving``, ``is_qrre_transactor``,
         and ``facility_limit`` exist with safe defaults.
         """
-        # TODO(qrre-coupling): also set in _undrawn_select_expressions; consolidate.
+        # Site B of the two-site QRRE coupling pinned by
+        # `_FACILITY_QRRE_COUPLED_COLUMNS`. Site A lives in
+        # `_undrawn_select_expressions` and projects the same column set when
+        # synthesising facility_undrawn rows; here we join+coalesce the parent
+        # facility's values onto loan / contingent exposure rows. The two sites
+        # use deliberately different shapes (project vs. join+coalesce) and must
+        # not be merged — only their column set is shared.
         fac_cols = set(facilities.collect_schema().names()) if facilities is not None else set()
         has_fac_ref = "facility_reference" in fac_cols
         exp_schema: set[str] = set()

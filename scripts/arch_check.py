@@ -78,6 +78,14 @@ VALIDATION_ENUM_ALLOWLIST: dict[str, set[str]] = {
     # AST-level contract test; keeping them in `data/schemas.py` would split
     # the rule from the code that enforces it.
     "engine/utils.py": {"NULLABLE_PARTITION_KEYS"},
+    # Two-site coupling marker for QRRE-related facility columns. Same
+    # rationale as NULLABLE_PARTITION_KEYS: these are engine-internal column
+    # names that document a within-module coupling between
+    # _undrawn_select_expressions and _propagate_facility_qrre_columns; the
+    # constant exists to make the coupling explicit and is pinned by
+    # tests/unit/test_p6_26_qrre_coupling_constant.py. Moving it to
+    # data/schemas.py would split the rule from the code that enforces it.
+    "engine/hierarchy.py": {"_FACILITY_QRRE_COUPLED_COLUMNS"},
 }
 
 # Engine modules exempt from the check-8 "must declare a module logger" rule.
