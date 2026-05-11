@@ -3805,12 +3805,12 @@ class TestB31PayrollPensionLoan:
 
         assert df["risk_weight"][0] == pytest.approx(0.75)
 
-    def test_crr_payroll_loan_gets_75pct(
+    def test_crr_payroll_loan_gets_35pct(
         self,
         sa_calculator: SACalculator,
         crr_config: CalculationConfig,
     ) -> None:
-        """Under CRR, payroll loans get standard 75% retail RW (no 35% category)."""
+        """Under CRR Art. 123 (second subparagraph), payroll loans get 35% (P2.17)."""
         exposures = pl.DataFrame(
             {
                 "exposure_reference": ["PAY_CRR_001"],
@@ -3832,8 +3832,11 @@ class TestB31PayrollPensionLoan:
         result = sa_calculator.calculate(bundle, crr_config)
         df = result.frame.collect()
 
-        # CRR has no payroll/pension category — all retail is 75%
-        assert df["risk_weight"][0] == pytest.approx(0.75)
+        # P2.17: CRR Art. 123 second subparagraph (added by CRR2, Reg (EU)
+        # 2019/876 Art. 1 §68) now grants payroll / pension loans the 35% RW
+        # — parity with PRA PS1/26 Art. 123(3)(a-b). Pre-P2.17 the engine
+        # defaulted to the flat 75% retail; the carve-out is now active.
+        assert df["risk_weight"][0] == pytest.approx(0.35)
 
     def test_payroll_loan_constant_value(self) -> None:
         """B31_RETAIL_PAYROLL_LOAN_RW constant should be 0.35 (35%)."""

@@ -137,13 +137,13 @@ EAD: float = DRAWN_AMOUNT  # 1,000,000 GBP (interest=0)
 
 # IRB inputs — PDs deliberately below BOTH CRR (0.03%) and Basel 3.1 (0.05%) floors
 # so the floor is always the binding constraint in assertions.
-PD_SOVEREIGN: float = 0.0001   # 0.01% — well below both floors
+PD_SOVEREIGN: float = 0.0001  # 0.01% — well below both floors
 PD_INSTITUTION: float = 0.0003  # 0.03% — below Basel 3.1 0.05% floor; at CRR floor
 EFFECTIVE_MATURITY: float = 2.5  # M = 2.5y (explicit override avoids date arithmetic edge cases)
 
 # PD floor values (match PDFloors class expected outputs)
 # Basel 3.1: Art. 160(1) — sovereign and institution both 0.05%
-EXPECTED_PD_FLOORED_B31: float = 0.0005   # 0.05% for both sovereign and institution
+EXPECTED_PD_FLOORED_B31: float = 0.0005  # 0.05% for both sovereign and institution
 
 # CRR: Art. 160(1) uniform 0.03% floor
 # Sovereign input PD=0.0001 < 0.0003 → floor binds → pd_floored = 0.0003
@@ -163,7 +163,7 @@ EXPECTED_LGD_CRR: float = 0.45
 #   f=0.024690, R=0.237037, G(PD)=-3.290527, G(0.999)=3.090232
 #   inside_N=-2.044703, cond_PD=0.020442, K=0.007977
 #   b=0.286115, MA=1.751844
-EXPECTED_RW_B31_FLOORED: float = 0.174677    # ≈17.47% risk weight
+EXPECTED_RW_B31_FLOORED: float = 0.174677  # ≈17.47% risk weight
 EXPECTED_RWA_B31_FLOORED: float = 174_677.0  # GBP 174,677
 EXPECTED_EL_B31: float = 200.0  # 0.0005 × 0.40 × 1,000,000
 
@@ -172,7 +172,7 @@ EXPECTED_EL_B31: float = 200.0  # 0.0005 × 0.40 × 1,000,000
 #   f=0.048771, R=0.234148, G(PD)=-3.090232, G(0.999)=3.090232
 #   inside_N=-1.822479, cond_PD=0.034191, K=0.013276
 #   b=0.246936, MA=1.588321
-EXPECTED_RW_B31_SOV_OVERRIDE: float = 0.263591    # ≈26.36% risk weight
+EXPECTED_RW_B31_SOV_OVERRIDE: float = 0.263591  # ≈26.36% risk weight
 EXPECTED_RWA_B31_SOV_OVERRIDE: float = 263_591.0  # GBP 263,591
 
 
@@ -511,7 +511,7 @@ def create_p236_ratings() -> pl.DataFrame:
             rating_agency="internal",
             rating_value="AAA",  # very low PD rating
             cqs=1,
-            pd=PD_SOVEREIGN,   # 0.0001 — below both floors
+            pd=PD_SOVEREIGN,  # 0.0001 — below both floors
             rating_date=RATING_DATE,
             is_solicited=False,
             model_id=MODEL_SOV_FIRB,

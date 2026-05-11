@@ -134,6 +134,7 @@ def generate_stress_counterparties(n: int, seed: int = 42) -> pl.LazyFrame:
                 "local_currency": pl.Series([None] * n, dtype=pl.String),
                 "institution_cqs": pl.Series([None] * n, dtype=pl.Int8),
                 "eca_score": pl.Series([None] * n, dtype=pl.Int8),
+                "is_core_market_participant": np.zeros(n, dtype=bool),
             }
         )
         .cast(dtypes_of(COUNTERPARTY_SCHEMA))
@@ -217,13 +218,21 @@ def generate_stress_loans(
                 "has_sufficient_collateral_data": np.full(n_loans, None),
                 "is_payroll_loan": np.full(n_loans, None),
                 "is_buy_to_let": np.full(n_loans, None),
+                "is_under_construction": np.full(n_loans, None),
                 "has_one_day_maturity_floor": np.full(n_loans, None),
                 "has_netting_agreement": np.full(n_loans, None),
                 "netting_facility_reference": np.full(n_loans, None),
                 "due_diligence_performed": np.full(n_loans, None),
                 "due_diligence_override_rw": np.full(n_loans, None),
+                "is_hedged": np.full(n_loans, None),
                 "is_sft": np.full(n_loans, None),
                 "effective_maturity": np.full(n_loans, None),
+                "purchased_receivables_subtype": pl.Series([None] * n_loans, dtype=pl.String),
+                "exposure_collateral_type": pl.Series([None] * n_loans, dtype=pl.String),
+                "exposure_security_cqs": pl.Series([None] * n_loans, dtype=pl.Int8),
+                "exposure_security_residual_maturity_years": pl.Series(
+                    [None] * n_loans, dtype=pl.Float64
+                ),
             }
         )
         .cast(dtypes_of(LOAN_SCHEMA))
@@ -273,6 +282,7 @@ def generate_stress_facilities(
                 "is_obs_commitment": np.full(n, None),
                 "is_payroll_loan": np.full(n, None),
                 "is_buy_to_let": np.full(n, None),
+                "is_under_construction": np.full(n, None),
                 "has_one_day_maturity_floor": np.full(n, None),
                 "facility_termination_date": pl.Series([None] * n, dtype=pl.Date),
                 "underlying_risk_type": pl.Series([None] * n, dtype=pl.String),
@@ -280,6 +290,7 @@ def generate_stress_facilities(
                 "has_sufficient_collateral_data": np.full(n, None),
                 "is_sft": np.full(n, None),
                 "effective_maturity": np.full(n, None),
+                "purchased_receivables_subtype": pl.Series([None] * n, dtype=pl.String),
             }
         )
         .cast(dtypes_of(FACILITY_SCHEMA))
@@ -322,6 +333,11 @@ def generate_stress_ratings(
                 "rating_date": [date(2025, 12, 1)] * n_rated,
                 "is_solicited": np.full(n_rated, True),
                 "model_id": pl.Series([None] * n_rated, dtype=pl.String),
+                # PRA PS1/26 Art. 120(2B) / Art. 122(3) issue-specific short-term
+                # ECAI columns (default-False/null for the stress population).
+                "is_short_term": np.full(n_rated, False),
+                "scope_type": pl.Series([None] * n_rated, dtype=pl.String),
+                "scope_id": pl.Series([None] * n_rated, dtype=pl.String),
             }
         )
         .cast(dtypes_of(RATINGS_SCHEMA))
@@ -446,11 +462,18 @@ def generate_stress_contingents(
                 "is_obs_commitment": np.full(n_cont, None),
                 "is_payroll_loan": np.full(n_cont, None),
                 "is_buy_to_let": np.full(n_cont, None),
+                "is_under_construction": np.full(n_cont, None),
                 "has_one_day_maturity_floor": np.full(n_cont, None),
                 "due_diligence_performed": np.full(n_cont, None),
                 "due_diligence_override_rw": np.full(n_cont, None),
                 "is_sft": np.full(n_cont, None),
                 "effective_maturity": np.full(n_cont, None),
+                "purchased_receivables_subtype": pl.Series([None] * n_cont, dtype=pl.String),
+                "exposure_collateral_type": pl.Series([None] * n_cont, dtype=pl.String),
+                "exposure_security_cqs": pl.Series([None] * n_cont, dtype=pl.Int8),
+                "exposure_security_residual_maturity_years": pl.Series(
+                    [None] * n_cont, dtype=pl.Float64
+                ),
             }
         )
         .cast(dtypes_of(CONTINGENTS_SCHEMA))

@@ -422,14 +422,20 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("Scenario: CRR Art. 123 second subparagraph — payroll/pension loan 35% RW")
     print()
     print("  Payroll loans (is_payroll_loan=True) — Art. 123 second subparagraph:")
-    print(f"    LOAN_PAY_001  EAD={DRAWN_PAY_001:>10,.0f}  RW={EXPECTED_RW_PAYROLL:.0%}  "
-          f"RWA={EXPECTED_RWA_PAY_001:>10,.0f}")
-    print(f"    LOAN_PAY_002  EAD={DRAWN_PAY_002:>10,.0f}  RW={EXPECTED_RW_PAYROLL:.0%}  "
-          f"RWA={EXPECTED_RWA_PAY_002:>10,.0f}")
+    print(
+        f"    LOAN_PAY_001  EAD={DRAWN_PAY_001:>10,.0f}  RW={EXPECTED_RW_PAYROLL:.0%}  "
+        f"RWA={EXPECTED_RWA_PAY_001:>10,.0f}"
+    )
+    print(
+        f"    LOAN_PAY_002  EAD={DRAWN_PAY_002:>10,.0f}  RW={EXPECTED_RW_PAYROLL:.0%}  "
+        f"RWA={EXPECTED_RWA_PAY_002:>10,.0f}"
+    )
     print()
     print("  Standard retail loan (is_payroll_loan=False) — Art. 123 first paragraph:")
-    print(f"    LOAN_NONPAY_003  EAD={DRAWN_NONPAY_003:>10,.0f}  RW={EXPECTED_RW_RETAIL:.0%}  "
-          f"RWA={EXPECTED_RWA_NONPAY_003:>10,.0f}")
+    print(
+        f"    LOAN_NONPAY_003  EAD={DRAWN_NONPAY_003:>10,.0f}  RW={EXPECTED_RW_RETAIL:.0%}  "
+        f"RWA={EXPECTED_RWA_NONPAY_003:>10,.0f}"
+    )
     print()
     print(f"  Total RWA: {EXPECTED_RWA_TOTAL:>12,.0f}")
 

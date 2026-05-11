@@ -41,8 +41,7 @@ class TestCorporateCqs5ConstantSanity:
 
         # Assert
         assert actual == Decimal("1.50"), (
-            f"B31_CORPORATE_RISK_WEIGHTS[5] must be Decimal('1.50') per PRA PS1/26. "
-            f"Got: {actual!r}"
+            f"B31_CORPORATE_RISK_WEIGHTS[5] must be Decimal('1.50') per PRA PS1/26. Got: {actual!r}"
         )
 
 
