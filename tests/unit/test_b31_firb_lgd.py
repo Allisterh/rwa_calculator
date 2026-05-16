@@ -166,10 +166,10 @@ class TestB31FIRBLGDDataFrame:
         assert set(df.columns) == expected_cols
 
     def test_dataframe_has_eleven_rows(self) -> None:
-        """DataFrame has 11 rows: 3 unsecured + covered_bond + financial + cash + receivables
-        + 3 real_estate + other_physical."""
+        """DataFrame has 14 rows: 3 unsecured + covered_bond + financial + cash + receivables
+        + 3 real_estate + other_physical + 3 purchased_receivables (Art. 161(1)(e)/(f)/(g))."""
         df = get_firb_lgd_table(is_basel_3_1=True)
-        assert len(df) == 11
+        assert len(df) == 14
 
     def test_dataframe_lgd_column_float64(self) -> None:
         """LGD column is Float64 type for Polars arithmetic."""
@@ -204,9 +204,11 @@ class TestB31FIRBLGDDataFrame:
         assert fse["lgd"][0] == pytest.approx(0.45, abs=1e-10)
 
     def test_dataframe_subordinated_value(self) -> None:
-        """Subordinated row has LGD = 0.75."""
+        """Subordinated unsecured row has LGD = 0.75 (excludes purchased_receivables sub-type)."""
         df = get_firb_lgd_table(is_basel_3_1=True)
-        sub = df.filter(pl.col("seniority") == "subordinated")
+        sub = df.filter(
+            (pl.col("seniority") == "subordinated") & (pl.col("collateral_type") == "unsecured")
+        )
         assert len(sub) == 1
         assert sub["lgd"][0] == pytest.approx(0.75, abs=1e-10)
 

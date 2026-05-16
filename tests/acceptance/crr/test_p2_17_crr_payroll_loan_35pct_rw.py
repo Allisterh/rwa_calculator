@@ -83,7 +83,7 @@ from tests.fixtures.p2_17.p2_17 import (  # noqa: E402
 )
 
 # Tolerances
-_RW_TOL = 1e-9   # absolute on risk_weight (exact scalar lookup — no float arithmetic)
+_RW_TOL = 1e-9  # absolute on risk_weight (exact scalar lookup — no float arithmetic)
 _RWA_TOL = 0.01  # £0.01 absolute on rwa_final
 
 
@@ -174,9 +174,9 @@ def test_crr_retail_payroll_loan_35pct_overrides_75pct_default(
 
     # Anti-regression guard: must not be the flat retail default
     assert row_pay_001["risk_weight"] != 0.75, (
-        f"P2.17 LOAN_PAY_001 anti-regression: risk_weight must not be 0.75 "
-        f"(CRR Art. 123 second subparagraph — payroll loan → 35%, not 75% flat). "
-        f"A future revert of the payroll branch would re-introduce this bug."
+        "P2.17 LOAN_PAY_001 anti-regression: risk_weight must not be 0.75 "
+        "(CRR Art. 123 second subparagraph — payroll loan → 35%, not 75% flat). "
+        "A future revert of the payroll branch would re-introduce this bug."
     )
 
     assert row_pay_001["risk_weight"] == _pytest.approx(EXPECTED_RW_PAYROLL, abs=_RW_TOL), (
@@ -200,9 +200,9 @@ def test_crr_retail_payroll_loan_35pct_overrides_75pct_default(
 
     # Anti-regression guard
     assert row_pay_002["risk_weight"] != 0.75, (
-        f"P2.17 LOAN_PAY_002 anti-regression: risk_weight must not be 0.75 "
-        f"(CRR Art. 123 second subparagraph — payroll loan → 35%, not 75% flat). "
-        f"A future revert of the payroll branch would re-introduce this bug."
+        "P2.17 LOAN_PAY_002 anti-regression: risk_weight must not be 0.75 "
+        "(CRR Art. 123 second subparagraph — payroll loan → 35%, not 75% flat). "
+        "A future revert of the payroll branch would re-introduce this bug."
     )
 
     assert row_pay_002["risk_weight"] == _pytest.approx(EXPECTED_RW_PAYROLL, abs=_RW_TOL), (

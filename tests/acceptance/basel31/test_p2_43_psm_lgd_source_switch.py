@@ -181,12 +181,9 @@ def _find_irb_row(results: object, loan_ref: str) -> dict:
     if len(direct_rows) == 1:
         return direct_rows[0]
     # Second: match by parent_exposure_reference; pick guaranteed portion (ead_final > 0)
-    sub_rows = (
-        irb_df.filter(
-            (pl.col("parent_exposure_reference") == loan_ref)
-            & (pl.col("ead_final") > 0)
-        ).to_dicts()
-    )
+    sub_rows = irb_df.filter(
+        (pl.col("parent_exposure_reference") == loan_ref) & (pl.col("ead_final") > 0)
+    ).to_dicts()
     all_irb_refs = irb_df["exposure_reference"].to_list()
     sa_refs = (
         results.sa_results.collect()["exposure_reference"].to_list()
@@ -303,9 +300,7 @@ class TestP243PSMLGDSourceSwitch:
         # After fix: IRBPermissions(psm_lgd_source="option_i") accepted, engine routes
         # to borrower's subordinated LGD=0.75 in _apply_parameter_substitution.
         base_perms = IRBPermissions.full_irb_b31()
-        irb_perms_option_i = IRBPermissions(
-            **{**vars(base_perms), "psm_lgd_source": "option_i"}
-        )
+        irb_perms_option_i = IRBPermissions(**{**vars(base_perms), "psm_lgd_source": "option_i"})
 
         config = CalculationConfig.basel_3_1(
             reporting_date=date(2027, 6, 30),
@@ -313,6 +308,7 @@ class TestP243PSMLGDSourceSwitch:
         )
         # Override irb_permissions with option_i variant
         from dataclasses import replace as dc_replace
+
         config = dc_replace(config, irb_permissions=irb_perms_option_i)
 
         # Act
@@ -376,10 +372,9 @@ class TestP243PSMLGDSourceSwitch:
         # This will FAIL (TypeError) until engine-implementer adds psm_lgd_source field.
         bundle_i = _build_p2_43_bundle()
         base_perms = IRBPermissions.full_irb_b31()
-        irb_perms_option_i = IRBPermissions(
-            **{**vars(base_perms), "psm_lgd_source": "option_i"}
-        )
+        irb_perms_option_i = IRBPermissions(**{**vars(base_perms), "psm_lgd_source": "option_i"})
         from dataclasses import replace as dc_replace
+
         config_i = CalculationConfig.basel_3_1(
             reporting_date=date(2027, 6, 30),
             permission_mode=PermissionMode.IRB,
@@ -423,8 +418,7 @@ class TestP243FixtureConstants:
         """
         B31_CORPORATE_PD_FLOOR = 0.0005
         assert PD_BORROWER > B31_CORPORATE_PD_FLOOR, (
-            f"Fixture: PD_BORROWER ({PD_BORROWER}) must exceed B31 floor "
-            f"({B31_CORPORATE_PD_FLOOR})"
+            f"Fixture: PD_BORROWER ({PD_BORROWER}) must exceed B31 floor ({B31_CORPORATE_PD_FLOOR})"
         )
         assert PD_GUARANTOR > B31_CORPORATE_PD_FLOOR, (
             f"Fixture: PD_GUARANTOR ({PD_GUARANTOR}) must exceed B31 floor "
@@ -438,7 +432,7 @@ class TestP243FixtureConstants:
         The large LGD gap between option_i (0.75) and option_ii (0.40) makes the
         test unambiguous — the two arms cannot accidentally produce the same RWA.
         """
-        assert EXPECTED_LGD_BORROWER == pytest.approx(0.75, abs=1e-10), (
+        assert pytest.approx(0.75, abs=1e-10) == EXPECTED_LGD_BORROWER, (
             f"Fixture: EXPECTED_LGD_BORROWER should be 0.75 (Art. 161(1)(b)), "
             f"got {EXPECTED_LGD_BORROWER}"
         )
@@ -451,7 +445,7 @@ class TestP243FixtureConstants:
         regulatory text perspective where option (i) = guarantor senior LGD); the test
         uses it as option_ii (the lower, default path in the engine's IRBPermissions).
         """
-        assert EXPECTED_LGD_OPTION_I_B31 == pytest.approx(0.40, abs=1e-10), (
+        assert pytest.approx(0.40, abs=1e-10) == EXPECTED_LGD_OPTION_I_B31, (
             f"Fixture: EXPECTED_LGD_OPTION_I_B31 should be 0.40 (Art. 161(1)(a) B31), "
             f"got {EXPECTED_LGD_OPTION_I_B31}"
         )
@@ -463,14 +457,14 @@ class TestP243FixtureConstants:
         Both regulatory option_ii and EXPECTED_LGD_BORROWER/EXPECTED_LGD_OPTION_II
         resolve to 0.75 because the borrower's obligation is subordinated.
         """
-        assert EXPECTED_LGD_OPTION_II == pytest.approx(0.75, abs=1e-10), (
+        assert pytest.approx(0.75, abs=1e-10) == EXPECTED_LGD_OPTION_II, (
             f"Fixture: EXPECTED_LGD_OPTION_II should be 0.75 (subordinated), "
             f"got {EXPECTED_LGD_OPTION_II}"
         )
 
     def test_p2_43_fixture_ead_is_one_million(self) -> None:
         """P2.43: EAD = 1,000,000 (drawn_amount, no interest, no undrawn)."""
-        assert EAD == pytest.approx(1_000_000.0, abs=0.01), (
+        assert pytest.approx(1_000_000.0, abs=0.01) == EAD, (
             f"Fixture: EAD should be 1,000,000, got {EAD}"
         )
 

@@ -157,7 +157,7 @@ PERCENTAGE_COVERED: float = 1.0
 ORIGINAL_MATURITY_YEARS: float = 3.0  # ≥ 1y → Art. 237(2)(a) eligible
 
 # IRB inputs
-PD_BORROWER: float = 0.05   # 5.0% — high-PD CCC-rated; above B31 corporate floor 0.0005
+PD_BORROWER: float = 0.05  # 5.0% — high-PD CCC-rated; above B31 corporate floor 0.0005
 PD_GUARANTOR: float = 0.005  # 0.5% — better quality; above B31 corporate floor 0.0005
 EFFECTIVE_MATURITY: float = 2.5  # M = 2.5y (explicit override avoids date arithmetic edge cases)
 
@@ -639,14 +639,20 @@ def print_summary(saved: dict[str, Path]) -> None:
         print(f"  {name:<20} {len(df):>3} row(s)  ->  {path}")
     print("-" * 70)
     print("Scenario: PSM LGD source switch — Art. 236(1)(a)(i) option (i) vs option (ii)")
-    print(f"  Borrower:  {BORROWER_REF} (corporate, GB, annual_revenue={ANNUAL_REVENUE_BORROWER:,.0f})")
+    print(
+        f"  Borrower:  {BORROWER_REF} (corporate, GB, annual_revenue={ANNUAL_REVENUE_BORROWER:,.0f})"
+    )
     print(f"             PD={PD_BORROWER}, seniority=subordinated")
     print(f"             Borrower F-IRB supervisory LGD = {EXPECTED_LGD_BORROWER} (Art. 161(1)(b))")
     print(f"  Guarantor: {GUARANTOR_REF} (corporate, GB)")
     print(f"             PD={PD_GUARANTOR}, guarantor_seniority=senior")
     print(f"  Loan:      {LOAN_REF}  GBP {DRAWN_AMOUNT:,.0f} subordinated")
-    print(f"             value_date={VALUE_DATE}, maturity_date={MATURITY_DATE}, M={EFFECTIVE_MATURITY}y")
-    print(f"  Guarantee: {GUARANTEE_REF}  100% coverage, original_maturity={ORIGINAL_MATURITY_YEARS}y")
+    print(
+        f"             value_date={VALUE_DATE}, maturity_date={MATURITY_DATE}, M={EFFECTIVE_MATURITY}y"
+    )
+    print(
+        f"  Guarantee: {GUARANTEE_REF}  100% coverage, original_maturity={ORIGINAL_MATURITY_YEARS}y"
+    )
     print()
     print("  PSM option (i)  — guarantor supervisory LGD (senior seniority):")
     print(f"    Basel 3.1: LGD = {EXPECTED_LGD_OPTION_I_B31} (Art. 161(1)(a) B31 corporate senior)")

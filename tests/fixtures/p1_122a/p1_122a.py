@@ -171,11 +171,11 @@ PD_BORROWER: float = 0.02  # 2.0% — well above Basel 3.1 corporate floor 0.000
 GUARANTOR_CQS: int = 3
 
 # Expected SA risk weights (assertions live in the test)
-EXPECTED_GUARANTOR_RW_B31: float = 0.75   # B31 Art. 122(2) Table 6, CQS 3 — POST-FIX
-EXPECTED_GUARANTOR_RW_CRR: float = 1.00   # CRR Table 5,             CQS 3 — regression
+EXPECTED_GUARANTOR_RW_B31: float = 0.75  # B31 Art. 122(2) Table 6, CQS 3 — POST-FIX
+EXPECTED_GUARANTOR_RW_CRR: float = 1.00  # CRR Table 5,             CQS 3 — regression
 
-EXPECTED_RWA_B31: float = EAD * EXPECTED_GUARANTOR_RW_B31       # 750,000
-EXPECTED_RWA_CRR: float = EAD * EXPECTED_GUARANTOR_RW_CRR       # 1,000,000
+EXPECTED_RWA_B31: float = EAD * EXPECTED_GUARANTOR_RW_B31  # 750,000
+EXPECTED_RWA_CRR: float = EAD * EXPECTED_GUARANTOR_RW_CRR  # 1,000,000
 EXPECTED_RWA_B31_PRE_FIX: float = EAD * EXPECTED_GUARANTOR_RW_CRR  # 1,000,000 (bug)
 
 
@@ -560,7 +560,7 @@ def create_p1122a_ratings() -> pl.DataFrame:
             rating_type="internal",
             rating_agency="internal",
             rating_value="BB",  # representative mid-grade for pd=2%
-            cqs=None,           # internal rating: no ECAI CQS
+            cqs=None,  # internal rating: no ECAI CQS
             pd=PD_BORROWER,
             rating_date=RATING_DATE,
             is_solicited=False,
@@ -572,11 +572,11 @@ def create_p1122a_ratings() -> pl.DataFrame:
             rating_type="external",
             rating_agency="Moody's",
             rating_value="Baa2",  # Moody's BBB equivalent → CQS 3
-            cqs=GUARANTOR_CQS,    # 3 — discriminating SA risk weight value
-            pd=None,              # CRITICAL: null PD → SA fallback for guarantor
+            cqs=GUARANTOR_CQS,  # 3 — discriminating SA risk weight value
+            pd=None,  # CRITICAL: null PD → SA fallback for guarantor
             rating_date=RATING_DATE,
             is_solicited=True,
-            model_id=None,        # no model_id → guarantor cannot route IRB
+            model_id=None,  # no model_id → guarantor cannot route IRB
         ),
     ]
     return pl.DataFrame([r.to_dict() for r in rows], schema=dtypes_of(RATINGS_SCHEMA))
@@ -648,15 +648,23 @@ def print_summary(saved: dict[str, Path]) -> None:
         print(f"  {name:<20} {len(df):>3} row(s)  ->  {path}")
     print("-" * 70)
     print("Scenario: IRB borrower + null-PD corporate guarantor → SA-fallback branch")
-    print(f"  Borrower:  {BORROWER_REF} (entity_type='company', annual_revenue={ANNUAL_REVENUE:,.0f})")
+    print(
+        f"  Borrower:  {BORROWER_REF} (entity_type='company', annual_revenue={ANNUAL_REVENUE:,.0f})"
+    )
     print(f"             F-IRB: pd={PD_BORROWER}, model_id={MODEL_ID}")
     print(f"  Guarantor: {GUARANTOR_REF} (entity_type='company', CQS {GUARANTOR_CQS})")
-    print(f"             SA-fallback: pd=None, model_id=None")
-    print(f"  Loan:      {LOAN_REF}  GBP {DRAWN_AMOUNT:,.0f}, seniority=senior, M={EFFECTIVE_MATURITY}y")
-    print(f"  Guarantee: {GUARANTEE_REF}  100% coverage, original_maturity={ORIGINAL_MATURITY_YEARS}y, senior")
+    print("             SA-fallback: pd=None, model_id=None")
+    print(
+        f"  Loan:      {LOAN_REF}  GBP {DRAWN_AMOUNT:,.0f}, seniority=senior, M={EFFECTIVE_MATURITY}y"
+    )
+    print(
+        f"  Guarantee: {GUARANTEE_REF}  100% coverage, original_maturity={ORIGINAL_MATURITY_YEARS}y, senior"
+    )
     print()
     print("  B31 (CalculationConfig.basel_3_1()) — post-fix:")
-    print(f"    Guarantor SA RW (corporate CQS 3, Art. 122(2) Table 6) = {EXPECTED_GUARANTOR_RW_B31:.0%}")
+    print(
+        f"    Guarantor SA RW (corporate CQS 3, Art. 122(2) Table 6) = {EXPECTED_GUARANTOR_RW_B31:.0%}"
+    )
     print(f"    Expected RWA = {EXPECTED_RWA_B31:,.0f}")
     print(
         f"    Pre-fix bug RWA = {EXPECTED_RWA_B31_PRE_FIX:,.0f}  "
