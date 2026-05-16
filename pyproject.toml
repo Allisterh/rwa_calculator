@@ -155,7 +155,7 @@ not-subscriptable = "ignore"      # LazyFrame.collect() returns DataFrame|InProc
 # Static-analysis citation validator (watchfire check / watchfire matrix).
 # Pin matches the bundled rulebook snapshot the pilot annotations were
 # written against; bump when upstream ships an updated PS / PRA Rulebook index.
-rulebook_version = "2026-05-14"
+rulebook_version = "2026-05-15"
 instruments = ["CRR", "PS", "PRA_RULEBOOK", "SS"]
 source_paths = ["src/rwa_calc/engine", "src/rwa_calc/data/tables"]
 
