@@ -1857,6 +1857,7 @@ class SALazyFrame:
 
         return exposures
 
+    @cites("CRR Art. 123B")
     @cites("PS1/26, paragraph 123B")
     def apply_currency_mismatch_multiplier(self, config: CalculationConfig) -> pl.LazyFrame:
         """Apply 1.5x RW multiplier for retail/RE currency mismatch (Basel 3.1 only).
