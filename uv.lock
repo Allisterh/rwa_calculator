@@ -1049,7 +1049,7 @@ requires-dist = [
     { name = "ty", marker = "extra == 'dev'" },
     { name = "uvicorn", specifier = ">=0.40.0" },
     { name = "uvicorn", marker = "extra == 'ui'", specifier = ">=0.27.0" },
-    { name = "watchfire", specifier = "==0.3.0" },
+    { name = "watchfire", specifier = "==0.3.1" },
     { name = "xlsxwriter", specifier = ">=3.1.0" },
     { name = "zensical", specifier = ">=0.0.30" },
     { name = "zensical", marker = "extra == 'dev'", specifier = ">=0.0.29" },
@@ -1201,15 +1201,15 @@ wheels = [
 
 [[package]]
 name = "watchfire"
-version = "0.3.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "polars" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/71/5e920f924e57335829d9b16706c15a5502a428dd79fb2744afd1d51fd80b/watchfire-0.3.0.tar.gz", hash = "sha256:3f9ed6413e1c8c085f314d5b9f9bc8d588e7665574d326431aaf4677c1e0670f", size = 850015, upload-time = "2026-05-16T09:13:14.459Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2b/9b/3e237c25d80da18e7e8df9d34fe42830ea91d418ba32df39fec3a88f9c08/watchfire-0.3.1.tar.gz", hash = "sha256:f535ba81ae8a690ddd65a68d6dc1207a2718cd15d1e94873804436bae7c4296b", size = 866413, upload-time = "2026-05-16T11:11:19.864Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/d1/a7f48825cf5f336855cb09d822f26137944d6104cf2af5a496ef3db08fc6/watchfire-0.3.0-py3-none-any.whl", hash = "sha256:f5fb14cdbe1b34f756d6ba0212d601c8172249b829a60d66bca0cd8032ef3100", size = 731126, upload-time = "2026-05-16T09:13:12.902Z" },
+    { url = "https://files.pythonhosted.org/packages/99/26/222918e527457aefabf100aeb8c9d5c6ba7092856b4d92ca103452fb2f06/watchfire-0.3.1-py3-none-any.whl", hash = "sha256:a979554192d00d88d9d9dcce0218ee8cf45388f7b640b23287c24e06d0787e16", size = 747203, upload-time = "2026-05-16T11:11:17.762Z" },
 ]
 
 [[package]]

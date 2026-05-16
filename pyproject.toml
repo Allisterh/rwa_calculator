@@ -35,7 +35,7 @@ dependencies = [
     "uvicorn>=0.40.0",
     "marimo>=0.19.6",
     "ty>=0.0.26",
-    "watchfire==0.3.0",
+    "watchfire==0.3.1",
 ]
 
 [project.scripts]

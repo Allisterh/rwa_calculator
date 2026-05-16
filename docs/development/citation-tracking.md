@@ -42,7 +42,7 @@ Today watchfire 0.2.0's `__watchfire__` attribute holds only the outer decorator
 | Delegated Regulation | `Delegated Regulation <id>, Art. N` | `Delegated Regulation 2018/171, Art. 1` |
 
 Notes:
-- Article numbers are integers only. Alphanumeric amendment articles ("Art. 123B", "Art. 110A") are not yet parseable by watchfire — cite the closest valid form (`PS1/26` at instrument level) and document the precise sub-article in the docstring/comment.
+- Article numbers may include a lowercase alphabetic suffix (e.g. `501a`, `501b`). watchfire 0.3.1 parses these and the bundled CRR index covers `501a`. Articles introduced by Basel 3.1 with no CRR equivalent (`123B`, `110A`) are still absent from the CRR index — for those, cite the `PS1/26, paragraph N` form at instrument level and document the sub-article in the docstring/comment.
 - PS / SS paragraphs are numeric (e.g. `paragraph 4.55`); the `B`/`A` suffixes used in CRR-style amendment articles are not valid paragraph IDs.
 
 ## Running the tooling

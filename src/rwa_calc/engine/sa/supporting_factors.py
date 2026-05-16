@@ -111,9 +111,7 @@ class SupportingFactorCalculator:
 
         return weighted_factor / total_exposure
 
-    # `CRR Art. 501a` (infrastructure supporting factor, CRR2 EU 2019/876) is
-    # not in the watchfire 0.3.0 rulebook index. Leaving unannotated rather
-    # than mis-citing as the umbrella `Art. 501` (which is the SME factor).
+    @cites("CRR Art. 501a")
     def calculate_infrastructure_factor(
         self,
         config: CalculationConfig,
