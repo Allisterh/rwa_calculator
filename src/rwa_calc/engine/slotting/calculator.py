@@ -41,6 +41,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.bundles import CRMAdjustedBundle, SlottingResultBundle
 from rwa_calc.contracts.errors import CalculationError
@@ -79,6 +80,7 @@ class SlottingCalculator:
     def __init__(self) -> None:
         """Initialize slotting calculator."""
 
+    @cites("CRR Art. 153(5)")
     def calculate_branch(
         self,
         exposures: pl.LazyFrame,

@@ -23,6 +23,7 @@ from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.domain.enums import CQS
 
@@ -225,6 +226,8 @@ def _create_institution_df(is_basel_3_1: bool = False) -> pl.DataFrame:
     return _build_cqs_rw_df(weights, "INSTITUTION")
 
 
+@cites("CRR Art. 120")
+@cites("CRR Art. 121")
 def build_institution_guarantor_rw_expr(
     cqs_col: str,
     is_basel_3_1: bool,
@@ -492,6 +495,7 @@ def _create_corporate_df() -> pl.DataFrame:
     return _build_cqs_rw_df(CORPORATE_RISK_WEIGHTS, "CORPORATE")
 
 
+@cites("CRR Art. 122")
 def build_corporate_guarantor_rw_expr(
     cqs_col: str,
     is_basel_3_1: bool,

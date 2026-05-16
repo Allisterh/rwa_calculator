@@ -38,6 +38,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.domain.enums import PropertyType
 
@@ -383,6 +384,7 @@ def _create_b31_corporate_df() -> pl.DataFrame:
     )
 
 
+@cites("PS1/26, paragraph 122")
 def get_b31_combined_cqs_risk_weights() -> pl.DataFrame:
     """
     Get combined CQS-based risk weight table for Basel 3.1 joins.

@@ -513,6 +513,7 @@ class IRBLazyFrame:
             )
         return self._lf.with_columns(pl.col(lgd_col).alias("lgd_floored"))
 
+    @cites("CRR Art. 153(1)")
     def calculate_correlation(self, config: CalculationConfig) -> pl.LazyFrame:
         """
         Calculate asset correlation using pure Polars expressions.
@@ -548,6 +549,7 @@ class IRBLazyFrame:
             ).alias("correlation")
         )
 
+    @cites("CRR Art. 153(1)")
     def calculate_k(self, config: CalculationConfig) -> pl.LazyFrame:
         """
         Calculate capital requirement (K) using pure Polars with polars-normal-stats.
@@ -562,6 +564,7 @@ class IRBLazyFrame:
         """
         return self._lf.with_columns(_polars_capital_k_expr().alias("k"))
 
+    @cites("CRR Art. 162")
     def calculate_maturity_adjustment(self, config: CalculationConfig) -> pl.LazyFrame:
         """
         Calculate maturity adjustment for non-retail exposures.

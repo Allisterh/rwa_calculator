@@ -50,6 +50,8 @@ G_999 = 3.0902323061678132
 # =============================================================================
 
 
+@cites("CRR Art. 163")
+@cites("PS1/26, paragraph 163")
 def _pd_floor_expression(
     config: CalculationConfig,
     *,
@@ -137,6 +139,8 @@ def _pd_floor_expression(
     )
 
 
+@cites("CRR Art. 164")
+@cites("PS1/26, paragraph 164")
 def _lgd_floor_expression(
     config: CalculationConfig,
     *,
@@ -188,6 +192,7 @@ def _lgd_floor_expression(
     return pl.lit(float(floors.unsecured))
 
 
+@cites("PS1/26, paragraph 164")
 def _lgd_floor_expression_with_collateral(
     config: CalculationConfig,
     *,
@@ -257,6 +262,7 @@ def _lgd_floor_expression_with_collateral(
     )
 
 
+@cites("PS1/26, paragraph 164")
 def _lgd_floor_blended_expression(
     config: CalculationConfig,
 ) -> pl.Expr:
@@ -348,6 +354,8 @@ def _lgd_floor_blended_expression(
 # =============================================================================
 
 
+@cites("CRR Art. 153")
+@cites("CRR Art. 154")
 def apply_irb_formulas(
     exposures: pl.LazyFrame,
     config: CalculationConfig,
@@ -497,6 +505,7 @@ def apply_irb_formulas(
 # =============================================================================
 
 
+@cites("CRR Art. 153(2)")
 def _correlation_expr_from_pd(
     pd_expr: pl.Expr,
     sme_threshold: float = 50.0,
@@ -632,6 +641,7 @@ def _polars_correlation_expr(
     )
 
 
+@cites("CRR Art. 153(1)")
 def _capital_k_expr_from_params(
     pd_expr: pl.Expr,
     lgd_expr: pl.Expr,
@@ -680,6 +690,8 @@ def _polars_capital_k_expr() -> pl.Expr:
     )
 
 
+@cites("CRR Art. 162(2)")
+@cites("CRR Art. 162(3)")
 def _maturity_adjustment_expr_from_pd(
     pd_expr: pl.Expr,
     maturity_floor: float = 1.0,
@@ -748,6 +760,7 @@ def _polars_maturity_adjustment_expr(
 # =============================================================================
 
 
+@cites("CRR Art. 153(3)")
 def _double_default_multiplier_expr(guarantor_pd_expr: pl.Expr) -> pl.Expr:
     """
     Double default multiplier per CRR Art. 153(3) / Basel II para 284.
@@ -768,6 +781,7 @@ def _double_default_multiplier_expr(guarantor_pd_expr: pl.Expr) -> pl.Expr:
     return pl.lit(0.15) + pl.lit(160.0) * guarantor_pd_expr
 
 
+@cites("CRR Art. 153(3)")
 def calculate_double_default_k(
     k_obligor: float,
     guarantor_pd: float,
@@ -793,6 +807,7 @@ def calculate_double_default_k(
 # =============================================================================
 
 
+@cites("CRR Art. 161")
 def _parametric_irb_risk_weight_expr(
     pd_expr: pl.Expr,
     lgd: float | pl.Expr,
@@ -1028,6 +1043,7 @@ def calculate_k(pd: float, lgd: float, correlation: float) -> float:
     )
 
 
+@cites("CRR Art. 162")
 def calculate_maturity_adjustment(
     pd: float,
     maturity: float,

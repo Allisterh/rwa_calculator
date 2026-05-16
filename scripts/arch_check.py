@@ -13,9 +13,10 @@ Checks machine-verifiable invariants from CLAUDE.md:
 8. Every stage module in engine/** declares `logger = logging.getLogger(__name__)`
    and does not call `print()` or `logging.basicConfig()`.
 9. Every `@cites(...)` decorator references an instrument allowed by
-   `[tool.watchfire]` and a citation the rulebook index recognises (PS / PRA
-   Rulebook citations are reported as soft warnings until the upstream index
-   ships richer coverage; CRR-side failures are fatal).
+   `[tool.watchfire]` and a citation the rulebook index recognises. Parse
+   failures, unknown instruments, unknown articles (any instrument), and
+   version mismatches are fatal; AST-walker ``unresolved`` findings remain
+   soft warnings.
 
 Checks 5, 6, 7 enforce the data/engine separation. Check 8 enforces the
 observability contract (see docs/specifications/observability.md). Check 9
@@ -478,13 +479,15 @@ def check_engine_logger_contract(path: Path) -> list[str]:
 def check_watchfire_citations() -> tuple[list[str], list[str]]:
     """Run `watchfire check` via its Python API.
 
-    Returns ``(fatal, warnings)`` where ``fatal`` is the list of findings
-    that must block the gate (parse failures, unknown instruments, version
-    mismatches, and CRR / Delegated Regulation unknown-article findings —
-    those should never happen against the bundled CRR index) and
-    ``warnings`` is the list of soft findings (PS / PRA Rulebook / SS
-    unknown-article findings, expected until the upstream index ships
-    richer non-CRR coverage; plus AST-walker ``unresolved`` cases).
+    Returns ``(fatal, warnings)`` where ``fatal`` blocks the gate (parse
+    failures, unknown instruments, unknown articles in any instrument, and
+    version mismatches) and ``warnings`` is the soft bucket (AST-walker
+    ``unresolved`` cases only — citations the walker couldn't statically
+    resolve, not citations that failed index lookup).
+
+    The watchfire 0.3.0 index covers PS1/26 (4,498 PS rows) in addition to
+    CRR, so PS / PRA Rulebook citations are no longer downgraded to
+    warnings the way they were when the index was sparse.
     """
     try:
         from watchfire.checks import run_check
@@ -495,13 +498,11 @@ def check_watchfire_citations() -> tuple[list[str], list[str]]:
     config = load_config(Path.cwd())
     report = run_check(config)
 
-    soft_instruments = {"PS", "PRA_RULEBOOK", "SS"}
     fatal: list[str] = []
     warnings: list[str] = []
     for r in report.results:
         location = f"  {r.file}:{r.line}: {r.function}: {r.kind}: {r.message}"
-        is_soft_instrument = any(inst in r.message for inst in soft_instruments)
-        if r.kind == "unresolved" or r.kind == "unknown_article" and is_soft_instrument:
+        if r.kind == "unresolved":
             warnings.append(location)
         else:
             fatal.append(location)

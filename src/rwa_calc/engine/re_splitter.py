@@ -95,6 +95,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.bundles import CRMAdjustedBundle
 from rwa_calc.contracts.errors import (
@@ -159,6 +160,9 @@ class RealEstateSplitter:
     ``contracts/protocols.py``.
     """
 
+    @cites("CRR Art. 125")
+    @cites("CRR Art. 126")
+    @cites("PS1/26, paragraph 124F")
     def split(
         self,
         data: CRMAdjustedBundle,

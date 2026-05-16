@@ -40,6 +40,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.errors import (
     ERROR_SME_MISSING_COUNTERPARTY_REF,
@@ -71,6 +72,7 @@ class SupportingFactorCalculator:
     Under Basel 3.1, these factors are not available (returns 1.0).
     """
 
+    @cites("CRR Art. 501")
     def calculate_sme_factor(
         self,
         total_exposure: Decimal,
@@ -109,6 +111,9 @@ class SupportingFactorCalculator:
 
         return weighted_factor / total_exposure
 
+    # `CRR Art. 501a` (infrastructure supporting factor, CRR2 EU 2019/876) is
+    # not in the watchfire 0.3.0 rulebook index. Leaving unannotated rather
+    # than mis-citing as the umbrella `Art. 501` (which is the SME factor).
     def calculate_infrastructure_factor(
         self,
         config: CalculationConfig,
@@ -163,6 +168,7 @@ class SupportingFactorCalculator:
         # Return lowest factor (most beneficial)
         return min(factors)
 
+    @cites("CRR Art. 501")
     def apply_factors(
         self,
         exposures: pl.LazyFrame,

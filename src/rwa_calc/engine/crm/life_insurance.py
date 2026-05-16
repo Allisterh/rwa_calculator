@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.data.schemas import LIFE_INSURANCE_COLLATERAL_TYPES
 
@@ -66,6 +67,7 @@ def _map_insurer_rw_to_secured_rw_expr() -> pl.Expr:
     )
 
 
+@cites("CRR Art. 232")
 def compute_life_insurance_columns(
     exposures: pl.LazyFrame,
     collateral: pl.LazyFrame | None,

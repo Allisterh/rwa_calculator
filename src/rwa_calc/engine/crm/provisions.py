@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.data.schemas import DIRECT_BENEFICIARY_TYPES
 from rwa_calc.domain.enums import ApproachType
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
 
 
+@cites("CRR Art. 111")
 def resolve_provisions(
     exposures: pl.LazyFrame,
     provisions: pl.LazyFrame,

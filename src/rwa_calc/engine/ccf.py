@@ -46,6 +46,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.domain.enums import ApproachType
 
@@ -79,6 +80,7 @@ def on_balance_ead() -> pl.Expr:
     return pl.col("drawn_amount").clip(lower_bound=0.0) + interest_for_ead()
 
 
+@cites("CRR Art. 111")
 def sa_ccf_expression(
     risk_type_col: str = "risk_type",
     is_basel_3_1: bool = False,
@@ -128,6 +130,7 @@ def sa_ccf_expression(
     )
 
 
+@cites("CRR Art. 166")
 def _firb_ccf_for_col(risk_type_col: str = "risk_type") -> pl.Expr:
     """Return CRR F-IRB CCF expression for a given risk_type column.
 
@@ -208,6 +211,8 @@ class CCFCalculator:
         """Initialize CCF calculator."""
         pass
 
+    @cites("CRR Art. 111")
+    @cites("CRR Art. 166")
     def apply_ccf(
         self,
         exposures: pl.LazyFrame,

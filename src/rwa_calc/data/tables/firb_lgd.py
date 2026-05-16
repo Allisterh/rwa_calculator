@@ -19,6 +19,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import polars as pl
+from watchfire import cites
 
 # =============================================================================
 # F-IRB SUPERVISORY LGD VALUES (CRR Art. 161)
@@ -81,6 +82,7 @@ BASEL31_FIRB_SUPERVISORY_LGD: dict[str, Decimal] = {
 }
 
 
+@cites("CRR Art. 161")
 def get_firb_lgd_table_for_framework(is_basel_3_1: bool = False) -> dict[str, Decimal]:
     """Get the F-IRB supervisory LGD table for the given framework.
 
@@ -447,6 +449,7 @@ def _create_firb_lgd_df() -> pl.DataFrame:
     )
 
 
+@cites("CRR Art. 161")
 def get_firb_lgd_table(is_basel_3_1: bool = False) -> pl.DataFrame:
     """
     Get F-IRB supervisory LGD lookup table.

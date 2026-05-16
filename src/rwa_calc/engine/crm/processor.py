@@ -27,6 +27,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.bundles import (
     ClassifiedExposuresBundle,
@@ -424,6 +425,7 @@ class CRMProcessor:
         self._haircut_calculator = HaircutCalculator(is_basel_3_1=is_basel_3_1)
         self._is_basel_3_1 = is_basel_3_1
 
+    @cites("CRR Art. 194")
     def apply_crm(
         self,
         data: ClassifiedExposuresBundle,

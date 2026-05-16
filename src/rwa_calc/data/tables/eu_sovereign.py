@@ -22,6 +22,7 @@ References:
 from __future__ import annotations
 
 import polars as pl
+from watchfire import cites
 
 # =============================================================================
 # EU MEMBER STATES (ISO 3166-1 alpha-2 codes)
@@ -98,6 +99,7 @@ EU_COUNTRY_DOMESTIC_CURRENCY: dict[str, str] = {
 }
 
 
+@cites("CRR Art. 114")
 def build_eu_domestic_currency_expr(
     country_col: str,
     currency_col: str | pl.Expr = "currency",
@@ -132,6 +134,7 @@ def build_eu_domestic_currency_expr(
     )
 
 
+@cites("CRR Art. 114")
 def build_domestic_cgcb_guarantor_expr(
     country_col: str,
     currency_col: str | pl.Expr,
