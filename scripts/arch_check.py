@@ -12,11 +12,17 @@ Checks machine-verifiable invariants from CLAUDE.md:
    ensure_columns against a ColumnSpec schema in data/schemas.py instead)
 8. Every stage module in engine/** declares `logger = logging.getLogger(__name__)`
    and does not call `print()` or `logging.basicConfig()`.
+9. Every `@cites(...)` decorator references an instrument allowed by
+   `[tool.watchfire]` and a citation the rulebook index recognises. Parse
+   failures, unknown instruments, unknown articles (any instrument), and
+   version mismatches are fatal; AST-walker ``unresolved`` findings remain
+   soft warnings.
 
 Checks 5, 6, 7 enforce the data/engine separation. Check 8 enforces the
-observability contract (see docs/specifications/observability.md). Rare
-intentional exceptions are listed in the ALLOWLIST dicts below; adding a new
-entry there should be a deliberate, reviewed decision.
+observability contract (see docs/specifications/observability.md). Check 9
+keeps the watchfire citation matrix honest. Rare intentional exceptions are
+listed in the ALLOWLIST dicts below; adding a new entry there should be a
+deliberate, reviewed decision.
 
 Usage:
     python scripts/arch_check.py [path]  # defaults to src/rwa_calc/
@@ -470,6 +476,40 @@ def check_engine_logger_contract(path: Path) -> list[str]:
     return violations
 
 
+def check_watchfire_citations() -> tuple[list[str], list[str]]:
+    """Run `watchfire check` via its Python API.
+
+    Returns ``(fatal, warnings)`` where ``fatal`` blocks the gate (parse
+    failures, unknown instruments, unknown articles in any instrument, and
+    version mismatches) and ``warnings`` is the soft bucket (AST-walker
+    ``unresolved`` cases only — citations the walker couldn't statically
+    resolve, not citations that failed index lookup).
+
+    The watchfire 0.3.0 index covers PS1/26 (4,498 PS rows) in addition to
+    CRR, so PS / PRA Rulebook citations are no longer downgraded to
+    warnings the way they were when the index was sparse.
+    """
+    try:
+        from watchfire.checks import run_check
+        from watchfire.config import load_config
+    except ImportError as exc:
+        return ([f"  watchfire not importable: {exc}"], [])
+
+    config = load_config(Path.cwd())
+    report = run_check(config)
+
+    fatal: list[str] = []
+    warnings: list[str] = []
+    for r in report.results:
+        location = f"  {r.file}:{r.line}: {r.function}: {r.kind}: {r.message}"
+        if r.kind == "unresolved":
+            warnings.append(location)
+        else:
+            fatal.append(location)
+
+    return fatal, warnings
+
+
 def main() -> int:
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("src/rwa_calc")
     if not target.exists():
@@ -505,8 +545,25 @@ def main() -> int:
         if v:
             all_violations.append((name, v))
 
+    watchfire_fatal, watchfire_warnings = check_watchfire_citations()
+    if watchfire_fatal:
+        all_violations.append(
+            (
+                "watchfire: malformed or unknown citations",
+                watchfire_fatal,
+            )
+        )
+
     if not all_violations:
         print("arch_check: all checks passed")
+        if watchfire_warnings:
+            print()
+            print(
+                f"[WARN] watchfire: {len(watchfire_warnings)} soft finding(s) "
+                "(PS / PRA Rulebook citations pending upstream index)"
+            )
+            for w in watchfire_warnings:
+                print(w)
         return 0
 
     print("arch_check: VIOLATIONS FOUND\n")
@@ -514,6 +571,15 @@ def main() -> int:
         print(f"[FAIL] {name}")
         for v in violations:
             print(v)
+        print()
+
+    if watchfire_warnings:
+        print(
+            f"[WARN] watchfire: {len(watchfire_warnings)} soft finding(s) "
+            "(PS / PRA Rulebook citations pending upstream index)"
+        )
+        for w in watchfire_warnings:
+            print(w)
         print()
 
     total = sum(len(v) for _, v in all_violations)

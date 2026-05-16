@@ -351,6 +351,47 @@ def generate_crr_a_scenarios(fixtures) -> list[CRRScenarioOutput]:
         )
     )
 
+    # CRR-A13: Commercial RE 80% LTV — Art. 126(2)(d) proportion split.
+    # Secured portion (up to 50% LTV) at 50% RW, residual at 100% RW.
+    # secured_share = 0.5/0.8 = 0.625; residual_share = 0.375
+    # avg_RW = 0.5*0.625 + 1.0*0.375 = 0.6875
+    ead_a13 = Decimal("800000")
+    ltv_a13 = Decimal("0.80")
+    secured_share_a13 = Decimal("0.5") / ltv_a13
+    residual_share_a13 = Decimal("1") - secured_share_a13
+    rw_a13 = Decimal("0.5") * secured_share_a13 + Decimal("1.0") * residual_share_a13
+    rwa_a13 = calculate_sa_rwa(ead_a13, rw_a13)
+
+    scenarios.append(
+        CRRScenarioOutput(
+            scenario_id="CRR-A13",
+            scenario_group="CRR-A",
+            description="Commercial RE 80% LTV - Art. 126(2)(d) proportion split",
+            regulatory_framework="CRR",
+            approach="SA",
+            exposure_class="COMMERCIAL_MORTGAGE",
+            exposure_reference="LOAN_CRE_002",
+            counterparty_reference="CORP_CRE_002",
+            ead=float(ead_a13),
+            pd=None,
+            lgd=None,
+            maturity=None,
+            cqs=None,
+            ltv=float(ltv_a13),
+            turnover=None,
+            risk_weight=float(rw_a13),
+            rwa_before_sf=float(rwa_a13),
+            supporting_factor=1.0,
+            rwa_after_sf=float(rwa_a13),
+            expected_loss=None,
+            regulatory_reference="CRR Art. 126(2)(d)",
+            calculation_notes=(
+                "80% LTV: secured_share=0.625, residual_share=0.375. "
+                "avg_RW=0.5*0.625+1.0*0.375=0.6875"
+            ),
+        )
+    )
+
     # CRR-A8: Off-Balance Sheet - 50% CCF
     nominal_a8 = Decimal("1000000")
     ead_a8, ccf_a8, ead_desc_a8 = calculate_ead_off_balance_sheet(
@@ -1248,16 +1289,15 @@ def generate_crr_d_scenarios(fixtures) -> list[CRRScenarioOutput]:
 def generate_crr_e_scenarios(fixtures) -> list[CRRScenarioOutput]:
     """Generate CRR Group E (Slotting) scenario outputs.
 
-    CRR Art. 153(5) defines two risk-weight tables with a maturity split at
-    2.5 years:
+    UK CRR Art. 153(5) retains only Table 1. The EU CRR HVCRE Table 2 uplift
+    (Strong=95%, Good=120%, Satisfactory=140%) was not onshored — see P1.177.
+    The is_hvcre flag is preserved on the audit trail but ignored for the
+    risk-weight lookup; all SL exposures pick the Table 1 weight, with the
+    only split being remaining maturity (<2.5yr).
 
-    Non-HVCRE (Table 1):
+    Table 1:
         >=2.5yr: Strong=70%, Good=90%, Satisfactory=115%, Weak=250%, Default=0%
         <2.5yr:  Strong=50%, Good=70%, Satisfactory=115%, Weak=250%, Default=0%
-
-    HVCRE (Table 2):
-        >=2.5yr: Strong=95%, Good=120%, Satisfactory=140%, Weak=250%, Default=0%
-        <2.5yr:  Strong=70%, Good=95%,  Satisfactory=140%, Weak=250%, Default=0%
     """
     scenarios = []
 
@@ -1275,20 +1315,10 @@ def generate_crr_e_scenarios(fixtures) -> list[CRRScenarioOutput]:
         "weak": Decimal("2.50"),
         "default": Decimal("0.00"),
     }
-    hvcre_long = {
-        "strong": Decimal("0.95"),
-        "good": Decimal("1.20"),
-        "satisfactory": Decimal("1.40"),
-        "weak": Decimal("2.50"),
-        "default": Decimal("0.00"),
-    }
-    hvcre_short = {
-        "strong": Decimal("0.70"),
-        "good": Decimal("0.95"),
-        "satisfactory": Decimal("1.40"),
-        "weak": Decimal("2.50"),
-        "default": Decimal("0.00"),
-    }
+    # UK CRR has no HVCRE Table 2 — alias the HVCRE maps to Table 1 so that
+    # is_hvcre=True fixtures still produce the Table 1 weight.
+    hvcre_long = non_hvcre_long
+    hvcre_short = non_hvcre_short
 
     def _slotting_scenario(
         scenario_id: str,
@@ -1366,13 +1396,13 @@ def generate_crr_e_scenarios(fixtures) -> list[CRRScenarioOutput]:
     scenarios.append(
         _slotting_scenario(
             "CRR-E4",
-            "HVCRE - Strong (95% RW)",
+            "HVCRE - Strong (70% RW, Table 1)",
             "SPECIALISED_LENDING_HVCRE",
             "LOAN_SL_HVCRE_001",
             "SL_HVCRE_STRONG",
             Decimal("5000000"),
             hvcre_long["strong"],
-            "HVCRE Strong, >=2.5yr: 95% RW (Table 2)",
+            "HVCRE Strong, >=2.5yr: 70% RW (Table 1 — UK CRR has no HVCRE Table 2)",
         )
     )
 
@@ -1404,25 +1434,62 @@ def generate_crr_e_scenarios(fixtures) -> list[CRRScenarioOutput]:
     scenarios.append(
         _slotting_scenario(
             "CRR-E7",
-            "HVCRE - Strong, <2.5yr (70% RW)",
+            "HVCRE - Strong, <2.5yr (50% RW, Table 1)",
             "SPECIALISED_LENDING_HVCRE",
             "LOAN_SL_HVCRE_002",
             "SL_HVCRE_STRONG_SHORT",
             Decimal("5000000"),
             hvcre_short["strong"],
-            "HVCRE Strong, <2.5yr: 70% RW (Table 2)",
+            "HVCRE Strong, <2.5yr: 50% RW (Table 1 — UK CRR has no HVCRE Table 2)",
         )
     )
     scenarios.append(
         _slotting_scenario(
             "CRR-E8",
-            "HVCRE - Good, <2.5yr (95% RW)",
+            "HVCRE - Good, <2.5yr (70% RW, Table 1)",
             "SPECIALISED_LENDING_HVCRE",
             "LOAN_SL_HVCRE_003",
             "SL_HVCRE_GOOD_SHORT",
             Decimal("5000000"),
             hvcre_short["good"],
-            "HVCRE Good, <2.5yr: 95% RW (Table 2)",
+            "HVCRE Good, <2.5yr: 70% RW (Table 1 — UK CRR has no HVCRE Table 2)",
+        )
+    )
+
+    # CRR-E9: regression sentinel for P1.177 — HVCRE Strong >=2.5yr under
+    # UK CRR Art. 153(5) must use Table 1 (70%), not the EU Table 2 (95%).
+    e9_ead = Decimal("5000000")
+    e9_rw = non_hvcre_long["strong"]
+    e9_rwa = e9_ead * e9_rw
+    e9_el = e9_ead * Decimal("0.004")  # CRR Art. 158(6) Table B Strong >=2.5yr
+    scenarios.append(
+        CRRScenarioOutput(
+            scenario_id="CRR-E9",
+            scenario_group="CRR-E",
+            description="HVCRE Strong >=2.5yr — UK CRR Table 1 fix (70% RW)",
+            regulatory_framework="CRR",
+            approach="Slotting",
+            exposure_class="SPECIALISED_LENDING",
+            exposure_reference="LOAN_SL_HVCRE_TABLE1_FIX",
+            counterparty_reference="SL_HVCRE_TABLE1_FIX",
+            ead=float(e9_ead),
+            pd=None,
+            lgd=None,
+            maturity=None,
+            cqs=None,
+            ltv=None,
+            turnover=None,
+            risk_weight=float(e9_rw),
+            rwa_before_sf=float(e9_rwa),
+            supporting_factor=1.0,
+            rwa_after_sf=float(e9_rwa),
+            expected_loss=float(e9_el),
+            regulatory_reference="CRR Art. 153(5)",
+            calculation_notes=(
+                "HVCRE Strong, >=2.5yr: 70% RW (Table 1). UK CRR has no HVCRE "
+                "sub-class; is_hvcre=True preserved in audit trail. "
+                "EL = 5,000,000 x 0.4% = 20,000."
+            ),
         )
     )
 

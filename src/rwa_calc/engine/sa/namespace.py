@@ -66,6 +66,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.errors import (
     ERROR_DUE_DILIGENCE_NOT_PERFORMED,
@@ -1592,6 +1593,7 @@ class SALazyFrame:
         """
         return ensure_columns(self._lf, SA_INPUT_CONTRACT)
 
+    @cites("CRR Art. 112")
     def apply_risk_weights(self, config: CalculationConfig) -> pl.LazyFrame:
         """Look up and apply risk weights based on exposure class.
 
@@ -1637,6 +1639,7 @@ class SALazyFrame:
         ]
         return exposures.drop([c for c in temp_cols if c in schema_names])
 
+    @cites("CRR Art. 222")
     def apply_fcsm_rw_substitution(self, config: CalculationConfig) -> pl.LazyFrame:
         """Apply Art. 222 Financial Collateral Simple Method risk weight substitution.
 
@@ -1693,6 +1696,7 @@ class SALazyFrame:
             .alias("ead_calculation_method"),
         )
 
+    @cites("CRR Art. 232")
     def apply_life_insurance_rw_mapping(self) -> pl.LazyFrame:
         """Apply Art. 232 life insurance risk weight mapping for SA exposures.
 
@@ -1730,6 +1734,7 @@ class SALazyFrame:
             pl.when(has_li).then(blended_rw).otherwise(pl.col("risk_weight")).alias("risk_weight"),
         )
 
+    @cites("CRR Art. 213")
     def apply_guarantee_substitution(self, config: CalculationConfig) -> pl.LazyFrame:
         """Apply guarantee substitution for unfunded credit protection.
 
@@ -1856,6 +1861,7 @@ class SALazyFrame:
 
         return exposures
 
+    @cites("PS1/26, paragraph 123B")
     def apply_currency_mismatch_multiplier(self, config: CalculationConfig) -> pl.LazyFrame:
         """Apply 1.5x RW multiplier for retail/RE currency mismatch (Basel 3.1 only).
 
@@ -1925,6 +1931,7 @@ class SALazyFrame:
             ]
         )
 
+    @cites("PS1/26, paragraph 110A")
     def apply_due_diligence_override(
         self,
         config: CalculationConfig,
@@ -1997,6 +2004,7 @@ class SALazyFrame:
             (pl.col(ead_col) * pl.col("risk_weight")).alias("rwa_pre_factor"),
         )
 
+    @cites("CRR Art. 501")
     def apply_supporting_factors(
         self,
         config: CalculationConfig,

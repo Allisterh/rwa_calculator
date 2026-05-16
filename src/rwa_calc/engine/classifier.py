@@ -36,6 +36,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.bundles import (
     ClassifiedExposuresBundle,
@@ -118,6 +119,7 @@ class ExposureClassifier:
     to keep the query plan shallow (5 nodes instead of 21).
     """
 
+    @cites("CRR Art. 112")
     def classify(
         self,
         data: ResolvedHierarchyBundle,

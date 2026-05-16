@@ -33,6 +33,7 @@ import math
 from decimal import Decimal
 
 import polars as pl
+from watchfire import cites
 
 # =============================================================================
 # CRR SUPERVISORY HAIRCUTS (CRR Art. 224)
@@ -329,6 +330,7 @@ def _create_basel31_haircut_df() -> pl.DataFrame:
     return _build_haircut_df(_B31_HAIRCUT_ROW_SPECS, BASEL31_COLLATERAL_HAIRCUTS)
 
 
+@cites("CRR Art. 224")
 def get_haircut_table(is_basel_3_1: bool = False) -> pl.DataFrame:
     """
     Get collateral haircut lookup table for the given framework.
@@ -342,6 +344,7 @@ def get_haircut_table(is_basel_3_1: bool = False) -> pl.DataFrame:
     return _create_haircut_df(is_basel_3_1=is_basel_3_1)
 
 
+@cites("CRR Art. 224")
 def get_maturity_band(residual_maturity_years: float, is_basel_3_1: bool = False) -> str:
     """
     Determine maturity band from residual maturity.

@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.data.column_spec import ColumnSpec, ensure_columns
 from rwa_calc.data.schemas import DIRECT_BENEFICIARY_TYPES
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
 
 
+@cites("CRR Art. 213")
+@cites("CRR Art. 217")
 def apply_guarantees(
     exposures: pl.LazyFrame,
     guarantees: pl.LazyFrame,
@@ -1236,6 +1239,7 @@ def _apply_restructuring_exclusion_haircut(exposures: pl.LazyFrame) -> pl.LazyFr
     return exposures
 
 
+@cites("CRR Art. 217")
 def _apply_maturity_mismatch_to_guarantees(
     guarantees: pl.LazyFrame,
     exposures: pl.LazyFrame,

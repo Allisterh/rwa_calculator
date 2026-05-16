@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.bundles import CRMAdjustedBundle, EquityResultBundle
 from rwa_calc.contracts.errors import (
@@ -159,6 +160,7 @@ class EquityCalculator:
         """Initialize equity calculator."""
         pass
 
+    @cites("CRR Art. 133")
     def calculate_branch(
         self,
         exposures: pl.LazyFrame,
@@ -187,6 +189,8 @@ class EquityCalculator:
 
         return self._calculate_rwa(exposures)
 
+    @cites("CRR Art. 133")
+    @cites("CRR Art. 155")
     def calculate(
         self,
         data: CRMAdjustedBundle,

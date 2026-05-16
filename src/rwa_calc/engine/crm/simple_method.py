@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.data.tables.b31_risk_weights import B31_CORPORATE_RISK_WEIGHTS
 from rwa_calc.data.tables.crr_risk_weights import (
@@ -236,6 +237,7 @@ def _secured_floor_expr() -> pl.Expr:
     )
 
 
+@cites("CRR Art. 222")
 def compute_fcsm_columns(
     exposures: pl.LazyFrame,
     collateral: pl.LazyFrame | None,

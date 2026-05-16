@@ -27,6 +27,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.data.column_spec import ColumnSpec, ensure_columns
 from rwa_calc.data.schemas import (
@@ -104,6 +105,7 @@ class HaircutCalculator:
         self._is_basel_3_1 = is_basel_3_1
         self._haircut_table = get_haircut_table(is_basel_3_1=is_basel_3_1)
 
+    @cites("CRR Art. 224")
     def apply_haircuts(
         self,
         collateral: pl.LazyFrame,
@@ -594,6 +596,8 @@ class HaircutCalculator:
             .otherwise(pl.lit("other_physical"))
         )
 
+    @cites("CRR Art. 237")
+    @cites("CRR Art. 238")
     def apply_maturity_mismatch(
         self,
         collateral: pl.LazyFrame,

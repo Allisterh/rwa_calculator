@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 from polars import col, lit
+from watchfire import cites
 
 from rwa_calc.contracts.errors import (
     ERROR_MISSING_EXPECTED_LOSS,
@@ -207,6 +208,7 @@ class SlottingLazyFrame:
 
         return self._lf.with_columns(to_add) if to_add else self._lf
 
+    @cites("CRR Art. 153(5)")
     def apply_slotting_weights(self, config: CalculationConfig) -> pl.LazyFrame:
         """Apply slotting risk weights based on framework, category, HVCRE flag, and maturity."""
         is_crr = config.is_crr

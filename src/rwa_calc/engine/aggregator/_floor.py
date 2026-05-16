@@ -40,6 +40,7 @@ Internal module — not part of the public API.
 from __future__ import annotations
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.bundles import OutputFloorSummary
 from rwa_calc.data.tables.output_floor import GCRA_CAP_RATE as _GCRA_CAP_RATE_DECIMAL
@@ -87,6 +88,7 @@ def compute_of_adj(
     return of_adj, gcra_capped
 
 
+@cites("CRR Art. 92")
 def apply_floor_with_impact(
     combined: pl.LazyFrame,
     sa_results: pl.LazyFrame,

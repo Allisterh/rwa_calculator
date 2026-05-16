@@ -26,6 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.data.schemas import DIRECT_BENEFICIARY_TYPES, NON_ELIGIBLE_RE_TYPES
 from rwa_calc.data.tables.crm_supervisory import MIN_COLLATERALISATION_THRESHOLDS
@@ -138,6 +139,8 @@ def find_misdirected_airb_model_collateral(
     ]
 
 
+@cites("CRR Art. 195")
+@cites("CRR Art. 223")
 def generate_netting_collateral(
     exposures: pl.LazyFrame,
 ) -> pl.LazyFrame | None:
@@ -298,6 +301,8 @@ def generate_netting_collateral(
     return synthetic
 
 
+@cites("CRR Art. 223")
+@cites("CRR Art. 230")
 def apply_collateral(
     exposures: pl.LazyFrame,
     collateral: pl.LazyFrame,
@@ -412,6 +417,7 @@ def apply_collateral(
     )
 
 
+@cites("CRR Art. 161")
 def apply_firb_supervisory_lgd_no_collateral(
     exposures: pl.LazyFrame,
     is_basel_3_1: bool,

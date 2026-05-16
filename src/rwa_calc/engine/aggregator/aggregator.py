@@ -28,6 +28,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.contracts.bundles import AggregatedResultBundle
 from rwa_calc.engine.aggregator._crm_reporting import (
@@ -60,6 +61,7 @@ class OutputAggregator:
     supporting factors), and produces all summary and reporting views.
     """
 
+    @cites("CRR Art. 92")
     def aggregate(
         self,
         sa_results: pl.LazyFrame,
