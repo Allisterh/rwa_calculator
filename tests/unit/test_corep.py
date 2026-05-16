@@ -416,7 +416,7 @@ class TestTemplateDefinitions:
         assert "central_govt_central_bank" in SA_EXPOSURE_CLASS_ROWS
         assert "defaulted" in SA_EXPOSURE_CLASS_ROWS
         assert "equity" in SA_EXPOSURE_CLASS_ROWS
-        assert "international_org" in SA_EXPOSURE_CLASS_ROWS
+        assert "international_organisation" in SA_EXPOSURE_CLASS_ROWS
 
     def test_irb_exposure_class_rows_cover_irb_classes(self) -> None:
         """All IRB exposure classes have a COREP row mapping."""

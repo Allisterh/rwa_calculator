@@ -12,7 +12,6 @@ Test 3 is expected to PASS (regression guard against accidental breakage).
 
 from __future__ import annotations
 
-import importlib
 from datetime import date
 from pathlib import Path
 
@@ -23,7 +22,6 @@ import rwa_calc.engine.hierarchy as hierarchy_module
 from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.engine.hierarchy import HierarchyResolver
-
 
 # ---------------------------------------------------------------------------
 # Test 1 — constant existence and value
@@ -41,7 +39,7 @@ def test_facility_qrre_coupled_columns_constant_exists() -> None:
         "missing module-level constant _FACILITY_QRRE_COUPLED_COLUMNS in "
         "rwa_calc.engine.hierarchy; add it as part of the P6.26 refactor"
     )
-    assert hierarchy_module._FACILITY_QRRE_COUPLED_COLUMNS == expected, (
+    assert expected == hierarchy_module._FACILITY_QRRE_COUPLED_COLUMNS, (
         f"_FACILITY_QRRE_COUPLED_COLUMNS = {hierarchy_module._FACILITY_QRRE_COUPLED_COLUMNS!r} "
         f"does not equal expected {expected!r}"
     )
@@ -189,11 +187,10 @@ def test_qrre_columns_propagate_unchanged_through_resolver() -> None:
     # Assert: the four QRRE-relevant columns exist in the schema
     schema = result.exposures.collect_schema()
     schema_names = set(schema.names())
-    assert set({"is_revolving", "is_qrre_transactor", "facility_limit", "facility_termination_date"}).issubset(
-        schema_names
-    ), (
-        f"Not all QRRE-coupled columns present in resolved schema; "
-        f"found: {sorted(schema_names)}"
+    assert set(
+        {"is_revolving", "is_qrre_transactor", "facility_limit", "facility_termination_date"}
+    ).issubset(schema_names), (
+        f"Not all QRRE-coupled columns present in resolved schema; found: {sorted(schema_names)}"
     )
 
     # Assert dtypes

@@ -75,14 +75,11 @@ from decimal import Decimal
 import pytest
 from tests.fixtures.p1_94f.p1_94f import (
     CURRENCY_MISMATCH_MULTIPLIER,
-    EAD_CRE,
-    EAD_CORP,
-    EAD_RRE,
-    RW_CRE,
     RW_CORP,
+    RW_CRE,
     RW_RRE,
-    RWA_CRE,
     RWA_CORP,
+    RWA_CRE,
     RWA_RRE,
     SA_RETAIL_BASE_RW,
 )
@@ -101,7 +98,7 @@ _EAD_CORP = Decimal("1_000_000")
 _REPORTING_DATE = date(2027, 1, 4)
 
 # Absolute tolerances
-_RW_TOL = 1e-6   # risk_weight (dimensionless ratio)
+_RW_TOL = 1e-6  # risk_weight (dimensionless ratio)
 _RWA_TOL = 0.50  # 50p on rwa
 
 # Pre-fix (master) bug value for Arm B: commercial_mortgage gets 1.5x on 100% base
@@ -405,9 +402,7 @@ class TestP194FArmCCorporateMultiplierNotApplied:
             config=b31_config,
         )
 
-    def test_arm_c_corporate_out_of_scope_multiplier_NOT_applied(
-        self, corp_result: dict
-    ) -> None:
+    def test_arm_c_corporate_out_of_scope_multiplier_NOT_applied(self, corp_result: dict) -> None:
         """
         Arm C (corporate): currency_mismatch_multiplier_applied = False.
 

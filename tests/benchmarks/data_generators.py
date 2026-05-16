@@ -193,6 +193,8 @@ def generate_counterparties(config: BenchmarkDataConfig) -> pl.LazyFrame:
                 "sovereign_cqs": pl.Series([None] * n, dtype=pl.Int32),
                 "local_currency": pl.Series([None] * n, dtype=pl.String),
                 "institution_cqs": pl.Series([None] * n, dtype=pl.Int8),
+                "eca_score": pl.Series([None] * n, dtype=pl.Int8),
+                "is_core_market_participant": pl.Series(np.zeros(n, dtype=bool)),
             }
         )
         .cast(dtypes_of(COUNTERPARTY_SCHEMA))
@@ -406,6 +408,7 @@ def generate_facilities(
                 "is_obs_commitment": np.full(n_facilities, None),  # Default True via schema
                 "is_payroll_loan": np.full(n_facilities, None),  # Payroll loan flag
                 "is_buy_to_let": np.full(n_facilities, None),  # BTL flag for SME supporting factor
+                "is_under_construction": np.full(n_facilities, None),  # P1.140 ADC
                 "has_one_day_maturity_floor": np.full(n_facilities, None),  # Repo/SFT 1-day floor
                 "is_sft": np.full(n_facilities, None),  # CRR Art. 162(1): SFT F-IRB 0.5y maturity
                 "facility_termination_date": pl.Series([None] * n_facilities, dtype=pl.Date),
@@ -413,6 +416,7 @@ def generate_facilities(
                 "lgd_unsecured": np.full(n_facilities, None),  # A-IRB unsecured LGD
                 "has_sufficient_collateral_data": np.full(n_facilities, None),  # LGD modelling flag
                 "effective_maturity": np.full(n_facilities, None),  # Art. 162(3) numeric M override
+                "purchased_receivables_subtype": pl.Series([None] * n_facilities, dtype=pl.String),
             }
         )
         .cast(dtypes_of(FACILITY_SCHEMA))
@@ -605,13 +609,21 @@ def generate_loans(
             "has_sufficient_collateral_data": np.full(n_loans, None),  # LGD modelling flag
             "is_payroll_loan": np.full(n_loans, None),  # Payroll loan flag
             "is_buy_to_let": np.full(n_loans, None),  # BTL flag for SME supporting factor
+            "is_under_construction": np.full(n_loans, None),  # P1.140 ADC
             "has_one_day_maturity_floor": np.full(n_loans, None),  # Repo/SFT 1-day floor
             "is_sft": np.full(n_loans, None),  # CRR Art. 162(1): SFT F-IRB 0.5y maturity
             "has_netting_agreement": np.full(n_loans, None),  # Netting flag (CRR Art. 195)
             "netting_facility_reference": np.full(n_loans, None),  # Facility for netting agreement
             "due_diligence_performed": np.full(n_loans, None),  # Art. 110A (B31 only)
             "due_diligence_override_rw": np.full(n_loans, None),  # Art. 110A override RW (B31 only)
+            "is_hedged": np.full(n_loans, None),  # P1.94a B31 currency-mismatch gate
             "effective_maturity": np.full(n_loans, None),  # Art. 162(3) numeric M override
+            "purchased_receivables_subtype": pl.Series([None] * n_loans, dtype=pl.String),
+            "exposure_collateral_type": pl.Series([None] * n_loans, dtype=pl.String),
+            "exposure_security_cqs": pl.Series([None] * n_loans, dtype=pl.Int8),
+            "exposure_security_residual_maturity_years": pl.Series(
+                [None] * n_loans, dtype=pl.Float64
+            ),
         }
     ).cast(dtypes_of(LOAN_SCHEMA))
 
@@ -849,6 +861,10 @@ def generate_ratings(
                 "rating_date": rating_dates,
                 "is_solicited": solicited,
                 "model_id": pl.Series([None] * n_rated, dtype=pl.String),
+                # PRA PS1/26 Art. 120(2B) / Art. 122(3) issue-specific short-term ECAI.
+                "is_short_term": np.full(n_rated, False),
+                "scope_type": pl.Series([None] * n_rated, dtype=pl.String),
+                "scope_id": pl.Series([None] * n_rated, dtype=pl.String),
             }
         )
         .cast(dtypes_of(RATINGS_SCHEMA))
@@ -965,6 +981,13 @@ def generate_contingents(
                 "effective_maturity": np.full(
                     n_contingents, None
                 ),  # Art. 162(3) numeric M override
+                "is_under_construction": np.full(n_contingents, None),  # P1.140 ADC
+                "purchased_receivables_subtype": pl.Series([None] * n_contingents, dtype=pl.String),
+                "exposure_collateral_type": pl.Series([None] * n_contingents, dtype=pl.String),
+                "exposure_security_cqs": pl.Series([None] * n_contingents, dtype=pl.Int8),
+                "exposure_security_residual_maturity_years": pl.Series(
+                    [None] * n_contingents, dtype=pl.Float64
+                ),
             }
         )
         .cast(dtypes_of(CONTINGENTS_SCHEMA))
@@ -1125,6 +1148,8 @@ def generate_collateral(
             "credit_event_reduction": np.full(n_collateral, None),
             "is_main_index": np.full(n_collateral, None),  # Equity index membership (Art. 224)
             "rental_to_interest_ratio": np.full(n_collateral, None),
+            "posted_by_counterparty_reference": pl.Series([None] * n_collateral, dtype=pl.String),
+            "revaluation_frequency_days": pl.Series([None] * n_collateral, dtype=pl.Int32),
         }
     )
 

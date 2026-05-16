@@ -37,11 +37,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
-from rwa_calc.contracts.bundles import RawDataBundle
-from rwa_calc.contracts.config import CalculationConfig, PDFloors
-from rwa_calc.domain.enums import ExposureClass, PermissionMode
-from rwa_calc.engine.pipeline import PipelineOrchestrator
 from tests.fixtures.p2_36.p2_36 import (
     EXPECTED_RW_B31_FLOORED,
     EXPECTED_RW_B31_SOV_OVERRIDE,
@@ -50,6 +45,11 @@ from tests.fixtures.p2_36.p2_36 import (
     INSTITUTION_LOAN_REF,
     SOVEREIGN_LOAN_REF,
 )
+
+from rwa_calc.contracts.bundles import RawDataBundle
+from rwa_calc.contracts.config import CalculationConfig, PDFloors
+from rwa_calc.domain.enums import ExposureClass, PermissionMode
+from rwa_calc.engine.pipeline import PipelineOrchestrator
 
 # =============================================================================
 # Fixture directory
@@ -61,7 +61,7 @@ _FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures" / "p2_36"
 _REPORTING_DATE = date(2027, 6, 30)
 
 # Override floor values for the dispatch regression tests
-_SOV_OVERRIDE_FLOOR = Decimal("0.001")   # 0.10% — lifts sovereign PD above default 0.05%
+_SOV_OVERRIDE_FLOOR = Decimal("0.001")  # 0.10% — lifts sovereign PD above default 0.05%
 _INST_OVERRIDE_FLOOR = Decimal("0.001")  # 0.10% — lifts institution PD above default 0.05%
 
 

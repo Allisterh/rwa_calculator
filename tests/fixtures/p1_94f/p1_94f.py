@@ -404,7 +404,9 @@ def create_p194f_loans() -> pl.DataFrame:
     # Build with the declared schema columns first (excluding is_hedged),
     # then append is_hedged as a typed Boolean column.  Mirrors p1_94a pattern.
     loan_schema_cols = dtypes_of(LOAN_SCHEMA)
-    rows_without_hedged = [{k: v for k, v in r.to_dict().items() if k != "is_hedged"} for r in raw_rows]
+    rows_without_hedged = [
+        {k: v for k, v in r.to_dict().items() if k != "is_hedged"} for r in raw_rows
+    ]
     df = pl.DataFrame(rows_without_hedged, schema=loan_schema_cols)
 
     is_hedged_values = [r.is_hedged for r in raw_rows]

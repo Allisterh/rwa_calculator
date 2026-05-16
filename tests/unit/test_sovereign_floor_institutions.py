@@ -252,7 +252,15 @@ class TestTradeExemption:
     def test_trade_lc_exempt_from_floor(
         self, sa_calculator: SACalculator, b31_config: CalculationConfig
     ) -> None:
-        """Short-term trade LC with maturity ≤ 1yr → exempt from sovereign floor."""
+        """Short-term trade LC with maturity ≤ 1yr → exempt from sovereign floor.
+
+        After P1.128 the Art. 121(4) extension widens the SCRA short-term
+        window to original maturity ≤ 6m for trade-LCs, so the exposure
+        receives SCRA Grade A short-term (20%) rather than the long-term
+        Grade A (40%). The point of the test is still that the sovereign-CQS
+        floor (which would otherwise cap at 100%) does not apply; that
+        invariant holds against the post-P1.128 20% outcome.
+        """
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("1000000"),
@@ -266,8 +274,9 @@ class TestTradeExemption:
             is_short_term_trade_lc=True,
             residual_maturity_years=0.5,  # ≤ 1yr
         )
-        # SCRA A = 40% stands — trade exempt
-        assert result["risk_weight"] == pytest.approx(0.40)
+        # SCRA Grade A short-term (Art. 121(4) trade-LC extension) = 20% —
+        # well below the 100% sovereign floor, confirming the trade exemption.
+        assert result["risk_weight"] == pytest.approx(0.20)
 
     def test_trade_lc_over_1yr_not_exempt(
         self, sa_calculator: SACalculator, b31_config: CalculationConfig

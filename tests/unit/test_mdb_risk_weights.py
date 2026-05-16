@@ -144,11 +144,14 @@ class TestCRRMDBRiskWeights:
         assert result["rwa"] == pytest.approx(0.0)
 
     def test_international_org_zero_percent(self, sa_calculator, crr_config):
-        """CRR Art. 118: International Organisation (e.g. IMF, BIS) → 0% RW."""
+        """CRR Art. 118: International Organisation (e.g. IMF, BIS) → 0% RW.
+
+        Post-P1.154 ``international_organisation`` is a distinct exposure class.
+        """
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("5000000"),
-            exposure_class="mdb",
+            exposure_class="international_organisation",
             config=crr_config,
             entity_type="international_org",
         )
@@ -156,7 +159,7 @@ class TestCRRMDBRiskWeights:
         assert result["rwa"] == pytest.approx(0.0)
 
     def test_rated_mdb_cqs1(self, sa_calculator, crr_config):
-        """CRR Art. 117(1), Table 2B: Rated MDB CQS 1 → 20%."""
+        """CRR Art. 117(1): non-named MDBs routed as institutions, CRR institution CQS 1 → 20%."""
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("5000000"),
@@ -167,7 +170,11 @@ class TestCRRMDBRiskWeights:
         assert result["risk_weight"] == pytest.approx(0.20)
 
     def test_rated_mdb_cqs2(self, sa_calculator, crr_config):
-        """CRR Art. 117(1), Table 2B: Rated MDB CQS 2 → 30% (not 50% like standard institutions)."""
+        """CRR Art. 117(1): non-named MDBs routed as institutions, CRR institution CQS 2 → 50%.
+
+        Per P1.184 routing fix: CRR MDB does not use the Basel 3.1 Table 2B (30%) —
+        it inherits the standard institution CRR risk weights.
+        """
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("5000000"),
@@ -175,7 +182,7 @@ class TestCRRMDBRiskWeights:
             cqs=2,
             config=crr_config,
         )
-        assert result["risk_weight"] == pytest.approx(0.30)
+        assert result["risk_weight"] == pytest.approx(0.50)
 
     def test_rated_mdb_cqs3(self, sa_calculator, crr_config):
         """CRR Art. 117(1), Table 2B: Rated MDB CQS 3 → 50%."""
@@ -211,14 +218,14 @@ class TestCRRMDBRiskWeights:
         assert result["risk_weight"] == pytest.approx(1.50)
 
     def test_unrated_non_named_mdb(self, sa_calculator, crr_config):
-        """CRR Art. 117(1), Table 2B: Unrated non-named MDB → 50%."""
+        """CRR Art. 117(1): unrated non-named MDB → institution Art. 121 fallback → 100%."""
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("5000000"),
             exposure_class="mdb",
             config=crr_config,
         )
-        assert result["risk_weight"] == pytest.approx(0.50)
+        assert result["risk_weight"] == pytest.approx(1.00)
 
     def test_named_mdb_ignores_cqs(self, sa_calculator, crr_config):
         """Named MDB gets 0% regardless of CQS rating."""
@@ -280,11 +287,14 @@ class TestB31MDBRiskWeights:
         assert result["risk_weight"] == pytest.approx(0.0)
 
     def test_international_org_zero_percent(self, sa_calculator, b31_config):
-        """B31 Art. 118: International Organisation → 0% RW (unchanged from CRR)."""
+        """B31 Art. 118: International Organisation → 0% RW (unchanged from CRR).
+
+        Post-P1.154 ``international_organisation`` is a distinct exposure class.
+        """
         result = calculate_single_sa_exposure(
             sa_calculator,
             ead=Decimal("5000000"),
-            exposure_class="mdb",
+            exposure_class="international_organisation",
             config=b31_config,
             entity_type="international_org",
         )
