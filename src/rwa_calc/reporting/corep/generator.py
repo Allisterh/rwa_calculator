@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -85,6 +86,11 @@ if TYPE_CHECKING:
     from rwa_calc.contracts.config import OutputFloorConfig
 
 logger = logging.getLogger(__name__)
+
+# Regex matching characters Excel forbids in worksheet names. Hoisted to a
+# module-level compiled pattern so the regex literal isn't duplicated across
+# the four sheet-naming use-sites in ``export_to_excel``.
+_EXCEL_SHEET_INVALID_RE = re.compile(r"[\[\]:*?/\\]")
 
 
 # =============================================================================
@@ -328,63 +334,7 @@ class COREPGenerator:
 
         workbook = xw.Workbook(str(output_path))
         try:
-            total_rows += self._write_template_sheets(
-                workbook, bundle.c07_00, "C 07.00", SA_EXPOSURE_CLASS_ROWS
-            )
-            total_rows += self._write_template_sheets(
-                workbook, bundle.c08_01, "C 08.01", IRB_EXPOSURE_CLASS_ROWS
-            )
-            total_rows += self._write_template_sheets(
-                workbook, bundle.c08_02, "C 08.02", IRB_EXPOSURE_CLASS_ROWS
-            )
-            total_rows += self._write_template_sheets(
-                workbook, bundle.c08_03, "C 08.03", IRB_EXPOSURE_CLASS_ROWS
-            )
-            c08_04_prefix = "OF 08.04" if bundle.framework == "BASEL_3_1" else "C 08.04"
-            total_rows += self._write_template_sheets(
-                workbook, bundle.c08_04, c08_04_prefix, IRB_EXPOSURE_CLASS_ROWS
-            )
-            c08_05_prefix = "OF 08.05" if bundle.framework == "BASEL_3_1" else "C 08.05"
-            total_rows += self._write_template_sheets(
-                workbook, bundle.c08_05, c08_05_prefix, IRB_EXPOSURE_CLASS_ROWS
-            )
-            sl_type_names = get_c08_06_sl_types(bundle.framework)
-            sl_class_map = {k: (k, v) for k, v in sl_type_names.items()}
-            total_rows += self._write_template_sheets(
-                workbook, bundle.c08_06, "C 08.06", sl_class_map
-            )
-            if bundle.c08_07 is not None:
-                c08_07_prefix = "OF 08.07" if bundle.framework == "BASEL_3_1" else "C 08.07"
-                total_rows += self._write_single_template_sheet(
-                    workbook, bundle.c08_07, c08_07_prefix
-                )
-            if bundle.of_02_01 is not None:
-                total_rows += self._write_single_template_sheet(
-                    workbook, bundle.of_02_01, "OF 02.01"
-                )
-            if bundle.c_02_00 is not None:
-                c02_prefix = "OF 02.00" if bundle.framework == "BASEL_3_1" else "C 02.00"
-                total_rows += self._write_single_template_sheet(
-                    workbook, bundle.c_02_00, c02_prefix
-                )
-            # C 09.01 / OF 09.01 — Geographical Breakdown SA
-            if bundle.c09_01:
-                c09_01_prefix = "OF 09.01" if bundle.framework == "BASEL_3_1" else "C 09.01"
-                for country, df in sorted(bundle.c09_01.items()):
-                    if len(df) > 0:
-                        sheet = f"{c09_01_prefix} - {country}"
-                        sheet = re.sub(r"[\[\]:*?/\\]", "", sheet)[:31]
-                        df.write_excel(workbook=workbook, worksheet=sheet, autofit=True)
-                        total_rows += len(df)
-            # C 09.02 / OF 09.02 — Geographical Breakdown IRB
-            if bundle.c09_02:
-                c09_02_prefix = "OF 09.02" if bundle.framework == "BASEL_3_1" else "C 09.02"
-                for country, df in sorted(bundle.c09_02.items()):
-                    if len(df) > 0:
-                        sheet = f"{c09_02_prefix} - {country}"
-                        sheet = re.sub(r"[\[\]:*?/\\]", "", sheet)[:31]
-                        df.write_excel(workbook=workbook, worksheet=sheet, autofit=True)
-                        total_rows += len(df)
+            total_rows += self._export_all_template_sheets(workbook, bundle)
         finally:
             workbook.close()
 
@@ -395,6 +345,65 @@ class COREPGenerator:
             files=[output_path],
             row_count=total_rows,
         )
+
+    def _export_all_template_sheets(
+        self, workbook: object, bundle: COREPTemplateBundle
+    ) -> int:
+        """Dispatch all per-template writers for ``bundle`` to ``workbook``.
+
+        Returns the total row count written. Encapsulates the 8 per-class
+        templates + 4 single-sheet templates + 2 geographical templates so
+        the public ``export_to_excel`` stays focused on workbook lifecycle.
+        """
+        is_b31 = bundle.framework == "BASEL_3_1"
+        total = 0
+        total += self._write_template_sheets(
+            workbook, bundle.c07_00, "C 07.00", SA_EXPOSURE_CLASS_ROWS
+        )
+        total += self._write_template_sheets(
+            workbook, bundle.c08_01, "C 08.01", IRB_EXPOSURE_CLASS_ROWS
+        )
+        total += self._write_template_sheets(
+            workbook, bundle.c08_02, "C 08.02", IRB_EXPOSURE_CLASS_ROWS
+        )
+        total += self._write_template_sheets(
+            workbook, bundle.c08_03, "C 08.03", IRB_EXPOSURE_CLASS_ROWS
+        )
+        total += self._write_template_sheets(
+            workbook,
+            bundle.c08_04,
+            "OF 08.04" if is_b31 else "C 08.04",
+            IRB_EXPOSURE_CLASS_ROWS,
+        )
+        total += self._write_template_sheets(
+            workbook,
+            bundle.c08_05,
+            "OF 08.05" if is_b31 else "C 08.05",
+            IRB_EXPOSURE_CLASS_ROWS,
+        )
+        sl_type_names = get_c08_06_sl_types(bundle.framework)
+        sl_class_map = {k: (k, v) for k, v in sl_type_names.items()}
+        total += self._write_template_sheets(workbook, bundle.c08_06, "C 08.06", sl_class_map)
+
+        if bundle.c08_07 is not None:
+            total += self._write_single_template_sheet(
+                workbook, bundle.c08_07, "OF 08.07" if is_b31 else "C 08.07"
+            )
+        if bundle.of_02_01 is not None:
+            total += self._write_single_template_sheet(workbook, bundle.of_02_01, "OF 02.01")
+        if bundle.c_02_00 is not None:
+            total += self._write_single_template_sheet(
+                workbook, bundle.c_02_00, "OF 02.00" if is_b31 else "C 02.00"
+            )
+        if bundle.c09_01:
+            total += self._write_geo_template_sheets(
+                workbook, bundle.c09_01, "OF 09.01" if is_b31 else "C 09.01"
+            )
+        if bundle.c09_02:
+            total += self._write_geo_template_sheets(
+                workbook, bundle.c09_02, "OF 09.02" if is_b31 else "C 09.02"
+            )
+        return total
 
     @staticmethod
     def _write_template_sheets(
@@ -409,7 +418,7 @@ class COREPGenerator:
             if len(df) > 0:
                 display = class_names.get(ec, (None, ec))[1]
                 raw_sheet = f"{prefix} - {display}"
-                sheet = re.sub(r"[\[\]:*?/\\]", "", raw_sheet)[:31]
+                sheet = _EXCEL_SHEET_INVALID_RE.sub("", raw_sheet)[:31]
                 df.write_excel(workbook=workbook, worksheet=sheet, autofit=True)
                 total += len(df)
         return total
@@ -423,9 +432,29 @@ class COREPGenerator:
         """Write a single DataFrame as an Excel sheet. Returns rows written."""
         if len(df) == 0:
             return 0
-        sheet = re.sub(r"[\[\]:*?/\\]", "", sheet_name)[:31]
+        sheet = _EXCEL_SHEET_INVALID_RE.sub("", sheet_name)[:31]
         df.write_excel(workbook=workbook, worksheet=sheet, autofit=True)
         return len(df)
+
+    @staticmethod
+    def _write_geo_template_sheets(
+        workbook: object,
+        templates: dict[str, pl.DataFrame],
+        prefix: str,
+    ) -> int:
+        """Write per-country geographical templates as Excel sheets.
+
+        Used by both C 09.01 (SA) and C 09.02 (IRB) — they share the same
+        ``{prefix} - {country}`` sheet-naming convention.
+        Returns total rows written.
+        """
+        total = 0
+        for country, df in sorted(templates.items()):
+            if len(df) > 0:
+                sheet = _EXCEL_SHEET_INVALID_RE.sub("", f"{prefix} - {country}")[:31]
+                df.write_excel(workbook=workbook, worksheet=sheet, autofit=True)
+                total += len(df)
+        return total
 
     # =========================================================================
     # C 08.07 / OF 08.07 — IRB Scope of Use
@@ -472,34 +501,10 @@ class COREPGenerator:
 
         rwa_col = _pick(cols, "rwa_final", "final_rwa", "rwa_post_factor", "rwa")
 
-        # Collect grouped data: (exposure_class, approach_applied) -> (sum_ead, sum_rwa)
-        agg_exprs = [pl.col(ead_col).sum().alias("_sum_ead")]
-        if rwa_col:
-            agg_exprs.append(pl.col(rwa_col).sum().alias("_sum_rwa"))
-
-        grouped = results.group_by([ec_col, approach_col]).agg(agg_exprs).collect()
-
-        if len(grouped) == 0:
+        lookups = _c08_07_group_by_class(results, ead_col, rwa_col, ec_col, approach_col)
+        if lookups is None:
             return None
-
-        # Build lookup: (exposure_class, is_irb) -> (sum_ead, sum_rwa)
-        class_irb_ead: dict[str, float] = {}
-        class_sa_ead: dict[str, float] = {}
-        class_irb_rwa: dict[str, float] = {}
-        class_sa_rwa: dict[str, float] = {}
-
-        for row in grouped.iter_rows(named=True):
-            ec = row[ec_col]
-            approach = row[approach_col]
-            ead = row["_sum_ead"] or 0.0
-            rwa_val = row.get("_sum_rwa", 0.0) or 0.0
-
-            if approach in C08_07_IRB_APPROACHES:
-                class_irb_ead[ec] = class_irb_ead.get(ec, 0.0) + ead
-                class_irb_rwa[ec] = class_irb_rwa.get(ec, 0.0) + rwa_val
-            else:
-                class_sa_ead[ec] = class_sa_ead.get(ec, 0.0) + ead
-                class_sa_rwa[ec] = class_sa_rwa.get(ec, 0.0) + rwa_val
+        class_irb_ead, class_sa_ead, class_irb_rwa, class_sa_rwa = lookups
 
         column_defs = get_c08_07_columns(framework)
         column_refs = [c.ref for c in column_defs]
@@ -514,63 +519,45 @@ class COREPGenerator:
         )
         rows: list[dict[str, object]] = []
 
-        for row_ref, row_name, ec_value in row_defs:
-            values: dict[str, object] = {}
+        def _agg_values(
+            irb_ead: float, sa_ead: float, irb_rwa: float, sa_rwa: float
+        ) -> dict[str, object]:
+            return self._compute_c08_07_values(
+                irb_ead,
+                sa_ead,
+                irb_rwa,
+                sa_rwa,
+                column_refs,
+                is_b31,
+                is_consolidated=_is_consolidated,
+            )
 
-            if row_name == "Total" or row_name == "Aggregate immateriality %":
-                if row_name == "Total":
-                    irb_ead = sum(class_irb_ead.values())
-                    sa_ead = sum(class_sa_ead.values())
-                    irb_rwa = sum(class_irb_rwa.values())
-                    sa_rwa = sum(class_sa_rwa.values())
-                    values = self._compute_c08_07_values(
-                        irb_ead,
-                        sa_ead,
-                        irb_rwa,
-                        sa_rwa,
-                        column_refs,
-                        is_b31,
-                        is_consolidated=_is_consolidated,
-                    )
-                else:
-                    # Materiality row: null (requires institutional config)
-                    values = dict.fromkeys(column_refs)
+        for row_ref, row_name, ec_value in row_defs:
+            if row_name == "Total":
+                values = _agg_values(
+                    sum(class_irb_ead.values()),
+                    sum(class_sa_ead.values()),
+                    sum(class_irb_rwa.values()),
+                    sum(class_sa_rwa.values()),
+                )
             elif ec_value is not None:
-                # Direct exposure class mapping
-                irb_ead = class_irb_ead.get(ec_value, 0.0)
-                sa_ead = class_sa_ead.get(ec_value, 0.0)
-                irb_rwa = class_irb_rwa.get(ec_value, 0.0)
-                sa_rwa = class_sa_rwa.get(ec_value, 0.0)
-                values = self._compute_c08_07_values(
-                    irb_ead,
-                    sa_ead,
-                    irb_rwa,
-                    sa_rwa,
-                    column_refs,
-                    is_b31,
-                    is_consolidated=_is_consolidated,
+                values = _agg_values(
+                    class_irb_ead.get(ec_value, 0.0),
+                    class_sa_ead.get(ec_value, 0.0),
+                    class_irb_rwa.get(ec_value, 0.0),
+                    class_sa_rwa.get(ec_value, 0.0),
                 )
             elif row_ref == "0090":
                 # CRR "Retail" aggregate row
-                irb_ead = sum(class_irb_ead.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES)
-                sa_ead = sum(class_sa_ead.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES)
-                irb_rwa = sum(class_irb_rwa.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES)
-                sa_rwa = sum(class_sa_rwa.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES)
-                values = self._compute_c08_07_values(
-                    irb_ead,
-                    sa_ead,
-                    irb_rwa,
-                    sa_rwa,
-                    column_refs,
-                    is_b31,
-                    is_consolidated=_is_consolidated,
+                values = _agg_values(
+                    sum(class_irb_ead.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES),
+                    sum(class_sa_ead.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES),
+                    sum(class_irb_rwa.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES),
+                    sum(class_sa_rwa.get(c, 0.0) for c in C08_07_CRR_RETAIL_CLASSES),
                 )
-            elif row_ref == "0060":
-                # CRR "SL excluding slotting" — SL on IRB (non-slotting approaches)
-                # Cannot distinguish from data; report as null
-                values = dict.fromkeys(column_refs)
             else:
-                # Sub-rows without direct mapping (SME sub-rows, etc.)
+                # Aggregate immateriality %, CRR SL-excluding-slotting (row 0060),
+                # SME sub-rows — none can be populated from this data; report null.
                 values = dict.fromkeys(column_refs)
 
             rows.append({"row_ref": row_ref, "row_name": row_name, **values})
@@ -610,39 +597,41 @@ class COREPGenerator:
         pct_sa = (sa_ead / total_ead * 100.0) if total_ead > 0 else 0.0
         pct_irb = (irb_ead / total_ead * 100.0) if total_ead > 0 else 0.0
 
+        # Direct refs available in all frameworks
+        direct: dict[str, object] = {
+            "0010": irb_ead,
+            "0020": total_ead,
+            # % subject to permanent partial use of SA — all SA is treated as
+            # permanent partial use when IRB permissions exist.
+            "0030": pct_sa,
+            # % subject to roll-out plan — not tracked in pipeline.
+            "0040": 0.0,
+            "0050": pct_irb,
+        }
+        # B3.1-only refs (CRR layout doesn't include these)
+        b31_only: dict[str, object] = {
+            "0060": total_rwa,
+            # RWEA for SA: other — all SA RWEA goes here when no
+            # sa_use_reason column is available to split by reason.
+            "0140": sa_rwa,
+            "0150": irb_rwa,
+            # Materiality cols (0160-0180) require institutional config —
+            # populated as None until consolidated-basis data is available.
+            "0160": None,
+            "0170": None,
+            "0180": None,
+        }
+
         values: dict[str, object] = {}
         for ref in column_refs:
-            if ref == "0010":
-                values[ref] = irb_ead
-            elif ref == "0020":
-                values[ref] = total_ead
-            elif ref == "0030":
-                # % subject to permanent partial use of SA — all SA is treated
-                # as permanent partial use when IRB permissions exist
-                values[ref] = pct_sa
-            elif ref == "0040":
-                # % subject to roll-out plan — not tracked in pipeline
-                values[ref] = 0.0
-            elif ref == "0050":
-                values[ref] = pct_irb
-            elif ref == "0060" and is_b31:
-                values[ref] = total_rwa
-            elif ref == "0140" and is_b31:
-                # RWEA for SA: other — all SA RWEA goes here when no
-                # sa_use_reason column is available to split by reason
-                values[ref] = sa_rwa
-            elif ref == "0150" and is_b31:
-                values[ref] = irb_rwa
-            elif ref in {"0160", "0170", "0180"} and is_b31:
-                # Materiality columns: consolidated-basis only (Art. 150(1A)).
-                # Non-consolidated reporting basis → not applicable (None).
-                # Consolidated basis → in scope but requires institutional
-                # config data not yet available (also None for now).
-                values[ref] = None
-            elif is_b31:
-                # SA RWEA breakdown cols 0070-0130: null (requires sa_use_reason)
-                values[ref] = 0.0
+            if ref in direct:
+                values[ref] = direct[ref]
+            elif is_b31 and ref in b31_only:
+                values[ref] = b31_only[ref]
             else:
+                # SA RWEA breakdown cols 0070-0130 (B31): null until
+                # sa_use_reason is tracked. CRR layout: anything not in
+                # ``direct`` is a zero placeholder.
                 values[ref] = 0.0
 
         return values
@@ -704,19 +693,9 @@ class COREPGenerator:
 
         for section in OF_02_01_ROW_SECTIONS:
             for row_def in section.rows:
-                if row_def.ref == "0010":
-                    # Credit risk (excluding CCR) — populated from pipeline
-                    rows.append(
-                        _of_02_01_row(
-                            row_def.ref,
-                            row_def.name,
-                            column_refs,
-                            modelled_rwa=modelled_rwa,
-                            sa_rwa=sa_rwa_total,
-                        )
-                    )
-                elif row_def.ref == "0080":
-                    # Total — same as credit risk for credit-risk-only calculator
+                if row_def.ref in ("0010", "0080"):
+                    # 0010 = credit risk (excl. CCR); 0080 = total — same value
+                    # for a credit-risk-only calculator (S1871 collapse).
                     rows.append(
                         _of_02_01_row(
                             row_def.ref,
@@ -791,106 +770,9 @@ class COREPGenerator:
         total_rwa = 0.0
 
         if approach_col and ec_col:
-            collected = results.select(
-                pl.col(approach_col).alias("_approach"),
-                pl.col(ec_col).alias("_ec"),
-                pl.col(rwa_col).fill_null(0.0).alias("_rwa"),
-            ).collect()
-
-            # Total RWA
-            total_rwa = float(collected["_rwa"].sum())
-
-            # RWA by approach
-            by_approach = collected.group_by("_approach").agg(pl.col("_rwa").sum().alias("rwa"))
-            for row in by_approach.iter_rows(named=True):
-                approach_rwa[row["_approach"]] = float(row["rwa"])
-
-            # SA class breakdown
-            sa_mask = collected["_approach"] == "standardised"
-            equity_mask = collected["_approach"] == "equity"
-            sa_rows = collected.filter(sa_mask | equity_mask)
-            by_class = sa_rows.group_by("_ec").agg(pl.col("_rwa").sum().alias("rwa"))
-            for row in by_class.iter_rows(named=True):
-                sa_class_rwa[row["_ec"]] = float(row["rwa"])
-
-            # IRB sub-approach breakdowns
-            irb_rows = collected.filter(~sa_mask & ~equity_mask)
-
-            # Per-approach + class breakdown for IRB sub-rows
-            irb_class_approach = irb_rows.group_by(["_approach", "_ec"]).agg(
-                pl.col("_rwa").sum().alias("rwa")
+            total_rwa = self._c02_00_aggregate_by_approach(
+                results, approach_col, ec_col, rwa_col, cols, is_b31, approach_rwa, sa_class_rwa
             )
-            self._irb_class_rwa = {}
-            for row in irb_class_approach.iter_rows(named=True):
-                key = (row["_approach"], row["_ec"])
-                self._irb_class_rwa[key] = float(row["rwa"])
-
-            # Slotting by SL type
-            self._slotting_type_rwa: dict[str, float] = {}
-            if "sl_type" in cols:
-                sl_collected = (
-                    results.filter(pl.col(approach_col) == "slotting")
-                    .select(
-                        pl.col("sl_type").alias("_sl"),
-                        pl.col(rwa_col).fill_null(0.0).alias("_rwa"),
-                    )
-                    .collect()
-                )
-                by_sl = sl_collected.group_by("_sl").agg(pl.col("_rwa").sum().alias("rwa"))
-                for row in by_sl.iter_rows(named=True):
-                    if row["_sl"] is not None:
-                        self._slotting_type_rwa[row["_sl"]] = float(row["rwa"])
-
-            # Finer-grained IRB sub-row aggregation for B31 OF 02.00.
-            # Computes SME/FSE splits for F-IRB/A-IRB corporate and retail
-            # RE sub-rows using pipeline columns is_sme, apply_fi_scalar,
-            # and property_type.
-            self._irb_sub_rwa: dict[
-                tuple[str, str, bool | None, bool | None, str | None], float
-            ] = {}
-            if is_b31:
-                sub_select: list[pl.Expr] = [
-                    pl.col(approach_col).alias("_approach"),
-                    pl.col(ec_col).alias("_ec"),
-                    pl.col(rwa_col).fill_null(0.0).alias("_rwa"),
-                ]
-                has_sme = "is_sme" in cols
-                has_fse = "apply_fi_scalar" in cols or "cp_is_financial_sector_entity" in cols
-                has_pt = "property_type" in cols
-                if has_sme:
-                    sub_select.append(pl.col("is_sme").fill_null(False).alias("_sme"))
-                if has_fse:
-                    fse_col = (
-                        "apply_fi_scalar"
-                        if "apply_fi_scalar" in cols
-                        else "cp_is_financial_sector_entity"
-                    )
-                    sub_select.append(pl.col(fse_col).fill_null(False).alias("_fse"))
-                if has_pt:
-                    sub_select.append(pl.col("property_type").alias("_pt"))
-                irb_approaches = {"foundation_irb", "advanced_irb"}
-                sub_collected = (
-                    results.filter(pl.col(approach_col).is_in(irb_approaches))
-                    .select(sub_select)
-                    .collect()
-                )
-                gb_cols = ["_approach", "_ec"]
-                if has_sme:
-                    gb_cols.append("_sme")
-                if has_fse:
-                    gb_cols.append("_fse")
-                if has_pt:
-                    gb_cols.append("_pt")
-                sub_agg = sub_collected.group_by(gb_cols).agg(pl.col("_rwa").sum().alias("rwa"))
-                for row in sub_agg.iter_rows(named=True):
-                    key = (
-                        row["_approach"],
-                        row["_ec"],
-                        row.get("_sme"),
-                        row.get("_fse"),
-                        row.get("_pt"),
-                    )
-                    self._irb_sub_rwa[key] = float(row["rwa"])
         else:
             # Fallback: just compute total RWA
             total_stats = results.select(
@@ -938,202 +820,42 @@ class COREPGenerator:
         row_values["0050"] = {"0010": total_rwa}  # Credit risk = total (only CR in scope)
         row_values["0060"] = {"0010": sa_rwa_total + equity_rwa}
 
-        # SA per-class breakdown
-        for ec_value, row_ref in C02_00_SA_CLASS_MAP.items():
-            if ec_value in sa_class_rwa:
-                if row_ref not in row_values:
-                    row_values[row_ref] = {"0010": 0.0}
-                existing = float(row_values[row_ref].get("0010", 0.0) or 0.0)
-                row_values[row_ref]["0010"] = existing + sa_class_rwa[ec_value]
-
-        # Specialised lending sub-row (B31 only, under SA corporates)
-        if is_b31 and "specialised_lending" in sa_class_rwa:
-            row_values["0131"] = {"0010": sa_class_rwa["specialised_lending"]}
+        # SA per-class rows + B31 specialised-lending sub-row
+        _c02_00_sa_rows(row_values, sa_class_rwa, is_b31)
 
         # IRB total
         row_values["0220"] = {"0010": irb_total_rwa}
 
-        # F-IRB total and sub-rows
-        row_values["0240"] = {"0010": firb_rwa}
+        # F-IRB total + sub-rows (incl. B31 corporate splits)
         irb_class_rwa = getattr(self, "_irb_class_rwa", {})
-        # F-IRB — Institutions
-        firb_inst = irb_class_rwa.get(("foundation_irb", "institution"), 0.0)
-        row_values["0250"] = {"0010": firb_inst}
-        if is_b31:
-            row_values["0271"] = {"0010": firb_inst}
-        # F-IRB — Corporates
-        firb_corp = irb_class_rwa.get(("foundation_irb", "corporate"), 0.0)
-        firb_sl = irb_class_rwa.get(("foundation_irb", "specialised_lending"), 0.0)
-        row_values["0260"] = {"0010": firb_corp + firb_sl}
-        if is_b31:
-            row_values["0290"] = {"0010": firb_sl}
-            # F-IRB corporate sub-splits using finer-grained IRB aggregation
-            firb_fse, firb_sme, firb_nonsme = _irb_sub_split(
-                self._irb_sub_rwa,
-                "foundation_irb",
-                "corporate",
-                firb_corp,
-            )
-            row_values["0295"] = {"0010": firb_fse}  # Financial/large corporates
-            row_values["0296"] = {"0010": firb_sme}  # Other general corporates SME
-            row_values["0297"] = {"0010": firb_nonsme}  # Other general corporates non-SME
+        irb_sub_rwa = getattr(self, "_irb_sub_rwa", {})
+        _c02_00_firb_rows(row_values, firb_rwa, irb_class_rwa, irb_sub_rwa, is_b31)
 
-        # A-IRB total and sub-rows
-        row_values["0300"] = {"0010": airb_rwa}
-        # A-IRB by exposure class
-        airb_sovereign = irb_class_rwa.get(("advanced_irb", "central_government"), 0.0)
-        row_values["0310"] = {"0010": airb_sovereign}
-        airb_inst = irb_class_rwa.get(("advanced_irb", "institution"), 0.0)
-        row_values["0330"] = {"0010": airb_inst}
-        airb_corp = irb_class_rwa.get(("advanced_irb", "corporate"), 0.0)
-        airb_sl_excl = irb_class_rwa.get(("advanced_irb", "specialised_lending"), 0.0)
-        row_values["0340"] = {"0010": airb_corp + airb_sl_excl}
-        if is_b31:
-            row_values["0350"] = {"0010": airb_sl_excl}
-            # A-IRB corporate sub-splits
-            airb_fse, airb_sme, airb_nonsme = _irb_sub_split(
-                self._irb_sub_rwa,
-                "advanced_irb",
-                "corporate",
-                airb_corp,
-            )
-            row_values["0355"] = {"0010": airb_sme}  # Other general corporates SME
-            row_values["0356"] = {"0010": airb_nonsme + airb_fse}  # Non-SME (incl. FSE)
+        # A-IRB total + sub-rows (corporate splits + retail breakdown)
+        _c02_00_airb_corp_rows(row_values, airb_rwa, irb_class_rwa, irb_sub_rwa, is_b31)
+        _c02_00_airb_retail_rows(row_values, irb_class_rwa, irb_sub_rwa, is_b31)
 
-        # A-IRB retail
-        airb_retail_mort = irb_class_rwa.get(("advanced_irb", "retail_mortgage"), 0.0)
-        airb_retail_qrre = irb_class_rwa.get(("advanced_irb", "retail_qrre"), 0.0)
-        airb_retail_other = irb_class_rwa.get(("advanced_irb", "retail_other"), 0.0)
-        airb_retail_total = airb_retail_mort + airb_retail_qrre + airb_retail_other
-        row_values["0370"] = {"0010": airb_retail_total}
-        row_values["0380"] = {"0010": airb_retail_mort}
-        if is_b31:
-            # A-IRB retail RE sub-splits by property type and SME
-            resi_sme, resi_nonsme, comm_sme, comm_nonsme = _irb_re_sub_split(
-                self._irb_sub_rwa,
-                "advanced_irb",
-                "retail_mortgage",
-                airb_retail_mort,
-            )
-            row_values["0382"] = {"0010": resi_sme}
-            row_values["0383"] = {"0010": resi_nonsme}
-            row_values["0384"] = {"0010": comm_sme}
-            row_values["0385"] = {"0010": comm_nonsme}
-        row_values["0390"] = {"0010": airb_retail_qrre}
-        # A-IRB retail other sub-splits by SME
-        if is_b31:
-            other_sme, other_nonsme = _irb_other_sme_split(
-                self._irb_sub_rwa,
-                "advanced_irb",
-                "retail_other",
-                airb_retail_other,
-            )
-            row_values["0400"] = {"0010": other_sme}
-            row_values["0410"] = {"0010": other_nonsme}
-        else:
-            row_values["0400"] = {"0010": airb_retail_other}
-
-        # Slotting
+        # Slotting rows (CRR single row vs B31 per-SL-type breakdown)
         slotting_type_rwa = getattr(self, "_slotting_type_rwa", {})
-        if is_b31:
-            row_values["0411"] = {"0010": slotting_rwa}
-            row_values["0412"] = {"0010": slotting_type_rwa.get("project_finance", 0.0)}
-            row_values["0413"] = {"0010": slotting_type_rwa.get("object_finance", 0.0)}
-            row_values["0414"] = {"0010": slotting_type_rwa.get("commodities_finance", 0.0)}
-            row_values["0415"] = {"0010": slotting_type_rwa.get("ipre", 0.0)}
-            row_values["0416"] = {"0010": slotting_type_rwa.get("hvcre", 0.0)}
-        else:
-            row_values["0410"] = {"0010": slotting_rwa}
+        _c02_00_slotting_rows(row_values, slotting_rwa, slotting_type_rwa, is_b31)
 
         # Equity IRB
         row_values["0420"] = {"0010": equity_rwa}
 
-        # B31 output floor indicator rows.
-        # Art. 92 para 2A: floor only applies to 3 entity-type/basis combos.
-        # When output_floor_config is provided, gate on is_floor_applicable().
-        _floor_applicable = output_floor_config is None or output_floor_config.is_floor_applicable()
-        if is_b31:
-            if _floor_applicable:
-                row_values["0034"] = {"0010": 1.0 if floor_activated else 0.0}
-                # Row 0035: floor multiplier % (e.g. 72.5 for 72.5%)
-                # Row 0036: OF-ADJ monetary value
-                if output_floor_summary is not None:
-                    row_values["0035"] = {
-                        "0010": output_floor_summary.floor_pct * 100.0,
-                    }
-                    row_values["0036"] = {"0010": output_floor_summary.of_adj}
-                else:
-                    row_values["0035"] = {"0010": 0.0}
-                    row_values["0036"] = {"0010": 0.0}
-            else:
-                # Exempt entity: floor not applicable (Art. 92 para 2A).
-                # Rows present but indicate no floor activation.
-                row_values["0034"] = {"0010": 0.0}
-                row_values["0035"] = {"0010": 0.0}
-                row_values["0036"] = {"0010": 0.0}
+        # B31 output floor indicator rows
+        _c02_00_floor_indicator_rows(
+            row_values, floor_activated, output_floor_summary, output_floor_config, is_b31
+        )
 
         # Add B31 col 0020 (SA-equivalent) and col 0030 (output floor) values
         if is_b31:
-            for ref, vals in row_values.items():
-                col_0010 = vals.get("0010")
-                if ref == "0010":
-                    # Total row: col 0020 = SA-equivalent TREA, col 0030 = floor TREA
-                    vals["0020"] = sa_equiv_rwa
-                    vals["0030"] = floor_rwa
-                elif ref == "0040":
-                    # Own funds: 8% of respective column totals
-                    vals["0020"] = sa_equiv_rwa * 0.08
-                    vals["0030"] = floor_rwa * 0.08
-                elif ref in {"0034", "0035", "0036"}:
-                    # Indicator rows: same value across all columns
-                    vals["0020"] = col_0010
-                    vals["0030"] = col_0010
-                elif ref == "0050":
-                    # Credit risk total = SA-equiv for col 0020
-                    vals["0020"] = sa_equiv_rwa
-                    vals["0030"] = floor_rwa
-                elif ref == "0060":
-                    # SA subtotal: SA-equiv includes all SA + equity
-                    vals["0020"] = vals["0010"]  # SA-only RWEA is what SA produces
-                    vals["0030"] = vals["0010"]  # SA approach doesn't get floored
-                elif ref in {"0220", "0240", "0300"}:
-                    # IRB totals: col 0020 = SA-equivalent of IRB exposures
-                    vals["0020"] = 0.0  # IRB → SA equivalent not separately tracked here
-                    vals["0030"] = 0.0
-                else:
-                    # Default: col 0020/0030 same as col 0010 for SA rows,
-                    # 0.0 for IRB rows (SA equivalent not separately computed)
-                    vals["0020"] = col_0010 if col_0010 is not None else None
-                    vals["0030"] = col_0010 if col_0010 is not None else None
+            _c02_00_apply_b31_cols(row_values, sa_equiv_rwa, floor_rwa)
 
         # Build DataFrame rows
-        rows: list[dict[str, object]] = []
-        for section in row_sections:
-            for row_def in section.rows:
-                if row_def.ref in row_values:
-                    row_data: dict[str, object] = {
-                        "row_ref": row_def.ref,
-                        "row_name": row_def.name,
-                    }
-                    vals = row_values[row_def.ref]
-                    for ref in column_refs:
-                        row_data[ref] = vals.get(ref)
-                    rows.append(row_data)
-                elif row_def.ref in C02_00_CREDIT_RISK_ROWS:
-                    # Credit risk row without data — zero
-                    row_data = {"row_ref": row_def.ref, "row_name": row_def.name}
-                    for ref in column_refs:
-                        row_data[ref] = 0.0
-                    rows.append(row_data)
-                else:
-                    # Non-credit-risk rows — null (out of scope)
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+        rows = _c02_00_build_rows(row_values, row_sections, column_refs)
 
         # Schema: String for refs/names, Float64 for data columns
-        schema: dict[str, pl.DataType] = {
-            "row_ref": pl.String,
-            "row_name": pl.String,
-        }
+        schema: dict[str, pl.DataType] = {"row_ref": pl.String, "row_name": pl.String}
         for ref in column_refs:
             schema[ref] = pl.Float64
 
@@ -1143,6 +865,143 @@ class COREPGenerator:
         self._irb_sub_rwa = {}
 
         return pl.DataFrame(rows, schema=schema)
+
+    def _c02_00_aggregate_by_approach(
+        self,
+        results: pl.LazyFrame,
+        approach_col: str,
+        ec_col: str,
+        rwa_col: str,
+        cols: set[str],
+        is_b31: bool,
+        approach_rwa: dict[str, float],
+        sa_class_rwa: dict[str, float],
+    ) -> float:
+        """Populate per-approach/per-class aggregations on ``self`` + dicts.
+
+        Returns the total RWA. Mutates ``approach_rwa`` and ``sa_class_rwa``
+        in place and sets the three ``self._irb_*`` cache dicts (consumed by
+        the ``_c02_00_*_rows`` helpers).
+        """
+        collected = results.select(
+            pl.col(approach_col).alias("_approach"),
+            pl.col(ec_col).alias("_ec"),
+            pl.col(rwa_col).fill_null(0.0).alias("_rwa"),
+        ).collect()
+
+        total_rwa = float(collected["_rwa"].sum())
+
+        # RWA by approach
+        by_approach = collected.group_by("_approach").agg(pl.col("_rwa").sum().alias("rwa"))
+        for row in by_approach.iter_rows(named=True):
+            approach_rwa[row["_approach"]] = float(row["rwa"])
+
+        # SA class breakdown
+        sa_mask = collected["_approach"] == "standardised"
+        equity_mask = collected["_approach"] == "equity"
+        sa_rows = collected.filter(sa_mask | equity_mask)
+        by_class = sa_rows.group_by("_ec").agg(pl.col("_rwa").sum().alias("rwa"))
+        for row in by_class.iter_rows(named=True):
+            sa_class_rwa[row["_ec"]] = float(row["rwa"])
+
+        # IRB per-approach-and-class breakdown
+        irb_rows = collected.filter(~sa_mask & ~equity_mask)
+        irb_class_approach = irb_rows.group_by(["_approach", "_ec"]).agg(
+            pl.col("_rwa").sum().alias("rwa")
+        )
+        self._irb_class_rwa = {
+            (row["_approach"], row["_ec"]): float(row["rwa"])
+            for row in irb_class_approach.iter_rows(named=True)
+        }
+
+        # Slotting by SL type
+        self._slotting_type_rwa = self._c02_00_slotting_type_agg(
+            results, approach_col, rwa_col, cols
+        )
+
+        # B3.1 finer-grained sub-row aggregation (SME/FSE/property-type)
+        self._irb_sub_rwa = (
+            self._c02_00_irb_sub_agg(results, approach_col, ec_col, rwa_col, cols)
+            if is_b31
+            else {}
+        )
+        return total_rwa
+
+    @staticmethod
+    def _c02_00_slotting_type_agg(
+        results: pl.LazyFrame, approach_col: str, rwa_col: str, cols: set[str]
+    ) -> dict[str, float]:
+        """Aggregate slotting RWA by ``sl_type``. Returns empty dict if absent."""
+        if "sl_type" not in cols:
+            return {}
+        sl_collected = (
+            results.filter(pl.col(approach_col) == "slotting")
+            .select(
+                pl.col("sl_type").alias("_sl"),
+                pl.col(rwa_col).fill_null(0.0).alias("_rwa"),
+            )
+            .collect()
+        )
+        by_sl = sl_collected.group_by("_sl").agg(pl.col("_rwa").sum().alias("rwa"))
+        return {
+            row["_sl"]: float(row["rwa"])
+            for row in by_sl.iter_rows(named=True)
+            if row["_sl"] is not None
+        }
+
+    @staticmethod
+    def _c02_00_irb_sub_agg(
+        results: pl.LazyFrame,
+        approach_col: str,
+        ec_col: str,
+        rwa_col: str,
+        cols: set[str],
+    ) -> dict[tuple[str, str, bool | None, bool | None, str | None], float]:
+        """Finer-grained IRB aggregation for B3.1 corporate/retail sub-rows."""
+        sub_select: list[pl.Expr] = [
+            pl.col(approach_col).alias("_approach"),
+            pl.col(ec_col).alias("_ec"),
+            pl.col(rwa_col).fill_null(0.0).alias("_rwa"),
+        ]
+        has_sme = "is_sme" in cols
+        has_fse = "apply_fi_scalar" in cols or "cp_is_financial_sector_entity" in cols
+        has_pt = "property_type" in cols
+        if has_sme:
+            sub_select.append(pl.col("is_sme").fill_null(False).alias("_sme"))
+        if has_fse:
+            fse_col = (
+                "apply_fi_scalar"
+                if "apply_fi_scalar" in cols
+                else "cp_is_financial_sector_entity"
+            )
+            sub_select.append(pl.col(fse_col).fill_null(False).alias("_fse"))
+        if has_pt:
+            sub_select.append(pl.col("property_type").alias("_pt"))
+
+        irb_approaches = {"foundation_irb", "advanced_irb"}
+        sub_collected = (
+            results.filter(pl.col(approach_col).is_in(irb_approaches))
+            .select(sub_select)
+            .collect()
+        )
+        gb_cols = ["_approach", "_ec"]
+        if has_sme:
+            gb_cols.append("_sme")
+        if has_fse:
+            gb_cols.append("_fse")
+        if has_pt:
+            gb_cols.append("_pt")
+        sub_agg = sub_collected.group_by(gb_cols).agg(pl.col("_rwa").sum().alias("rwa"))
+        return {
+            (
+                row["_approach"],
+                row["_ec"],
+                row.get("_sme"),
+                row.get("_fse"),
+                row.get("_pt"),
+            ): float(row["rwa"])
+            for row in sub_agg.iter_rows(named=True)
+        }
 
     # =========================================================================
     # C 09.01 / OF 09.01 — Geographical Breakdown SA
@@ -1193,25 +1052,18 @@ class COREPGenerator:
 
         # Generate total-level template first
         total_df = self._generate_c09_01_for_country(
-            sa_df, df_cols, row_defs, column_refs, framework
+            sa_df, df_cols, row_defs, column_refs
         )
         result["TOTAL"] = total_df
 
         # Generate per-country templates
-        countries = (
-            sa_df.select(pl.col(country_col))
-            .filter(pl.col(country_col).is_not_null())
-            .unique()
-            .sort(country_col)
-            .to_series()
-            .to_list()
-        )
+        countries = _collect_unique_countries(sa_df, country_col)
 
         for country in countries:
             country_data = sa_df.filter(pl.col(country_col) == country)
             if len(country_data) > 0:
                 country_df = self._generate_c09_01_for_country(
-                    country_data, df_cols, row_defs, column_refs, framework
+                    country_data, df_cols, row_defs, column_refs
                 )
                 result[country] = country_df
 
@@ -1223,7 +1075,6 @@ class COREPGenerator:
         cols: set[str],
         row_defs: list[COREPRow],
         column_refs: list[str],
-        framework: str,
     ) -> pl.DataFrame:
         """Generate a C 09.01 DataFrame for a single country (or total).
 
@@ -1236,14 +1087,14 @@ class COREPGenerator:
         for row_def in row_defs:
             if row_def.ref == "0170":
                 # Total row: sum across all exposure classes
-                values = _compute_c09_01_values(country_data, cols, column_refs, framework)
+                values = _compute_c09_01_values(country_data, cols, column_refs)
                 rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
             elif row_def.exposure_class_value is not None:
                 row_data = _filter_c09_01_row(
-                    country_data, cols, row_def.exposure_class_value, framework
+                    country_data, cols, row_def.exposure_class_value
                 )
                 if len(row_data) > 0:
-                    values = _compute_c09_01_values(row_data, cols, column_refs, framework)
+                    values = _compute_c09_01_values(row_data, cols, column_refs)
                     rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
                 else:
                     rows.append(_null_row(row_def.ref, row_def.name, column_refs))
@@ -1307,25 +1158,18 @@ class COREPGenerator:
 
         # Generate total-level template first
         total_df = self._generate_c09_02_for_country(
-            irb_df, df_cols, row_defs, column_refs, framework, approach_col
+            irb_df, df_cols, row_defs, column_refs, approach_col
         )
         result["TOTAL"] = total_df
 
         # Generate per-country templates
-        countries = (
-            irb_df.select(pl.col(country_col))
-            .filter(pl.col(country_col).is_not_null())
-            .unique()
-            .sort(country_col)
-            .to_series()
-            .to_list()
-        )
+        countries = _collect_unique_countries(irb_df, country_col)
 
         for country in countries:
             country_data = irb_df.filter(pl.col(country_col) == country)
             if len(country_data) > 0:
                 country_df = self._generate_c09_02_for_country(
-                    country_data, df_cols, row_defs, column_refs, framework, approach_col
+                    country_data, df_cols, row_defs, column_refs, approach_col
                 )
                 result[country] = country_df
 
@@ -1337,7 +1181,6 @@ class COREPGenerator:
         cols: set[str],
         row_defs: list[COREPRow],
         column_refs: list[str],
-        framework: str,
         approach_col: str | None,
     ) -> pl.DataFrame:
         """Generate a C 09.02 DataFrame for a single country (or total).
@@ -1351,14 +1194,14 @@ class COREPGenerator:
         for row_def in row_defs:
             if row_def.ref == "0150":
                 # Total row: sum across all IRB exposure classes
-                values = _compute_c09_02_values(country_data, cols, column_refs, framework)
+                values = _compute_c09_02_values(country_data, cols, column_refs)
                 rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
             elif row_def.exposure_class_value is not None:
                 row_data = _filter_c09_02_row(
-                    country_data, cols, row_def.exposure_class_value, framework, approach_col
+                    country_data, cols, row_def.exposure_class_value, approach_col
                 )
                 if len(row_data) > 0:
-                    values = _compute_c09_02_values(row_data, cols, column_refs, framework)
+                    values = _compute_c09_02_values(row_data, cols, column_refs)
                     rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
                 else:
                     rows.append(_null_row(row_def.ref, row_def.name, column_refs))
@@ -1413,7 +1256,7 @@ class COREPGenerator:
         classes = sa_df[ec_col].unique().sort().to_list()
 
         # Pre-compute CRM substitution flows (inflows require full dataset)
-        sub_flows = _compute_substitution_flows(sa_df, data_cols, ec_col)
+        sub_flows = _compute_substitution_flows(sa_df, data_cols)
 
         result: dict[str, pl.DataFrame] = {}
         for ec in classes:
@@ -1451,10 +1294,17 @@ class COREPGenerator:
 
         rows: list[dict[str, object]] = []
 
+        def _emit_subset_row(row_def, subset: pl.DataFrame | None) -> None:
+            """Append either populated values (subset non-empty) or a null row."""
+            if subset is not None and len(subset) > 0:
+                values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
+                rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
+            else:
+                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+
         # Section 1: Total Exposures
         for row_def in row_sections[0].rows:
             if row_def.ref == "0010":
-                # Row 0010: aggregate ALL class data (with class-level inflows)
                 values = _compute_c07_values(
                     class_data,
                     cols,
@@ -1464,99 +1314,12 @@ class COREPGenerator:
                     substitution_inflow=substitution_inflow,
                 )
                 rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-            elif row_def.ref == "0015":
-                # Row 0015: of which: Defaulted exposures
-                subset = _filter_defaulted(class_data, cols)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref == "0020":
-                # Row 0020: of which: SME
-                subset = _filter_sme(class_data, cols)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref in ("0021", "0022", "0023"):
-                # Specialised lending "of which" rows (B3.1 rows 0021-0023)
-                sl_type_map = {
-                    "0021": "object_finance",
-                    "0022": "commodities_finance",
-                    "0023": "project_finance",
-                }
-                subset = _filter_sl_type(class_data, cols, sl_type_map[row_def.ref])
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref in ("0024", "0025", "0026"):
-                # Project finance phase "of which" rows (B3.1 rows 0024-0026)
-                phase_map = {
-                    "0024": "pre_operational",
-                    "0025": "operational",
-                    "0026": "high_quality_operational",
-                }
-                subset = _filter_project_phase(class_data, cols, phase_map[row_def.ref])
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref in _RE_ROW_FILTERS:
-                # Real estate "of which" rows (B3.1 rows 0330-0360)
-                re_kwargs = _RE_ROW_FILTERS[row_def.ref]
-                subset = _filter_re(class_data, cols, **re_kwargs)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref == "0030":
-                # CRR: of which: Exposures subject to SME-supporting factor
-                subset = _filter_supporting_factor(class_data, cols, "sme")
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref == "0035":
-                # CRR: of which: Exposures subject to infrastructure supporting factor
-                subset = _filter_supporting_factor(class_data, cols, "infrastructure")
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
             else:
-                # Other "of which" rows (0040/0050/0060) — require
-                # pipeline columns not yet available
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+                _emit_subset_row(row_def, _c07_section1_subset(row_def.ref, class_data, cols))
 
         # Section 2: Breakdown by Exposure Types
         for row_def in row_sections[1].rows:
-            if row_def.ref == "0070":
-                # On balance sheet exposures
-                subset = _filter_on_bs(class_data, cols)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref == "0080":
-                # Off balance sheet exposures
-                subset = _filter_off_bs(class_data, cols)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            else:
-                # CCR rows (0090-0130) — not implemented
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+            _emit_subset_row(row_def, _c07_section2_subset(row_def.ref, class_data, cols))
 
         # Section 3: Breakdown by Risk Weights
         rw_col = _pick(cols, "risk_weight", "sa_final_risk_weight")
@@ -1571,59 +1334,13 @@ class COREPGenerator:
                 rows.append(_null_row(row_def.ref, row_def.name, column_refs))
 
         # Section 4: Breakdown by CIU Approach (Art. 132-132C)
-        _CIU_ROW_APPROACH = {"0281": "look_through", "0282": "mandate_based", "0283": "fallback"}
         ciu_col = _pick(cols, "ciu_approach")
         for row_def in row_sections[3].rows:
-            if row_def.ref in _CIU_ROW_APPROACH and ciu_col:
-                subset = class_data.filter(pl.col(ciu_col) == _CIU_ROW_APPROACH[row_def.ref])
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            else:
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+            _emit_subset_row(row_def, _c07_section4_subset(row_def.ref, class_data, ciu_col))
 
         # Section 5: Memorandum Items
-        _MEMO_DEFAULTED_RW = {"0300": 1.0, "0320": 1.5}
-        _MEMO_RE_SECURED = {"0290": "commercial", "0310": "residential"}
         for row_def in row_sections[4].rows:
-            if row_def.ref in _EQUITY_TRANSITIONAL_FILTERS:
-                eq_filter = _EQUITY_TRANSITIONAL_FILTERS[row_def.ref]
-                subset = _filter_equity_transitional(class_data, cols, **eq_filter)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref == "0380":
-                # Currency mismatch multiplier (Basel 3.1 Art. 123B / CRE20.93)
-                subset = _filter_currency_mismatch(class_data, cols)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref in _MEMO_DEFAULTED_RW:
-                # Defaulted at specific RW (CRR Art. 127 / PRA Art. 127)
-                target_rw = _MEMO_DEFAULTED_RW[row_def.ref]
-                subset = _filter_defaulted_at_rw(class_data, cols, target_rw)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref in _MEMO_RE_SECURED:
-                # CRR: Exposures secured by mortgages (Art. 124-126)
-                prop_type = _MEMO_RE_SECURED[row_def.ref]
-                subset = _filter_re_secured(class_data, cols, prop_type)
-                if len(subset) > 0:
-                    values = _compute_c07_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            else:
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+            _emit_subset_row(row_def, _c07_section5_subset(row_def.ref, class_data, cols))
 
         schema: dict[str, pl.DataType] = {
             "row_ref": pl.String,
@@ -1663,7 +1380,7 @@ class COREPGenerator:
         classes = irb_df[ec_col].unique().sort().to_list()
 
         # Pre-compute CRM substitution flows (inflows require full dataset)
-        sub_flows = _compute_substitution_flows(irb_df, data_cols, ec_col)
+        sub_flows = _compute_substitution_flows(irb_df, data_cols)
 
         result: dict[str, pl.DataFrame] = {}
         for ec in classes:
@@ -1698,6 +1415,13 @@ class COREPGenerator:
 
         rows: list[dict[str, object]] = []
 
+        def _emit_subset_row(row_def, subset: pl.DataFrame | None) -> None:
+            if subset is not None and len(subset) > 0:
+                values = _compute_c08_values(subset, cols, ead_col, rwa_col, column_refs)
+                rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
+            else:
+                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+
         # Section 1: Total
         for row_def in row_sections[0].rows:
             if row_def.ref == "0010":
@@ -1715,43 +1439,15 @@ class COREPGenerator:
 
         # Section 2: Breakdown by Exposure Types
         for row_def in row_sections[1].rows:
-            if row_def.ref == "0020":
-                # On balance sheet items
-                subset = _filter_on_bs(class_data, cols)
-                if len(subset) > 0:
-                    values = _compute_c08_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            elif row_def.ref == "0030":
-                # Off balance sheet items
-                subset = _filter_off_bs(class_data, cols)
-                if len(subset) > 0:
-                    values = _compute_c08_values(subset, cols, ead_col, rwa_col, column_refs)
-                    rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-                else:
-                    rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-            else:
-                # CCR/other rows — not implemented
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
+            _emit_subset_row(row_def, _c08_01_section2_subset(row_def.ref, class_data, cols))
 
         # Section 3: Calculation Approaches
-        # Splits the total IRB exposure by calculation method: PD/LGD model
-        # (row 0070) vs slotting (row 0080), plus sub-portfolios.
         approach_col = "approach_applied" if "approach_applied" in cols else None
         for row_def in row_sections[2].rows:
-            subset = _filter_section3_row(
-                class_data,
-                cols,
-                row_def.ref,
-                approach_col,
-                framework,
+            _emit_subset_row(
+                row_def,
+                _filter_section3_row(class_data, cols, row_def.ref, approach_col, framework),
             )
-            if subset is not None and len(subset) > 0:
-                values = _compute_c08_values(subset, cols, ead_col, rwa_col, column_refs)
-                rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-            else:
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
 
         schema: dict[str, pl.DataType] = {
             "row_ref": pl.String,
@@ -2312,21 +2008,9 @@ class COREPGenerator:
         if sl_type_col is not None:
             # Route by sl_type column
             for sl_key, _sl_display in sl_types.items():
-                if sl_key == "ipre" and framework != "BASEL_3_1" and hvcre_col is not None:
-                    # CRR combines IPRE+HVCRE into one type
-                    type_df = slotting_df.filter(
-                        (pl.col(sl_type_col) == "ipre") | (pl.col(sl_type_col) == "hvcre")
-                    )
-                elif sl_key == "hvcre" and framework == "BASEL_3_1":
-                    # B31 separates HVCRE
-                    if hvcre_col is not None:
-                        type_df = slotting_df.filter(
-                            (pl.col(sl_type_col) == "hvcre") | (pl.col(hvcre_col) == True)  # noqa: E712
-                        )
-                    else:
-                        type_df = slotting_df.filter(pl.col(sl_type_col) == "hvcre")
-                else:
-                    type_df = slotting_df.filter(pl.col(sl_type_col) == sl_key)
+                type_df = _c08_06_sl_type_filter(
+                    slotting_df, sl_key, sl_type_col, hvcre_col, framework
+                )
 
                 if len(type_df) == 0:
                     continue
@@ -2387,43 +2071,15 @@ class COREPGenerator:
         rows: list[dict[str, object]] = []
 
         for row_ref, category_label, is_short, _rw_display in row_defs:
-            category_value = C08_06_CATEGORY_MAP.get(category_label)
-            is_sub_stronger = "substantially stronger" in category_label
-
-            # Filter by category
-            if category_label == "Total":
-                cat_data = type_data
-            else:
-                if category_value is None:
-                    continue
-                cat_data = type_data.filter(pl.col(cat_col) == category_value)
-
-            # Filter by maturity band
-            if is_short is not None and maturity_col is not None:
-                cat_data = cat_data.filter(
-                    pl.col(maturity_col) == is_short  # noqa: E712
-                )
-            elif is_short is not None and maturity_col is None and is_short:
-                cat_data = type_data.clear()
-
-            # "Substantially stronger" sub-rows: currently no pipeline column
-            # identifies these exposures. They are reported as empty until
-            # a `is_substantially_stronger` flag is added to the pipeline.
-            if is_sub_stronger:
-                cat_data = cat_data.clear()
+            cat_data = _c08_06_filter_row(
+                type_data, cat_col, category_label, is_short, maturity_col
+            )
+            if cat_data is None:
+                continue
 
             if len(cat_data) == 0 and category_label != "Total":
                 # Still include the row with zero values for regulatory completeness
-                values = dict.fromkeys(column_refs, 0.0)
-                # Risk weight from row definition
-                if "0070" in values and _rw_display:
-                    rw_pct = _rw_display.replace("%", "").strip()
-                    try:
-                        values["0070"] = float(rw_pct) / 100.0
-                    except ValueError:
-                        values["0070"] = None
-                else:
-                    values["0070"] = None
+                values = _c08_06_row_values_or_zeros(column_refs, _rw_display)
                 rows.append({"row_ref": row_ref, "row_name": category_label, **values})
                 continue
 
@@ -2445,6 +2101,38 @@ class COREPGenerator:
         schema: dict[str, pl.DataType] = {"row_ref": pl.String, "row_name": pl.String}
         schema.update(dict.fromkeys(column_refs, pl.Float64))
         return pl.DataFrame(rows, schema=schema)
+
+
+# =============================================================================
+# C 07.00 SECTION-LEVEL FILTER CONFIGURATION
+# =============================================================================
+
+# Section 1 "of which" sub-rows that map to a single specialised-lending type.
+_C07_SL_TYPE_MAP: dict[str, str] = {
+    "0021": "object_finance",
+    "0022": "commodities_finance",
+    "0023": "project_finance",
+}
+
+# Section 1 "of which" sub-rows for project-finance phase splits.
+_C07_PF_PHASE_MAP: dict[str, str] = {
+    "0024": "pre_operational",
+    "0025": "operational",
+    "0026": "high_quality_operational",
+}
+
+# Section 4: Maps CIU sub-approach row refs to the ciu_approach pipeline value.
+_C07_CIU_ROW_APPROACH: dict[str, str] = {
+    "0281": "look_through",
+    "0282": "mandate_based",
+    "0283": "fallback",
+}
+
+# Section 5 Memorandum: defaulted-exposure rows with a specific target RW.
+_C07_MEMO_DEFAULTED_RW: dict[str, float] = {"0300": 1.0, "0320": 1.5}
+
+# Section 5 Memorandum: rows for exposures secured by mortgage on a property type.
+_C07_MEMO_RE_SECURED: dict[str, str] = {"0290": "commercial", "0310": "residential"}
 
 
 # =============================================================================
@@ -2526,6 +2214,19 @@ def _irb_sub_split(
     return fse, sme, nonsme
 
 
+def _classify_re_bucket(is_comm: bool, is_sme: bool | None) -> tuple[int, int, int, int]:
+    """Return a 4-tuple selector ``(resi_sme, resi_nonsme, comm_sme, comm_nonsme)``.
+
+    Exactly one element is 1 (the bucket to credit), the rest are 0.
+    Lets ``_irb_re_sub_split`` add RWA to the right bucket without a branch
+    cascade.
+    """
+    if is_comm:
+        return (0, 0, 1, 0) if is_sme else (0, 0, 0, 1)
+    # residential / rre / null → default to residential
+    return (1, 0, 0, 0) if is_sme else (0, 1, 0, 0)
+
+
 def _irb_re_sub_split(
     sub_rwa: dict[tuple[str, str, bool | None, bool | None, str | None], float],
     approach: str,
@@ -2537,10 +2238,7 @@ def _irb_re_sub_split(
     Uses property_type ('residential'/'rre' vs 'commercial'/'cre') and is_sme
     from the sub_rwa dict. Falls back to (0, total, 0, 0) when no sub data.
     """
-    resi_sme = 0.0
-    resi_nonsme = 0.0
-    comm_sme = 0.0
-    comm_nonsme = 0.0
+    buckets = [0.0, 0.0, 0.0, 0.0]
     matched = False
     for key, rwa in sub_rwa.items():
         a, e, is_sme, _fse, pt = key
@@ -2548,20 +2246,11 @@ def _irb_re_sub_split(
             continue
         matched = True
         is_comm = pt in ("commercial", "cre")
-        if is_comm:
-            if is_sme:
-                comm_sme += rwa
-            else:
-                comm_nonsme += rwa
-        else:
-            # residential, rre, or null → default to residential
-            if is_sme:
-                resi_sme += rwa
-            else:
-                resi_nonsme += rwa
+        for idx, weight in enumerate(_classify_re_bucket(is_comm, is_sme)):
+            buckets[idx] += weight * rwa
     if not matched:
         return 0.0, total, 0.0, 0.0
-    return resi_sme, resi_nonsme, comm_sme, comm_nonsme
+    return buckets[0], buckets[1], buckets[2], buckets[3]
 
 
 def _irb_other_sme_split(
@@ -2715,6 +2404,49 @@ def _filter_project_phase(data: pl.DataFrame, cols: set[str], phase: str) -> pl.
     )
 
 
+def _filter_re_materially_dependent(
+    result: pl.DataFrame,
+    cols: set[str],
+    materially_dependent: bool,
+) -> pl.DataFrame | None:
+    """Apply materially-dependent filter using whichever column is available.
+
+    Tries ``materially_dependent_on_property`` first (exact regulatory field —
+    null is excluded from the split), then falls back to ``has_income_cover``
+    or ``is_income_producing`` (null defaults to False).
+
+    Returns ``None`` when no candidate column exists (caller treats as
+    ``data.clear()``).
+    """
+    md_col: str | None = None
+    for candidate in (
+        "materially_dependent_on_property",
+        "has_income_cover",
+        "is_income_producing",
+    ):
+        if candidate in cols:
+            md_col = candidate
+            break
+    if md_col is None:
+        return None
+    if md_col == "materially_dependent_on_property":
+        # Exact field: null means unclassified — exclude from split
+        return result.filter(pl.col(md_col) == materially_dependent)
+    # Fallback proxy: null defaults to False (not dependent)
+    return result.filter(pl.col(md_col).fill_null(False) == materially_dependent)
+
+
+def _filter_re_sme_split(result: pl.DataFrame, is_sme: bool) -> pl.DataFrame:
+    """Split ``result`` into the SME or non-SME subset."""
+    sme_subset = _filter_sme(result, set(result.columns))
+    if is_sme:
+        return sme_subset
+    sme_refs = set(sme_subset["exposure_reference"].to_list()) if len(sme_subset) > 0 else set()
+    if sme_refs:
+        return result.filter(~pl.col("exposure_reference").is_in(sme_refs))
+    return result
+
+
 def _filter_re(
     data: pl.DataFrame,
     cols: set[str],
@@ -2749,39 +2481,13 @@ def _filter_re(
         result = result.filter(pl.col("property_type") == property_type)
 
     if materially_dependent is not None:
-        # Prefer materially_dependent_on_property (exact regulatory field).
-        # Fall back to has_income_cover (SA calculator proxy — True means
-        # income depends on property, same semantics as materially_dependent).
-        # Then is_income_producing (raw input, same meaning).
-        md_col: str | None = None
-        for candidate in (
-            "materially_dependent_on_property",
-            "has_income_cover",
-            "is_income_producing",
-        ):
-            if candidate in cols:
-                md_col = candidate
-                break
-        if md_col is not None:
-            if md_col == "materially_dependent_on_property":
-                # Exact field: null means unclassified — exclude from split
-                result = result.filter(pl.col(md_col) == materially_dependent)
-            else:
-                # Fallback proxy: null defaults to False (not dependent)
-                result = result.filter(pl.col(md_col).fill_null(False) == materially_dependent)
-        else:
+        filtered = _filter_re_materially_dependent(result, cols, materially_dependent)
+        if filtered is None:
             return data.clear()
+        result = filtered
 
     if is_sme is not None:
-        sme_subset = _filter_sme(result, set(result.columns))
-        if is_sme:
-            result = sme_subset
-        else:
-            sme_refs = (
-                set(sme_subset["exposure_reference"].to_list()) if len(sme_subset) > 0 else set()
-            )
-            if sme_refs:
-                result = result.filter(~pl.col("exposure_reference").is_in(sme_refs))
+        result = _filter_re_sme_split(result, is_sme)
 
     if is_adc is not None and "is_adc" in cols:
         result = result.filter(pl.col("is_adc") == is_adc)
@@ -2870,6 +2576,40 @@ def _filter_supporting_factor(data: pl.DataFrame, cols: set[str], factor_type: s
     )
 
 
+_SECTION3_NULL_REFS: frozenset[str] = frozenset({"0160", "0170", "0175", "0180"})
+
+
+def _filter_section3_unrated_corp(
+    data: pl.DataFrame, cols: set[str], framework: str
+) -> pl.DataFrame | None:
+    """Row 0190: corporates without ECAI assessment (B3.1 only, unrated)."""
+    if framework != "BASEL_3_1" or "exposure_class" not in cols:
+        return None
+    ec_filter = pl.col("exposure_class").str.contains("corporate", literal=True)
+    if "sa_cqs" in cols:
+        return data.filter(ec_filter & pl.col("sa_cqs").is_null())
+    return data.filter(ec_filter)
+
+
+def _filter_section3_unrated_ig(
+    data: pl.DataFrame, cols: set[str], framework: str
+) -> pl.DataFrame | None:
+    """Row 0200: investment-grade subset of unrated corporates (B3.1 only)."""
+    if framework != "BASEL_3_1" or "exposure_class" not in cols:
+        return None
+    ec_filter = pl.col("exposure_class").str.contains("corporate", literal=True)
+    unrated_filter = pl.col("sa_cqs").is_null() if "sa_cqs" in cols else pl.lit(True)
+    if "cp_is_investment_grade" in cols:
+        return data.filter(
+            ec_filter
+            & unrated_filter
+            & (pl.col("cp_is_investment_grade").fill_null(False) == True)  # noqa: E712
+        )
+    if "irb_pd_floored" in cols:
+        return data.filter(ec_filter & unrated_filter & (pl.col("irb_pd_floored") <= 0.005))
+    return None
+
+
 def _filter_section3_row(
     data: pl.DataFrame,
     cols: set[str],
@@ -2906,58 +2646,16 @@ def _filter_section3_row(
         # Specialised lending slotting approach
         return data.filter(pl.col(approach_col) == "slotting")
 
-    if row_ref == "0160":
-        # Alternative treatment: Secured by real estate (CRR only)
-        # Requires a dedicated pipeline flag not yet available
-        return None
-
-    if row_ref == "0170":
-        # Exposures from free deliveries (alternative RW or 100%)
-        # Requires free_delivery identification not yet in pipeline
-        return None
-
-    if row_ref == "0175":
-        # Purchased receivables (Basel 3.1 only)
-        # Requires purchased_receivable identification not yet in pipeline
-        return None
-
-    if row_ref == "0180":
-        # Dilution risk: Total purchased receivables
-        # Requires dilution risk tracking not yet in pipeline
+    if row_ref in _SECTION3_NULL_REFS:
+        # Rows requiring pipeline flags not yet available (RE alt-treatment,
+        # free deliveries, purchased receivables, dilution risk).
         return None
 
     if row_ref == "0190":
-        # Corporates without ECAI — unrated corporates (Basel 3.1 only)
-        if framework != "BASEL_3_1":
-            return None
-        if "exposure_class" not in cols:
-            return None
-        ec_filter = pl.col("exposure_class").str.contains("corporate", literal=True)
-        # Unrated = no external credit assessment (sa_cqs is null or absent)
-        if "sa_cqs" in cols:
-            return data.filter(ec_filter & pl.col("sa_cqs").is_null())
-        # Without sa_cqs, all IRB corporates are treated as unrated for this row
-        return data.filter(ec_filter)
+        return _filter_section3_unrated_corp(data, cols, framework)
 
     if row_ref == "0200":
-        # of which: investment grade (subset of unrated corporates)
-        if framework != "BASEL_3_1":
-            return None
-        if "exposure_class" not in cols:
-            return None
-        ec_filter = pl.col("exposure_class").str.contains("corporate", literal=True)
-        unrated_filter = pl.col("sa_cqs").is_null() if "sa_cqs" in cols else pl.lit(True)
-        # Investment grade: use cp_is_investment_grade if available,
-        # otherwise approximate from PD (Art. 122D: PD <= 0.5% as proxy)
-        if "cp_is_investment_grade" in cols:
-            return data.filter(
-                ec_filter
-                & unrated_filter
-                & (pl.col("cp_is_investment_grade").fill_null(False) == True)  # noqa: E712
-            )
-        if "irb_pd_floored" in cols:
-            return data.filter(ec_filter & unrated_filter & (pl.col("irb_pd_floored") <= 0.005))
-        return None
+        return _filter_section3_unrated_ig(data, cols, framework)
 
     return None
 
@@ -3043,7 +2741,6 @@ def _sum_by_protection_type(
 def _compute_substitution_flows(
     full_df: pl.DataFrame,
     cols: set[str],
-    ec_col: str,
 ) -> dict[str, dict[str, float]]:
     """Pre-compute CRM substitution outflows and inflows per exposure class.
 
@@ -3152,23 +2849,97 @@ def _compute_c07_values(
     v_0035 = values.get("0035") or 0.0
     values["0040"] = v_0010 - v_0030 - v_0035
 
-    # --- CRM Substitution: Unfunded ---
+    # --- CRM substitution + comprehensive financial-collateral block ---
+    values.update(
+        _c07_crm_and_collateral_cols(
+            data, cols, substitution_inflow, values.get("0040") or 0.0
+        )
+    )
+
+    # --- CCF Breakdown --- Phase 2C
+    values.update(_c07_ccf_cols(data, cols, ead_col, ref_set))
+
+    # --- Final ---
+    # 0200: Exposure value (EAD)
+    values["0200"] = _col_sum_eager(data, cols, ead_col)
+
+    # 0210: Of which: arising from CCR — Phase 3K
+    values["0210"] = None
+
+    # 0211: Of which: CCR excl CCP — Phase 3K
+    values["0211"] = None
+
+    # --- RWEA + supporting factors + ECAI ---
+    values.update(_c07_rwea_factor_cols(data, cols, rwa_col))
+
+    # Filter to only refs present in this framework's column set
+    return {ref: values.get(ref) for ref in column_refs if ref in values}
+
+
+def _c07_rwea_factor_cols(
+    data: pl.DataFrame, cols: set[str], rwa_col: str
+) -> dict[str, float | None]:
+    """Compute C 07.00 RWEA + supporting-factor + ECAI columns (0215-0240)."""
+    values: dict[str, float | None] = {}
+
+    rwa_pre = _col_sum_eager(data, cols, "rwa_before_sme_factor")
+    if rwa_pre is None:
+        rwa_pre = _col_sum_eager(data, cols, "rwa_pre_factor")
+    values["0215"] = rwa_pre if rwa_pre is not None else _col_sum_eager(data, cols, rwa_col)
+
+    pre_factor_col = _pick(cols, "rwa_before_sme_factor", "rwa_pre_factor")
+    values["0216"] = _supporting_factor_adjustment(
+        data, cols, "is_sme", "sme_supporting_factor_applied", pre_factor_col, rwa_col
+    )
+    values["0217"] = _supporting_factor_adjustment(
+        data,
+        cols,
+        "is_infrastructure",
+        "infrastructure_factor_applied",
+        pre_factor_col,
+        rwa_col,
+    )
+
+    values["0220"] = _col_sum_eager(data, cols, rwa_col)
+
+    if "sa_cqs" in cols and rwa_col in cols:
+        ecai_data = data.filter(pl.col("sa_cqs").is_not_null())
+        values["0230"] = float(ecai_data[rwa_col].fill_null(0.0).sum())
+        no_ecai = data.filter(pl.col("sa_cqs").is_null())
+        values["0235"] = float(no_ecai[rwa_col].fill_null(0.0).sum())
+    else:
+        values["0230"] = None
+        values["0235"] = None
+
+    values["0240"] = None  # ECAI derived from central govt (CRR only)
+    return values
+
+
+def _c07_crm_and_collateral_cols(
+    data: pl.DataFrame, cols: set[str], substitution_inflow: float, v_0040: float
+) -> dict[str, float | None]:
+    """Compute C 07.00 CRM substitution + comprehensive-collateral cols (0050-0150).
+
+    Encapsulates the CRR Art. 195/222/223 CRM-method-comprehensive flows:
+    - 0050/0060: unfunded protection (guarantees vs credit derivatives)
+    - 0070/0080: funded protection (simple-method fin collateral vs other)
+    - 0090/0100: substitution flows out/in
+    - 0110: net exposure after CRM (E')
+    - 0120/0130/0140/0150: comprehensive-method adjustments and E*
+    """
+    values: dict[str, float | None] = {}
+
     # 0050: (-) Guarantees (excluding credit derivatives)
     guar_only = _sum_by_protection_type(data, cols, "guarantee")
-    if guar_only is not None:
-        values["0050"] = guar_only
-    else:
-        # Backward compatible: if protection_type not tracked, all are guarantees
-        values["0050"] = _col_sum_eager(data, cols, "guaranteed_portion")
+    values["0050"] = (
+        guar_only if guar_only is not None else _col_sum_eager(data, cols, "guaranteed_portion")
+    )
 
-    # 0060: (-) Credit derivatives (CDS, CLN, TRS)
+    # 0060: (-) Credit derivatives
     cd_val = _sum_by_protection_type(data, cols, "credit_derivative")
     values["0060"] = cd_val if cd_val is not None else 0.0
 
-    # --- CRM Substitution: Funded ---
     # 0070: (-) Financial collateral: Simple method (Art. 222)
-    # When Simple Method is elected, this is the total collateral value recognised.
-    # Under Comprehensive Method, this is always 0.
     if "fcsm_collateral_value" in data.columns:
         values["0070"] = data["fcsm_collateral_value"].sum()
     else:
@@ -3183,163 +2954,324 @@ def _compute_c07_values(
         "collateral_other_physical_value",
     )
 
-    # --- CRM Substitution flows ---
-    # 0090: (-) Substitution outflows — guaranteed portion leaving this class
+    # 0090: (-) Substitution outflows
     values["0090"] = _compute_substitution_outflow(data, cols)
-
-    # 0100: Substitution inflows — guaranteed portion arriving from other classes
+    # 0100: Substitution inflows
     values["0100"] = substitution_inflow if substitution_inflow else 0.0
 
-    # --- Post-CRM ---
     # 0110: Net exposure after CRM substitution pre CCFs
-    # Formula: 0040 - 0050 - 0060 - 0070 - 0080 - 0090 + 0100
-    v_0040 = values.get("0040") or 0.0
-    v_0050 = values.get("0050") or 0.0
-    v_0060 = values.get("0060") or 0.0  # Credit derivatives — Phase 3B
-    v_0070 = values.get("0070") or 0.0  # Fin collateral simple — Phase 3A
-    v_0080 = values.get("0080") or 0.0  # Other funded protection — Phase 3A
-    v_0090 = values.get("0090") or 0.0
-    v_0100 = values.get("0100") or 0.0
-    values["0110"] = v_0040 - v_0050 - v_0060 - v_0070 - v_0080 - v_0090 + v_0100
+    values["0110"] = (
+        v_0040
+        - (values["0050"] or 0.0)
+        - (values["0060"] or 0.0)
+        - (values["0070"] or 0.0)
+        - (values["0080"] or 0.0)
+        - (values["0090"] or 0.0)
+        + (values["0100"] or 0.0)
+    )
 
-    # --- Financial Collateral Comprehensive ---
-    # 0120: Volatility adjustment to exposure (He)
-    # He = 0 for loan exposures; only non-zero for repo-style transactions
+    # 0120: Volatility adjustment to exposure (He = 0 for loan exposures)
     values["0120"] = 0.0
-
-    # 0130: (-) Financial collateral: adjusted value (Cvam)
+    # 0130: Financial collateral adjusted value (Cvam)
     values["0130"] = _col_sum_eager(data, cols, "collateral_adjusted_value")
-
-    # 0140: (-) Of which: volatility and maturity adjustments
-    # The vol+mat adjustment = market_value - adjusted_value
+    # 0140: Of which: volatility and maturity adjustments
     v_mv = _col_sum_eager(data, cols, "collateral_market_value")
     v_cv = values["0130"] or 0.0
     values["0140"] = (v_mv - v_cv) if v_mv is not None else None
-
     # 0150: Fully adjusted exposure value (E*)
-    # E* = max(0, col_0110 - col_0130) under comprehensive method (He=0 for loans)
-    v_0110 = values.get("0110") or 0.0
-    v_0130 = values.get("0130") or 0.0
-    values["0150"] = max(0.0, v_0110 - v_0130)
+    values["0150"] = max(0.0, (values["0110"] or 0.0) - (values["0130"] or 0.0))
+    return values
 
-    # --- CCF Breakdown --- Phase 2C
-    # Off-BS exposures grouped by ccf_applied into COREP CCF buckets.
-    # CRR: 0%→0160, 20%→0170, 50%→0180, 100%→0190
-    # B3.1: 10%→0160, 20%→0170, 40%→0171, 50%→0180, 100%→0190
-    if "ccf_applied" in cols:
-        off_bs = _filter_off_bs(data, cols) if "bs_type" in cols else data
-        is_b31 = "0171" in ref_set
-        ccf_map: dict[float, str] = (
-            {0.1: "0160", 0.2: "0170", 0.4: "0171", 0.5: "0180", 1.0: "0190"}
-            if is_b31
-            else {0.0: "0160", 0.2: "0170", 0.5: "0180", 1.0: "0190"}
+
+_C07_CCF_REFS = ("0160", "0170", "0171", "0180", "0190")
+_C07_CCF_MAP_CRR: dict[float, str] = {0.0: "0160", 0.2: "0170", 0.5: "0180", 1.0: "0190"}
+_C07_CCF_MAP_B31: dict[float, str] = {0.1: "0160", 0.2: "0170", 0.4: "0171", 0.5: "0180", 1.0: "0190"}
+
+
+def _c07_ccf_cols(
+    data: pl.DataFrame, cols: set[str], ead_col: str, ref_set: set[str]
+) -> dict[str, float | None]:
+    """Compute C 07.00 CCF breakdown columns (0160-0190).
+
+    Routes off-BS exposures into COREP CCF buckets based on ``ccf_applied``.
+    Bucket layout differs between CRR (0/20/50/100 %) and B3.1 (10/20/40/50/100 %).
+    Returns None for all refs when ``ccf_applied`` is absent.
+    """
+    if "ccf_applied" not in cols:
+        return dict.fromkeys(_C07_CCF_REFS, None)
+
+    off_bs = _filter_off_bs(data, cols) if "bs_type" in cols else data
+    is_b31 = "0171" in ref_set
+    ccf_map = _C07_CCF_MAP_B31 if is_b31 else _C07_CCF_MAP_CRR
+
+    values: dict[str, float | None] = dict.fromkeys(_C07_CCF_REFS, 0.0)
+    if len(off_bs) > 0 and ead_col in cols:
+        for ccf_val, col_ref in ccf_map.items():
+            bucket = off_bs.filter(pl.col("ccf_applied").round(4) == round(ccf_val, 4))
+            if len(bucket) > 0:
+                values[col_ref] = float(bucket[ead_col].fill_null(0.0).sum())
+    return values
+
+
+def _c08_exposure_cols(
+    data: pl.DataFrame,
+    cols: set[str],
+    ead_col: str,
+    ead_sum: float,
+    lfse_data: pl.DataFrame | None,
+) -> dict[str, float | None]:
+    """Compute C 08.01/02 exposure columns (0010 PD, 0020 original, 0030 LFSE, 0035 netting)."""
+    values: dict[str, float | None] = {}
+    if "irb_pd_floored" in cols and ead_sum > 0:
+        pd_x_ead = float(
+            (data["irb_pd_floored"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
         )
-        # Initialise all CCF columns to 0
-        for ref in ("0160", "0170", "0171", "0180", "0190"):
-            values[ref] = 0.0
-        if len(off_bs) > 0 and ead_col in cols:
-            for ccf_val, col_ref in ccf_map.items():
-                bucket = off_bs.filter(pl.col("ccf_applied").round(4) == round(ccf_val, 4))
-                if len(bucket) > 0:
-                    values[col_ref] = float(bucket[ead_col].fill_null(0.0).sum())
+        values["0010"] = pd_x_ead / ead_sum
     else:
-        for ref in ("0160", "0170", "0171", "0180", "0190"):
-            values[ref] = None
+        values["0010"] = None
 
-    # --- Final ---
-    # 0200: Exposure value (EAD)
-    values["0200"] = _col_sum_eager(data, cols, ead_col)
+    values["0020"] = _safe_sum_eager(data, cols, "drawn_amount", "undrawn_amount")
 
-    # 0210: Of which: arising from CCR — Phase 3K
-    values["0210"] = None
-
-    # 0211: Of which: CCR excl CCP — Phase 3K
-    values["0211"] = None
-
-    # --- RWEA ---
-    # 0215: RWEA pre supporting factors (CRR only)
-    # Try rwa_before_sme_factor first (legacy), then rwa_pre_factor (pipeline)
-    rwa_pre = _col_sum_eager(data, cols, "rwa_before_sme_factor")
-    if rwa_pre is None:
-        rwa_pre = _col_sum_eager(data, cols, "rwa_pre_factor")
-    values["0215"] = rwa_pre if rwa_pre is not None else _col_sum_eager(data, cols, rwa_col)
-
-    # Pre-factor column: pipeline uses rwa_pre_factor; legacy uses rwa_before_sme_factor
-    pre_factor_col = _pick(cols, "rwa_before_sme_factor", "rwa_pre_factor")
-
-    # 0216: (-) SME supporting factor adjustment (CRR only)
-    # Adjustment = sum(rwa_pre_factor - rwa_final) for SME-factor-applied exposures
-    sme_applied_col = _pick(cols, "sme_supporting_factor_applied")
-    if sme_applied_col and pre_factor_col:
-        sme_data = data.filter(pl.col(sme_applied_col) == True)  # noqa: E712
-        if len(sme_data) > 0:
-            pre = float(sme_data[pre_factor_col].fill_null(0.0).sum())
-            post = float(sme_data[rwa_col].fill_null(0.0).sum())
-            values["0216"] = pre - post
-        else:
-            values["0216"] = 0.0
-    elif "is_sme" in cols and "supporting_factor_applied" in cols and pre_factor_col:
-        # Fallback: use is_sme + supporting_factor_applied (pipeline columns)
-        sme_data = data.filter(
-            (pl.col("is_sme") == True)  # noqa: E712
-            & (pl.col("supporting_factor_applied") == True)  # noqa: E712
+    if lfse_data is not None and len(lfse_data) > 0:
+        values["0030"] = _safe_sum_eager(
+            lfse_data, set(lfse_data.columns), "drawn_amount", "undrawn_amount"
         )
-        if len(sme_data) > 0:
-            pre = float(sme_data[pre_factor_col].fill_null(0.0).sum())
-            post = float(sme_data[rwa_col].fill_null(0.0).sum())
-            values["0216"] = pre - post
-        else:
-            values["0216"] = 0.0
     else:
-        values["0216"] = None
+        values["0030"] = 0.0 if "apply_fi_scalar" in cols else None
 
-    # 0217: (-) Infrastructure supporting factor adjustment (CRR only)
-    infra_applied_col = _pick(cols, "infrastructure_factor_applied")
-    if infra_applied_col and pre_factor_col:
-        infra_data = data.filter(pl.col(infra_applied_col) == True)  # noqa: E712
-        if len(infra_data) > 0:
-            pre = float(infra_data[pre_factor_col].fill_null(0.0).sum())
-            post = float(infra_data[rwa_col].fill_null(0.0).sum())
-            values["0217"] = pre - post
-        else:
-            values["0217"] = 0.0
-    elif "is_infrastructure" in cols and "supporting_factor_applied" in cols and pre_factor_col:
-        # Fallback: use is_infrastructure + supporting_factor_applied (pipeline columns)
-        infra_data = data.filter(
-            (pl.col("is_infrastructure") == True)  # noqa: E712
-            & (pl.col("supporting_factor_applied") == True)  # noqa: E712
-        )
-        if len(infra_data) > 0:
-            pre = float(infra_data[pre_factor_col].fill_null(0.0).sum())
-            post = float(infra_data[rwa_col].fill_null(0.0).sum())
-            values["0217"] = pre - post
-        else:
-            values["0217"] = 0.0
+    values["0035"] = _col_sum_eager(data, cols, "on_bs_netting_amount")
+    return values
+
+
+def _c08_crm_cols(
+    data: pl.DataFrame, cols: set[str], substitution_inflow: float
+) -> dict[str, float | None]:
+    """Compute C 08.01/02 CRM substitution columns (0040-0090)."""
+    values: dict[str, float | None] = {}
+
+    guar_only = _sum_by_protection_type(data, cols, "guarantee")
+    values["0040"] = (
+        guar_only if guar_only is not None else _col_sum_eager(data, cols, "guaranteed_portion")
+    )
+
+    cd_val = _sum_by_protection_type(data, cols, "credit_derivative")
+    values["0050"] = cd_val if cd_val is not None else 0.0
+
+    values["0060"] = _sum_cols_eager(
+        data,
+        cols,
+        "collateral_re_value",
+        "collateral_receivables_value",
+        "collateral_other_physical_value",
+    )
+
+    values["0070"] = _compute_substitution_outflow(data, cols)
+    values["0080"] = substitution_inflow if substitution_inflow else 0.0
+
+    # 0090: Exposure after CRM substitution pre CCFs
+    v_0020 = values.get("0020") or 0.0  # caller hasn't populated yet, intentionally 0
+    v_0040 = values.get("0040") or 0.0
+    v_0050 = values.get("0050") or 0.0
+    v_0060 = values.get("0060") or 0.0
+    v_0070 = values.get("0070") or 0.0
+    v_0080 = values.get("0080") or 0.0
+    values["0090"] = v_0020 - v_0040 - v_0050 - v_0060 - v_0070 + v_0080
+    return values
+
+
+def _c08_of_which_cols(
+    data: pl.DataFrame,
+    cols: set[str],
+    ead_col: str,
+    lfse_data: pl.DataFrame | None,
+    defaulted: pl.DataFrame,
+) -> dict[str, float | None]:
+    """Compute C 08.01/02 'of which' columns (0100, 0101-0104, 0110, 0120-0140)."""
+    values: dict[str, float | None] = {}
+    off_bs = _filter_off_bs(data, cols)
+    if len(off_bs) > 0:
+        values["0100"] = _col_sum_eager(off_bs, set(off_bs.columns), ead_col)
     else:
-        values["0217"] = None
+        values["0100"] = 0.0
 
-    # 0220: RWEA (after supporting factors for CRR, plain for B3.1)
-    values["0220"] = _col_sum_eager(data, cols, rwa_col)
+    # 0101-0104: Slotting FCCM (B3.1 only, Phase 3A)
+    for ref in ("0101", "0102", "0103", "0104"):
+        values[ref] = None
 
-    # 0230: Of which: with ECAI credit assessment
-    if "sa_cqs" in cols and rwa_col in cols:
-        ecai_data = data.filter(pl.col("sa_cqs").is_not_null())
-        values["0230"] = float(ecai_data[rwa_col].fill_null(0.0).sum())
+    values["0110"] = _col_sum_eager(data, cols, ead_col)
+    values["0120"] = None  # Off-BS — Phase 2B
+
+    if len(defaulted) > 0:
+        values["0125"] = _col_sum_eager(defaulted, set(defaulted.columns), ead_col)
+    else:
+        values["0125"] = 0.0
+
+    values["0130"] = None  # CCR arising — Phase 3K
+
+    if lfse_data is not None and len(lfse_data) > 0:
+        values["0140"] = _col_sum_eager(lfse_data, set(lfse_data.columns), ead_col)
+    else:
+        values["0140"] = 0.0 if "apply_fi_scalar" in cols else None
+    return values
+
+
+def _c08_lgd_protection_cols(
+    data: pl.DataFrame, cols: set[str]
+) -> dict[str, float | None]:
+    """Compute C 08.01/02 CRM-in-LGD protection columns (0150-0220)."""
+    values: dict[str, float | None] = {}
+
+    guar = _sum_by_protection_type(data, cols, "guarantee")
+    values["0150"] = (
+        guar if guar is not None else _col_sum_eager(data, cols, "guaranteed_portion")
+    )
+    cd_val = _sum_by_protection_type(data, cols, "credit_derivative")
+    values["0160"] = cd_val if cd_val is not None else 0.0
+    values["0170"] = 0.0  # Other funded credit protection catch-all
+    values["0171"] = 0.0  # Cash on deposit
+    values["0172"] = 0.0  # Life insurance policies
+    values["0173"] = 0.0  # Instruments held by third party
+    values["0180"] = _col_sum_eager(data, cols, "collateral_financial_value")
+    values["0190"] = _col_sum_eager(data, cols, "collateral_re_value")
+    values["0200"] = _col_sum_eager(data, cols, "collateral_other_physical_value")
+    values["0210"] = _col_sum_eager(data, cols, "collateral_receivables_value")
+    values["0220"] = _col_sum_eager(data, cols, "double_default_unfunded_protection")
+    return values
+
+
+def _c08_lfse_lgd_avg(
+    lfse_data: pl.DataFrame | None,
+    cols: set[str],
+    ead_col: str,
+) -> float | None:
+    """Compute the LFSE EAD-weighted-average LGD for C 08 col 0240."""
+    if lfse_data is None or len(lfse_data) == 0:
+        return 0.0 if "apply_fi_scalar" in cols else None
+    lfse_cols = set(lfse_data.columns)
+    lfse_lgd_col = _pick(lfse_cols, "irb_lgd_floored", "irb_lgd_original")
+    lfse_ead_sum = (
+        float(lfse_data[ead_col].fill_null(0.0).sum()) if ead_col in lfse_cols else 0.0
+    )
+    if lfse_lgd_col is None or lfse_ead_sum <= 0:
+        return None
+    lgd_x_ead = float(
+        (lfse_data[lfse_lgd_col].fill_null(0.0) * lfse_data[ead_col].fill_null(0.0)).sum()
+    )
+    return lgd_x_ead / lfse_ead_sum
+
+
+def _c08_lgd_maturity_cols(
+    data: pl.DataFrame,
+    cols: set[str],
+    ead_col: str,
+    ead_sum: float,
+    lfse_data: pl.DataFrame | None,
+) -> dict[str, float | None]:
+    """Compute C 08.01/02 LGD/maturity weighted-average columns (0230-0250)."""
+    values: dict[str, float | None] = {}
+
+    lgd_col = _pick(cols, "irb_lgd_floored", "irb_lgd_original")
+    if lgd_col is not None and ead_sum > 0:
+        lgd_x_ead = float((data[lgd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
+        values["0230"] = lgd_x_ead / ead_sum
     else:
         values["0230"] = None
 
-    # 0235: Of which: without ECAI credit assessment (B3.1 only) — Phase 2E
-    if "sa_cqs" in cols and rwa_col in cols:
-        no_ecai = data.filter(pl.col("sa_cqs").is_null())
-        values["0235"] = float(no_ecai[rwa_col].fill_null(0.0).sum())
+    values["0240"] = _c08_lfse_lgd_avg(lfse_data, cols, ead_col)
+
+    if "irb_maturity_m" in cols and ead_sum > 0:
+        m_x_ead = float(
+            (data["irb_maturity_m"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
+        )
+        values["0250"] = (m_x_ead / ead_sum) * 365.0
     else:
-        values["0235"] = None
+        values["0250"] = None
+    return values
 
-    # 0240: Of which: credit assessment derived from central govt
-    values["0240"] = None
 
-    # Filter to only refs present in this framework's column set
-    return {ref: values.get(ref) for ref in column_refs if ref in values}
+def _c08_rwea_factor_cols(
+    data: pl.DataFrame,
+    cols: set[str],
+    ead_col: str,
+    rwa_col: str,
+    defaulted: pl.DataFrame,
+    lfse_data: pl.DataFrame | None,
+) -> dict[str, float | None]:
+    """Compute C 08.01/02 RWEA + supporting-factor + output-floor columns (0251-0276)."""
+    values: dict[str, float | None] = {}
+
+    # Post-model adjustments (B3.1)
+    values["0251"] = _col_sum_eager(data, cols, "rwa_pre_adjustments")
+    values["0252"] = _col_sum_eager(data, cols, "post_model_adjustment_rwa")
+    values["0253"] = _col_sum_eager(data, cols, "mortgage_rw_floor_adjustment")
+    values["0254"] = _col_sum_eager(data, cols, "unrecognised_exposure_adjustment")
+
+    rwa_pre = _col_sum_eager(data, cols, "rwa_before_sme_factor")
+    if rwa_pre is None:
+        rwa_pre = _col_sum_eager(data, cols, "rwa_pre_factor")
+    values["0255"] = rwa_pre if rwa_pre is not None else _col_sum_eager(data, cols, rwa_col)
+
+    pre_factor_col = _pick(cols, "rwa_before_sme_factor", "rwa_pre_factor")
+    values["0256"] = _supporting_factor_adjustment(
+        data, cols, "is_sme", "sme_supporting_factor_applied", pre_factor_col, rwa_col
+    )
+    values["0257"] = _supporting_factor_adjustment(
+        data,
+        cols,
+        "is_infrastructure",
+        "infrastructure_factor_applied",
+        pre_factor_col,
+        rwa_col,
+    )
+
+    values["0260"] = _col_sum_eager(data, cols, rwa_col)
+
+    if len(defaulted) > 0:
+        values["0265"] = _col_sum_eager(defaulted, set(defaulted.columns), rwa_col)
+    else:
+        values["0265"] = 0.0
+
+    if lfse_data is not None and len(lfse_data) > 0:
+        values["0270"] = _col_sum_eager(lfse_data, set(lfse_data.columns), rwa_col)
+    else:
+        values["0270"] = 0.0 if "apply_fi_scalar" in cols else None
+
+    values["0275"] = _col_sum_eager(data, cols, ead_col)
+    sa_rwa_col = _pick(cols, "sa_equivalent_rwa", "rwa_sa_equivalent", "sa_rwa")
+    values["0276"] = _col_sum_eager(data, cols, sa_rwa_col) if sa_rwa_col else None
+    return values
+
+
+def _c08_memorandum_cols(
+    data: pl.DataFrame, cols: set[str], rwa_col: str
+) -> dict[str, float | None]:
+    """Compute C 08.01/02 memorandum columns (0280-0310)."""
+    values: dict[str, float | None] = {}
+
+    el_raw = _col_sum_eager(data, cols, "irb_expected_loss")
+    el_pre = _col_sum_eager(data, cols, "el_pre_adjustment")
+    values["0280"] = el_pre if el_pre is not None else el_raw
+
+    values["0281"] = _col_sum_eager(data, cols, "post_model_adjustment_el")
+    values["0282"] = _col_sum_eager(data, cols, "el_after_adjustment")
+
+    prov = _safe_sum_eager(data, cols, "scra_provision_amount", "gcra_provision_amount")
+    if abs(prov) < 1e-9:
+        held = _col_sum_eager(data, cols, "provision_held")
+        values["0290"] = held if held is not None else prov
+    else:
+        values["0290"] = prov
+
+    if "counterparty_reference" in cols:
+        values["0300"] = float(data["counterparty_reference"].n_unique())
+    else:
+        values["0300"] = float(len(data))
+
+    # 0310: Pre-credit derivatives RWEA. Both branches resolve to total RWEA
+    # — when CD-protected exposures exist, the substitution benefit is already
+    # embedded in ``rwa_col``; when none exist, pre-CD RWEA == total RWEA.
+    values["0310"] = _col_sum_eager(data, cols, rwa_col)
+    return values
 
 
 def _compute_c08_values(
@@ -3365,303 +3297,30 @@ def _compute_c08_values(
     if len(data) == 0:
         return dict.fromkeys(column_refs)
 
-    values: dict[str, float | None] = {}
     ead_sum = float(data[ead_col].fill_null(0.0).sum()) if ead_col in cols else 0.0
-
-    # --- Internal Rating ---
-    # 0010: PD assigned (EAD-weighted average)
-    if "irb_pd_floored" in cols and ead_sum > 0:
-        pd_x_ead = float(
-            (data["irb_pd_floored"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
-        )
-        values["0010"] = pd_x_ead / ead_sum
-    else:
-        values["0010"] = None
-
-    # --- Exposure ---
-    # 0020: Original exposure pre conversion factors
-    values["0020"] = _safe_sum_eager(data, cols, "drawn_amount", "undrawn_amount")
-
-    # 0030: Of which: large financial sector entities — Phase 2F
     lfse_data = _filter_lfse(data, cols)
-    if lfse_data is not None and len(lfse_data) > 0:
-        values["0030"] = _safe_sum_eager(
-            lfse_data, set(lfse_data.columns), "drawn_amount", "undrawn_amount"
-        )
-    else:
-        values["0030"] = 0.0 if "apply_fi_scalar" in cols else None
-
-    # 0035: (-) On-BS netting (B3.1 col 0035, CRR Art. 195)
-    values["0035"] = _col_sum_eager(data, cols, "on_bs_netting_amount")
-
-    # --- CRM Substitution ---
-    # 0040: (-) Guarantees (excluding credit derivatives)
-    guar_only_irb = _sum_by_protection_type(data, cols, "guarantee")
-    if guar_only_irb is not None:
-        values["0040"] = guar_only_irb
-    else:
-        values["0040"] = _col_sum_eager(data, cols, "guaranteed_portion")
-
-    # 0050: (-) Credit derivatives (CDS, CLN, TRS)
-    cd_val_irb = _sum_by_protection_type(data, cols, "credit_derivative")
-    values["0050"] = cd_val_irb if cd_val_irb is not None else 0.0
-
-    # 0060: (-) Other funded credit protection (non-financial collateral)
-    values["0060"] = _sum_cols_eager(
-        data,
-        cols,
-        "collateral_re_value",
-        "collateral_receivables_value",
-        "collateral_other_physical_value",
-    )
-
-    # 0070: (-) Substitution outflows — guaranteed portion leaving this class
-    values["0070"] = _compute_substitution_outflow(data, cols)
-
-    # 0080: Substitution inflows — guaranteed portion arriving from other classes
-    values["0080"] = substitution_inflow if substitution_inflow else 0.0
-
-    # --- Post-CRM ---
-    # 0090: Exposure after CRM substitution pre CCFs
-    # Formula: 0020 - 0040 - 0050 - 0060 - 0070 + 0080
-    v_c08_0020 = values.get("0020") or 0.0
-    v_c08_0040 = values.get("0040") or 0.0
-    v_c08_0050 = values.get("0050") or 0.0
-    v_c08_0060 = values.get("0060") or 0.0
-    v_c08_0070 = values.get("0070") or 0.0
-    v_c08_0080 = values.get("0080") or 0.0
-    values["0090"] = v_c08_0020 - v_c08_0040 - v_c08_0050 - v_c08_0060 - v_c08_0070 + v_c08_0080
-
-    # 0100: Of which: off balance sheet
-    off_bs = _filter_off_bs(data, cols)
-    if len(off_bs) > 0:
-        values["0100"] = _col_sum_eager(off_bs, set(off_bs.columns), ead_col)
-    else:
-        values["0100"] = 0.0
-
-    # --- Slotting FCCM (B3.1 only, 0101-0104) --- Phase 3A
-    for ref in ("0101", "0102", "0103", "0104"):
-        values[ref] = None
-
-    # --- Exposure Value ---
-    # 0110: Exposure value (EAD)
-    values["0110"] = _col_sum_eager(data, cols, ead_col)
-
-    # 0120: Of which: off balance sheet — Phase 2B
-    values["0120"] = None
-
-    # 0125: Of which: defaulted (B3.1)
     defaulted = _filter_defaulted(data, cols)
-    if len(defaulted) > 0:
-        values["0125"] = _col_sum_eager(defaulted, set(defaulted.columns), ead_col)
-    else:
-        values["0125"] = 0.0
 
-    # 0130: Of which: arising from CCR — Phase 3K
-    values["0130"] = None
+    values: dict[str, float | None] = {}
+    values.update(_c08_exposure_cols(data, cols, ead_col, ead_sum, lfse_data))
+    crm_values = _c08_crm_cols(data, cols, substitution_inflow)
+    # 0090 needs the populated 0020 — recompute now that we have it
+    v_0020 = values.get("0020") or 0.0
+    crm_values["0090"] = (
+        v_0020
+        - (crm_values.get("0040") or 0.0)
+        - (crm_values.get("0050") or 0.0)
+        - (crm_values.get("0060") or 0.0)
+        - (crm_values.get("0070") or 0.0)
+        + (crm_values.get("0080") or 0.0)
+    )
+    values.update(crm_values)
+    values.update(_c08_of_which_cols(data, cols, ead_col, lfse_data, defaulted))
+    values.update(_c08_lgd_protection_cols(data, cols))
+    values.update(_c08_lgd_maturity_cols(data, cols, ead_col, ead_sum, lfse_data))
+    values.update(_c08_rwea_factor_cols(data, cols, ead_col, rwa_col, defaulted, lfse_data))
+    values.update(_c08_memorandum_cols(data, cols, rwa_col))
 
-    # 0140: Of which: LFSE — Phase 2F
-    if lfse_data is not None and len(lfse_data) > 0:
-        values["0140"] = _col_sum_eager(lfse_data, set(lfse_data.columns), ead_col)
-    else:
-        values["0140"] = 0.0 if "apply_fi_scalar" in cols else None
-
-    # --- CRM in LGD estimates (0150-0210) ---
-    # 0150: Unfunded credit protection: Guarantees (excluding credit derivatives)
-    guar_lgd = _sum_by_protection_type(data, cols, "guarantee")
-    if guar_lgd is not None:
-        values["0150"] = guar_lgd
-    else:
-        values["0150"] = _col_sum_eager(data, cols, "guaranteed_portion")
-
-    # 0160: Unfunded credit protection: Credit derivatives
-    cd_lgd = _sum_by_protection_type(data, cols, "credit_derivative")
-    values["0160"] = cd_lgd if cd_lgd is not None else 0.0
-
-    # 0170: Other funded credit protection (catch-all not in 0180-0210)
-    values["0170"] = 0.0
-    # 0171: Of which: cash on deposit (with third-party institutions)
-    values["0171"] = 0.0
-    # 0172: Of which: life insurance policies pledged
-    values["0172"] = 0.0
-    # 0173: Of which: instruments held by third party
-    values["0173"] = 0.0
-
-    # 0180: Eligible financial collateral
-    values["0180"] = _col_sum_eager(data, cols, "collateral_financial_value")
-    # 0190: Real estate collateral
-    values["0190"] = _col_sum_eager(data, cols, "collateral_re_value")
-    # 0200: Other physical collateral
-    values["0200"] = _col_sum_eager(data, cols, "collateral_other_physical_value")
-    # 0210: Receivables
-    values["0210"] = _col_sum_eager(data, cols, "collateral_receivables_value")
-
-    # 0220: Double default unfunded protection (CRR only) — Art. 153(3), 202-203
-    values["0220"] = _col_sum_eager(data, cols, "double_default_unfunded_protection")
-
-    # --- Parameters ---
-    # 0230: Exposure-weighted average LGD (%)
-    lgd_col = _pick(cols, "irb_lgd_floored", "irb_lgd_original")
-    if lgd_col is not None and ead_sum > 0:
-        lgd_x_ead = float((data[lgd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0230"] = lgd_x_ead / ead_sum
-    else:
-        values["0230"] = None
-
-    # 0240: EAD-weighted average LGD for LFSE — Phase 2F
-    if lfse_data is not None and len(lfse_data) > 0:
-        lfse_cols = set(lfse_data.columns)
-        lfse_lgd_col = _pick(lfse_cols, "irb_lgd_floored", "irb_lgd_original")
-        lfse_ead_sum = (
-            float(lfse_data[ead_col].fill_null(0.0).sum()) if ead_col in lfse_cols else 0.0
-        )
-        if lfse_lgd_col is not None and lfse_ead_sum > 0:
-            lgd_x_ead = float(
-                (lfse_data[lfse_lgd_col].fill_null(0.0) * lfse_data[ead_col].fill_null(0.0)).sum()
-            )
-            values["0240"] = lgd_x_ead / lfse_ead_sum
-        else:
-            values["0240"] = None
-    else:
-        values["0240"] = 0.0 if "apply_fi_scalar" in cols else None
-
-    # 0250: Exposure-weighted average maturity (DAYS, not years)
-    if "irb_maturity_m" in cols and ead_sum > 0:
-        m_x_ead = float(
-            (data["irb_maturity_m"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
-        )
-        values["0250"] = (m_x_ead / ead_sum) * 365.0  # Convert years to days
-    else:
-        values["0250"] = None
-
-    # --- RWEA ---
-    # 0251-0254: Post-model adjustments (B3.1) — Task 3F
-    values["0251"] = _col_sum_eager(data, cols, "rwa_pre_adjustments")
-    values["0252"] = _col_sum_eager(data, cols, "post_model_adjustment_rwa")
-    values["0253"] = _col_sum_eager(data, cols, "mortgage_rw_floor_adjustment")
-    values["0254"] = _col_sum_eager(data, cols, "unrecognised_exposure_adjustment")
-
-    # 0255: RWEA pre supporting factors (CRR only)
-    rwa_pre = _col_sum_eager(data, cols, "rwa_before_sme_factor")
-    if rwa_pre is None:
-        rwa_pre = _col_sum_eager(data, cols, "rwa_pre_factor")
-    values["0255"] = rwa_pre if rwa_pre is not None else _col_sum_eager(data, cols, rwa_col)
-
-    # Pre-factor column: pipeline uses rwa_pre_factor; legacy uses rwa_before_sme_factor
-    c08_pre_factor_col = _pick(cols, "rwa_before_sme_factor", "rwa_pre_factor")
-
-    # 0256: (-) SME supporting factor adjustment (CRR only)
-    sme_applied = _pick(cols, "sme_supporting_factor_applied")
-    if sme_applied and c08_pre_factor_col:
-        sme_data = data.filter(pl.col(sme_applied) == True)  # noqa: E712
-        if len(sme_data) > 0:
-            pre = float(sme_data[c08_pre_factor_col].fill_null(0.0).sum())
-            post = float(sme_data[rwa_col].fill_null(0.0).sum())
-            values["0256"] = pre - post
-        else:
-            values["0256"] = 0.0
-    elif "is_sme" in cols and "supporting_factor_applied" in cols and c08_pre_factor_col:
-        sme_data = data.filter(
-            (pl.col("is_sme") == True)  # noqa: E712
-            & (pl.col("supporting_factor_applied") == True)  # noqa: E712
-        )
-        if len(sme_data) > 0:
-            pre = float(sme_data[c08_pre_factor_col].fill_null(0.0).sum())
-            post = float(sme_data[rwa_col].fill_null(0.0).sum())
-            values["0256"] = pre - post
-        else:
-            values["0256"] = 0.0
-    else:
-        values["0256"] = None
-
-    # 0257: (-) Infrastructure supporting factor adjustment (CRR only)
-    infra_applied = _pick(cols, "infrastructure_factor_applied")
-    if infra_applied and c08_pre_factor_col:
-        infra_data = data.filter(pl.col(infra_applied) == True)  # noqa: E712
-        if len(infra_data) > 0:
-            pre = float(infra_data[c08_pre_factor_col].fill_null(0.0).sum())
-            post = float(infra_data[rwa_col].fill_null(0.0).sum())
-            values["0257"] = pre - post
-        else:
-            values["0257"] = 0.0
-    elif "is_infrastructure" in cols and "supporting_factor_applied" in cols and c08_pre_factor_col:
-        infra_data = data.filter(
-            (pl.col("is_infrastructure") == True)  # noqa: E712
-            & (pl.col("supporting_factor_applied") == True)  # noqa: E712
-        )
-        if len(infra_data) > 0:
-            pre = float(infra_data[c08_pre_factor_col].fill_null(0.0).sum())
-            post = float(infra_data[rwa_col].fill_null(0.0).sum())
-            values["0257"] = pre - post
-        else:
-            values["0257"] = 0.0
-    else:
-        values["0257"] = None
-
-    # 0260: RWEA total
-    values["0260"] = _col_sum_eager(data, cols, rwa_col)
-
-    # 0265: Of which: defaulted RWEA (B3.1)
-    if len(defaulted) > 0:
-        values["0265"] = _col_sum_eager(defaulted, set(defaulted.columns), rwa_col)
-    else:
-        values["0265"] = 0.0
-
-    # 0270: Of which: LFSE RWEA — Phase 2F
-    if lfse_data is not None and len(lfse_data) > 0:
-        values["0270"] = _col_sum_eager(lfse_data, set(lfse_data.columns), rwa_col)
-    else:
-        values["0270"] = 0.0 if "apply_fi_scalar" in cols else None
-
-    # 0275-0276: Output floor (B3.1) — Phase 2D
-    # 0275: Non-modelled (SA-equivalent) exposure value
-    values["0275"] = _col_sum_eager(data, cols, ead_col)
-    # 0276: Non-modelled (SA-equivalent) RWEA
-    sa_rwa_col = _pick(cols, "sa_equivalent_rwa", "rwa_sa_equivalent", "sa_rwa")
-    values["0276"] = _col_sum_eager(data, cols, sa_rwa_col) if sa_rwa_col else None
-
-    # --- Memorandum ---
-    # 0280: Expected loss amount (pre post-model adjustments for B3.1)
-    el_raw = _col_sum_eager(data, cols, "irb_expected_loss")
-    el_pre = _col_sum_eager(data, cols, "el_pre_adjustment")
-    values["0280"] = el_pre if el_pre is not None else el_raw
-
-    # 0281-0282: EL adjustments (B3.1) — Task 3F
-    values["0281"] = _col_sum_eager(data, cols, "post_model_adjustment_el")
-    values["0282"] = _col_sum_eager(data, cols, "el_after_adjustment")
-
-    # 0290: (-) Value adjustments and provisions
-    prov = _safe_sum_eager(data, cols, "scra_provision_amount", "gcra_provision_amount")
-    if abs(prov) < 1e-9:
-        # Fall back to provision_held
-        held = _col_sum_eager(data, cols, "provision_held")
-        values["0290"] = held if held is not None else prov
-    else:
-        values["0290"] = prov
-
-    # 0300: Number of obligors
-    if "counterparty_reference" in cols:
-        values["0300"] = float(data["counterparty_reference"].n_unique())
-    else:
-        values["0300"] = float(len(data))
-
-    # 0310: Pre-credit derivatives RWEA
-    # Total RWEA including credit-derivative-protected exposures at pre-substitution RW
-    # Approximation: rwa_final already includes substitution benefit, so pre-CD RWEA
-    # = rwa_final + the RWA benefit from credit derivatives. Without separate pre/post
-    # tracking per protection type, use total RWEA as a lower bound.
-    cd_rwa = _sum_by_protection_type(data, cols, "credit_derivative", rwa_col)
-    if cd_rwa is not None and cd_rwa > 0:
-        # There are credit-derivative-protected exposures — their RWEA already
-        # reflects the substitution benefit. Pre-CD RWEA = total RWEA (since the
-        # benefit is embedded in rwa_final via guarantor RW substitution).
-        values["0310"] = _col_sum_eager(data, cols, rwa_col)
-    else:
-        # No credit derivatives: pre-CD RWEA = total RWEA
-        total_rwa = _col_sum_eager(data, cols, rwa_col)
-        values["0310"] = total_rwa
-
-    # Filter to only refs in this framework's column set
     return {ref: values.get(ref) for ref in column_refs if ref in values}
 
 
@@ -3702,6 +3361,97 @@ def _compute_rw_section_rows(
     return result
 
 
+def _c08_03_exposure_cols(
+    data: pl.DataFrame, cols: set[str], ead_sum: float
+) -> dict[str, float | None]:
+    """Compute C 08.03 exposure columns (0010 on-BS, 0020 off-BS, 0030 CCF, 0040 EAD)."""
+    values: dict[str, float | None] = {}
+
+    on_bs = _filter_on_bs(data, cols)
+    if on_bs is not None and len(on_bs) > 0:
+        values["0010"] = _safe_sum_eager(on_bs, set(on_bs.columns), "drawn_amount", "interest")
+    else:
+        values["0010"] = _safe_sum_eager(data, cols, "drawn_amount", "interest")
+
+    off_bs = _filter_off_bs(data, cols)
+    if off_bs is not None and len(off_bs) > 0:
+        values["0020"] = _col_sum_eager(off_bs, set(off_bs.columns), "nominal_amount")
+    else:
+        values["0020"] = _col_sum_eager(data, cols, "nominal_amount")
+
+    ccf_col = _pick(cols, "ccf_applied", "ccf")
+    nominal_col = _pick(cols, "nominal_amount") if ccf_col is not None and ead_sum > 0 else None
+    if ccf_col is not None and ead_sum > 0 and nominal_col is not None:
+        nominal_sum = float(data[nominal_col].fill_null(0.0).sum())
+        if nominal_sum > 0:
+            ccf_x_nominal = float(
+                (data[ccf_col].fill_null(0.0) * data[nominal_col].fill_null(0.0)).sum()
+            )
+            values["0030"] = ccf_x_nominal / nominal_sum
+        else:
+            values["0030"] = None
+    else:
+        values["0030"] = None
+
+    values["0040"] = ead_sum if ead_sum > 0 else 0.0
+    return values
+
+
+def _c08_03_weighted_avg_cols(
+    data: pl.DataFrame,
+    cols: set[str],
+    ead_col: str,
+    pd_col: str,
+    ead_sum: float,
+) -> dict[str, float | None]:
+    """Compute C 08.03 weighted-average columns (0050 PD, 0060 obligors, 0070 LGD, 0080 maturity)."""
+    values: dict[str, float | None] = {}
+    if pd_col in cols and ead_sum > 0:
+        pd_x_ead = float((data[pd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
+        values["0050"] = pd_x_ead / ead_sum
+    else:
+        values["0050"] = None
+
+    if "counterparty_reference" in cols:
+        values["0060"] = float(data["counterparty_reference"].n_unique())
+    else:
+        values["0060"] = float(len(data))
+
+    lgd_col = _pick(cols, "irb_lgd_floored", "irb_lgd_original")
+    if lgd_col is not None and ead_sum > 0:
+        lgd_x_ead = float((data[lgd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
+        values["0070"] = lgd_x_ead / ead_sum
+    else:
+        values["0070"] = None
+
+    if "irb_maturity_m" in cols and ead_sum > 0:
+        m_x_ead = float(
+            (data["irb_maturity_m"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
+        )
+        values["0080"] = m_x_ead / ead_sum
+    else:
+        values["0080"] = None
+    return values
+
+
+def _c08_03_rwea_provisions(
+    data: pl.DataFrame, cols: set[str], rwa_col: str
+) -> dict[str, float | None]:
+    """Compute C 08.03 RWEA + EL + provisions columns (0090, 0100, 0110)."""
+    values: dict[str, float | None] = {}
+    values["0090"] = _col_sum_eager(data, cols, rwa_col)
+    el_col = _pick(cols, "irb_expected_loss", "expected_loss")
+    values["0100"] = _col_sum_eager(data, cols, el_col) if el_col else None
+
+    prov = _safe_sum_eager(data, cols, "scra_provision_amount", "gcra_provision_amount")
+    if abs(prov) < 1e-9:
+        held = _col_sum_eager(data, cols, "provision_held")
+        values["0110"] = held if held is not None else prov
+    else:
+        values["0110"] = prov
+    return values
+
+
 def _compute_c08_03_values(
     data: pl.DataFrame,
     cols: set[str],
@@ -3727,92 +3477,44 @@ def _compute_c08_03_values(
     - CRR Art. 153 / Regulation (EU) 2021/451 Annex I (C 08.03)
     - PRA PS1/26 Annex I/II (OF 08.03)
     """
-    values: dict[str, float | None] = {}
     ead_sum = float(data[ead_col].fill_null(0.0).sum()) if ead_col in cols else 0.0
 
-    # 0010: Original exposure — on-balance sheet
-    on_bs = _filter_on_bs(data, cols)
-    if on_bs is not None and len(on_bs) > 0:
-        values["0010"] = _safe_sum_eager(on_bs, set(on_bs.columns), "drawn_amount", "interest")
-    else:
-        values["0010"] = _safe_sum_eager(data, cols, "drawn_amount", "interest")
+    values: dict[str, float | None] = {}
+    values.update(_c08_03_exposure_cols(data, cols, ead_sum))
+    values.update(_c08_03_weighted_avg_cols(data, cols, ead_col, pd_col, ead_sum))
+    values.update(_c08_03_rwea_provisions(data, cols, rwa_col))
 
-    # 0020: Original exposure — off-balance sheet
-    off_bs = _filter_off_bs(data, cols)
-    if off_bs is not None and len(off_bs) > 0:
-        values["0020"] = _col_sum_eager(off_bs, set(off_bs.columns), "nominal_amount")
-    else:
-        values["0020"] = _col_sum_eager(data, cols, "nominal_amount")
-
-    # 0030: Average CCF (%)
-    ccf_col = _pick(cols, "ccf_applied", "ccf")
-    if ccf_col is not None and ead_sum > 0:
-        # Weighted average by nominal amount (off-BS component)
-        nominal_col = _pick(cols, "nominal_amount")
-        if nominal_col is not None:
-            nominal_sum = float(data[nominal_col].fill_null(0.0).sum())
-            if nominal_sum > 0:
-                ccf_x_nominal = float(
-                    (data[ccf_col].fill_null(0.0) * data[nominal_col].fill_null(0.0)).sum()
-                )
-                values["0030"] = ccf_x_nominal / nominal_sum
-            else:
-                values["0030"] = None
-        else:
-            values["0030"] = None
-    else:
-        values["0030"] = None
-
-    # 0040: Exposure value (EAD, post CCF and post CRM)
-    values["0040"] = ead_sum if ead_sum > 0 else 0.0
-
-    # 0050: Exposure-weighted average PD (%)
-    if pd_col in cols and ead_sum > 0:
-        pd_x_ead = float((data[pd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0050"] = pd_x_ead / ead_sum
-    else:
-        values["0050"] = None
-
-    # 0060: Number of obligors
-    if "counterparty_reference" in cols:
-        values["0060"] = float(data["counterparty_reference"].n_unique())
-    else:
-        values["0060"] = float(len(data))
-
-    # 0070: Exposure-weighted average LGD (%)
-    lgd_col = _pick(cols, "irb_lgd_floored", "irb_lgd_original")
-    if lgd_col is not None and ead_sum > 0:
-        lgd_x_ead = float((data[lgd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0070"] = lgd_x_ead / ead_sum
-    else:
-        values["0070"] = None
-
-    # 0080: Exposure-weighted average maturity (years)
-    if "irb_maturity_m" in cols and ead_sum > 0:
-        m_x_ead = float(
-            (data["irb_maturity_m"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
-        )
-        values["0080"] = m_x_ead / ead_sum
-    else:
-        values["0080"] = None
-
-    # 0090: RWEA
-    values["0090"] = _col_sum_eager(data, cols, rwa_col)
-
-    # 0100: Expected loss amount
-    el_col = _pick(cols, "irb_expected_loss", "expected_loss")
-    values["0100"] = _col_sum_eager(data, cols, el_col) if el_col else None
-
-    # 0110: Value adjustments and provisions
-    prov = _safe_sum_eager(data, cols, "scra_provision_amount", "gcra_provision_amount")
-    if abs(prov) < 1e-9:
-        held = _col_sum_eager(data, cols, "provision_held")
-        values["0110"] = held if held is not None else prov
-    else:
-        values["0110"] = prov
-
-    # Filter to only refs in this framework's column set (C 08.03)
     return {ref: values.get(ref) for ref in column_refs if ref in values}
+
+
+def _c08_05_default_counts(
+    data: pl.DataFrame,
+    cols: set[str],
+    cp_col: str | None,
+    pd_col: str,
+) -> tuple[float, float]:
+    """Return ``(n_obligors, n_defaults)`` for the C 08.05 PD-bucket data.
+
+    Uses ``is_defaulted`` / ``default_status`` if present, otherwise falls
+    back to ``PD >= 1.0``. Obligor counts unique on ``counterparty_reference``
+    when available, else row count.
+    """
+    n_rows = len(data)
+    n_obligors = float(data[cp_col].n_unique()) if cp_col is not None else float(n_rows)
+    default_col = _pick(cols, "is_defaulted", "default_status")
+
+    if default_col is not None:
+        defaulted = data.filter(pl.col(default_col) == True)  # noqa: E712
+    elif pd_col in cols:
+        defaulted = data.filter(pl.col(pd_col) >= 1.0)
+    else:
+        return n_obligors, 0.0
+
+    if cp_col is not None:
+        n_defaults = float(defaulted[cp_col].n_unique())
+    else:
+        n_defaults = float(len(defaulted))
+    return n_obligors, n_defaults
 
 
 def _compute_c08_05_values(
@@ -3859,26 +3561,7 @@ def _compute_c08_05_values(
 
     # Determine obligor count and default count
     cp_col = "counterparty_reference" if "counterparty_reference" in cols else None
-    default_col = _pick(cols, "is_defaulted", "default_status")
-
-    n_obligors = float(data[cp_col].n_unique()) if cp_col is not None else float(n_rows)
-
-    if default_col is not None:
-        defaulted = data.filter(pl.col(default_col) == True)  # noqa: E712
-        if cp_col is not None:
-            n_defaults = float(defaulted[cp_col].n_unique())
-        else:
-            n_defaults = float(len(defaulted))
-    else:
-        # Fall back to PD >= 1.0 as default indicator
-        if pd_col in cols:
-            defaulted = data.filter(pl.col(pd_col) >= 1.0)
-            if cp_col is not None:
-                n_defaults = float(defaulted[cp_col].n_unique())
-            else:
-                n_defaults = float(len(defaulted))
-        else:
-            n_defaults = 0.0
+    n_obligors, n_defaults = _c08_05_default_counts(data, cols, cp_col, pd_col)
 
     # 0020: Number of obligors at end of previous year
     # Best-effort: use current-period obligor count when historical data absent
@@ -3910,6 +3593,271 @@ def _compute_c08_05_values(
     return {ref: values.get(ref) for ref in column_refs if ref in values}
 
 
+def _c08_07_group_by_class(
+    results: pl.LazyFrame,
+    ead_col: str,
+    rwa_col: str | None,
+    ec_col: str,
+    approach_col: str,
+) -> tuple[dict[str, float], dict[str, float], dict[str, float], dict[str, float]] | None:
+    """Aggregate the LazyFrame into 4 dicts keyed by exposure class.
+
+    Returns ``(class_irb_ead, class_sa_ead, class_irb_rwa, class_sa_rwa)``
+    or ``None`` when the grouped result is empty.
+    """
+    agg_exprs = [pl.col(ead_col).sum().alias("_sum_ead")]
+    if rwa_col:
+        agg_exprs.append(pl.col(rwa_col).sum().alias("_sum_rwa"))
+
+    grouped = results.group_by([ec_col, approach_col]).agg(agg_exprs).collect()
+    if len(grouped) == 0:
+        return None
+
+    class_irb_ead: dict[str, float] = {}
+    class_sa_ead: dict[str, float] = {}
+    class_irb_rwa: dict[str, float] = {}
+    class_sa_rwa: dict[str, float] = {}
+
+    for row in grouped.iter_rows(named=True):
+        ec = row[ec_col]
+        approach = row[approach_col]
+        ead = row["_sum_ead"] or 0.0
+        rwa_val = row.get("_sum_rwa", 0.0) or 0.0
+        if approach in C08_07_IRB_APPROACHES:
+            class_irb_ead[ec] = class_irb_ead.get(ec, 0.0) + ead
+            class_irb_rwa[ec] = class_irb_rwa.get(ec, 0.0) + rwa_val
+        else:
+            class_sa_ead[ec] = class_sa_ead.get(ec, 0.0) + ead
+            class_sa_rwa[ec] = class_sa_rwa.get(ec, 0.0) + rwa_val
+
+    return class_irb_ead, class_sa_ead, class_irb_rwa, class_sa_rwa
+
+
+def _c08_01_section2_subset(
+    row_ref: str, class_data: pl.DataFrame, cols: set[str]
+) -> pl.DataFrame | None:
+    """Resolve a C 08.01 Section 2 (Breakdown by Exposure Types) row."""
+    if row_ref == "0020":
+        return _filter_on_bs(class_data, cols)
+    if row_ref == "0030":
+        return _filter_off_bs(class_data, cols)
+    return None
+
+
+def _c07_section1_subset(
+    row_ref: str, class_data: pl.DataFrame, cols: set[str]
+) -> pl.DataFrame | None:
+    """Resolve a C 07.00 Section 1 "of which" row to its filtered subset.
+
+    Caller handles ``row_ref == "0010"`` (the total). Returns ``None`` for
+    rows that map to no available pipeline data (caller emits null).
+    """
+    if row_ref == "0015":
+        return _filter_defaulted(class_data, cols)
+    if row_ref == "0020":
+        return _filter_sme(class_data, cols)
+    if row_ref in _C07_SL_TYPE_MAP:
+        return _filter_sl_type(class_data, cols, _C07_SL_TYPE_MAP[row_ref])
+    if row_ref in _C07_PF_PHASE_MAP:
+        return _filter_project_phase(class_data, cols, _C07_PF_PHASE_MAP[row_ref])
+    if row_ref in _RE_ROW_FILTERS:
+        return _filter_re(class_data, cols, **_RE_ROW_FILTERS[row_ref])
+    if row_ref == "0030":
+        return _filter_supporting_factor(class_data, cols, "sme")
+    if row_ref == "0035":
+        return _filter_supporting_factor(class_data, cols, "infrastructure")
+    return None
+
+
+def _c07_section2_subset(
+    row_ref: str, class_data: pl.DataFrame, cols: set[str]
+) -> pl.DataFrame | None:
+    """Resolve a C 07.00 Section 2 (Breakdown by Exposure Types) row."""
+    if row_ref == "0070":
+        return _filter_on_bs(class_data, cols)
+    if row_ref == "0080":
+        return _filter_off_bs(class_data, cols)
+    # CCR rows (0090-0130) not implemented
+    return None
+
+
+def _c07_section4_subset(
+    row_ref: str, class_data: pl.DataFrame, ciu_col: str | None
+) -> pl.DataFrame | None:
+    """Resolve a C 07.00 Section 4 (CIU Approach) row."""
+    if row_ref in _C07_CIU_ROW_APPROACH and ciu_col:
+        return class_data.filter(pl.col(ciu_col) == _C07_CIU_ROW_APPROACH[row_ref])
+    return None
+
+
+def _c07_section5_subset(
+    row_ref: str, class_data: pl.DataFrame, cols: set[str]
+) -> pl.DataFrame | None:
+    """Resolve a C 07.00 Section 5 (Memorandum) row to its filtered subset.
+
+    Returns ``None`` for rows that have no pipeline source — caller emits a
+    null row in that case. The four mutually exclusive families handled:
+    equity transitional, currency mismatch, defaulted at specific RW, and
+    RE-secured by property type.
+    """
+    if row_ref in _EQUITY_TRANSITIONAL_FILTERS:
+        eq_filter = _EQUITY_TRANSITIONAL_FILTERS[row_ref]
+        return _filter_equity_transitional(class_data, cols, **eq_filter)
+    if row_ref == "0380":
+        # Currency mismatch multiplier (B3.1 Art. 123B / CRE20.93)
+        return _filter_currency_mismatch(class_data, cols)
+    if row_ref in _C07_MEMO_DEFAULTED_RW:
+        return _filter_defaulted_at_rw(class_data, cols, _C07_MEMO_DEFAULTED_RW[row_ref])
+    if row_ref in _C07_MEMO_RE_SECURED:
+        return _filter_re_secured(class_data, cols, _C07_MEMO_RE_SECURED[row_ref])
+    return None
+
+
+def _c08_06_sl_type_filter(
+    slotting_df: pl.DataFrame,
+    sl_key: str,
+    sl_type_col: str,
+    hvcre_col: str | None,
+    framework: str,
+) -> pl.DataFrame:
+    """Filter slotting data to a single SL-type sheet, accounting for HVCRE.
+
+    Encapsulates the CRR-vs-B3.1 IPRE/HVCRE routing:
+    - CRR: IPRE template absorbs both ``ipre`` and ``hvcre`` rows.
+    - B3.1: separate HVCRE template, identified by either ``sl_type='hvcre'``
+      or the ``is_hvcre`` flag.
+    """
+    if sl_key == "ipre" and framework != "BASEL_3_1" and hvcre_col is not None:
+        return slotting_df.filter(
+            (pl.col(sl_type_col) == "ipre") | (pl.col(sl_type_col) == "hvcre")
+        )
+    if sl_key == "hvcre" and framework == "BASEL_3_1":
+        if hvcre_col is not None:
+            return slotting_df.filter(
+                (pl.col(sl_type_col) == "hvcre") | (pl.col(hvcre_col) == True)  # noqa: E712
+            )
+        return slotting_df.filter(pl.col(sl_type_col) == "hvcre")
+    return slotting_df.filter(pl.col(sl_type_col) == sl_key)
+
+
+def _c08_06_filter_row(
+    type_data: pl.DataFrame,
+    cat_col: str,
+    category_label: str,
+    is_short: bool | None,
+    maturity_col: str | None,
+) -> pl.DataFrame | None:
+    """Filter a slotting-type DataFrame to one C 08.06 category × maturity row.
+
+    Returns ``None`` to signal "skip this row" (unmapped category). Returns
+    an empty DataFrame when filtering eliminates everything — caller emits
+    a zero row in that case.
+    """
+    category_value = C08_06_CATEGORY_MAP.get(category_label)
+    is_sub_stronger = "substantially stronger" in category_label
+
+    # Filter by category
+    if category_label == "Total":
+        cat_data = type_data
+    else:
+        if category_value is None:
+            return None
+        cat_data = type_data.filter(pl.col(cat_col) == category_value)
+
+    # Filter by maturity band
+    if is_short is not None and maturity_col is not None:
+        cat_data = cat_data.filter(pl.col(maturity_col) == is_short)  # noqa: E712
+    elif is_short is not None and maturity_col is None and is_short:
+        cat_data = type_data.clear()
+
+    # "Substantially stronger" sub-rows: no pipeline column identifies these
+    # exposures yet; report as empty until a flag is added.
+    if is_sub_stronger:
+        cat_data = cat_data.clear()
+
+    return cat_data
+
+
+def _c08_06_row_values_or_zeros(
+    column_refs: list[str], rw_display: str | None
+) -> dict[str, float | None]:
+    """Return a zero-filled value dict for an empty C 08.06 row.
+
+    Sets ``0070`` (Risk weight) from the row definition's RW display string
+    when available; falls back to ``None`` otherwise.
+    """
+    values: dict[str, float | None] = dict.fromkeys(column_refs, 0.0)
+    if "0070" in values and rw_display:
+        rw_pct = rw_display.replace("%", "").strip()
+        try:
+            values["0070"] = float(rw_pct) / 100.0
+        except ValueError:
+            values["0070"] = None
+    else:
+        values["0070"] = None
+    return values
+
+
+def _c08_06_exposure_cols(
+    data: pl.DataFrame, cols: set[str], ead_col: str, ead_sum: float, column_refs: list[str]
+) -> tuple[dict[str, float | None], pl.DataFrame | None]:
+    """Compute C 08.06 exposure columns (0010-0060). Returns also the off-BS slice."""
+    values: dict[str, float | None] = {}
+    values["0010"] = _safe_sum_eager(
+        data, cols, "drawn_amount", "interest", "nominal_amount", "undrawn_amount"
+    )
+
+    crm_col = _pick(cols, "ead_pre_ccf", "exposure_post_crm")
+    if crm_col is not None:
+        values["0020"] = _col_sum_eager(data, cols, crm_col)
+    else:
+        values["0020"] = values["0010"]
+
+    off_bs = _filter_off_bs(data, cols)
+    if off_bs is not None and len(off_bs) > 0:
+        values["0030"] = _safe_sum_eager(
+            off_bs, set(off_bs.columns), "nominal_amount", "undrawn_amount"
+        )
+    else:
+        values["0030"] = _col_sum_eager(data, cols, "nominal_amount")
+
+    if "0031" in column_refs:
+        values["0031"] = None  # FCCM deduction (B3.1 only)
+
+    values["0040"] = ead_sum if ead_sum > 0 else 0.0
+
+    if off_bs is not None and len(off_bs) > 0:
+        values["0050"] = _col_sum_eager(off_bs, set(off_bs.columns), ead_col)
+    else:
+        values["0050"] = None
+
+    values["0060"] = None  # CCR exposure value (out of scope)
+    return values, off_bs
+
+
+def _c08_06_risk_weight_value(
+    data: pl.DataFrame, cols: set[str], ead_col: str, ead_sum: float
+) -> float | None:
+    """Compute the exposure-weighted-average risk weight for C 08.06 col 0070."""
+    rw_col = _pick(cols, "risk_weight")
+    if rw_col is None:
+        return None
+    if ead_sum > 0:
+        rw_x_ead = float((data[rw_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
+        return rw_x_ead / ead_sum
+    rw_vals = data[rw_col].drop_nulls()
+    return float(rw_vals[0]) if len(rw_vals) > 0 else None
+
+
+def _c08_06_rwea_value(
+    data: pl.DataFrame, cols: set[str], rwa_col: str, framework: str
+) -> float | None:
+    """Compute the C 08.06 col 0080 RWEA value, preferring CRR's rwa_post_factor."""
+    if framework != "BASEL_3_1" and "rwa_post_factor" in cols:
+        return _col_sum_eager(data, cols, "rwa_post_factor")
+    return _col_sum_eager(data, cols, rwa_col)
+
+
 def _compute_c08_06_values(
     data: pl.DataFrame,
     cols: set[str],
@@ -3936,63 +3884,11 @@ def _compute_c08_06_values(
     - CRR Art. 153(5) / Regulation (EU) 2021/451 Annex I (C 08.06)
     - PRA PS1/26 Annex I/II (OF 08.06)
     """
-    values: dict[str, float | None] = {}
     ead_sum = float(data[ead_col].fill_null(0.0).sum()) if ead_col in cols else 0.0
 
-    # 0010: Original exposure pre conversion factors
-    values["0010"] = _safe_sum_eager(
-        data, cols, "drawn_amount", "interest", "nominal_amount", "undrawn_amount"
-    )
-
-    # 0020: Exposure after CRM substitution effects pre CCFs
-    crm_col = _pick(cols, "ead_pre_ccf", "exposure_post_crm")
-    if crm_col is not None:
-        values["0020"] = _col_sum_eager(data, cols, crm_col)
-    else:
-        values["0020"] = values["0010"]
-
-    # 0030: Of which: off-balance sheet items (original)
-    off_bs = _filter_off_bs(data, cols)
-    if off_bs is not None and len(off_bs) > 0:
-        values["0030"] = _safe_sum_eager(
-            off_bs, set(off_bs.columns), "nominal_amount", "undrawn_amount"
-        )
-    else:
-        values["0030"] = _col_sum_eager(data, cols, "nominal_amount")
-
-    # 0031: (-) Change in exposure due to FCCM (Basel 3.1 only)
-    if "0031" in column_refs:
-        values["0031"] = None
-
-    # 0040: Exposure value (EAD)
-    values["0040"] = ead_sum if ead_sum > 0 else 0.0
-
-    # 0050: Of which: off-balance sheet items (exposure value)
-    if off_bs is not None and len(off_bs) > 0:
-        off_cols = set(off_bs.columns)
-        values["0050"] = _col_sum_eager(off_bs, off_cols, ead_col)
-    else:
-        values["0050"] = None
-
-    # 0060: Of which: arising from counterparty credit risk (out of scope)
-    values["0060"] = None
-
-    # 0070: Risk weight (exposure-weighted average for this bucket)
-    rw_col = _pick(cols, "risk_weight")
-    if rw_col is not None and ead_sum > 0:
-        rw_x_ead = float((data[rw_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0070"] = rw_x_ead / ead_sum
-    elif rw_col is not None:
-        rw_vals = data[rw_col].drop_nulls()
-        values["0070"] = float(rw_vals[0]) if len(rw_vals) > 0 else None
-    else:
-        values["0070"] = None
-
-    # 0080: RWEA (after supporting factors for CRR, plain RWEA for B31)
-    if framework != "BASEL_3_1" and "rwa_post_factor" in cols:
-        values["0080"] = _col_sum_eager(data, cols, "rwa_post_factor")
-    else:
-        values["0080"] = _col_sum_eager(data, cols, rwa_col)
+    values, _off_bs = _c08_06_exposure_cols(data, cols, ead_col, ead_sum, column_refs)
+    values["0070"] = _c08_06_risk_weight_value(data, cols, ead_col, ead_sum)
+    values["0080"] = _c08_06_rwea_value(data, cols, rwa_col, framework)
 
     # 0090: Expected loss amount
     el_col = _pick(cols, "expected_loss", "irb_expected_loss")
@@ -4015,11 +3911,38 @@ def _compute_c08_06_values(
 # =============================================================================
 
 
+# Row keys whose filter is a single ``_filter_sme(base, cols)`` call.
+_C09_01_SME_ROW_KEYS: frozenset[str] = frozenset(
+    {"corporate_sme", "retail_sme", "mortgage_sme", "re_sme"}
+)
+
+# B3.1 RE sub-row filters: row_key → list of property_type values to match.
+_C09_01_RE_PROPERTY_TYPES: dict[str, tuple[str, ...]] = {
+    "re_residential": ("residential", "rre"),
+    "re_commercial": ("commercial", "cre"),
+    "re_other": ("other", "other_re"),
+    "re_adc": ("adc",),
+}
+
+# B3.1 SL sub-row filters: row_key → sl_type value.
+_C09_01_SL_TYPE_MAP: dict[str, str] = {
+    "sl_object_finance": "object_finance",
+    "sl_commodities_finance": "commodities_finance",
+    "sl_project_finance": "project_finance",
+}
+
+# CIU sub-approach filters: row_key → ciu_approach value.
+_C09_01_CIU_APPROACH_MAP: dict[str, str] = {
+    "ciu_look_through": "look_through",
+    "ciu_mandate": "mandate_based",
+    "ciu_fallback": "fallback",
+}
+
+
 def _filter_c09_01_row(
     data: pl.DataFrame,
     cols: set[str],
     row_key: str,
-    framework: str,
 ) -> pl.DataFrame:
     """Filter SA data to match a C 09.01 row definition.
 
@@ -4030,101 +3953,101 @@ def _filter_c09_01_row(
     if ec_col is None:
         return data.clear()
 
-    # Main exposure class rows — filter by the pipeline class values that map
-    # to this row key via C09_01_SA_CLASS_MAP
     matching_classes = [ec for ec, mapped in C09_01_SA_CLASS_MAP.items() if mapped == row_key]
-
     if not matching_classes:
         return data.clear()
 
     base = data.filter(pl.col(ec_col).is_in(matching_classes))
 
-    # Sub-row filters for SME, RE, SL sub-types
-    if row_key == "corporate_sme":
-        return _filter_sme(base, cols)
-    if row_key == "retail_sme":
-        return _filter_sme(base, cols)
-    if row_key == "mortgage_sme":
-        return _filter_sme(base, cols)
-    if row_key == "re_sme":
+    # SME sub-row family — single _filter_sme call on the base.
+    if row_key in _C09_01_SME_ROW_KEYS:
         return _filter_sme(base, cols)
 
-    # B31-specific sub-rows
+    # B3.1 real-estate aggregate and property-type sub-rows.
     if row_key == "real_estate":
-        # "Real estate exposures" — all mortgage-class exposures
         return data.filter(pl.col(ec_col) == "retail_mortgage")
-    if row_key == "re_residential":
-        if "property_type" in cols:
-            return data.filter(
-                (pl.col(ec_col) == "retail_mortgage")
-                & (pl.col("property_type").is_in(["residential", "rre"]))
-            )
-        return data.clear()
-    if row_key == "re_commercial":
-        if "property_type" in cols:
-            return data.filter(
-                (pl.col(ec_col) == "retail_mortgage")
-                & (pl.col("property_type").is_in(["commercial", "cre"]))
-            )
-        return data.clear()
-    if row_key == "re_other":
-        if "property_type" in cols:
-            return data.filter(
-                (pl.col(ec_col) == "retail_mortgage")
-                & (pl.col("property_type").is_in(["other", "other_re"]))
-            )
-        return data.clear()
-    if row_key == "re_adc":
-        if "property_type" in cols:
-            return data.filter(
-                (pl.col(ec_col) == "retail_mortgage") & (pl.col("property_type") == "adc")
-            )
-        return data.clear()
+    if row_key in _C09_01_RE_PROPERTY_TYPES:
+        if "property_type" not in cols:
+            return data.clear()
+        ptypes = list(_C09_01_RE_PROPERTY_TYPES[row_key])
+        return data.filter(
+            (pl.col(ec_col) == "retail_mortgage") & (pl.col("property_type").is_in(ptypes))
+        )
 
-    # SL sub-types (B31 only)
-    if row_key in ("sl_object_finance", "sl_commodities_finance", "sl_project_finance"):
-        sl_type_map = {
-            "sl_object_finance": "object_finance",
-            "sl_commodities_finance": "commodities_finance",
-            "sl_project_finance": "project_finance",
-        }
-        if "sl_type" in cols:
-            return data.filter(
-                (pl.col(ec_col) == "specialised_lending")
-                & (pl.col("sl_type") == sl_type_map[row_key])
-            )
-        return data.clear()
+    # B3.1 SL sub-types.
+    if row_key in _C09_01_SL_TYPE_MAP:
+        if "sl_type" not in cols:
+            return data.clear()
+        return data.filter(
+            (pl.col(ec_col) == "specialised_lending")
+            & (pl.col("sl_type") == _C09_01_SL_TYPE_MAP[row_key])
+        )
 
-    # CIU sub-approaches
-    if row_key == "ciu_look_through":
-        if "ciu_approach" in cols:
-            return data.filter(
-                (pl.col(ec_col) == "ciu") & (pl.col("ciu_approach") == "look_through")
-            )
-        return data.clear()
-    if row_key == "ciu_mandate":
-        if "ciu_approach" in cols:
-            return data.filter(
-                (pl.col(ec_col) == "ciu") & (pl.col("ciu_approach") == "mandate_based")
-            )
-        return data.clear()
-    if row_key == "ciu_fallback":
-        if "ciu_approach" in cols:
-            return data.filter((pl.col(ec_col) == "ciu") & (pl.col("ciu_approach") == "fallback"))
-        return data.clear()
+    # CIU sub-approaches.
+    if row_key in _C09_01_CIU_APPROACH_MAP:
+        if "ciu_approach" not in cols:
+            return data.clear()
+        return data.filter(
+            (pl.col(ec_col) == "ciu")
+            & (pl.col("ciu_approach") == _C09_01_CIU_APPROACH_MAP[row_key])
+        )
 
-    # "retail" row = all retail classes combined
+    # "retail" row = all retail classes combined.
     if row_key == "retail":
         return data.filter(pl.col(ec_col).is_in(["retail_other", "retail_qrre"]))
 
     return base
 
 
+def _c09_01_exposure_provisions(
+    data: pl.DataFrame,
+    cols: set[str],
+    ead_gross_col: str | None,
+    ead_col: str | None,
+) -> dict[str, object]:
+    """Compute C 09.01 exposure + provision columns (0010-0075)."""
+    values: dict[str, object] = {}
+
+    values["0010"] = _col_sum_eager(data, cols, ead_gross_col)
+
+    defaulted = _filter_defaulted(data, cols)
+    if len(defaulted) > 0 and ead_gross_col:
+        values["0020"] = float(defaulted[ead_gross_col].fill_null(0.0).sum())
+    else:
+        values["0020"] = 0.0
+
+    values["0040"] = None  # Observed new defaults (requires temporal data)
+    values["0050"] = _col_sum_eager(data, cols, "gcra_provision_amount")
+    values["0055"] = _col_sum_eager(data, cols, "scra_provision_amount")
+    values["0060"] = None  # Write-offs
+    values["0061"] = None  # Additional value adjustments
+    values["0070"] = None  # CRA for observed new defaults
+    values["0075"] = _col_sum_eager(data, cols, ead_col)
+    return values
+
+
+def _c09_01_rwea_factors(
+    data: pl.DataFrame,
+    cols: set[str],
+    column_refs: list[str],
+    rwa_col: str | None,
+) -> dict[str, object]:
+    """Compute C 09.01 RWEA + supporting-factor columns (0080-0090)."""
+    values: dict[str, object] = {}
+    if "0080" in column_refs:
+        values["0080"] = _col_sum_eager(data, cols, rwa_col)
+    if "0081" in column_refs:
+        values["0081"] = None  # SME supporting factor adjustment (CRR only)
+    if "0082" in column_refs:
+        values["0082"] = None  # Infrastructure supporting factor adjustment (CRR only)
+    values["0090"] = _col_sum_eager(data, cols, rwa_col)
+    return values
+
+
 def _compute_c09_01_values(
     data: pl.DataFrame,
     cols: set[str],
     column_refs: list[str],
-    framework: str,
 ) -> dict[str, object]:
     """Compute column values for a C 09.01 / OF 09.01 row.
 
@@ -4143,57 +4066,13 @@ def _compute_c09_01_values(
     - 0082: (-) Infrastructure supporting factor adjustment (CRR only, null)
     - 0090: RWEA after supporting factors / Risk-weighted exposure amount
     """
-    values: dict[str, object] = {}
-
     ead_gross_col = _pick(cols, "ead_gross", "nominal_amount", "drawn_amount")
     ead_col = _pick(cols, "ead_final", "final_ead", "ead")
     rwa_col = _pick(cols, "rwa_final", "final_rwa", "rwa")
 
-    # 0010: Original exposure pre conversion factors
-    values["0010"] = _col_sum_eager(data, cols, ead_gross_col)
-
-    # 0020: Defaulted exposures
-    defaulted = _filter_defaulted(data, cols)
-    if len(defaulted) > 0 and ead_gross_col:
-        values["0020"] = float(defaulted[ead_gross_col].fill_null(0.0).sum())
-    else:
-        values["0020"] = 0.0
-
-    # 0040: Observed new defaults (requires temporal data — null)
-    values["0040"] = None
-
-    # 0050: General credit risk adjustments
-    values["0050"] = _col_sum_eager(data, cols, "gcra_provision_amount")
-
-    # 0055: Specific credit risk adjustments
-    values["0055"] = _col_sum_eager(data, cols, "scra_provision_amount")
-
-    # 0060: Write-offs (null — requires write-off tracking)
-    values["0060"] = None
-
-    # 0061: Additional value adjustments (null — requires AVA tracking)
-    values["0061"] = None
-
-    # 0070: Credit risk adjustments for observed new defaults (null)
-    values["0070"] = None
-
-    # 0075: Exposure value (ead_final)
-    values["0075"] = _col_sum_eager(data, cols, ead_col)
-
-    # 0080: RWEA pre supporting factors (CRR only)
-    if "0080" in column_refs:
-        values["0080"] = _col_sum_eager(data, cols, rwa_col)
-
-    # 0081: (-) SME supporting factor adjustment (CRR only, null)
-    if "0081" in column_refs:
-        values["0081"] = None
-
-    # 0082: (-) Infrastructure supporting factor adjustment (CRR only, null)
-    if "0082" in column_refs:
-        values["0082"] = None
-
-    # 0090: RWEA (after supporting factors for CRR, plain for B31)
-    values["0090"] = _col_sum_eager(data, cols, rwa_col)
+    values: dict[str, object] = {}
+    values.update(_c09_01_exposure_provisions(data, cols, ead_gross_col, ead_col))
+    values.update(_c09_01_rwea_factors(data, cols, column_refs, rwa_col))
 
     return {ref: values.get(ref) for ref in column_refs}
 
@@ -4203,11 +4082,136 @@ def _compute_c09_01_values(
 # =============================================================================
 
 
+# C 09.02 row keys that map directly to a single exposure_class value.
+_C09_02_DIRECT_EC: dict[str, str] = {
+    "central_govt_central_bank": "central_govt_central_bank",
+    "institution": "institution",
+    "retail_mortgage": "retail_mortgage",
+    "retail_qrre": "retail_qrre",
+    "retail_other": "retail_other",
+    "equity": "equity",
+}
+
+# C 09.02 row keys that always report empty (require flags not yet in pipeline).
+_C09_02_EMPTY_KEYS: frozenset[str] = frozenset(
+    {"corporate_purchased_receivables", "retail_purchased_receivables"}
+)
+
+# C 09.02 retail-RE non-SME row keys mapped to their property_type list.
+_C09_02_RE_PROPERTY_TYPES: dict[str, tuple[str, ...]] = {
+    "retail_resi_re_sme": ("residential", "rre"),
+    "retail_resi_re_non_sme": ("residential", "rre"),
+    "retail_comm_re_sme": ("commercial", "cre"),
+    "retail_comm_re_non_sme": ("commercial", "cre"),
+}
+
+
+def _filter_c09_02_retail_re(
+    data: pl.DataFrame, cols: set[str], ec_col: str, row_key: str
+) -> pl.DataFrame:
+    """Handle the four B3.1 retail-RE rows (resi/comm × SME/non-SME)."""
+    base = data.filter(pl.col(ec_col) == "retail_mortgage")
+    ptypes = list(_C09_02_RE_PROPERTY_TYPES[row_key])
+    if "property_type" in cols:
+        base = base.filter(pl.col("property_type").is_in(ptypes))
+    return _filter_sme(base, cols) if row_key.endswith("_sme") and not row_key.endswith(
+        "_non_sme"
+    ) else _filter_non_sme(base, cols)
+
+
+def _filter_c09_02_sl_rows(
+    data: pl.DataFrame,
+    cols: set[str],
+    ec_col: str,
+    row_key: str,
+    approach_col: str | None,
+) -> pl.DataFrame | None:
+    """Handle specialised-lending sub-rows of C 09.02 (sl_excl_slotting, sl_slotting)."""
+    if row_key == "sl_excl_slotting":
+        base = data.filter(pl.col(ec_col) == "specialised_lending")
+        if approach_col and approach_col in cols:
+            return base.filter(pl.col(approach_col) != "slotting")
+        return base
+    if row_key == "sl_slotting":
+        if approach_col and approach_col in cols:
+            return data.filter(
+                (pl.col(ec_col) == "specialised_lending") & (pl.col(approach_col) == "slotting")
+            )
+        return data.clear()
+    return None
+
+
+def _filter_c09_02_corporate_non_sme(
+    data: pl.DataFrame, cols: set[str], ec_col: str
+) -> pl.DataFrame:
+    """Non-SME general corporates: excludes SME-eligible and FSE/large rows."""
+    base = data.filter(pl.col(ec_col).is_in(["corporate", "corporate_sme"]))
+    non_sme = base
+    if "sme_supporting_factor_eligible" in cols:
+        non_sme = base.filter(
+            pl.col("sme_supporting_factor_eligible") != True  # noqa: E712
+        )
+    elif "exposure_class" in cols:
+        non_sme = base.filter(~pl.col("exposure_class").str.contains("sme"))
+    if "apply_fi_scalar" in cols:
+        non_sme = non_sme.filter(pl.col("apply_fi_scalar") != True)  # noqa: E712
+    return non_sme
+
+
+def _filter_c09_02_corporate(
+    data: pl.DataFrame, cols: set[str], ec_col: str, row_key: str, approach_col: str | None
+) -> pl.DataFrame | None:
+    """Handle corporate row family (sl_excl_slotting, sl_slotting, sme, fse_large, non_sme).
+
+    Returns ``None`` when ``row_key`` is outside the corporate family — caller
+    continues to the next branch.
+    """
+    if row_key == "corporate":
+        return data.filter(
+            pl.col(ec_col).is_in(["corporate", "corporate_sme", "specialised_lending"])
+        )
+
+    sl_result = _filter_c09_02_sl_rows(data, cols, ec_col, row_key, approach_col)
+    if sl_result is not None:
+        return sl_result
+
+    if row_key == "corporate_sme":
+        return _filter_sme(
+            data.filter(pl.col(ec_col).is_in(["corporate", "corporate_sme"])), cols
+        )
+    if row_key == "corporate_fse_large":
+        base = data.filter(pl.col(ec_col).is_in(["corporate", "corporate_sme"]))
+        if "apply_fi_scalar" in cols:
+            return base.filter(pl.col("apply_fi_scalar") == True)  # noqa: E712
+        return data.clear()
+    if row_key == "corporate_non_sme":
+        return _filter_c09_02_corporate_non_sme(data, cols, ec_col)
+    return None
+
+
+def _filter_c09_02_retail_basic(
+    data: pl.DataFrame, cols: set[str], ec_col: str, row_key: str
+) -> pl.DataFrame | None:
+    """Handle CRR retail sub-rows: mortgage/other × SME/non-SME and retail aggregate."""
+    if row_key == "retail":
+        return data.filter(
+            pl.col(ec_col).is_in(["retail_mortgage", "retail_qrre", "retail_other"])
+        )
+    if row_key == "retail_mortgage_sme":
+        return _filter_sme(data.filter(pl.col(ec_col) == "retail_mortgage"), cols)
+    if row_key == "retail_mortgage_non_sme":
+        return _filter_non_sme(data.filter(pl.col(ec_col) == "retail_mortgage"), cols)
+    if row_key == "retail_other_sme":
+        return _filter_sme(data.filter(pl.col(ec_col) == "retail_other"), cols)
+    if row_key == "retail_other_non_sme":
+        return _filter_non_sme(data.filter(pl.col(ec_col) == "retail_other"), cols)
+    return None
+
+
 def _filter_c09_02_row(
     data: pl.DataFrame,
     cols: set[str],
     row_key: str,
-    framework: str,
     approach_col: str | None,
 ) -> pl.DataFrame:
     """Filter IRB data to match a C 09.02 row definition.
@@ -4219,160 +4223,105 @@ def _filter_c09_02_row(
     if ec_col is None:
         return data.clear()
 
-    # Main IRB exposure class rows
-    if row_key == "central_govt_central_bank":
-        return data.filter(pl.col(ec_col) == "central_govt_central_bank")
-
-    if row_key == "institution":
-        return data.filter(pl.col(ec_col) == "institution")
-
-    if row_key == "corporate":
-        # All corporate-class exposures (corporate, corporate_sme, specialised_lending)
-        return data.filter(
-            pl.col(ec_col).is_in(["corporate", "corporate_sme", "specialised_lending"])
-        )
-
-    # Corporate sub-rows
-    if row_key == "sl_excl_slotting":
-        base = data.filter(pl.col(ec_col) == "specialised_lending")
-        if approach_col and approach_col in cols:
-            return base.filter(pl.col(approach_col) != "slotting")
-        return base
-
-    if row_key == "sl_slotting":
-        if approach_col and approach_col in cols:
-            return data.filter(
-                (pl.col(ec_col) == "specialised_lending") & (pl.col(approach_col) == "slotting")
-            )
+    if row_key in _C09_02_DIRECT_EC:
+        return data.filter(pl.col(ec_col) == _C09_02_DIRECT_EC[row_key])
+    if row_key in _C09_02_EMPTY_KEYS:
         return data.clear()
 
-    if row_key == "corporate_sme":
-        return _filter_sme(
-            data.filter(pl.col(ec_col).is_in(["corporate", "corporate_sme"])),
-            cols,
-        )
+    corp_result = _filter_c09_02_corporate(data, cols, ec_col, row_key, approach_col)
+    if corp_result is not None:
+        return corp_result
 
-    if row_key == "corporate_fse_large":
-        # B31 Art. 147(4C) — financial corporates and large corporates
-        base = data.filter(pl.col(ec_col).is_in(["corporate", "corporate_sme"]))
-        if "apply_fi_scalar" in cols:
-            return base.filter(pl.col("apply_fi_scalar") == True)  # noqa: E712
-        return data.clear()
+    retail_result = _filter_c09_02_retail_basic(data, cols, ec_col, row_key)
+    if retail_result is not None:
+        return retail_result
 
-    if row_key == "corporate_purchased_receivables":
-        return data.clear()  # Requires purchased receivable tracking
-
-    if row_key == "corporate_non_sme":
-        # Non-SME general corporates (excludes SL and FSE/large)
-        base = data.filter(pl.col(ec_col).is_in(["corporate", "corporate_sme"]))
-        non_sme = base
-        if "sme_supporting_factor_eligible" in cols:
-            non_sme = base.filter(
-                pl.col("sme_supporting_factor_eligible") != True  # noqa: E712
-            )
-        elif "exposure_class" in cols:
-            non_sme = base.filter(~pl.col("exposure_class").str.contains("sme"))
-        if "apply_fi_scalar" in cols:
-            non_sme = non_sme.filter(
-                pl.col("apply_fi_scalar") != True  # noqa: E712
-            )
-        return non_sme
-
-    # Retail main row
-    if row_key == "retail":
-        return data.filter(pl.col(ec_col).is_in(["retail_mortgage", "retail_qrre", "retail_other"]))
-
-    # CRR retail sub-rows
-    if row_key == "retail_mortgage":
-        return data.filter(pl.col(ec_col) == "retail_mortgage")
-
-    if row_key == "retail_mortgage_sme":
-        return _filter_sme(data.filter(pl.col(ec_col) == "retail_mortgage"), cols)
-
-    if row_key == "retail_mortgage_non_sme":
-        base = data.filter(pl.col(ec_col) == "retail_mortgage")
-        sme = _filter_sme(base, cols)
-        if len(sme) > 0:
-            sme_refs = (
-                set(sme["exposure_reference"].to_list()) if "exposure_reference" in cols else set()
-            )
-            if sme_refs:
-                return base.filter(~pl.col("exposure_reference").is_in(list(sme_refs)))
-        return base
-
-    if row_key == "retail_qrre":
-        return data.filter(pl.col(ec_col) == "retail_qrre")
-
-    if row_key == "retail_other":
-        return data.filter(pl.col(ec_col) == "retail_other")
-
-    if row_key == "retail_other_sme":
-        return _filter_sme(data.filter(pl.col(ec_col) == "retail_other"), cols)
-
-    if row_key == "retail_other_non_sme":
-        base = data.filter(pl.col(ec_col) == "retail_other")
-        sme = _filter_sme(base, cols)
-        if len(sme) > 0:
-            sme_refs = (
-                set(sme["exposure_reference"].to_list()) if "exposure_reference" in cols else set()
-            )
-            if sme_refs:
-                return base.filter(~pl.col("exposure_reference").is_in(list(sme_refs)))
-        return base
-
-    # B31 retail RE sub-rows
-    if row_key == "retail_resi_re_sme":
-        base = data.filter(pl.col(ec_col) == "retail_mortgage")
-        if "property_type" in cols:
-            base = base.filter(pl.col("property_type").is_in(["residential", "rre"]))
-        return _filter_sme(base, cols)
-
-    if row_key == "retail_resi_re_non_sme":
-        base = data.filter(pl.col(ec_col) == "retail_mortgage")
-        if "property_type" in cols:
-            base = base.filter(pl.col("property_type").is_in(["residential", "rre"]))
-        sme = _filter_sme(base, cols)
-        if len(sme) > 0:
-            sme_refs = (
-                set(sme["exposure_reference"].to_list()) if "exposure_reference" in cols else set()
-            )
-            if sme_refs:
-                return base.filter(~pl.col("exposure_reference").is_in(list(sme_refs)))
-        return base
-
-    if row_key == "retail_comm_re_sme":
-        base = data.filter(pl.col(ec_col) == "retail_mortgage")
-        if "property_type" in cols:
-            base = base.filter(pl.col("property_type").is_in(["commercial", "cre"]))
-        return _filter_sme(base, cols)
-
-    if row_key == "retail_comm_re_non_sme":
-        base = data.filter(pl.col(ec_col) == "retail_mortgage")
-        if "property_type" in cols:
-            base = base.filter(pl.col("property_type").is_in(["commercial", "cre"]))
-        sme = _filter_sme(base, cols)
-        if len(sme) > 0:
-            sme_refs = (
-                set(sme["exposure_reference"].to_list()) if "exposure_reference" in cols else set()
-            )
-            if sme_refs:
-                return base.filter(~pl.col("exposure_reference").is_in(list(sme_refs)))
-        return base
-
-    if row_key == "retail_purchased_receivables":
-        return data.clear()  # Requires purchased receivable tracking
-
-    if row_key == "equity":
-        return data.filter(pl.col(ec_col) == "equity")
+    if row_key in _C09_02_RE_PROPERTY_TYPES:
+        return _filter_c09_02_retail_re(data, cols, ec_col, row_key)
 
     return data.clear()
+
+
+def _weighted_avg_or_mean(
+    data: pl.DataFrame,
+    value_col: str | None,
+    weight_col: str | None,
+    weight_sum: float,
+) -> float | None:
+    """EAD-weighted average of ``value_col``; falls back to simple mean.
+
+    Returns None when ``value_col`` is absent or no non-null values exist.
+    """
+    if value_col is None:
+        return None
+    if weight_col is not None and weight_sum > 0:
+        weighted = float(
+            (data[value_col].fill_null(0.0) * data[weight_col].fill_null(0.0)).sum()
+        )
+        return weighted / weight_sum
+    vals = data[value_col].drop_nulls()
+    return float(vals.mean()) if len(vals) > 0 else None
+
+
+def _c09_02_pd_lgd_weighted(
+    data: pl.DataFrame,
+    defaulted: pl.DataFrame,
+    ead_col: str | None,
+    pd_col: str | None,
+    lgd_col: str | None,
+) -> dict[str, object]:
+    """Compute PD/LGD weighted-average columns (0080, 0090, 0100)."""
+    ead_sum = float(data[ead_col].fill_null(0.0).sum()) if ead_col else 0.0
+
+    values: dict[str, object] = {
+        "0080": _weighted_avg_or_mean(data, pd_col, ead_col, ead_sum),
+        "0090": _weighted_avg_or_mean(data, lgd_col, ead_col, ead_sum),
+    }
+
+    if len(defaulted) > 0 and lgd_col:
+        def_ead_sum = float(defaulted[ead_col].fill_null(0.0).sum()) if ead_col else 0.0
+        values["0100"] = _weighted_avg_or_mean(defaulted, lgd_col, ead_col, def_ead_sum)
+    else:
+        values["0100"] = None
+    return values
+
+
+def _c09_02_defaulted_metrics(
+    defaulted: pl.DataFrame,
+    column_refs: list[str],
+    ead_col: str | None,
+    rwa_col: str | None,
+) -> dict[str, object]:
+    """Compute defaulted-exposure metrics (0107 B31 only, 0120)."""
+    values: dict[str, object] = {}
+    if "0107" in column_refs:
+        if len(defaulted) > 0 and ead_col:
+            values["0107"] = float(defaulted[ead_col].fill_null(0.0).sum())
+        else:
+            values["0107"] = 0.0
+    if len(defaulted) > 0 and rwa_col:
+        values["0120"] = float(defaulted[rwa_col].fill_null(0.0).sum())
+    else:
+        values["0120"] = 0.0
+    return values
+
+
+def _c09_02_optional_cols(column_refs: list[str], data, cols, rwa_col) -> dict[str, object]:
+    """Compute optional/CRR-only C 09.02 columns (0110/0121/0122)."""
+    values: dict[str, object] = {}
+    if "0110" in column_refs:
+        values["0110"] = _col_sum_eager(data, cols, rwa_col)
+    if "0121" in column_refs:
+        values["0121"] = None
+    if "0122" in column_refs:
+        values["0122"] = None
+    return values
 
 
 def _compute_c09_02_values(
     data: pl.DataFrame,
     cols: set[str],
     column_refs: list[str],
-    framework: str,
 ) -> dict[str, object]:
     """Compute column values for a C 09.02 / OF 09.02 row.
 
@@ -4396,8 +4345,6 @@ def _compute_c09_02_values(
     - 0125: RWEA after supporting factors / RWEA
     - 0130: Expected loss amount
     """
-    values: dict[str, object] = {}
-
     ead_gross_col = _pick(cols, "ead_gross", "nominal_amount", "drawn_amount")
     ead_col = _pick(cols, "ead_final", "final_ead", "ead")
     rwa_col = _pick(cols, "rwa_final", "final_rwa", "rwa")
@@ -4405,98 +4352,352 @@ def _compute_c09_02_values(
     lgd_col = _pick(cols, "lgd_post_crm", "irb_lgd_floored", "lgd_final")
     el_col = _pick(cols, "expected_loss", "irb_expected_loss")
 
-    # 0010: Original exposure pre conversion factors
-    values["0010"] = _col_sum_eager(data, cols, ead_gross_col)
-
-    # 0030: Of which: defaulted
     defaulted = _filter_defaulted(data, cols)
+
+    values: dict[str, object] = {
+        "0010": _col_sum_eager(data, cols, ead_gross_col),
+        "0040": None,  # Observed new defaults
+        "0050": _col_sum_eager(data, cols, "gcra_provision_amount"),
+        "0055": _col_sum_eager(data, cols, "scra_provision_amount"),
+        "0060": None,  # Write-offs
+        "0070": None,  # CRA for observed new defaults
+        "0105": _col_sum_eager(data, cols, ead_col),
+        "0125": _col_sum_eager(data, cols, rwa_col),
+        "0130": _col_sum_eager(data, cols, el_col) if el_col else None,
+    }
+
     if len(defaulted) > 0 and ead_gross_col:
         values["0030"] = float(defaulted[ead_gross_col].fill_null(0.0).sum())
     else:
         values["0030"] = 0.0
 
-    # 0040: Observed new defaults (null)
-    values["0040"] = None
-
-    # 0050: General credit risk adjustments
-    values["0050"] = _col_sum_eager(data, cols, "gcra_provision_amount")
-
-    # 0055: Specific credit risk adjustments
-    values["0055"] = _col_sum_eager(data, cols, "scra_provision_amount")
-
-    # 0060: Write-offs (null)
-    values["0060"] = None
-
-    # 0070: Credit risk adjustments for observed new defaults (null)
-    values["0070"] = None
-
-    # 0080: PD assigned to obligor grade — EAD-weighted average
-    ead_sum = float(data[ead_col].fill_null(0.0).sum()) if ead_col else 0.0
-    if pd_col and ead_col and ead_sum > 0:
-        pd_x_ead = float((data[pd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0080"] = pd_x_ead / ead_sum
-    elif pd_col:
-        pd_vals = data[pd_col].drop_nulls()
-        values["0080"] = float(pd_vals.mean()) if len(pd_vals) > 0 else None
-    else:
-        values["0080"] = None
-
-    # 0090: Exposure weighted average LGD (%)
-    if lgd_col and ead_col and ead_sum > 0:
-        lgd_x_ead = float((data[lgd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0090"] = lgd_x_ead / ead_sum
-    elif lgd_col:
-        lgd_vals = data[lgd_col].drop_nulls()
-        values["0090"] = float(lgd_vals.mean()) if len(lgd_vals) > 0 else None
-    else:
-        values["0090"] = None
-
-    # 0100: Of which: defaulted (LGD)
-    if len(defaulted) > 0 and lgd_col:
-        def_ead_sum = float(defaulted[ead_col].fill_null(0.0).sum()) if ead_col else 0.0
-        if def_ead_sum > 0 and ead_col:
-            lgd_x_ead_def = float(
-                (defaulted[lgd_col].fill_null(0.0) * defaulted[ead_col].fill_null(0.0)).sum()
-            )
-            values["0100"] = lgd_x_ead_def / def_ead_sum
-        else:
-            def_lgd = defaulted[lgd_col].drop_nulls()
-            values["0100"] = float(def_lgd.mean()) if len(def_lgd) > 0 else None
-    else:
-        values["0100"] = None
-
-    # 0105: Exposure value (ead_final)
-    values["0105"] = _col_sum_eager(data, cols, ead_col)
-
-    # 0107: Of which: defaulted (exposure value, B31 only)
-    if "0107" in column_refs:
-        if len(defaulted) > 0 and ead_col:
-            values["0107"] = float(defaulted[ead_col].fill_null(0.0).sum())
-        else:
-            values["0107"] = 0.0
-
-    # 0110: RWEA pre supporting factors (CRR only)
-    if "0110" in column_refs:
-        values["0110"] = _col_sum_eager(data, cols, rwa_col)
-
-    # 0120: Of which: defaulted (RWEA)
-    if len(defaulted) > 0 and rwa_col:
-        values["0120"] = float(defaulted[rwa_col].fill_null(0.0).sum())
-    else:
-        values["0120"] = 0.0
-
-    # 0121: (-) SME supporting factor adjustment (CRR only, null)
-    if "0121" in column_refs:
-        values["0121"] = None
-
-    # 0122: (-) Infrastructure supporting factor adjustment (CRR only, null)
-    if "0122" in column_refs:
-        values["0122"] = None
-
-    # 0125: RWEA (after supporting factors for CRR, plain for B31)
-    values["0125"] = _col_sum_eager(data, cols, rwa_col)
-
-    # 0130: Expected loss amount
-    values["0130"] = _col_sum_eager(data, cols, el_col) if el_col else None
+    values.update(_c09_02_pd_lgd_weighted(data, defaulted, ead_col, pd_col, lgd_col))
+    values.update(_c09_02_defaulted_metrics(defaulted, column_refs, ead_col, rwa_col))
+    values.update(_c09_02_optional_cols(column_refs, data, cols, rwa_col))
 
     return {ref: values.get(ref) for ref in column_refs}
+
+
+# =============================================================================
+# CROSS-CUTTING LEAF HELPERS
+# =============================================================================
+# Helpers below are used by multiple ``_compute_*`` / ``_filter_*`` functions
+# to remove verbatim-duplicated logic that drove up SonarQube cyclomatic
+# complexity warnings (S3776).
+
+
+def _supporting_factor_adjustment(
+    data: pl.DataFrame,
+    cols: set[str],
+    flag_col: str,
+    applied_col: str,
+    pre_factor_col: str | None,
+    rwa_col: str,
+) -> float | None:
+    """Compute the negative adjustment from a supporting factor.
+
+    The adjustment = sum(rwa_pre_factor - rwa_final) over the rows where the
+    factor was applied. Used for both SME (Art. 501) and infrastructure
+    (Art. 501a) supporting factors in C 07.00 (rows 0216/0217) and
+    C 08.01/02 (rows 0256/0257).
+
+    Tries two column patterns in order:
+    1. A dedicated ``<factor>_supporting_factor_applied`` flag on the row.
+    2. The generic ``supporting_factor_applied`` flag combined with an
+       ``is_sme`` / ``is_infrastructure`` indicator.
+
+    Returns 0.0 when the columns are present but no rows match, and None when
+    neither column pattern is available (CRR column should be reported null).
+    """
+    if pre_factor_col is None:
+        return None
+
+    applied_specific = _pick(cols, applied_col)
+    if applied_specific is not None:
+        subset = data.filter(pl.col(applied_specific) == True)  # noqa: E712
+        if len(subset) == 0:
+            return 0.0
+        pre = float(subset[pre_factor_col].fill_null(0.0).sum())
+        post = float(subset[rwa_col].fill_null(0.0).sum())
+        return pre - post
+
+    if flag_col in cols and "supporting_factor_applied" in cols:
+        subset = data.filter(
+            (pl.col(flag_col) == True)  # noqa: E712
+            & (pl.col("supporting_factor_applied") == True)  # noqa: E712
+        )
+        if len(subset) == 0:
+            return 0.0
+        pre = float(subset[pre_factor_col].fill_null(0.0).sum())
+        post = float(subset[rwa_col].fill_null(0.0).sum())
+        return pre - post
+
+    return None
+
+
+def _filter_non_sme(base: pl.DataFrame, cols: set[str]) -> pl.DataFrame:
+    """Filter ``base`` to non-SME rows by removing the SME subset.
+
+    Used by C 09.02 retail non-SME sub-rows. Matches the pattern of computing
+    SME refs first, then filtering ``base`` to ``~is_in(sme_refs)`` to
+    preserve any rows that lack an ``is_sme`` indicator entirely.
+    """
+    sme = _filter_sme(base, cols)
+    if len(sme) > 0 and "exposure_reference" in cols:
+        sme_refs = set(sme["exposure_reference"].to_list())
+        if sme_refs:
+            return base.filter(~pl.col("exposure_reference").is_in(list(sme_refs)))
+    return base
+
+
+def _collect_unique_countries(df: pl.DataFrame, country_col: str) -> list[str]:
+    """Return the sorted list of distinct non-null country codes in ``df``."""
+    return (
+        df.select(pl.col(country_col))
+        .filter(pl.col(country_col).is_not_null())
+        .unique()
+        .sort(country_col)
+        .to_series()
+        .to_list()
+    )
+
+
+# =============================================================================
+# C 02.00 ROW-POPULATION HELPERS
+# =============================================================================
+# Helpers below split the monolithic ``_generate_c_02_00`` into per-section
+# row-population steps. Each mutates ``row_values`` in place so the caller can
+# continue to assemble the final DataFrame from one shared dict.
+
+
+def _c02_00_sa_rows(
+    row_values: dict[str, dict[str, object]],
+    sa_class_rwa: dict[str, float],
+    is_b31: bool,
+) -> None:
+    """Populate SA per-class rows + B31 specialised-lending sub-row (0131)."""
+    for ec_value, row_ref in C02_00_SA_CLASS_MAP.items():
+        if ec_value in sa_class_rwa:
+            if row_ref not in row_values:
+                row_values[row_ref] = {"0010": 0.0}
+            existing = float(row_values[row_ref].get("0010", 0.0) or 0.0)
+            row_values[row_ref]["0010"] = existing + sa_class_rwa[ec_value]
+
+    if is_b31 and "specialised_lending" in sa_class_rwa:
+        row_values["0131"] = {"0010": sa_class_rwa["specialised_lending"]}
+
+
+def _c02_00_firb_rows(
+    row_values: dict[str, dict[str, object]],
+    firb_rwa: float,
+    irb_class_rwa: dict[tuple[str, str], float],
+    irb_sub_rwa: dict[tuple[str, str, bool | None, bool | None, str | None], float],
+    is_b31: bool,
+) -> None:
+    """Populate F-IRB rows (0240, 0250, 0260, 0271, 0290, 0295-0297)."""
+    row_values["0240"] = {"0010": firb_rwa}
+
+    firb_inst = irb_class_rwa.get(("foundation_irb", "institution"), 0.0)
+    row_values["0250"] = {"0010": firb_inst}
+    if is_b31:
+        row_values["0271"] = {"0010": firb_inst}
+
+    firb_corp = irb_class_rwa.get(("foundation_irb", "corporate"), 0.0)
+    firb_sl = irb_class_rwa.get(("foundation_irb", "specialised_lending"), 0.0)
+    row_values["0260"] = {"0010": firb_corp + firb_sl}
+
+    if is_b31:
+        row_values["0290"] = {"0010": firb_sl}
+        firb_fse, firb_sme, firb_nonsme = _irb_sub_split(
+            irb_sub_rwa, "foundation_irb", "corporate", firb_corp
+        )
+        row_values["0295"] = {"0010": firb_fse}  # Financial/large corporates
+        row_values["0296"] = {"0010": firb_sme}  # Other general corporates SME
+        row_values["0297"] = {"0010": firb_nonsme}  # Other general corporates non-SME
+
+
+def _c02_00_airb_corp_rows(
+    row_values: dict[str, dict[str, object]],
+    airb_rwa: float,
+    irb_class_rwa: dict[tuple[str, str], float],
+    irb_sub_rwa: dict[tuple[str, str, bool | None, bool | None, str | None], float],
+    is_b31: bool,
+) -> None:
+    """Populate A-IRB sovereign / institution / corporate rows (0300-0356)."""
+    row_values["0300"] = {"0010": airb_rwa}
+
+    airb_sovereign = irb_class_rwa.get(("advanced_irb", "central_government"), 0.0)
+    row_values["0310"] = {"0010": airb_sovereign}
+
+    airb_inst = irb_class_rwa.get(("advanced_irb", "institution"), 0.0)
+    row_values["0330"] = {"0010": airb_inst}
+
+    airb_corp = irb_class_rwa.get(("advanced_irb", "corporate"), 0.0)
+    airb_sl_excl = irb_class_rwa.get(("advanced_irb", "specialised_lending"), 0.0)
+    row_values["0340"] = {"0010": airb_corp + airb_sl_excl}
+
+    if is_b31:
+        row_values["0350"] = {"0010": airb_sl_excl}
+        airb_fse, airb_sme, airb_nonsme = _irb_sub_split(
+            irb_sub_rwa, "advanced_irb", "corporate", airb_corp
+        )
+        row_values["0355"] = {"0010": airb_sme}
+        row_values["0356"] = {"0010": airb_nonsme + airb_fse}
+
+
+def _c02_00_airb_retail_rows(
+    row_values: dict[str, dict[str, object]],
+    irb_class_rwa: dict[tuple[str, str], float],
+    irb_sub_rwa: dict[tuple[str, str, bool | None, bool | None, str | None], float],
+    is_b31: bool,
+) -> None:
+    """Populate A-IRB retail rows (0370, 0380-0385, 0390, 0400, 0410-CRR)."""
+    airb_retail_mort = irb_class_rwa.get(("advanced_irb", "retail_mortgage"), 0.0)
+    airb_retail_qrre = irb_class_rwa.get(("advanced_irb", "retail_qrre"), 0.0)
+    airb_retail_other = irb_class_rwa.get(("advanced_irb", "retail_other"), 0.0)
+
+    row_values["0370"] = {"0010": airb_retail_mort + airb_retail_qrre + airb_retail_other}
+    row_values["0380"] = {"0010": airb_retail_mort}
+
+    if is_b31:
+        resi_sme, resi_nonsme, comm_sme, comm_nonsme = _irb_re_sub_split(
+            irb_sub_rwa, "advanced_irb", "retail_mortgage", airb_retail_mort
+        )
+        row_values["0382"] = {"0010": resi_sme}
+        row_values["0383"] = {"0010": resi_nonsme}
+        row_values["0384"] = {"0010": comm_sme}
+        row_values["0385"] = {"0010": comm_nonsme}
+
+    row_values["0390"] = {"0010": airb_retail_qrre}
+
+    if is_b31:
+        other_sme, other_nonsme = _irb_other_sme_split(
+            irb_sub_rwa, "advanced_irb", "retail_other", airb_retail_other
+        )
+        row_values["0400"] = {"0010": other_sme}
+        row_values["0410"] = {"0010": other_nonsme}
+    else:
+        row_values["0400"] = {"0010": airb_retail_other}
+
+
+def _c02_00_slotting_rows(
+    row_values: dict[str, dict[str, object]],
+    slotting_rwa: float,
+    slotting_type_rwa: dict[str, float],
+    is_b31: bool,
+) -> None:
+    """Populate slotting rows: CRR single 0410 vs B31 per-SL-type 0411-0416."""
+    if is_b31:
+        row_values["0411"] = {"0010": slotting_rwa}
+        row_values["0412"] = {"0010": slotting_type_rwa.get("project_finance", 0.0)}
+        row_values["0413"] = {"0010": slotting_type_rwa.get("object_finance", 0.0)}
+        row_values["0414"] = {"0010": slotting_type_rwa.get("commodities_finance", 0.0)}
+        row_values["0415"] = {"0010": slotting_type_rwa.get("ipre", 0.0)}
+        row_values["0416"] = {"0010": slotting_type_rwa.get("hvcre", 0.0)}
+    else:
+        row_values["0410"] = {"0010": slotting_rwa}
+
+
+def _c02_00_apply_b31_cols(
+    row_values: dict[str, dict[str, object]],
+    sa_equiv_rwa: float,
+    floor_rwa: float,
+) -> None:
+    """Fill B3.1 cols 0020 (SA-equivalent) and 0030 (output floor) for each row.
+
+    Each row's policy follows row-ref membership: totals take the portfolio
+    SA-equiv / floor values, indicator rows mirror col 0010, IRB rows zero out,
+    and SA rows default to col 0010.
+    """
+    for ref, vals in row_values.items():
+        col_0010 = vals.get("0010")
+        if ref in {"0010", "0050"}:
+            vals["0020"] = sa_equiv_rwa
+            vals["0030"] = floor_rwa
+        elif ref == "0040":
+            vals["0020"] = sa_equiv_rwa * 0.08
+            vals["0030"] = floor_rwa * 0.08
+        elif ref in {"0034", "0035", "0036"}:
+            vals["0020"] = col_0010
+            vals["0030"] = col_0010
+        elif ref == "0060":
+            vals["0020"] = vals["0010"]
+            vals["0030"] = vals["0010"]
+        elif ref in {"0220", "0240", "0300"}:
+            vals["0020"] = 0.0
+            vals["0030"] = 0.0
+        else:
+            vals["0020"] = col_0010 if col_0010 is not None else None
+            vals["0030"] = col_0010 if col_0010 is not None else None
+
+
+def _c02_00_row_dict(
+    row_def,
+    row_values: dict[str, dict[str, object]],
+    column_refs: list[str],
+) -> dict[str, object]:
+    """Build a single C 02.00 DataFrame row dict.
+
+    Three regimes: populated (ref in row_values), zero-fill (credit-risk row
+    without data), or null-fill (out-of-scope row).
+    """
+    if row_def.ref in row_values:
+        vals = row_values[row_def.ref]
+        return {
+            "row_ref": row_def.ref,
+            "row_name": row_def.name,
+            **{ref: vals.get(ref) for ref in column_refs},
+        }
+    if row_def.ref in C02_00_CREDIT_RISK_ROWS:
+        return {
+            "row_ref": row_def.ref,
+            "row_name": row_def.name,
+            **dict.fromkeys(column_refs, 0.0),
+        }
+    return _null_row(row_def.ref, row_def.name, column_refs)
+
+
+def _c02_00_build_rows(
+    row_values: dict[str, dict[str, object]],
+    row_sections,
+    column_refs: list[str],
+) -> list[dict[str, object]]:
+    """Assemble C 02.00 DataFrame rows from ``row_values`` + section templates."""
+    return [
+        _c02_00_row_dict(row_def, row_values, column_refs)
+        for section in row_sections
+        for row_def in section.rows
+    ]
+
+
+def _c02_00_floor_indicator_rows(
+    row_values: dict[str, dict[str, object]],
+    floor_activated: bool,
+    output_floor_summary: OutputFloorSummary | None,
+    output_floor_config: OutputFloorConfig | None,
+    is_b31: bool,
+) -> None:
+    """Populate B31 output floor indicator rows 0034/0035/0036.
+
+    Art. 92 para 2A: floor applies only to certain entity-type/basis combos.
+    When ``output_floor_config`` provides ``is_floor_applicable() == False``,
+    the indicator rows are still emitted but with zero values.
+    """
+    if not is_b31:
+        return
+
+    floor_applicable = (
+        output_floor_config is None or output_floor_config.is_floor_applicable()
+    )
+    if floor_applicable:
+        row_values["0034"] = {"0010": 1.0 if floor_activated else 0.0}
+        if output_floor_summary is not None:
+            row_values["0035"] = {"0010": output_floor_summary.floor_pct * 100.0}
+            row_values["0036"] = {"0010": output_floor_summary.of_adj}
+        else:
+            row_values["0035"] = {"0010": 0.0}
+            row_values["0036"] = {"0010": 0.0}
+    else:
+        row_values["0034"] = {"0010": 0.0}
+        row_values["0035"] = {"0010": 0.0}
+        row_values["0036"] = {"0010": 0.0}
