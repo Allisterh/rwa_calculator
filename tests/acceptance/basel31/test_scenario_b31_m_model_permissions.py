@@ -31,7 +31,6 @@ References:
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING
 
 import polars as pl
 
@@ -39,10 +38,6 @@ from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig, PermissionMode
 from rwa_calc.domain.enums import ApproachType
 from rwa_calc.engine.pipeline import PipelineOrchestrator
-
-if TYPE_CHECKING:
-    pass
-
 
 # ---------------------------------------------------------------------------
 # Test data builders
@@ -565,7 +560,7 @@ class TestB31M4_IPREForcedSlotting:
             model_permissions=mp,
             specialised_lending=sl,
         )
-        result_set, row = _find_exposure(results, "LOAN_IPRE")
+        result_set, _ = _find_exposure(results, "LOAN_IPRE")
 
         assert result_set == "slotting", "IPRE should be in slotting results"
 
@@ -601,7 +596,7 @@ class TestB31M5_HVCREForcedSlotting:
             model_permissions=mp,
             specialised_lending=sl,
         )
-        result_set, row = _find_exposure(results, "LOAN_HVCRE")
+        result_set, _ = _find_exposure(results, "LOAN_HVCRE")
 
         assert result_set == "slotting", "HVCRE should be in slotting results"
 
@@ -635,7 +630,7 @@ class TestB31M6_SovereignForcedSA:
         )
 
         results = _run_pipeline(cp, fac, loan, ratings=rat, model_permissions=mp)
-        result_set, row = _find_exposure(results, "LOAN_SOV")
+        result_set, _ = _find_exposure(results, "LOAN_SOV")
 
         assert result_set == "sa", "Sovereign should be in SA results (Art. 147A(1)(a))"
 
@@ -833,7 +828,7 @@ class TestB31M11_NoModelPermissionsFallback:
         rat = _rating(cp_ref="CP_NOMP", pd=0.01)
 
         results = _run_pipeline(cp, fac, loan, ratings=rat, model_permissions=None)
-        result_set, row = _find_exposure(results, "LOAN_NOMP")
+        result_set, _ = _find_exposure(results, "LOAN_NOMP")
 
         assert result_set == "sa", "Without model_permissions, exposure should be SA"
 
@@ -867,6 +862,6 @@ class TestB31M12_PSEForcedSA:
         )
 
         results = _run_pipeline(cp, fac, loan, ratings=rat, model_permissions=mp)
-        result_set, row = _find_exposure(results, "LOAN_PSE")
+        result_set, _ = _find_exposure(results, "LOAN_PSE")
 
         assert result_set == "sa", "PSE should be in SA results (Art. 147A(1)(a))"
