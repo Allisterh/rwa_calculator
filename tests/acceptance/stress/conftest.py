@@ -8,7 +8,7 @@ and runs the full pipeline for correctness validation.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import polars as pl
@@ -654,22 +654,22 @@ def b31_irb_result_10k(
 @pytest.fixture(scope="session")
 def crr_sa_result_10k_df(crr_sa_result_10k: AggregatedResultBundle) -> pl.DataFrame:
     """CRR SA pipeline result at 10K scale, collected once."""
-    return crr_sa_result_10k.results.collect()
+    return cast(pl.DataFrame, crr_sa_result_10k.results.collect())
 
 
 @pytest.fixture(scope="session")
 def crr_irb_result_10k_df(crr_irb_result_10k: AggregatedResultBundle) -> pl.DataFrame:
     """CRR IRB pipeline result at 10K scale, collected once."""
-    return crr_irb_result_10k.results.collect()
+    return cast(pl.DataFrame, crr_irb_result_10k.results.collect())
 
 
 @pytest.fixture(scope="session")
 def b31_sa_result_10k_df(b31_sa_result_10k: AggregatedResultBundle) -> pl.DataFrame:
     """Basel 3.1 SA pipeline result at 10K scale, collected once."""
-    return b31_sa_result_10k.results.collect()
+    return cast(pl.DataFrame, b31_sa_result_10k.results.collect())
 
 
 @pytest.fixture(scope="session")
 def b31_irb_result_10k_df(b31_irb_result_10k: AggregatedResultBundle) -> pl.DataFrame:
     """Basel 3.1 IRB pipeline result at 10K scale, collected once."""
-    return b31_irb_result_10k.results.collect()
+    return cast(pl.DataFrame, b31_irb_result_10k.results.collect())

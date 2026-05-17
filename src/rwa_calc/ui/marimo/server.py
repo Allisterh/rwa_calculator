@@ -46,9 +46,7 @@ logger = logging.getLogger(__name__)
 _RESP_400_INVALID_PATH: dict[int | str, dict[str, str]] = {
     400: {"description": "Invalid path or input"}
 }
-_RESP_404_NOT_FOUND: dict[int | str, dict[str, str]] = {
-    404: {"description": "Resource not found"}
-}
+_RESP_404_NOT_FOUND: dict[int | str, dict[str, str]] = {404: {"description": "Resource not found"}}
 _RESP_409_CONFLICT: dict[int | str, dict[str, str]] = {
     409: {"description": "Conflict with existing resource"}
 }
