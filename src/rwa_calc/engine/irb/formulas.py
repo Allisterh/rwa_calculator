@@ -354,6 +354,7 @@ def _lgd_floor_blended_expression(
 # =============================================================================
 
 
+@cites("CRR Art. 151")
 @cites("CRR Art. 153")
 @cites("CRR Art. 154")
 def apply_irb_formulas(

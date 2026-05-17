@@ -27,7 +27,7 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
     ("rwa_calc.engine.irb.formulas", "calculate_maturity_adjustment", ("CRR Art. 162",)),
     ("rwa_calc.engine.irb.formulas", "calculate_double_default_k", ("CRR Art. 153(3)",)),
     ("rwa_calc.engine.irb.formulas", "apply_irb_formulas",
-     ("CRR Art. 153", "CRR Art. 154")),
+     ("CRR Art. 151", "CRR Art. 153", "CRR Art. 154")),
     ("rwa_calc.engine.irb.formulas", "_pd_floor_expression",
      ("CRR Art. 163", "PS1/26, paragraph 163")),
     ("rwa_calc.engine.irb.formulas", "_lgd_floor_expression",
@@ -125,7 +125,12 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
     ("rwa_calc.engine.slotting.namespace", "SlottingLazyFrame.apply_slotting_weights",
      ("CRR Art. 153(5)",)),
     # --- Classifier ---
-    ("rwa_calc.engine.classifier", "ExposureClassifier.classify", ("CRR Art. 112",)),
+    ("rwa_calc.engine.classifier", "ExposureClassifier.classify",
+     ("CRR Art. 112", "CRR Art. 147")),
+    ("rwa_calc.engine.classifier", "ExposureClassifier._resolve_model_permissions",
+     ("CRR Art. 143", "CRR Art. 148", "CRR Art. 150")),
+    ("rwa_calc.engine.classifier", "ExposureClassifier._align_irb_exposure_class",
+     ("CRR Art. 147",)),
     # --- Aggregator ---
     ("rwa_calc.engine.aggregator.aggregator", "OutputAggregator.aggregate",
      ("PS1/26, paragraph 92",)),
@@ -145,7 +150,7 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
     ("rwa_calc.data.tables.crr_risk_weights", "build_corporate_guarantor_rw_expr",
      ("CRR Art. 122",)),
     ("rwa_calc.data.tables.eu_sovereign", "build_eu_domestic_currency_expr",
-     ("CRR Art. 114",)),
+     ("CRR Art. 114", "CRR Art. 141")),
     ("rwa_calc.data.tables.eu_sovereign", "build_domestic_cgcb_guarantor_expr",
      ("CRR Art. 114",)),
     ("rwa_calc.data.tables.firb_lgd", "get_firb_lgd_table_for_framework",
@@ -161,6 +166,19 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
     # --- High-risk items (Art. 128, B31-only — omitted from UK CRR) ---
     ("rwa_calc.engine.sa.namespace", "_b31_append_high_risk_branch",
      ("PS1/26, paragraph 128",)),
+    # --- ECA / MEIP direct sovereign RW (Art. 137) ---
+    ("rwa_calc.engine.sa.namespace", "_eca_meip_rw_expr",
+     ("CRR Art. 137",)),
+    # --- Other items + ECA fallback (Art. 134, 137) ---
+    ("rwa_calc.engine.sa.namespace", "_apply_crr_risk_weight_overrides",
+     ("CRR Art. 134", "CRR Art. 137")),
+    ("rwa_calc.engine.sa.namespace", "_apply_b31_risk_weight_overrides",
+     ("CRR Art. 134",)),
+    # --- ECAI use methodology (Art. 135-139) + short-term override (Art. 131, 140) ---
+    ("rwa_calc.engine.hierarchy", "HierarchyResolver._attach_counterparty_rating",
+     ("CRR Art. 135", "CRR Art. 136", "CRR Art. 138", "CRR Art. 139")),
+    ("rwa_calc.engine.hierarchy", "HierarchyResolver._apply_short_term_rating_override",
+     ("CRR Art. 131", "CRR Art. 140")),
     # --- Covered bonds (Art. 129) ---
     ("rwa_calc.engine.sa.namespace", "_crr_unrated_cb_rw_expr", ("CRR Art. 129",)),
     ("rwa_calc.engine.sa.namespace", "_b31_unrated_cb_rw_expr",
