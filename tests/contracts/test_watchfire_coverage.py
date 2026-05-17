@@ -75,6 +75,12 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
      ("CRR Art. 113",)),
     ("rwa_calc.engine.sa.namespace", "SALazyFrame.apply_supporting_factors",
      ("CRR Art. 501",)),
+    ("rwa_calc.engine.sa.namespace", "_crr_append_retail_branches", ("CRR Art. 123",)),
+    ("rwa_calc.engine.sa.namespace", "_b31_append_retail_branches",
+     ("PS1/26, paragraph 123",)),
+    ("rwa_calc.engine.sa.namespace", "_crr_append_real_estate_branches", ("CRR Art. 124",)),
+    ("rwa_calc.engine.sa.namespace", "_b31_append_real_estate_branches",
+     ("PS1/26, paragraph 124",)),
     # --- SA supporting factors ---
     ("rwa_calc.engine.sa.supporting_factors",
      "SupportingFactorCalculator.calculate_sme_factor", ("CRR Art. 501",)),
