@@ -523,6 +523,41 @@ def _b31_append_high_risk_branch(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     return chain.when(uc == "HIGH_RISK").then(pl.lit(_SA_B31_RW["high_risk"]))
 
 
+@cites("PS1/26, paragraph 123")
+def _b31_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+    """Append Basel 3.1 retail-class risk-weight branches (Art. 123).
+
+    Covers the regulatory retail class only (uc contains "RETAIL"):
+    - QRRE transactor: 45% (Art. 123(2)).
+    - Payroll/pension loans: 35% (Art. 123(3)(a-b)).
+    - Non-regulatory retail (fails Art. 123A criteria): 100% (Art. 123(3)(c)).
+    - Regulatory retail (non-mortgage): 75% flat.
+
+    The SME-managed-as-retail and corporate-SME branches stay in the parent
+    override (they gate on SME class membership rather than RETAIL).
+    """
+    return (
+        # QRRE transactor: 45% (Art. 123(2)).
+        chain.when(
+            uc.str.contains("RETAIL", literal=True) & pl.col("is_qrre_transactor").fill_null(False)
+        )
+        .then(pl.lit(_SA_B31_RW["qrre_transactor"]))
+        # Payroll/pension loans: 35% (Art. 123(3)(a-b)).
+        .when(uc.str.contains("RETAIL", literal=True) & pl.col("is_payroll_loan").fill_null(False))
+        .then(pl.lit(_SA_B31_RW["payroll"]))
+        # Non-regulatory retail (fails Art. 123A criteria): 100%.
+        .when(
+            uc.str.contains("RETAIL", literal=True)
+            & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
+        )
+        .then(pl.lit(_SA_B31_RW["non_reg_retail"]))
+        # Regulatory retail (non-mortgage): 75% flat.
+        .when(uc.str.contains("RETAIL", literal=True))
+        .then(pl.lit(_SA_SHARED_RW["retail"]))
+    )
+
+
+@cites("PS1/26, paragraph 124")
 def _b31_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     """Append Basel 3.1 real-estate branches (ADC / other-RE / CRE / resi)."""
     is_re_class = (
@@ -647,6 +682,41 @@ def _b31_append_corporate_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl.E
     )
 
 
+@cites("CRR Art. 123")
+def _crr_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+    """Append CRR retail-class risk-weight branches (Art. 123).
+
+    Covers the regulatory retail class only (uc contains "RETAIL"):
+    - Non-regulatory retail (fails qualifying criteria): 100% (Art. 123(c)).
+    - Payroll/pension loans: 35% (CRR Art. 123 second subparagraph, inserted
+      by CRR2 Reg. (EU) 2019/876 F68 — scalar identical to PRA PS1/26
+      Art. 123(3)(a-b), reused from ``_SA_B31_RW``).
+    - Regulatory retail (non-mortgage): 75% flat (Art. 123).
+
+    The SME-managed-as-retail branch stays in the parent override (it gates
+    on SME class membership, not just retail) and the corporate-SME branch
+    is non-retail (Art. 122).
+    """
+    return (
+        # Non-regulatory retail (fails qualifying criteria): 100%.
+        chain.when(
+            uc.str.contains("RETAIL", literal=True)
+            & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
+        )
+        .then(pl.lit(_SA_CRR_RW["non_reg_retail"]))
+        # Payroll/pension loans: 35% (CRR Art. 123 second subparagraph,
+        # inserted by CRR2 Reg. (EU) 2019/876 F68). Scalar identical to the
+        # Basel 3.1 payroll RW (PRA PS1/26 Art. 123(3)(a-b)), so the same
+        # B31_RETAIL_PAYROLL_LOAN_RW constant is reused via _SA_B31_RW.
+        .when(uc.str.contains("RETAIL", literal=True) & pl.col("is_payroll_loan").fill_null(False))
+        .then(pl.lit(_SA_B31_RW["payroll"]))
+        # Regulatory retail (non-mortgage): 75% flat.
+        .when(uc.str.contains("RETAIL", literal=True))
+        .then(pl.lit(_SA_SHARED_RW["retail"]))
+    )
+
+
+@cites("CRR Art. 124")
 def _crr_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     """Append CRR commercial-then-residential RE branches (Art. 125-126)."""
     ltv_safe = pl.col("ltv").fill_null(1.0)
@@ -1148,7 +1218,7 @@ def _apply_b31_risk_weight_overrides(
         & ~uc.str.contains("SME", literal=True)
         & (pl.col("cqs").is_null() | (pl.col("cqs") <= 0))
     )
-    exposures = exposures.with_columns(
+    chain = (
         chain
         # Investment-grade assessment (Art. 122(6)/(8)) — only active under
         # use_investment_grade_assessment. IG -> 65%, non-IG -> 135%.
@@ -1184,23 +1254,13 @@ def _apply_b31_risk_weight_overrides(
         # Corporate SME: 85% (CRE20.47-49).
         .when(uc.str.contains("CORPORATE", literal=True) & uc.str.contains("SME", literal=True))
         .then(pl.lit(_SA_B31_RW["corporate_sme"]))
-        # QRRE transactor: 45% (Art. 123(2)).
-        .when(
-            uc.str.contains("RETAIL", literal=True) & pl.col("is_qrre_transactor").fill_null(False)
-        )
-        .then(pl.lit(_SA_B31_RW["qrre_transactor"]))
-        # Payroll/pension loans: 35% (Art. 123(3)(a-b)).
-        .when(uc.str.contains("RETAIL", literal=True) & pl.col("is_payroll_loan").fill_null(False))
-        .then(pl.lit(_SA_B31_RW["payroll"]))
-        # Non-regulatory retail (fails Art. 123A criteria): 100%.
-        .when(
-            uc.str.contains("RETAIL", literal=True)
-            & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
-        )
-        .then(pl.lit(_SA_B31_RW["non_reg_retail"]))
-        # Regulatory retail (non-mortgage): 75% flat.
-        .when(uc.str.contains("RETAIL", literal=True))
-        .then(pl.lit(_SA_SHARED_RW["retail"]))
+    )
+
+    # Retail-class branches (Art. 123).
+    chain = _b31_append_retail_branches(chain, uc)
+
+    exposures = exposures.with_columns(
+        chain
         # Unrated covered bonds: derive from issuer institution RW
         # (Art. 129(5)). ECRA (rated issuer, cp_institution_cqs) checked
         # first, then SCRA (unrated issuer, cp_scra_grade) as fallback.
@@ -1276,22 +1336,10 @@ def _apply_crr_risk_weight_overrides(
         # Corporate SME: 100%.
         .when(uc.str.contains("CORPORATE", literal=True) & uc.str.contains("SME", literal=True))
         .then(pl.lit(_SA_CRR_RW["corporate_sme"]))
-        # Non-regulatory retail (fails qualifying criteria): 100%.
-        .when(
-            uc.str.contains("RETAIL", literal=True)
-            & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
-        )
-        .then(pl.lit(_SA_CRR_RW["non_reg_retail"]))
-        # Payroll/pension loans: 35% (CRR Art. 123 second subparagraph,
-        # inserted by CRR2 Reg. (EU) 2019/876 F68). Scalar identical to the
-        # Basel 3.1 payroll RW (PRA PS1/26 Art. 123(3)(a-b)), so the same
-        # B31_RETAIL_PAYROLL_LOAN_RW constant is reused via _SA_B31_RW.
-        .when(uc.str.contains("RETAIL", literal=True) & pl.col("is_payroll_loan").fill_null(False))
-        .then(pl.lit(_SA_B31_RW["payroll"]))
-        # Regulatory retail (non-mortgage): 75% flat.
-        .when(uc.str.contains("RETAIL", literal=True))
-        .then(pl.lit(_SA_SHARED_RW["retail"]))
     )
+
+    # Retail-class branches (Art. 123).
+    chain = _crr_append_retail_branches(chain, uc)
 
     # Sovereign-like (PSE, RGLA, MDB, IO).
     chain = (
@@ -2010,11 +2058,15 @@ class SALazyFrame:
             ]
         )
 
+    @cites("CRR Art. 113")
     def calculate_rwa(self) -> pl.LazyFrame:
         """Compute pre-factor RWA = EAD x Risk Weight.
 
         Uses ``ead_final`` when present, else falls back to ``ead``.
         Emits ``rwa_pre_factor`` for downstream supporting-factor scaling.
+
+        References:
+        - CRR Art. 113(1)-(5): general rule for SA risk-weighted exposure amounts.
         """
         schema = self._lf.collect_schema()
         ead_col = "ead_final" if "ead_final" in schema.names() else "ead"

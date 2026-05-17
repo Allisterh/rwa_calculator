@@ -60,32 +60,88 @@ Last generated: 2026-05-17.
     ```
 
 
-### CRR Art. 120 — Exposures to rated institutions
+### CRR Art. 115 — Exposures to regional governments or local authorities
+
+??? quote "`_create_rgla_df` — src/rwa_calc/data/tables/crr_risk_weights.py:416"
+    ```python
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:416:428"
+    ```
+
+
+### CRR Art. 116 — Exposures to public sector entities
+
+??? quote "`_create_pse_df` — src/rwa_calc/data/tables/crr_risk_weights.py:361"
+    ```python
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:361:372"
+    ```
+
+
+### CRR Art. 117 — Exposures to multilateral development banks
+
+??? quote "`_create_mdb_df` — src/rwa_calc/data/tables/crr_risk_weights.py:462"
+    ```python
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:462:470"
+    ```
+
+
+### CRR Art. 118 — Exposures to international organisations
+
+??? quote "`_create_io_df` — src/rwa_calc/data/tables/crr_risk_weights.py:486"
+    ```python
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:486:500"
+    ```
+
+
+### CRR Art. 119 — Exposures to institutions
 
 ??? quote "`build_institution_guarantor_rw_expr` — src/rwa_calc/data/tables/crr_risk_weights.py:229"
     ```python
-    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:229:322"
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:229:323"
+    ```
+
+
+### CRR Art. 120 — Exposures to rated institutions
+
+??? quote "`build_institution_guarantor_rw_expr` — src/rwa_calc/data/tables/crr_risk_weights.py:230"
+    ```python
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:229:323"
     ```
 
 
 ### CRR Art. 121 — Exposures to unrated institutions
 
-??? quote "`build_institution_guarantor_rw_expr` — src/rwa_calc/data/tables/crr_risk_weights.py:230"
+??? quote "`build_institution_guarantor_rw_expr` — src/rwa_calc/data/tables/crr_risk_weights.py:231"
     ```python
-    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:229:322"
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:229:323"
     ```
 
 
 ### CRR Art. 122 — Exposures to corporates
 
-??? quote "`build_corporate_guarantor_rw_expr` — src/rwa_calc/data/tables/crr_risk_weights.py:498"
+??? quote "`build_corporate_guarantor_rw_expr` — src/rwa_calc/data/tables/crr_risk_weights.py:523"
     ```python
-    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:498:554"
+    --8<-- "src/rwa_calc/data/tables/crr_risk_weights.py:523:579"
     ```
 
 ??? quote "`_compute_guarantor_rw_sa` — src/rwa_calc/engine/irb/guarantee.py:184"
     ```python
     --8<-- "src/rwa_calc/engine/irb/guarantee.py:184:282"
+    ```
+
+
+### CRR Art. 123 — Retail exposures
+
+??? quote "`_crr_append_retail_branches` — src/rwa_calc/engine/sa/namespace.py:667"
+    ```python
+    --8<-- "src/rwa_calc/engine/sa/namespace.py:667:698"
+    ```
+
+
+### CRR Art. 124 — Exposures secured by mortgages on immovable property
+
+??? quote "`_crr_append_real_estate_branches` — src/rwa_calc/engine/sa/namespace.py:701"
+    ```python
+    --8<-- "src/rwa_calc/engine/sa/namespace.py:701:747"
     ```
 
 
@@ -485,6 +541,14 @@ Last generated: 2026-05-17.
 ??? quote "`get_b31_combined_cqs_risk_weights` — src/rwa_calc/data/tables/b31_risk_weights.py:388"
     ```python
     --8<-- "src/rwa_calc/data/tables/b31_risk_weights.py:388:419"
+    ```
+
+
+### PS1/26, paragraph 123 — PRA Rulebook: CRR Firms: (CRR) Instrument 2026
+
+??? quote "`_b31_append_retail_branches` — src/rwa_calc/engine/sa/namespace.py:508"
+    ```python
+    --8<-- "src/rwa_calc/engine/sa/namespace.py:508:539"
     ```
 
 
