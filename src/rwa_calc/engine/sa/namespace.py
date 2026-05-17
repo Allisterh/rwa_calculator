@@ -1992,11 +1992,15 @@ class SALazyFrame:
             ]
         )
 
+    @cites("CRR Art. 113")
     def calculate_rwa(self) -> pl.LazyFrame:
         """Compute pre-factor RWA = EAD x Risk Weight.
 
         Uses ``ead_final`` when present, else falls back to ``ead``.
         Emits ``rwa_pre_factor`` for downstream supporting-factor scaling.
+
+        References:
+        - CRR Art. 113(1)-(5): general rule for SA risk-weighted exposure amounts.
         """
         schema = self._lf.collect_schema()
         ead_col = "ead_final" if "ead_final" in schema.names() else "ead"

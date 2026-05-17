@@ -71,6 +71,8 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
      ("PS1/26, paragraph 123B",)),
     ("rwa_calc.engine.sa.namespace", "SALazyFrame.apply_due_diligence_override",
      ("PS1/26, paragraph 110A",)),
+    ("rwa_calc.engine.sa.namespace", "SALazyFrame.calculate_rwa",
+     ("CRR Art. 113",)),
     ("rwa_calc.engine.sa.namespace", "SALazyFrame.apply_supporting_factors",
      ("CRR Art. 501",)),
     # --- SA supporting factors ---

@@ -12,7 +12,7 @@ Regenerate after annotation changes:
 uv run python scripts/generate_citation_matrix.py
 ```
 
-Last generated: 2026-05-16.
+Last generated: 2026-05-17.
 
 ## CRR (Capital Requirements Regulation)
 
@@ -44,6 +44,14 @@ Last generated: 2026-05-16.
 ??? quote "`apply_risk_weights` — src/rwa_calc/engine/sa/namespace.py:1596"
     ```python
     --8<-- "src/rwa_calc/engine/sa/namespace.py:1596:1640"
+    ```
+
+
+### CRR Art. 113 — Calculation of risk-weighted exposure amounts
+
+??? quote "`calculate_rwa` — src/rwa_calc/engine/sa/namespace.py:1995"
+    ```python
+    --8<-- "src/rwa_calc/engine/sa/namespace.py:1995:2009"
     ```
 
 
@@ -155,14 +163,14 @@ Last generated: 2026-05-16.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:1015:1043"
     ```
 
-??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/namespace.py:516"
+??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/namespace.py:587"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:516:550"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:587:621"
     ```
 
-??? quote "`calculate_k` — src/rwa_calc/engine/irb/namespace.py:552"
+??? quote "`calculate_k` — src/rwa_calc/engine/irb/namespace.py:623"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:552:565"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:623:636"
     ```
 
 ??? quote "`calculate_branch` — src/rwa_calc/engine/slotting/calculator.py:83"
@@ -237,9 +245,9 @@ Last generated: 2026-05-16.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:1046:1080"
     ```
 
-??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/namespace.py:567"
+??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/namespace.py:638"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:567:605"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:638:676"
     ```
 
 
@@ -250,9 +258,9 @@ Last generated: 2026-05-16.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:53:139"
     ```
 
-??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:425"
+??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:496"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:425:448"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:496:519"
     ```
 
 
@@ -263,9 +271,9 @@ Last generated: 2026-05-16.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:142:192"
     ```
 
-??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:450"
+??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:521"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:450:514"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:521:585"
     ```
 
 
@@ -284,9 +292,9 @@ Last generated: 2026-05-16.
 
 ### CRR Art. 194 — Principles governing the eligibility of credit risk mitigation techniques
 
-??? quote "`apply_crm` — src/rwa_calc/engine/crm/processor.py:428"
+??? quote "`apply_crm` — src/rwa_calc/engine/crm/processor.py:477"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/processor.py:428:449"
+    --8<-- "src/rwa_calc/engine/crm/processor.py:477:498"
     ```
 
 
@@ -407,9 +415,9 @@ Last generated: 2026-05-16.
 
 ### CRR Art. 501 — Adjustment of risk-weighted non-defaulted SME exposures
 
-??? quote "`apply_supporting_factors` — src/rwa_calc/engine/sa/namespace.py:2007"
+??? quote "`apply_supporting_factors` — src/rwa_calc/engine/sa/namespace.py:2011"
     ```python
-    --8<-- "src/rwa_calc/engine/sa/namespace.py:2007:2030"
+    --8<-- "src/rwa_calc/engine/sa/namespace.py:2011:2034"
     ```
 
 ??? quote "`calculate_sme_factor` — src/rwa_calc/engine/sa/supporting_factors.py:75"
@@ -485,9 +493,9 @@ Last generated: 2026-05-16.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:53:139"
     ```
 
-??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:426"
+??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:497"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:425:448"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:496:519"
     ```
 
 
@@ -508,8 +516,8 @@ Last generated: 2026-05-16.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:265:349"
     ```
 
-??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:451"
+??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:522"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:450:514"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:521:585"
     ```
 
