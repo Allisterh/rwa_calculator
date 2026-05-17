@@ -226,6 +226,7 @@ def _create_institution_df(is_basel_3_1: bool = False) -> pl.DataFrame:
     return _build_cqs_rw_df(weights, "INSTITUTION")
 
 
+@cites("CRR Art. 119")
 @cites("CRR Art. 120")
 @cites("CRR Art. 121")
 def build_institution_guarantor_rw_expr(
@@ -357,6 +358,7 @@ PSE_SHORT_TERM_RW = Decimal("0.20")
 PSE_UNRATED_DEFAULT_RW = Decimal("1.00")
 
 
+@cites("CRR Art. 116")
 def _create_pse_df() -> pl.DataFrame:
     """Create PSE risk weight lookup DataFrame (Art. 116(2), Table 2A, own-rating).
 
@@ -411,6 +413,7 @@ RGLA_DOMESTIC_CURRENCY_RW = Decimal("0.20")
 RGLA_UNRATED_DEFAULT_RW = Decimal("1.00")
 
 
+@cites("CRR Art. 115")
 def _create_rgla_df() -> pl.DataFrame:
     """Create RGLA risk weight lookup DataFrame (Art. 115(1)(b), Table 1B, own-rating).
 
@@ -456,6 +459,7 @@ MDB_NAMED_ZERO_RW = Decimal("0.00")
 MDB_UNRATED_RW = Decimal("0.50")
 
 
+@cites("CRR Art. 117")
 def _create_mdb_df() -> pl.DataFrame:
     """Create MDB risk weight lookup DataFrame (Art. 117(1), Table 2B).
 
@@ -473,6 +477,27 @@ def _create_mdb_df() -> pl.DataFrame:
 # Art. 118: Named international organisations receiving 0% risk weight.
 # EU, IMF, BIS, EFSF, ESM — no rated table exists (all IOs in Art. 118 are 0%).
 IO_ZERO_RW = Decimal("0.00")
+
+INTERNATIONAL_ORG_RISK_WEIGHTS: dict[CQS, Decimal] = {
+    CQS.UNRATED: IO_ZERO_RW,
+}
+
+
+@cites("CRR Art. 118")
+def _create_io_df() -> pl.DataFrame:
+    """Create international organisation risk weight lookup DataFrame (Art. 118).
+
+    Art. 118 names 16 IOs (EU, IMF, BIS, ECB, EFSF, ESM, IBRD, IFC, IADB,
+    ADB, AfDB, CEB, NIB, CDB, EBRD, EFSI) that receive 0% unconditionally.
+    Returns a single-row DataFrame keyed on the unrated CQS sentinel so the
+    canonical risk-weight value lives alongside the other SA tables; the
+    SA calculator's inline IO branch is the runtime consumer.
+    """
+    return _build_cqs_rw_df(
+        INTERNATIONAL_ORG_RISK_WEIGHTS,
+        "INTERNATIONAL_ORG",
+        order=(CQS.UNRATED,),
+    )
 
 
 # =============================================================================
