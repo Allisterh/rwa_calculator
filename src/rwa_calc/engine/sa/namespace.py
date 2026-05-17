@@ -378,6 +378,7 @@ def _cqs_table_lookup_expr(
 # ---------------------------------------------------------------------------
 
 
+@cites("CRR Art. 137")
 def _eca_meip_rw_expr() -> pl.Expr:
     """Build Polars expression mapping ``cp_eca_score`` (0-7) to sovereign RW.
 
@@ -1111,6 +1112,7 @@ def _prepare_risk_weight_lookup(
     return exposures, pl.col("_upper_class"), is_domestic_currency
 
 
+@cites("CRR Art. 134")
 def _apply_b31_risk_weight_overrides(
     exposures: pl.LazyFrame,
     uc: pl.Expr,
@@ -1294,6 +1296,8 @@ def _apply_b31_risk_weight_overrides(
     return exposures
 
 
+@cites("CRR Art. 134")
+@cites("CRR Art. 137")
 def _apply_crr_risk_weight_overrides(
     exposures: pl.LazyFrame,
     uc: pl.Expr,

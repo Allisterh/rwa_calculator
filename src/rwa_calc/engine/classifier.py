@@ -120,6 +120,7 @@ class ExposureClassifier:
     """
 
     @cites("CRR Art. 112")
+    @cites("CRR Art. 147")
     def classify(
         self,
         data: ResolvedHierarchyBundle,
@@ -1188,6 +1189,9 @@ class ExposureClassifier:
     # Model-level permission resolution (optional)
     # =========================================================================
 
+    @cites("CRR Art. 143")
+    @cites("CRR Art. 148")
+    @cites("CRR Art. 150")
     def _resolve_model_permissions(
         self,
         exposures: pl.LazyFrame,
@@ -1698,6 +1702,7 @@ class ExposureClassifier:
         )
 
     @staticmethod
+    @cites("CRR Art. 147")
     def _align_irb_exposure_class(exposures: pl.LazyFrame) -> pl.LazyFrame:
         """Align exposure_class with exposure_class_irb for rgla/pse rows.
 
