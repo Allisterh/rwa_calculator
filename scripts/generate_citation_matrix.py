@@ -51,6 +51,94 @@ INSTRUMENTS: list[tuple[str, str]] = [
     ("PS", "PS1/26 (PRA Policy Statement)"),
 ]
 
+# CRR articles to render densely in numerical order. Each entry in this tuple
+# MUST be resolvable to either (a) one or more decorated functions in the live
+# watchfire matrix, or (b) a row in ``CRR_COVERAGE_NOTES`` explaining why it is
+# deliberately not cited. Articles outside this range render sparsely (only
+# those with ``@cites`` decorators).
+CRR_DENSE_RANGE: tuple[str, ...] = (
+    "111", "112", "113", "114", "115", "116", "117", "118", "119", "120",
+    "121", "122", "123", "124", "125", "126", "127", "128", "129", "130",
+    "131", "132", "133", "134", "135", "136", "137", "138", "139", "140",
+    "141", "142", "143", "144", "145", "146", "147", "147A", "148", "149",
+    "150", "151", "152",
+)
+
+# CRR articles in ``CRR_DENSE_RANGE`` that are deliberately not cited. Each row
+# is ``(title, reason_markdown)``. The renderer emits these as italic
+# "Out of scope" blocks alongside the implemented articles, so readers see a
+# complete picture of the CRR Title II range without leaving the page.
+CRR_COVERAGE_NOTES: dict[str, tuple[str, str]] = {
+    "128": (
+        "Items associated with particular high risk",
+        "UK CRR omitted Art. 128 by SI 2021/1078 reg. 6(3)(a) "
+        "(effective 1 Jan 2022) — exposures that would have attracted 150% "
+        "fall through to the 100% OTHER class under UK CRR. "
+        "The 150% treatment is reintroduced under Basel 3.1 — see "
+        "`PS1/26, paragraph 128` for the live decorator on "
+        "`engine/sa/namespace.py::_b31_append_high_risk_branch`.",
+    ),
+    "130": (
+        "Items representing securitisation positions",
+        "Out of scope — securitisation is handled by a separate "
+        "calculator domain (CRR Title II, Chapter 5). This calculator covers "
+        "Chapters 1-4 only.",
+    ),
+    "132": (
+        "Exposures in the form of units or shares in collective investment "
+        "undertakings (CIUs)",
+        "UK CRR omitted Art. 132; PRA reintroduced CIU treatment via "
+        "PS1/26 paragraph 132. Implementation lives at "
+        "`engine/equity/calculator.py::_append_ciu_branches` and is cited "
+        "under `PS1/26, paragraph 132` in the PS1/26 section below.",
+    ),
+    "142": (
+        "Definitions for the IRB approach",
+        "Definitions only — no calculation path. The terms are realised "
+        "in `src/rwa_calc/domain/enums.py` (e.g. `ExposureClass`, "
+        "`ApproachType`) and `src/rwa_calc/data/schemas.py`.",
+    ),
+    "144": (
+        "Competent authorities' assessment of an application",
+        "Supervisory process — out of scope for a calculator. IRB "
+        "permissions enter the engine via the `model_permissions` input "
+        "table; the calculator trusts whatever rows the firm supplies.",
+    ),
+    "145": (
+        "Prior experience with IRB approaches",
+        "Supervisory process — out of scope. Prior-experience review is "
+        "tracked in supervisory records, not in calculator state.",
+    ),
+    "146": (
+        "Measures to be taken where requirements cease to be met",
+        "Supervisory revocation — out of scope. Revocation is realised "
+        "operationally by removing rows from the `model_permissions` input.",
+    ),
+    "147A": (
+        "IRB approach restrictions (Basel 3.1)",
+        "Implemented in `engine/classifier.py::_apply_b31_approach_"
+        "restrictions`. CRR-side decoration is deferred — Art. 147A is a "
+        "Basel 3.1 amendment with no original CRR equivalent, and watchfire's "
+        "bundled CRR index does not cover the `A` suffix (see "
+        "[citation-tracking.md](citation-tracking.md) on alphanumeric "
+        "article handling). The PS1/26 paragraph mapping is pending a "
+        "future review.",
+    ),
+    "149": (
+        "Conditions for reverting to the use of less sophisticated approaches",
+        "Supervisory process — out of scope. Reversion is realised "
+        "operationally via removal of permission rows; the calculator "
+        "automatically falls back to SA when no IRB permission matches.",
+    ),
+    "152": (
+        "Treatment of exposures in the form of CIU units (IRB)",
+        "Not implemented — CIU look-through under IRB is out of scope for "
+        "this calculator. Equity-class CIU treatment under SA is in scope "
+        "via `engine/equity/calculator.py::_append_ciu_branches` "
+        "(see `PS1/26, paragraph 132`).",
+    ),
+}
+
 
 @cache
 def _parse(file_path: Path) -> ast.Module:
@@ -150,6 +238,75 @@ def _render_entry(entry: dict[str, Any], warnings: list[str]) -> str:
     return "\n".join(out) + "\n"
 
 
+def _render_coverage_note(article: str, title: str, reason: str) -> str:
+    """Render one ``### CRR Art. <N> — <title>`` block with an italic reason.
+
+    The ``reason`` body is emitted verbatim inside a single italic block —
+    each ``CRR_COVERAGE_NOTES`` entry chooses its own framing (out-of-scope,
+    UK-omitted, definitional, deferred, etc.).
+    """
+    return (
+        f"### CRR Art. {article} — {title}\n\n"
+        f"*{reason}*\n\n"
+    )
+
+
+def _crr_article_key(entry_key: str) -> str | None:
+    """Extract the article suffix from a watchfire key like ``CRR Art. 134``."""
+    prefix = "CRR Art. "
+    if entry_key.startswith(prefix):
+        return entry_key[len(prefix):].strip()
+    return None
+
+
+def _render_crr_section(
+    section_heading: str,
+    matrix: dict[str, Any],
+    warnings: list[str],
+) -> str:
+    """Render the CRR section with the dense 111-152 range plus sparse tail.
+
+    Every article in :data:`CRR_DENSE_RANGE` MUST resolve to either a live
+    watchfire entry or a :data:`CRR_COVERAGE_NOTES` row — the renderer raises
+    on omission so the matrix can never silently drop coverage. Articles
+    outside the dense range render as today (sparse — only the ones with
+    decorators).
+    """
+    entries = matrix.get("entries", [])
+    by_article: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        article = _crr_article_key(entry["key"])
+        if article is not None:
+            by_article[article] = entry
+
+    out = [f"## {section_heading}\n"]
+
+    rendered_articles: set[str] = set()
+    for article in CRR_DENSE_RANGE:
+        if article in by_article:
+            out.append(_render_entry(by_article[article], warnings))
+            rendered_articles.add(article)
+        elif article in CRR_COVERAGE_NOTES:
+            title, reason = CRR_COVERAGE_NOTES[article]
+            out.append(_render_coverage_note(article, title, reason))
+            rendered_articles.add(article)
+        else:
+            raise RuntimeError(
+                f"CRR Art. {article} is in CRR_DENSE_RANGE but has neither a "
+                f"live @cites decorator nor a CRR_COVERAGE_NOTES entry. Add "
+                f"one or remove it from the dense range."
+            )
+
+    # Sparse tail: render any articles outside the dense range in matrix order.
+    for entry in entries:
+        article = _crr_article_key(entry["key"])
+        if article is None or article in rendered_articles:
+            continue
+        out.append(_render_entry(entry, warnings))
+
+    return "\n".join(out)
+
+
 def _render_instrument_section(
     section_heading: str,
     matrix: dict[str, Any],
@@ -171,7 +328,10 @@ def main() -> int:
     sections: list[str] = []
     for instrument_key, section_heading in INSTRUMENTS:
         matrix = _run_matrix_json(instrument_key)
-        sections.append(_render_instrument_section(section_heading, matrix, warnings))
+        if instrument_key == "CRR":
+            sections.append(_render_crr_section(section_heading, matrix, warnings))
+        else:
+            sections.append(_render_instrument_section(section_heading, matrix, warnings))
 
     body = PREAMBLE.format(generated_on=date.today().isoformat()) + "\n".join(sections)
     if warnings:

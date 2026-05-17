@@ -100,6 +100,7 @@ EU_COUNTRY_DOMESTIC_CURRENCY: dict[str, str] = {
 
 
 @cites("CRR Art. 114")
+@cites("CRR Art. 141")
 def build_eu_domestic_currency_expr(
     country_col: str,
     currency_col: str | pl.Expr = "currency",

@@ -58,6 +58,7 @@ from rwa_calc.data.tables.entity_class_mapping import ENTITY_TYPES_BY_SA_CLASS
 from rwa_calc.domain.enums import CQS, ErrorCategory, ErrorSeverity, ExposureClass
 from rwa_calc.engine.fx_converter import FXConverter
 from rwa_calc.engine.utils import has_required_columns, partition_by_nullable
+from watchfire import cites
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
@@ -2184,6 +2185,10 @@ class HierarchyResolver:
             exposures = exposures.drop(temp_cols)
         return exposures, exp_schema
 
+    @cites("CRR Art. 135")
+    @cites("CRR Art. 136")
+    @cites("CRR Art. 138")
+    @cites("CRR Art. 139")
     def _attach_counterparty_rating(
         self,
         exposures: pl.LazyFrame,
@@ -2229,6 +2234,8 @@ class HierarchyResolver:
             )
         return exposures.with_columns(pl.lit(None).cast(pl.String).alias("model_id"))
 
+    @cites("CRR Art. 131")
+    @cites("CRR Art. 140")
     def _apply_short_term_rating_override(
         self,
         exposures: pl.LazyFrame,
