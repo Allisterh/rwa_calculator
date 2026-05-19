@@ -12,7 +12,7 @@ Regenerate after annotation changes:
 uv run python scripts/generate_citation_matrix.py
 ```
 
-Last generated: 2026-05-17.
+Last generated: 2026-05-19.
 
 ## CRR (Capital Requirements Regulation)
 
@@ -36,9 +36,9 @@ Last generated: 2026-05-17.
 
 ### CRR Art. 112 — Exposure classes
 
-??? quote "`classify` — src/rwa_calc/engine/classifier.py:122"
+??? quote "`classify` — src/rwa_calc/engine/classifier.py:123"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:122:173"
+    --8<-- "src/rwa_calc/engine/classifier.py:123:177"
     ```
 
 ??? quote "`apply_risk_weights` — src/rwa_calc/engine/sa/namespace.py:1666"
@@ -312,9 +312,9 @@ Last generated: 2026-05-17.
 
 ### CRR Art. 143 — Permission to use the IRB Approach
 
-??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1192"
+??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1235"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1192:1408"
+    --8<-- "src/rwa_calc/engine/classifier.py:1235:1451"
     ```
 
 
@@ -335,14 +335,14 @@ Last generated: 2026-05-17.
 
 ### CRR Art. 147 — Methodology to assign exposures to exposure classes
 
-??? quote "`classify` — src/rwa_calc/engine/classifier.py:123"
+??? quote "`classify` — src/rwa_calc/engine/classifier.py:124"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:122:173"
+    --8<-- "src/rwa_calc/engine/classifier.py:123:177"
     ```
 
-??? quote "`_align_irb_exposure_class` — src/rwa_calc/engine/classifier.py:1705"
+??? quote "`_align_irb_exposure_class` — src/rwa_calc/engine/classifier.py:1748"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1704:1725"
+    --8<-- "src/rwa_calc/engine/classifier.py:1747:1768"
     ```
 
 
@@ -353,9 +353,9 @@ Last generated: 2026-05-17.
 
 ### CRR Art. 148 — Conditions for implementing the IRB Approach across different classes of exposure and business units
 
-??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1193"
+??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1236"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1192:1408"
+    --8<-- "src/rwa_calc/engine/classifier.py:1235:1451"
     ```
 
 
@@ -366,9 +366,9 @@ Last generated: 2026-05-17.
 
 ### CRR Art. 150 — Conditions for permanent partial use
 
-??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1194"
+??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1237"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1192:1408"
+    --8<-- "src/rwa_calc/engine/classifier.py:1235:1451"
     ```
 
 
@@ -386,6 +386,11 @@ Last generated: 2026-05-17.
 
 
 ### CRR Art. 153 — Risk-weighted exposure amounts for exposures to corporates, institutions and central governments and central banks
+
+??? quote "`_build_is_defaulted_expr` — src/rwa_calc/engine/classifier.py:1851"
+    ```python
+    --8<-- "src/rwa_calc/engine/classifier.py:1849:1882"
+    ```
 
 ??? quote "`apply_irb_formulas` — src/rwa_calc/engine/irb/formulas.py:358"
     ```python
@@ -549,6 +554,14 @@ Last generated: 2026-05-17.
     ```
 
 
+### CRR Art. 178 — Default of an obligor
+
+??? quote "`_build_is_defaulted_expr` — src/rwa_calc/engine/classifier.py:1850"
+    ```python
+    --8<-- "src/rwa_calc/engine/classifier.py:1849:1882"
+    ```
+
+
 ### CRR Art. 194 — Principles governing the eligibility of credit risk mitigation techniques
 
 ??? quote "`apply_crm` — src/rwa_calc/engine/crm/processor.py:477"
@@ -593,9 +606,9 @@ Last generated: 2026-05-17.
 
 ### CRR Art. 222 — Financial Collateral Simple Method
 
-??? quote "`compute_fcsm_columns` — src/rwa_calc/engine/crm/simple_method.py:240"
+??? quote "`compute_fcsm_columns` — src/rwa_calc/engine/crm/simple_method.py:241"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/simple_method.py:240:664"
+    --8<-- "src/rwa_calc/engine/crm/simple_method.py:241:327"
     ```
 
 ??? quote "`apply_fcsm_rw_substitution` — src/rwa_calc/engine/sa/namespace.py:1712"
