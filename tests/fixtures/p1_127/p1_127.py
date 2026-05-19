@@ -186,6 +186,10 @@ class _Loan:
     the IRB adjustments stage reads to compute Pool B.  They are NOT in
     LOAN_SCHEMA so enforce_schema ignores them — they survive the loader
     as extra columns and are later picked up by compute_el_shortfall_excess().
+
+    is_defaulted is a first-class LOAN_SCHEMA column (CRR Art. 178) used to
+    route a single defaulted exposure on an otherwise-performing counterparty
+    through the Art. 153(1)(ii) / 154(1)(i) IRB defaulted formula.
     """
 
     loan_reference: str
@@ -201,6 +205,7 @@ class _Loan:
     beel: float
     seniority: str
     effective_maturity: float
+    is_defaulted: bool
     # Pool B pass-through columns (not in LOAN_SCHEMA; preserved by loader)
     ava_amount: float
     other_own_funds_reductions: float
@@ -220,6 +225,7 @@ class _Loan:
             "beel": self.beel,
             "seniority": self.seniority,
             "effective_maturity": self.effective_maturity,
+            "is_defaulted": self.is_defaulted,
             "ava_amount": self.ava_amount,
             "other_own_funds_reductions": self.other_own_funds_reductions,
         }
@@ -323,7 +329,7 @@ def create_p1127_counterparty() -> pl.DataFrame:
             country_code="GB",
             annual_revenue=200_000_000.0,  # < 440m large-corp threshold
             total_assets=400_000_000.0,
-            default_status=False,  # default status is per-exposure via beel/PD=1
+            default_status=False,  # per-exposure default via row-level is_defaulted (Art. 178)
             apply_fi_scalar=False,
             is_managed_as_retail=False,
         )
@@ -370,6 +376,7 @@ def create_p1127_loans() -> pl.DataFrame:
             beel=0.0,  # non-defaulted: beel not used for EL calc
             seniority="senior",
             effective_maturity=EFFECTIVE_MATURITY_ND,
+            is_defaulted=False,
             ava_amount=AVA_ND,
             other_own_funds_reductions=OTHER_OFR_ND,
         ),
@@ -387,6 +394,7 @@ def create_p1127_loans() -> pl.DataFrame:
             beel=BEEL_D,  # defaulted: EL = beel × EAD per Art. 158(5)
             seniority="senior",
             effective_maturity=EFFECTIVE_MATURITY_D,
+            is_defaulted=True,  # CRR Art. 178 row-level default flag
             ava_amount=AVA_D,
             other_own_funds_reductions=OTHER_OFR_D,
         ),

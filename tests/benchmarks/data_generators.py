@@ -408,6 +408,7 @@ def generate_facilities(
                 "is_obs_commitment": np.full(n_facilities, None),  # Default True via schema
                 "is_payroll_loan": np.full(n_facilities, None),  # Payroll loan flag
                 "is_buy_to_let": np.full(n_facilities, None),  # BTL flag for SME supporting factor
+                "is_defaulted": np.full(n_facilities, None),  # CRR Art. 178 row-level default flag
                 "is_under_construction": np.full(n_facilities, None),  # P1.140 ADC
                 "has_one_day_maturity_floor": np.full(n_facilities, None),  # Repo/SFT 1-day floor
                 "is_sft": np.full(n_facilities, None),  # CRR Art. 162(1): SFT F-IRB 0.5y maturity
@@ -605,6 +606,7 @@ def generate_loans(
             "has_sufficient_collateral_data": np.full(n_loans, None),  # LGD modelling flag
             "is_payroll_loan": np.full(n_loans, None),  # Payroll loan flag
             "is_buy_to_let": np.full(n_loans, None),  # BTL flag for SME supporting factor
+            "is_defaulted": np.full(n_loans, None),  # CRR Art. 178 row-level default flag
             "is_under_construction": np.full(n_loans, None),  # P1.140 ADC
             "has_one_day_maturity_floor": np.full(n_loans, None),  # Repo/SFT 1-day floor
             "is_sft": np.full(n_loans, None),  # CRR Art. 162(1): SFT F-IRB 0.5y maturity
@@ -977,6 +979,7 @@ def generate_contingents(
                 "effective_maturity": np.full(
                     n_contingents, None
                 ),  # Art. 162(3) numeric M override
+                "is_defaulted": np.full(n_contingents, None),  # CRR Art. 178 row-level default flag
                 "is_under_construction": np.full(n_contingents, None),  # P1.140 ADC
                 "purchased_receivables_subtype": pl.Series([None] * n_contingents, dtype=pl.String),
                 "exposure_collateral_type": pl.Series([None] * n_contingents, dtype=pl.String),

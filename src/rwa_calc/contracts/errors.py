@@ -166,6 +166,7 @@ ERROR_DUPLICATE_KEY = "DQ004"
 ERROR_ORPHAN_REFERENCE = "DQ005"
 ERROR_INVALID_COLUMN_VALUE = "DQ006"
 ERROR_OPTIONAL_FILE_UNREADABLE = "DQ007"
+ERROR_BEEL_ON_NON_DEFAULTED_EXPOSURE = "DQ008"
 
 # Hierarchy error codes
 ERROR_CIRCULAR_HIERARCHY = "HIE001"
@@ -358,6 +359,38 @@ def re_split_warning(
         category=ErrorCategory.CLASSIFICATION,
         exposure_reference=exposure_reference,
         regulatory_reference=regulatory_reference,
+    )
+
+
+def beel_on_non_defaulted_exposure_warning(
+    *,
+    exposure_reference: str | None,
+    beel_value: float,
+) -> CalculationError:
+    """Create a DQ008 warning for the (is_defaulted=False ∧ beel>0) contradiction.
+
+    PS1/26 Art. 181(1)(h)(ii) and CRR Art. 158(5) define BEEL only for
+    defaulted exposures. When a firm's A-IRB pipeline populates ``beel``
+    alongside ``lgd`` on performing rows, the engine does NOT silently
+    promote those rows to defaulted; instead it routes them through the
+    standard performing branch and emits one of these warnings per
+    offending exposure so the input contradiction is visible in the
+    audit trail. The value is unused downstream — IRB defaulted treatment
+    only reads ``beel`` when ``is_defaulted`` is True.
+    """
+    return CalculationError(
+        code=ERROR_BEEL_ON_NON_DEFAULTED_EXPOSURE,
+        severity=ErrorSeverity.WARNING,
+        category=ErrorCategory.DATA_QUALITY,
+        message=(
+            f"BEEL populated on non-defaulted exposure (beel={beel_value:g}); "
+            "BEEL is defined only for defaulted exposures under "
+            "PS1/26 Art. 181(1)(h)(ii) / CRR Art. 158(5). Value will not be consumed."
+        ),
+        exposure_reference=exposure_reference,
+        regulatory_reference="PS1/26 Art. 181(1)(h)(ii); CRR Art. 158(5)",
+        field_name="beel",
+        actual_value=f"{beel_value:g}",
     )
 
 

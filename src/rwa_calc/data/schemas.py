@@ -86,6 +86,14 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     "is_obs_commitment": ColumnSpec(pl.Boolean, default=True, required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_buy_to_let": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 178 row-level default flag. When True, the exposure is routed
+    # through the Art. 153(1)(ii) / 154(1)(i) defaulted IRB treatment (or the
+    # Art. 127 SA defaulted branch) even if the counterparty's
+    # ``default_status`` is False — supports the case of a single defaulted
+    # facility on an otherwise-performing obligor. The counterparty-level
+    # ``default_status`` propagates to every exposure of that counterparty
+    # regardless of this flag.
+    "is_defaulted": ColumnSpec(pl.Boolean, default=False, required=False),
     # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
     # under construction. Drives the ADC ("Acquisition, Development and
     # Construction") classification path in the classifier. Combined with the
@@ -125,6 +133,8 @@ LOAN_SCHEMA: dict[str, ColumnSpec] = {
     "seniority": ColumnSpec(pl.String, default="senior", required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_buy_to_let": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 178 row-level default flag. See FACILITY_SCHEMA for full notes.
+    "is_defaulted": ColumnSpec(pl.Boolean, default=False, required=False),
     # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
     # under construction — drives the ADC classification derivation in the
     # classifier (combined with a corporate / non-natural-person gate).
@@ -184,6 +194,8 @@ CONTINGENTS_SCHEMA: dict[str, ColumnSpec] = {
     # Override to True for genuine commitment-style contingents (e.g., an
     # NIF / RUF booked as a contingent), in which case Art. 166(8)(d) -> 75% applies.
     "is_obs_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 178 row-level default flag. See FACILITY_SCHEMA for full notes.
+    "is_defaulted": ColumnSpec(pl.Boolean, default=False, required=False),
     # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is
     # under construction — drives the ADC classification derivation in the
     # classifier (combined with a corporate / non-natural-person gate).

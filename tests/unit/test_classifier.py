@@ -249,6 +249,50 @@ def mixed_exposures() -> pl.LazyFrame:
     ).lazy()
 
 
+def _build_single_exposure(
+    *,
+    exposure_reference: str,
+    counterparty_reference: str,
+    is_defaulted: bool | None,
+    beel: float | None,
+) -> pl.LazyFrame:
+    """Build a one-row exposure LazyFrame for default-derivation tests.
+
+    Sets only the columns required by the classifier; ``is_defaulted`` and
+    ``beel`` are added conditionally so each test exercises a specific
+    schema shape (column-present vs column-absent).
+    """
+    payload: dict[str, list] = {
+        "exposure_reference": [exposure_reference],
+        "exposure_type": ["loan"],
+        "product_type": ["TERM_LOAN"],
+        "book_code": ["CORP"],
+        "counterparty_reference": [counterparty_reference],
+        "value_date": [date(2023, 1, 1)],
+        "maturity_date": [date(2028, 1, 1)],
+        "currency": ["GBP"],
+        "drawn_amount": [1_000_000.0],
+        "undrawn_amount": [0.0],
+        "nominal_amount": [0.0],
+        "lgd": [0.45],
+        "seniority": ["senior"],
+        "exposure_has_parent": [False],
+        "root_facility_reference": [None],
+        "facility_hierarchy_depth": [1],
+        "counterparty_has_parent": [False],
+        "parent_counterparty_reference": [None],
+        "ultimate_parent_reference": [None],
+        "counterparty_hierarchy_depth": [1],
+        "lending_group_reference": [None],
+        "lending_group_total_exposure": [0.0],
+    }
+    if is_defaulted is not None:
+        payload["is_defaulted"] = [is_defaulted]
+    if beel is not None:
+        payload["beel"] = [beel]
+    return pl.DataFrame(payload).lazy()
+
+
 def create_resolved_bundle(
     exposures: pl.LazyFrame,
     counterparties: pl.LazyFrame,
@@ -1234,6 +1278,128 @@ class TestDefaultClassification:
         # Performing exposure
         performing = df.filter(pl.col("exposure_reference") == "PERF_EXP")
         assert performing["is_defaulted"][0] is False
+
+    def test_row_level_is_defaulted_flag_triggers_default(
+        self,
+        classifier: ExposureClassifier,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """Row-level is_defaulted=True flips a row on a performing counterparty.
+
+        CRR Art. 178: a single defaulted exposure on an otherwise-performing
+        counterparty must trigger the Art. 153(1)(ii) / 154(1)(i) defaulted
+        treatment.
+        """
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["PERF_CP"],
+                "counterparty_name": ["Performing Corp"],
+                "entity_type": ["corporate"],
+                "country_code": ["GB"],
+                "annual_revenue": [10_000_000.0],
+                "total_assets": [50_000_000.0],
+                "default_status": [False],
+                "sector_code": ["MANU"],
+                "apply_fi_scalar": [False],
+                "is_managed_as_retail": [False],
+            }
+        ).lazy()
+        exposures = _build_single_exposure(
+            exposure_reference="ROW_DEF_EXP",
+            counterparty_reference="PERF_CP",
+            is_defaulted=True,
+            beel=None,
+        )
+        bundle = create_resolved_bundle(exposures, counterparties)
+
+        result = classifier.classify(bundle, crr_config)
+
+        df = result.all_exposures.collect()
+        assert df["is_defaulted"][0] is True
+        assert not any(e.code == "DQ008" for e in result.classification_errors)
+
+    def test_beel_alone_does_not_trigger_default(
+        self,
+        classifier: ExposureClassifier,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """beel>0 on a performing row must NOT route to defaulted (DQ008 emitted).
+
+        PS1/26 Art. 181(1)(h)(ii): BEEL is defined only for defaulted
+        exposures, but firms whose A-IRB models emit a BEEL-style value on
+        performing rows would otherwise be silently mass-flagged. The
+        classifier routes performing and emits one DQ008 warning per
+        offending row.
+        """
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["PERF_CP"],
+                "counterparty_name": ["Performing Corp"],
+                "entity_type": ["corporate"],
+                "country_code": ["GB"],
+                "annual_revenue": [10_000_000.0],
+                "total_assets": [50_000_000.0],
+                "default_status": [False],
+                "sector_code": ["MANU"],
+                "apply_fi_scalar": [False],
+                "is_managed_as_retail": [False],
+            }
+        ).lazy()
+        exposures = _build_single_exposure(
+            exposure_reference="BEEL_PERF_EXP",
+            counterparty_reference="PERF_CP",
+            is_defaulted=False,
+            beel=0.05,
+        )
+        bundle = create_resolved_bundle(exposures, counterparties)
+
+        result = classifier.classify(bundle, crr_config)
+
+        df = result.all_exposures.collect()
+        assert df["is_defaulted"][0] is False
+        dq008 = [e for e in result.classification_errors if e.code == "DQ008"]
+        assert len(dq008) == 1
+        assert dq008[0].exposure_reference == "BEEL_PERF_EXP"
+
+    def test_cp_default_with_beel_no_dq008(
+        self,
+        classifier: ExposureClassifier,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """Counterparty default + beel>0 → defaulted, no DQ008 (BEEL legitimately consumed).
+
+        When the counterparty cascade legitimately routes the row to
+        defaulted, the row-level beel is consumed downstream (IRB
+        Art. 154(1)(i) K = max(0, LGD − BEEL)) and the contradiction
+        warning must NOT fire.
+        """
+        counterparties = pl.DataFrame(
+            {
+                "counterparty_reference": ["DEF_CP"],
+                "counterparty_name": ["Defaulted Corp"],
+                "entity_type": ["corporate"],
+                "country_code": ["GB"],
+                "annual_revenue": [10_000_000.0],
+                "total_assets": [50_000_000.0],
+                "default_status": [True],
+                "sector_code": ["MANU"],
+                "apply_fi_scalar": [False],
+                "is_managed_as_retail": [False],
+            }
+        ).lazy()
+        exposures = _build_single_exposure(
+            exposure_reference="CP_DEF_BEEL_EXP",
+            counterparty_reference="DEF_CP",
+            is_defaulted=False,
+            beel=0.05,
+        )
+        bundle = create_resolved_bundle(exposures, counterparties)
+
+        result = classifier.classify(bundle, crr_config)
+
+        df = result.all_exposures.collect()
+        assert df["is_defaulted"][0] is True
+        assert not any(e.code == "DQ008" for e in result.classification_errors)
 
 
 # =============================================================================

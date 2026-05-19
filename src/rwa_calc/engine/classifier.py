@@ -51,6 +51,7 @@ from rwa_calc.contracts.errors import (
     CalculationError,
     ErrorCategory,
     ErrorSeverity,
+    beel_on_non_defaulted_exposure_warning,
     classification_warning,
 )
 from rwa_calc.data.column_spec import ColumnSpec, ensure_columns
@@ -151,6 +152,9 @@ class ExposureClassifier:
         classification_errors = self._collect_input_warnings(data, schema_names, config)
 
         classified = self._derive_independent_flags(exposures, config, schema_names)
+        classification_errors.extend(
+            self._collect_beel_on_non_defaulted_warnings(classified, schema_names)
+        )
         classified = self._classify_exposure_subtypes(classified, config, schema_names)
         classified = self._reclassify_corporate_to_retail(classified, config, schema_names)
         classified = self._flag_property_reclassification_candidates(
@@ -258,6 +262,43 @@ class ExposureClassifier:
         ]
         exposures = exposures.drop("_model_permission_diagnostic")
         return exposures, diagnostics
+
+    @staticmethod
+    def _collect_beel_on_non_defaulted_warnings(
+        classified: pl.LazyFrame,
+        schema_names: set[str],
+    ) -> list[CalculationError]:
+        """Emit one DQ008 warning per ``(is_defaulted=False ∧ beel>0)`` row.
+
+        PS1/26 Art. 181(1)(h)(ii) and CRR Art. 158(5) define BEEL only for
+        defaulted exposures, but a firm's A-IRB model pipeline may emit a
+        BEEL-style value alongside LGD on performing rows. The classifier
+        deliberately does NOT treat ``beel > 0`` as a default trigger (see
+        ``_build_is_defaulted_expr``); this companion check surfaces the
+        input contradiction as a non-blocking data-quality warning so the
+        audit trail is explicit.
+
+        Returns an empty list when ``beel`` is absent from the schema.
+        Reads the *derived* ``is_defaulted`` so rows that the counterparty
+        cascade legitimately routes to defaulted are NOT flagged — those
+        rows correctly consume BEEL in the IRB defaulted formula.
+        """
+        if "beel" not in schema_names:
+            return []
+        offenders = (
+            classified.filter(
+                ~pl.col("is_defaulted").fill_null(False) & (pl.col("beel").fill_null(0.0) > 0.0)
+            )
+            .select(["exposure_reference", "beel"])
+            .collect()
+        )
+        return [
+            beel_on_non_defaulted_exposure_warning(
+                exposure_reference=row["exposure_reference"],
+                beel_value=float(row["beel"]),
+            )
+            for row in offenders.iter_rows(named=True)
+        ]
 
     def _build_bundle(
         self,
@@ -630,14 +671,16 @@ class ExposureClassifier:
                 # --- Mortgage flag ---
                 self._build_is_mortgage_expr(schema_names),
                 # --- Default flags ---
-                # Per-exposure default detection per CRR Art. 178 / Art. 158(5):
-                # an exposure is defaulted when EITHER (a) the counterparty is in
-                # default (cp_default_status), OR (b) a row-level ``is_defaulted``
-                # flag has been set upstream (e.g. by the loan parquet), OR
-                # (c) ``beel > 0`` — best-estimate-EL is only defined for defaulted
-                # exposures (Art. 158(5)), so a non-zero BEEL is the conventional
-                # per-exposure regulatory signal of default. Counterparty-level
-                # default still propagates to all that counterparty's exposures.
+                # Per-exposure default detection per CRR Art. 178: an exposure
+                # is defaulted when EITHER (a) the counterparty is in default
+                # (cp_default_status — propagates to all that counterparty's
+                # exposures), OR (b) a row-level ``is_defaulted`` flag has been
+                # set upstream (e.g. by the loan parquet, letting a single
+                # defaulted exposure on an otherwise-performing counterparty
+                # trigger Art. 153(1)(ii) / 154(1)(i)). ``beel`` is consumed by
+                # the A-IRB defaulted formula (Art. 154(1)(i)) and Pool C of
+                # Art. 158(5) but is NOT itself a trigger — see
+                # ``_build_is_defaulted_expr`` and the DQ008 companion check.
                 self._build_is_defaulted_expr(schema_names),
                 # Art. 112 Table A2: HIGH_RISK (priority 4) takes precedence over
                 # DEFAULTED (priority 5). A defaulted high-risk item retains 150% per
@@ -1804,21 +1847,31 @@ class ExposureClassifier:
         return derived.alias("is_adc")
 
     @staticmethod
+    @cites("CRR Art. 178")
+    @cites("CRR Art. 153")
     def _build_is_defaulted_expr(schema_names: set[str]) -> pl.Expr:
         """Build per-exposure ``is_defaulted`` flag.
 
-        Combines three signals so default detection works at any granularity:
+        Combines two explicit default signals so detection works at any
+        granularity:
+
         - counterparty-level ``cp_default_status`` (propagates to all that
           counterparty's exposures);
         - explicit row-level ``is_defaulted`` carried on the loan/contingent
           parquet (lets a single-default exposure on an otherwise non-defaulted
           counterparty trigger the Art. 153(1)(ii) / 154(1)(i) defaulted
-          treatment);
-        - ``beel > 0`` — CRR Art. 158(5) defines BEEL only for defaulted
-          exposures, so a non-zero best-estimate-EL is the conventional
-          per-exposure regulatory signal of default.
+          treatment).
 
-        Any one of the three being true sets ``is_defaulted=True``.
+        Either one being true sets ``is_defaulted=True``.
+
+        ``beel`` is deliberately **not** a trigger. PS1/26 Art. 181(1)(h)(ii)
+        and CRR Art. 158(5) define BEEL only for defaulted exposures, but
+        firms whose A-IRB models emit a BEEL-style value alongside LGD on
+        performing exposures would otherwise see those rows silently
+        reclassified as defaulted. The post-classification step
+        ``_collect_beel_on_non_defaulted_warnings`` flags the contradictory
+        combination (``is_defaulted=False ∧ beel>0``) as a DQ008 warning so
+        the input contradiction is visible without changing routing.
         """
         cp_default = pl.col("cp_default_status") == True  # noqa: E712
         row_default = (
@@ -1826,10 +1879,7 @@ class ExposureClassifier:
             if "is_defaulted" in schema_names
             else pl.lit(False)
         )
-        beel_default = (
-            pl.col("beel").fill_null(0.0) > 0.0 if "beel" in schema_names else pl.lit(False)
-        )
-        return (cp_default | row_default | beel_default).alias("is_defaulted")
+        return (cp_default | row_default).alias("is_defaulted")
 
     @staticmethod
     def _build_is_mortgage_expr(schema_names: set[str]) -> pl.Expr:

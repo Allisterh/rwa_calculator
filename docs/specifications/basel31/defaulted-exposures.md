@@ -250,6 +250,23 @@ Float64. The column is defined in `src/rwa_calc/data/schemas.py` on `loans`,
 routed through the A-IRB approach (see
 [Default Definition spec — BEEL Companion Input](../common/default-definition.md#beel-companion-input-a-irb-only)).
 
+!!! warning "`beel > 0` is **not** a default trigger — DQ008 surfaces the contradiction"
+    PS1/26 Art. 181(1)(h)(ii) and Art. 158(5) define BEEL only for defaulted
+    exposures, so it would be tempting to treat `beel > 0` as sufficient
+    evidence of default. The engine deliberately does **not** do that — firms
+    whose A-IRB model pipelines emit a BEEL-style value alongside `lgd` for
+    every advanced-IRB customer (not just defaulted ones) would otherwise see
+    those rows silently mass-flagged as defaulted. The classifier's
+    `_build_is_defaulted_expr` (`engine/classifier.py`) derives `is_defaulted`
+    from two explicit signals only — `cp_default_status` and the row-level
+    `is_defaulted` flag — and a non-zero `beel` on a non-defaulted row
+    surfaces as one `DQ008` warning per offending exposure
+    (`ERROR_BEEL_ON_NON_DEFAULTED_EXPOSURE` in `contracts/errors.py`,
+    severity `WARNING`, category `DATA_QUALITY`). The calc is unaffected on
+    those rows — `beel` is only consumed when the derived `is_defaulted` is
+    `True`. To eliminate the warning, restrict `beel` population to defaulted
+    rows in the upstream loader.
+
 **Relationship to `LGD-in-default`.** The A-IRB capital formula `K = max(0, LGD − BEEL)`
 uses the institution's **LGD-in-default estimate** (the firm's current best view of
 post-default economic loss, used in the RW structure) minus BEEL (the firm's best

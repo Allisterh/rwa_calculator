@@ -385,6 +385,16 @@ column per Art. 158(5) — the firm's own estimate of loss from the default even
 final liquidation/recovery. See
 [A-IRB defaulted specification](../basel31/defaulted-exposures.md#a-irb-defaulted-art-1541i).
 
+!!! warning "`beel > 0` is not a default trigger"
+    The classifier derives `is_defaulted` from `cp_default_status` OR the
+    row-level `is_defaulted` flag — `beel > 0` alone does **not** route a
+    row to defaulted treatment. A non-zero `beel` on a row whose derived
+    `is_defaulted` is `False` is reported as one non-blocking `DQ008`
+    warning per offending exposure; the value is otherwise unused.
+    Restrict `beel` to defaulted rows in the upstream loader to suppress
+    the warning. Detail in
+    [Defaulted Exposures spec — Required Input](../basel31/defaulted-exposures.md#beel-best-estimate-of-expected-loss-art-1585-art-1811hii).
+
 ### Post-Default Probation (Out of Scope)
 
 The 3-month cure (Art. 178(5)) and 1-year distressed-restructuring probation
