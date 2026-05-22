@@ -57,8 +57,18 @@ class TestExtractEurGbpRate:
             }
         )
 
-        with caplog.at_level(logging.WARNING, logger="rwa_calc.engine.fx_rate_sync"):
-            result = extract_eur_gbp_rate(fx_rates)
+        # `configure_logging()` (run by any earlier pipeline test) sets
+        # propagate=False on the rwa_calc namespace logger, which severs it
+        # from caplog's root-attached handler. Re-enable propagation for the
+        # scope of this test so caplog can see the warning.
+        rwa_logger = logging.getLogger("rwa_calc")
+        original_propagate = rwa_logger.propagate
+        rwa_logger.propagate = True
+        try:
+            with caplog.at_level(logging.WARNING, logger="rwa_calc.engine.fx_rate_sync"):
+                result = extract_eur_gbp_rate(fx_rates)
+        finally:
+            rwa_logger.propagate = original_propagate
 
         assert result is None
         assert any("2 (EUR, GBP) rows" in rec.message for rec in caplog.records)
