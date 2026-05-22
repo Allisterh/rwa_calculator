@@ -22,6 +22,8 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import typing
+from datetime import date
+from decimal import Decimal
 
 import polars as pl
 import pytest
@@ -34,6 +36,7 @@ import pytest
 # ImportError at collection time.
 # ---------------------------------------------------------------------------
 import rwa_calc.contracts.bundles as bundles
+import rwa_calc.contracts.config as config_module  # CCRConfig / CalculationConfig (P8.6)
 import rwa_calc.contracts.protocols as protocols
 
 # ---------------------------------------------------------------------------
@@ -761,3 +764,365 @@ def test_ccr_calculator_protocol_rejects_noncompliant_stub() -> None:
 # inspect.signature() which returns the raw string under PEP 563.
 # ---------------------------------------------------------------------------
 _ = typing  # keep the import from being removed by the formatter
+
+
+# ===========================================================================
+# P8.6 — CCRConfig dataclass defaults + CalculationConfig factory wiring
+# ===========================================================================
+#
+# Helpers
+# -------
+_REPORTING_DATE = date(2026, 1, 1)
+
+
+def _get_ccr_config_cls() -> type:
+    """Return CCRConfig class, asserting it exists in config_module."""
+    cls = getattr(config_module, "CCRConfig", None)
+    assert cls is not None, (
+        "rwa_calc.contracts.config does not expose 'CCRConfig'. "
+        "Add the class to src/rwa_calc/contracts/config.py (P8.6)."
+    )
+    return cls
+
+
+def _get_calculation_config_cls() -> type:
+    """Return CalculationConfig class from config_module."""
+    cls = getattr(config_module, "CalculationConfig", None)
+    assert cls is not None, "CalculationConfig not found in rwa_calc.contracts.config"
+    return cls
+
+
+class TestCCRConfigDefaults:
+    """P8.6 — CCRConfig dataclass fields and CalculationConfig factory wiring."""
+
+    # -----------------------------------------------------------------------
+    # Dataclass-level tests
+    # -----------------------------------------------------------------------
+
+    def test_ccrconfig_default_construction_method(self) -> None:
+        """CCRConfig().method must default to 'sa_ccr'."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+
+        # Act
+        instance = cls()
+
+        # Assert
+        assert instance.method == "sa_ccr", (
+            f"CCRConfig().method expected 'sa_ccr', got {instance.method!r}. "
+            "Add field: method: Literal['sa_ccr'] = 'sa_ccr'"
+        )
+
+    def test_ccrconfig_default_construction_alpha(self) -> None:
+        """CCRConfig().alpha must default to Decimal('1.4') per CRR Art. 274(2)."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+
+        # Act
+        instance = cls()
+
+        # Assert
+        assert instance.alpha == Decimal("1.4"), (
+            f"CCRConfig().alpha expected Decimal('1.4'), got {instance.alpha!r}. "
+            "Add field: alpha: Decimal = Decimal('1.4')"
+        )
+
+    def test_ccrconfig_default_construction_enable_ccp_exposures(self) -> None:
+        """CCRConfig().enable_ccp_exposures must default to True."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+
+        # Act
+        instance = cls()
+
+        # Assert
+        assert instance.enable_ccp_exposures is True, (
+            f"CCRConfig().enable_ccp_exposures expected True, "
+            f"got {instance.enable_ccp_exposures!r}. "
+            "Add field: enable_ccp_exposures: bool = True"
+        )
+
+    def test_ccrconfig_default_construction_mpor_floor_days(self) -> None:
+        """CCRConfig().mpor_floor_days must default to 10 per CRR Art. 285."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+
+        # Act
+        instance = cls()
+
+        # Assert
+        assert instance.mpor_floor_days == 10, (
+            f"CCRConfig().mpor_floor_days expected 10, got {instance.mpor_floor_days!r}. "
+            "Add field: mpor_floor_days: int = 10"
+        )
+
+    def test_ccrconfig_default_construction_recognise_im(self) -> None:
+        """CCRConfig().recognise_im must default to True."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+
+        # Act
+        instance = cls()
+
+        # Assert
+        assert instance.recognise_im is True, (
+            f"CCRConfig().recognise_im expected True, got {instance.recognise_im!r}. "
+            "Add field: recognise_im: bool = True"
+        )
+
+    def test_ccrconfig_is_frozen(self) -> None:
+        """Assigning to CCRConfig().alpha must raise dataclasses.FrozenInstanceError."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+        instance = cls()
+
+        # Act + Assert
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            instance.alpha = Decimal("1.5")  # type: ignore[misc]
+
+    def test_ccrconfig_accepts_supervisory_alpha_above_default(self) -> None:
+        """CCRConfig(alpha=Decimal('1.5')).alpha must equal Decimal('1.5')."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+
+        # Act
+        instance = cls(alpha=Decimal("1.5"))
+
+        # Assert
+        assert instance.alpha == Decimal("1.5"), (
+            f"CCRConfig(alpha=Decimal('1.5')).alpha expected Decimal('1.5'), "
+            f"got {instance.alpha!r}."
+        )
+
+    def test_ccrconfig_method_literal_only_sa_ccr(self) -> None:
+        """The 'method' field annotation must be Literal['sa_ccr'] (string form)."""
+        # Arrange
+        cls = _get_ccr_config_cls()
+
+        # Act — with from __future__ import annotations, annotations are strings
+        raw_annotation = cls.__annotations__.get("method", "")
+
+        # Assert — "Literal" and "sa_ccr" both appear in the annotation string
+        annotation_str = str(raw_annotation)
+        assert "Literal" in annotation_str and "sa_ccr" in annotation_str, (
+            f"CCRConfig.method annotation must be Literal['sa_ccr'], "
+            f"got {raw_annotation!r}. "
+            "Declare: method: Literal['sa_ccr'] = 'sa_ccr'"
+        )
+
+    # -----------------------------------------------------------------------
+    # CalculationConfig.crr() factory tests
+    # -----------------------------------------------------------------------
+
+    def test_calculationconfig_crr_has_ccr_attribute(self) -> None:
+        """CalculationConfig.crr() must expose a .ccr attribute that is a CCRConfig."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+        ccr_cls = _get_ccr_config_cls()
+
+        # Act
+        cfg = calc_cls.crr(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert hasattr(cfg, "ccr"), (
+            "CalculationConfig.crr() result has no 'ccr' attribute. "
+            "Add field: ccr: CCRConfig = field(default_factory=CCRConfig) to CalculationConfig "
+            "and wire it in the .crr() factory."
+        )
+        assert isinstance(cfg.ccr, ccr_cls), (
+            f"CalculationConfig.crr().ccr must be an instance of CCRConfig, got {type(cfg.ccr)!r}."
+        )
+
+    def test_calculationconfig_crr_default_alpha(self) -> None:
+        """CalculationConfig.crr().ccr.alpha must equal Decimal('1.4')."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.crr(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.alpha == Decimal("1.4"), (
+            f"CalculationConfig.crr().ccr.alpha expected Decimal('1.4'), got {cfg.ccr.alpha!r}."
+        )
+
+    def test_calculationconfig_crr_default_mpor(self) -> None:
+        """CalculationConfig.crr().ccr.mpor_floor_days must equal 10."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.crr(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.mpor_floor_days == 10, (
+            f"CalculationConfig.crr().ccr.mpor_floor_days expected 10, "
+            f"got {cfg.ccr.mpor_floor_days!r}."
+        )
+
+    def test_calculationconfig_crr_default_enable_ccp_exposures(self) -> None:
+        """CalculationConfig.crr().ccr.enable_ccp_exposures must be True."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.crr(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.enable_ccp_exposures is True, (
+            f"CalculationConfig.crr().ccr.enable_ccp_exposures expected True, "
+            f"got {cfg.ccr.enable_ccp_exposures!r}."
+        )
+
+    def test_calculationconfig_crr_default_recognise_im(self) -> None:
+        """CalculationConfig.crr().ccr.recognise_im must be True."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.crr(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.recognise_im is True, (
+            f"CalculationConfig.crr().ccr.recognise_im expected True, got {cfg.ccr.recognise_im!r}."
+        )
+
+    def test_calculationconfig_crr_ccr_alpha_kwarg_pass_through(self) -> None:
+        """CalculationConfig.crr(ccr_alpha=Decimal('1.5')).ccr.alpha must equal Decimal('1.5')."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.crr(reporting_date=_REPORTING_DATE, ccr_alpha=Decimal("1.5"))
+
+        # Assert
+        assert cfg.ccr.alpha == Decimal("1.5"), (
+            f"CalculationConfig.crr(ccr_alpha=Decimal('1.5')).ccr.alpha expected "
+            f"Decimal('1.5'), got {cfg.ccr.alpha!r}. "
+            "Add kwarg 'ccr_alpha' to CalculationConfig.crr() and pass it to CCRConfig."
+        )
+
+    def test_calculationconfig_crr_mpor_floor_days_kwarg_pass_through(self) -> None:
+        """CalculationConfig.crr(mpor_floor_days=20).ccr.mpor_floor_days must equal 20."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.crr(reporting_date=_REPORTING_DATE, mpor_floor_days=20)
+
+        # Assert
+        assert cfg.ccr.mpor_floor_days == 20, (
+            f"CalculationConfig.crr(mpor_floor_days=20).ccr.mpor_floor_days expected 20, "
+            f"got {cfg.ccr.mpor_floor_days!r}. "
+            "Add kwarg 'mpor_floor_days' to CalculationConfig.crr() and pass it to CCRConfig."
+        )
+
+    # -----------------------------------------------------------------------
+    # CalculationConfig.basel_3_1() factory tests
+    # -----------------------------------------------------------------------
+
+    def test_calculationconfig_basel_3_1_has_ccr_attribute(self) -> None:
+        """CalculationConfig.basel_3_1() must expose a .ccr attribute that is a CCRConfig."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+        ccr_cls = _get_ccr_config_cls()
+
+        # Act
+        cfg = calc_cls.basel_3_1(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert hasattr(cfg, "ccr"), (
+            "CalculationConfig.basel_3_1() result has no 'ccr' attribute. "
+            "Add field: ccr: CCRConfig = field(default_factory=CCRConfig) to CalculationConfig "
+            "and wire it in the .basel_3_1() factory."
+        )
+        assert isinstance(cfg.ccr, ccr_cls), (
+            f"CalculationConfig.basel_3_1().ccr must be an instance of CCRConfig, "
+            f"got {type(cfg.ccr)!r}."
+        )
+
+    def test_calculationconfig_basel_3_1_default_alpha(self) -> None:
+        """CalculationConfig.basel_3_1().ccr.alpha must equal Decimal('1.4')."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.basel_3_1(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.alpha == Decimal("1.4"), (
+            f"CalculationConfig.basel_3_1().ccr.alpha expected Decimal('1.4'), "
+            f"got {cfg.ccr.alpha!r}."
+        )
+
+    def test_calculationconfig_basel_3_1_default_mpor(self) -> None:
+        """CalculationConfig.basel_3_1().ccr.mpor_floor_days must equal 10."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.basel_3_1(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.mpor_floor_days == 10, (
+            f"CalculationConfig.basel_3_1().ccr.mpor_floor_days expected 10, "
+            f"got {cfg.ccr.mpor_floor_days!r}."
+        )
+
+    def test_calculationconfig_basel_3_1_default_enable_ccp_exposures(self) -> None:
+        """CalculationConfig.basel_3_1().ccr.enable_ccp_exposures must be True."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.basel_3_1(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.enable_ccp_exposures is True, (
+            f"CalculationConfig.basel_3_1().ccr.enable_ccp_exposures expected True, "
+            f"got {cfg.ccr.enable_ccp_exposures!r}."
+        )
+
+    def test_calculationconfig_basel_3_1_default_recognise_im(self) -> None:
+        """CalculationConfig.basel_3_1().ccr.recognise_im must be True."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.basel_3_1(reporting_date=_REPORTING_DATE)
+
+        # Assert
+        assert cfg.ccr.recognise_im is True, (
+            f"CalculationConfig.basel_3_1().ccr.recognise_im expected True, "
+            f"got {cfg.ccr.recognise_im!r}."
+        )
+
+    def test_calculationconfig_basel_3_1_ccr_alpha_kwarg_pass_through(self) -> None:
+        """CalculationConfig.basel_3_1(ccr_alpha=Decimal('1.5')).ccr.alpha must equal Decimal('1.5')."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.basel_3_1(reporting_date=_REPORTING_DATE, ccr_alpha=Decimal("1.5"))
+
+        # Assert
+        assert cfg.ccr.alpha == Decimal("1.5"), (
+            f"CalculationConfig.basel_3_1(ccr_alpha=Decimal('1.5')).ccr.alpha expected "
+            f"Decimal('1.5'), got {cfg.ccr.alpha!r}. "
+            "Add kwarg 'ccr_alpha' to CalculationConfig.basel_3_1() and pass it to CCRConfig."
+        )
+
+    def test_calculationconfig_basel_3_1_mpor_floor_days_kwarg_pass_through(self) -> None:
+        """CalculationConfig.basel_3_1(mpor_floor_days=20).ccr.mpor_floor_days must equal 20."""
+        # Arrange
+        calc_cls = _get_calculation_config_cls()
+
+        # Act
+        cfg = calc_cls.basel_3_1(reporting_date=_REPORTING_DATE, mpor_floor_days=20)
+
+        # Assert
+        assert cfg.ccr.mpor_floor_days == 20, (
+            f"CalculationConfig.basel_3_1(mpor_floor_days=20).ccr.mpor_floor_days expected 20, "
+            f"got {cfg.ccr.mpor_floor_days!r}. "
+            "Add kwarg 'mpor_floor_days' to CalculationConfig.basel_3_1() and pass it to CCRConfig."
+        )
