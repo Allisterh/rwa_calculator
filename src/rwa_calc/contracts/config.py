@@ -21,6 +21,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
+from watchfire import cites
+
 from rwa_calc.domain.enums import (
     AIRBCollateralMethod,
     ApproachType,
@@ -825,30 +827,24 @@ class Pillar3CapitalRatioOverrides:
     total_ratio_pre_floor_transitional: Decimal | None = None
 
 
+@cites("CRR Art. 274(2)")
 @dataclass(frozen=True)
 class CCRConfig:
     """
-    Configuration for the Counterparty Credit Risk calculator.
-
-    Placeholder shape shipped under P8.3 so the ``CCRCalculator`` protocol
-    in ``contracts/protocols.py`` can type-resolve its ``config`` parameter.
-    P8.6 populates the fields and wires factory methods on
-    ``CalculationConfig.crr()`` / ``.basel_3_1()``. Planned fields per
-    plan item P8.6:
-
-    - ``method``: Literal["sa_ccr"] — first batch; "simplified_sa_ccr"
-      and "oem" deferred to v2.0.
-    - ``alpha``: Decimal — α factor for SA-CCR EAD = α × (RC + PFE).
-      Default Decimal("1.4") per PRA Rulebook CCR (CRR) Part Art. 274(2);
-      firm-specific α under PRA permission.
-    - ``enable_ccp_exposures``: bool — gate QCCP / non-QCCP routing.
-    - ``mpor_floor_days``: int — MPOR floor per Art. 285.
-    - ``recognise_im``: bool — independent-margin recognition switch.
+    Counterparty Credit Risk configuration.
 
     References:
-    - PRA Rulebook CCR (CRR) Part Art. 274(2) (α factor)
-    - PRA Rulebook CCR (CRR) Part Art. 285 (MPOR)
+    - CRR Art. 274(2) — α = 1.4 default for SA-CCR EAD formula
+    - CRR Art. 285(2)(b) — 10 business day MPOR floor for non-SFT netting sets
+    - CRR Art. 285(1)(b)(ii) — initial margin recognition
+    - CRR Art. 273a — small/non-complex derivatives portfolio carve-out
     """
+
+    method: Literal["sa_ccr"] = "sa_ccr"
+    alpha: Decimal = Decimal("1.4")
+    enable_ccp_exposures: bool = True
+    mpor_floor_days: int = 10
+    recognise_im: bool = True
 
 
 @dataclass(frozen=True)
@@ -891,6 +887,7 @@ class CalculationConfig:
     post_model_adjustments: PostModelAdjustmentConfig = field(
         default_factory=PostModelAdjustmentConfig.crr
     )
+    ccr: CCRConfig = field(default_factory=CCRConfig)
     thresholds: RegulatoryThresholds = field(default_factory=RegulatoryThresholds.crr)
     permission_mode: PermissionMode = PermissionMode.STANDARDISED
     # Optional explicit IRBPermissions override. When None (default) the value
@@ -988,6 +985,10 @@ class CalculationConfig:
         spill_dir: Path | None = None,
         log_level: str = "INFO",
         log_format: Literal["text", "json"] = "text",
+        ccr_alpha: Decimal = Decimal("1.4"),
+        enable_ccp_exposures: bool = True,
+        mpor_floor_days: int = 10,
+        recognise_im: bool = True,
     ) -> CalculationConfig:
         """
         Create CRR (Basel 3.0) configuration.
@@ -1022,6 +1023,13 @@ class CalculationConfig:
             supporting_factors=SupportingFactors.crr(),
             output_floor=OutputFloorConfig.crr(),
             post_model_adjustments=PostModelAdjustmentConfig.crr(),
+            ccr=CCRConfig(
+                method="sa_ccr",
+                alpha=ccr_alpha,
+                enable_ccp_exposures=enable_ccp_exposures,
+                mpor_floor_days=mpor_floor_days,
+                recognise_im=recognise_im,
+            ),
             thresholds=RegulatoryThresholds.crr(eur_gbp_rate=eur_gbp_rate),
             permission_mode=permission_mode,
             scaling_factor=Decimal("1.06"),
@@ -1054,6 +1062,10 @@ class CalculationConfig:
         spill_dir: Path | None = None,
         log_level: str = "INFO",
         log_format: Literal["text", "json"] = "text",
+        ccr_alpha: Decimal = Decimal("1.4"),
+        enable_ccp_exposures: bool = True,
+        mpor_floor_days: int = 10,
+        recognise_im: bool = True,
     ) -> CalculationConfig:
         """
         Create Basel 3.1 (PRA PS1/26) configuration.
@@ -1111,6 +1123,13 @@ class CalculationConfig:
             ),
             post_model_adjustments=(
                 post_model_adjustments or PostModelAdjustmentConfig.basel_3_1()
+            ),
+            ccr=CCRConfig(
+                method="sa_ccr",
+                alpha=ccr_alpha,
+                enable_ccp_exposures=enable_ccp_exposures,
+                mpor_floor_days=mpor_floor_days,
+                recognise_im=recognise_im,
             ),
             thresholds=RegulatoryThresholds.basel_3_1(),
             permission_mode=permission_mode,
