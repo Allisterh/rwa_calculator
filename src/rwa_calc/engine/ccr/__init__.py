@@ -39,7 +39,7 @@ from rwa_calc.engine.ccr import namespace as _namespace  # noqa: E402, F401
 from rwa_calc.engine.ccr.adjusted_notional import compute_adjusted_notional_ir  # noqa: E402
 from rwa_calc.engine.ccr.maturity_factor import compute_maturity_factor_unmargined  # noqa: E402
 from rwa_calc.engine.ccr.pfe import compute_pfe_ir_singleton  # noqa: E402
-from rwa_calc.engine.ccr.rc import compute_rc_unmargined  # noqa: E402
+from rwa_calc.engine.ccr.rc import compute_rc_margined, compute_rc_unmargined  # noqa: E402
 from rwa_calc.engine.ccr.sa_ccr import compute_ead  # noqa: E402
 from rwa_calc.engine.ccr.supervisory_delta import compute_supervisory_delta_linear  # noqa: E402
 
@@ -48,6 +48,7 @@ __all__ = [
     "compute_ead",
     "compute_maturity_factor_unmargined",
     "compute_pfe_ir_singleton",
+    "compute_rc_margined",
     "compute_rc_unmargined",
     "compute_supervisory_delta_linear",
 ]

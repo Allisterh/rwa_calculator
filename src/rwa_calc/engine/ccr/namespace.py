@@ -62,6 +62,12 @@ class CCRNamespace:
 
         return compute_rc_unmargined(self._lf)
 
+    def replacement_cost_margined(self) -> pl.LazyFrame:
+        """Delegate to :func:`rwa_calc.engine.ccr.rc.compute_rc_margined`."""
+        from rwa_calc.engine.ccr.rc import compute_rc_margined
+
+        return compute_rc_margined(self._lf)
+
     def adjusted_notional_ir(self, reporting_date: date) -> pl.LazyFrame:
         """Delegate to :func:`compute_adjusted_notional_ir`."""
         from rwa_calc.engine.ccr.adjusted_notional import compute_adjusted_notional_ir
