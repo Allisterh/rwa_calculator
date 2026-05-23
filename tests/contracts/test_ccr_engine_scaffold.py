@@ -4,12 +4,20 @@ Contract tests for the CCR engine subpackage scaffold (P8.4).
 Pins the required module structure, logger declarations, Polars namespace
 registration, and public function signatures for ``rwa_calc.engine.ccr``.
 
-All tests in this file are expected to FAIL until the engine-implementer wave
-delivers the 8 module files described in the scenario proposal.
+Most scaffold tests are expected to FAIL until the engine-implementer wave
+delivers the 8 module files described in the scenario proposal.  Exceptions
+are tests for already-implemented items: P8.5 (RC), P8.14 (maturity factor).
+
+Deferred stubs (still raise NotImplementedError until their P-item lands):
+    - compute_supervisory_delta_linear  (P8.13)
+    - compute_adjusted_notional_ir      (P8.12)
+    - compute_pfe_ir_singleton          (P8.16)
+    - compute_ead                       (P8.17)
 
 References:
     - CRR Art. 274-280: SA-CCR EAD calculation
     - CRR Art. 275(1): RC = max(V - C, 0) for unmargined netting sets
+    - CRR Art. 279c(1): MF_i = sqrt(min(M_i, 1y) / 1y) for unmargined trades
     - CRR Art. 295-297: Contractual netting recognition
 """
 
@@ -255,27 +263,41 @@ def test_compute_rc_unmargined_clamps_at_zero() -> None:
 
 
 # ===========================================================================
-# 9. compute_maturity_factor_unmargined — NotImplementedError (stub, P8.14)
+# 9. compute_maturity_factor_unmargined — three regimes (P8.14)
 # ===========================================================================
 
 
-def test_compute_maturity_factor_unmargined_raises_not_implemented() -> None:
-    """compute_maturity_factor_unmargined must raise NotImplementedError (stub until P8.14)."""
+def test_compute_maturity_factor_unmargined_three_rows() -> None:
+    """MF_i = sqrt(min(M_i, 1y) / 1y) — three regimes (above-cap, sub-year, exact-quarter).
+
+    CRR Art. 279c(1): MF_i = sqrt(min(M_i, 1y) / 1y) for unmargined trades.
+    Row 0 (T-10Y): min(10.0, 1.0) / 1.0 = 1.0  -> sqrt(1.0)  = 1.0
+    Row 1 (T-6M):  min(0.5,  1.0) / 1.0 = 0.5  -> sqrt(0.5)  ≈ 0.7071...
+    Row 2 (T-3M):  min(0.25, 1.0) / 1.0 = 0.25 -> sqrt(0.25) = 0.5
+    """
+    from rwa_calc.engine.ccr.maturity_factor import compute_maturity_factor_unmargined
+
     # Arrange
-    try:
-        from rwa_calc.engine.ccr.maturity_factor import compute_maturity_factor_unmargined
-    except (ImportError, ModuleNotFoundError) as exc:
-        pytest.fail(
-            f"Cannot import compute_maturity_factor_unmargined from "
-            f"rwa_calc.engine.ccr.maturity_factor: {exc}. "
-            "Add the stub in P8.4."
-        )
+    lf = pl.LazyFrame(
+        {
+            "trade_id": ["T-10Y", "T-6M", "T-3M"],
+            "netting_set_id": ["NS-001", "NS-001", "NS-002"],
+            "years_to_maturity": [10.0, 0.5, 0.25],
+        }
+    )
 
-    lf = pl.LazyFrame({"netting_set_id": ["NS-001"]})
+    # Act
+    result = compute_maturity_factor_unmargined(lf).collect()
 
-    # Act + Assert
-    with pytest.raises(NotImplementedError):
-        compute_maturity_factor_unmargined(lf)
+    # Assert — column + dtype
+    assert "maturity_factor" in result.columns
+    assert result.schema["maturity_factor"] == pl.Float64
+
+    # Assert — values
+    actual = result["maturity_factor"].to_list()
+    assert actual[0] == pytest.approx(1.0, rel=1e-12)
+    assert actual[1] == pytest.approx(0.7071067811865476, rel=1e-12)
+    assert actual[2] == pytest.approx(0.5, rel=1e-12)
 
 
 # ===========================================================================
