@@ -113,6 +113,23 @@ MF_MARGINED_DISPUTE_MULTIPLIER: int = 2
 
 PFE_MULTIPLIER_FLOOR_F: Decimal = Decimal("0.05")
 
+# CRR Art. 278(3): the ``2`` in the denominator ``2 × (1 − F) × AddOn_aggregate``
+# of the PFE multiplier exponent.
+PFE_AGGREGATE_DENOM_COEFF: Decimal = Decimal("2")
+
+
+# =============================================================================
+# WRONG-WAY RISK LGD OVERRIDE (CRR Art. 291(5)(c))
+#
+# Specific wrong-way risk: when the trade-level connection of Art. 291(1)(b)
+# is present, the synthetic single-trade netting set carved out by
+# ``engine/ccr/wwr.py::apply_wwr_gate`` carries an LGD = 100% override that
+# feeds downstream IRB consumption (Art. 153) — replacing the bank's own LGD
+# estimate for that exposure.
+# =============================================================================
+
+CCR_WWR_SPECIFIC_LGD_OVERRIDE: Decimal = Decimal("1.0")
+
 
 # =============================================================================
 # SUPERVISORY OPTION VOLATILITY (CRR Art. 279a(2) / BCBS CRE52.47 Table 3)

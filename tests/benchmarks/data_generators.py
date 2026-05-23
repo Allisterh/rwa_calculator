@@ -187,6 +187,7 @@ def generate_counterparties(config: BenchmarkDataConfig) -> pl.LazyFrame:
                 "scra_grade": pl.Series([None] * n, dtype=pl.String),
                 "is_investment_grade": pl.Series(np.zeros(n, dtype=bool)),
                 "is_ccp_client_cleared": pl.Series([None] * n, dtype=pl.Boolean),
+                "is_qccp": pl.Series(np.zeros(n, dtype=bool)),
                 "borrower_income_currency": pl.Series(income_currencies, dtype=pl.String),
                 "is_natural_person": pl.Series(ind_mask),
                 "is_social_housing": pl.Series(np.zeros(n, dtype=bool)),

@@ -299,6 +299,26 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_p818,
         ),
+        (
+            "P8.16 (SA-CCR PFE multiplier Art. 278(3) — under-collateralised + cap sub-test)",
+            "ccr",
+            _generate_p816,
+        ),
+        (
+            "P8.24 (CRR Art. 378/379 failed trades — 4 DvP rows + 1 non-DvP Col-4 row)",
+            "ccr",
+            _generate_p824,
+        ),
+        (
+            "P8.25 (QCCP trade exposure RW — CCR-B1a 2%, CCR-B1b 4%, CCR-B1c 20% SA fallback)",
+            "ccr",
+            _generate_p825,
+        ),
+        (
+            "P8.27 (CRR Art. 291 WWR identification — specific WWR break-out + LGD=100% override)",
+            "ccr",
+            _generate_p827,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -1545,6 +1565,342 @@ def _generate_p818(output_dir: Path) -> list[tuple[str, int]]:
         sys.path.remove(fixtures_root)
         for mod in (
             "ccr.p8_18_non_enforceable",
+            "ccr.trade_builder",
+            "ccr.netting_set_builder",
+            "ccr.margin_builder",
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p816(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.16 builder imports (Python-only builder — no persistent parquet output).
+
+    P8.16 tests the SA-CCR PFE multiplier formula (CRR Art. 278(3)):
+        multiplier = min(1, F + (1 − F) × exp((V − C) / (2 × (1 − F) × AddOn_aggregate)))
+
+    Two scenarios are smoke-checked:
+        Scenario A (NS-CCR-A2-01): v_net=-2_000_000, c_net=+500_000 → multiplier ≈ 0.853 < 1.
+        Scenario B (NS-CCR-A2-02): v_net=+3_000_000, c_net=+500_000 → multiplier = 1.0 (capped).
+
+    The builder is Python-only; test-writer imports the LazyFrame factories directly.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.pfe_multiplier_builder import save_pfe_multiplier_fixtures
+
+        return save_pfe_multiplier_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.pfe_multiplier_builder",
+            "ccr.netting_set_builder",
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p824(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.24 builder imports (Python-only builder — no persistent parquet output).
+
+    P8.24 tests failed-trade settlement risk: four DvP rows exercising each
+    Art. 378 Table 1 multiplier band (t+5, t+20, t+35, t+50) and one non-DvP
+    Col-4 row exercising the Art. 379(1) Table 2 Column-4 1250% risk weight.
+
+    The fixture is a Python-only builder that constructs an in-memory LazyFrame
+    typed against the canonical ``FAILED_TRADE_SCHEMA`` from schemas.py.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.failed_trade_builder import (  # noqa: PLC0415
+            COUNTERPARTY_REF,
+            FT001_BAND,
+            FT001_DAYS,
+            FT001_ID,
+            FT001_MULTIPLIER,
+            FT001_OWN_FUNDS,
+            FT001_PRICE_DIFF,
+            FT001_RWA,
+            FT002_BAND,
+            FT002_ID,
+            FT002_OWN_FUNDS,
+            FT002_RWA,
+            FT003_BAND,
+            FT003_ID,
+            FT003_OWN_FUNDS,
+            FT003_RWA,
+            FT004_BAND,
+            FT004_ID,
+            FT004_OWN_FUNDS,
+            FT004_RWA,
+            FT005_BAND,
+            FT005_EXPOSURE,
+            FT005_ID,
+            FT005_OWN_FUNDS,
+            FT005_RWA,
+            PORTFOLIO_TOTAL_RWA,
+            make_failed_trades_frame,
+        )
+
+        # Smoke-check: frame must construct without raising.
+        lf = make_failed_trades_frame()
+        df = lf.collect()
+
+        # Invariant 1: exactly 5 rows.
+        if df.height != 5:
+            raise AssertionError(f"P8.24: frame must have 5 rows (got {df.height})")
+
+        # Invariant 2: all five trade IDs present.
+        ids = set(df["failed_trade_id"].to_list())
+        expected_ids = {FT001_ID, FT002_ID, FT003_ID, FT004_ID, FT005_ID}
+        if ids != expected_ids:
+            raise AssertionError(f"P8.24: expected trade IDs {expected_ids}, got {ids}")
+
+        # Invariant 3: all rows share a single counterparty reference.
+        cp_refs = set(df["counterparty_reference"].to_list())
+        if cp_refs != {COUNTERPARTY_REF}:
+            raise AssertionError(
+                f"P8.24: all rows must reference {COUNTERPARTY_REF!r} (got {cp_refs})"
+            )
+
+        # Invariant 4: settlement_type distribution (4 dvp, 1 non_dvp_free_delivery).
+        type_counts = df["settlement_type"].value_counts().to_dicts()
+        type_map = {r["settlement_type"]: r["count"] for r in type_counts}
+        if type_map.get("dvp") != 4:
+            raise AssertionError(f"P8.24: expected 4 dvp rows (got {type_map.get('dvp')})")
+        if type_map.get("non_dvp_free_delivery") != 1:
+            raise AssertionError(
+                f"P8.24: expected 1 non_dvp_free_delivery row "
+                f"(got {type_map.get('non_dvp_free_delivery')})"
+            )
+
+        # Invariant 5: DvP rows have null value_transferred and
+        # current_positive_exposure; non-null agreed_settlement_price / mv.
+        dvp_df = df.filter(pl.col("settlement_type") == "dvp")
+        if dvp_df["value_transferred"].null_count() != 4:
+            raise AssertionError("P8.24: DvP rows must have null value_transferred")
+        if dvp_df["current_positive_exposure"].null_count() != 4:
+            raise AssertionError("P8.24: DvP rows must have null current_positive_exposure")
+        if dvp_df["agreed_settlement_price"].null_count() != 0:
+            raise AssertionError("P8.24: DvP rows must have non-null agreed_settlement_price")
+        if dvp_df["current_market_value"].null_count() != 0:
+            raise AssertionError("P8.24: DvP rows must have non-null current_market_value")
+
+        # Invariant 6: non-DvP row has null agreed_settlement_price / mv;
+        # non-null value_transferred and current_positive_exposure.
+        ndvp_df = df.filter(pl.col("settlement_type") == "non_dvp_free_delivery")
+        if ndvp_df["agreed_settlement_price"].null_count() != 1:
+            raise AssertionError("P8.24: non-DvP row must have null agreed_settlement_price")
+        if ndvp_df["current_market_value"].null_count() != 1:
+            raise AssertionError("P8.24: non-DvP row must have null current_market_value")
+        if ndvp_df["value_transferred"].null_count() != 0:
+            raise AssertionError("P8.24: non-DvP row must have non-null value_transferred")
+        if ndvp_df["current_positive_exposure"].null_count() != 0:
+            raise AssertionError("P8.24: non-DvP row must have non-null current_positive_exposure")
+
+        # Invariant 7: FT001 scalar assertions (spot-check band constants).
+        ft001 = df.filter(pl.col("failed_trade_id") == FT001_ID)
+        if ft001["working_days_past_due"][0] != FT001_DAYS:
+            raise AssertionError(
+                f"P8.24: FT001 days must be {FT001_DAYS} (got {ft001['working_days_past_due'][0]})"
+            )
+
+        # Invariant 8: all optional boolean flags default False.
+        for col in (
+            "is_repo_or_sec_lending",
+            "is_immaterial",
+            "elect_cet1_deduction",
+            "system_wide_failure_waiver",
+        ):
+            if col not in df.columns:
+                raise AssertionError(f"P8.24: column {col!r} must be present")
+            if df[col].sum() != 0:
+                raise AssertionError(f"P8.24: all rows must have {col}=False")
+
+        # Invariant 9: hand-calc spot-check — FT001 own-funds and RWA constants.
+        # (price_diff × multiplier = own_funds; own_funds × 12.5 = rwa)
+        if abs(FT001_PRICE_DIFF * FT001_MULTIPLIER - FT001_OWN_FUNDS) > 0.01:
+            raise AssertionError(
+                f"P8.24: FT001 own_funds hand-calc mismatch: "
+                f"{FT001_PRICE_DIFF} × {FT001_MULTIPLIER} != {FT001_OWN_FUNDS}"
+            )
+        if abs(FT001_OWN_FUNDS * 12.5 - FT001_RWA) > 0.01:
+            raise AssertionError(
+                f"P8.24: FT001 RWA hand-calc mismatch: {FT001_OWN_FUNDS} × 12.5 != {FT001_RWA}"
+            )
+
+        # Invariant 10: portfolio total RWA constant matches sum of per-row RWAs.
+        row_rwa_sum = FT001_RWA + FT002_RWA + FT003_RWA + FT004_RWA + FT005_RWA
+        if abs(row_rwa_sum - PORTFOLIO_TOTAL_RWA) > 0.01:
+            raise AssertionError(
+                f"P8.24: PORTFOLIO_TOTAL_RWA {PORTFOLIO_TOTAL_RWA} != "
+                f"sum of per-row RWAs {row_rwa_sum}"
+            )
+
+        # Invariant 11: FT005 exposure constant (value_transferred + cpe).
+        ft005_row = ndvp_df
+        vt = ft005_row["value_transferred"][0]
+        cpe = ft005_row["current_positive_exposure"][0]
+        if abs((vt + cpe) - FT005_EXPOSURE) > 0.01:
+            raise AssertionError(
+                f"P8.24: FT005 exposure mismatch: {vt} + {cpe} != {FT005_EXPOSURE}"
+            )
+
+        # Invariant 12: band string constants are correct.
+        expected_bands = {
+            FT001_ID: FT001_BAND,
+            FT002_ID: FT002_BAND,
+            FT003_ID: FT003_BAND,
+            FT004_ID: FT004_BAND,
+            FT005_ID: FT005_BAND,
+        }
+        for trade_id, expected_band in expected_bands.items():
+            # Band is a module-level constant, not a column in the input frame.
+            # Check a representative one to confirm correct naming.
+            if not isinstance(expected_band, str) or not expected_band:
+                raise AssertionError(
+                    f"P8.24: band constant for {trade_id!r} must be a non-empty string"
+                )
+
+        # Invariant 13: own-funds and RWA constants for remaining rows (spot-check).
+        for trade_id, of, rwa in [
+            (FT002_ID, FT002_OWN_FUNDS, FT002_RWA),
+            (FT003_ID, FT003_OWN_FUNDS, FT003_RWA),
+            (FT004_ID, FT004_OWN_FUNDS, FT004_RWA),
+            (FT005_ID, FT005_OWN_FUNDS, FT005_RWA),
+        ]:
+            if abs(of * 12.5 - rwa) > 0.01:
+                raise AssertionError(
+                    f"P8.24: {trade_id} RWA hand-calc mismatch: {of} × 12.5 != {rwa}"
+                )
+
+        # No parquet files written — report zero files, zero records.
+        return [("(python-only builder — no parquet)", 0)]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in ("ccr.failed_trade_builder",):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p825(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.25 builder imports (Python-only builder — no persistent parquet output).
+
+    P8.25 tests the QCCP trade-exposure risk weight (CRR Art. 306/307): a single
+    GBP IR derivative against LCH Ltd (CP-QCCP-LCH) produces the same EAD across
+    three variants (CCR-B1a/b/c) but different risk weights depending on ``is_qccp``
+    and ``is_client_cleared``.  The fixture is a Python-only builder; test-writer
+    imports ``build_qccp_trade_fixture`` directly.
+
+    This function smoke-checks all three variants and verifies the critical
+    schema and data invariants the test-writer will assert.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.qccp_builder import (  # noqa: PLC0415
+            QCCP_CP_REF,
+            QCCP_EAD,
+            QCCP_INSTITUTION_CQS,
+            QCCP_NS_ID,
+            QCCP_RW_CLIENT_CLEARED,
+            QCCP_RW_PROPRIETARY,
+            QCCP_RW_SA_FALLBACK,
+            QCCP_TRADE_ID,
+            build_qccp_trade_fixture,
+        )
+
+        b1a = build_qccp_trade_fixture(is_qccp=True, is_client_cleared=False)
+        b1b = build_qccp_trade_fixture(is_qccp=True, is_client_cleared=True)
+        b1c = build_qccp_trade_fixture(is_qccp=False, is_client_cleared=False)
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            if fx.trades.height != 1:
+                raise AssertionError(f"P8.25 {label}: trades must have 1 row")
+            if fx.trades["trade_id"][0] != QCCP_TRADE_ID:
+                raise AssertionError(f"P8.25 {label}: trade_id must be {QCCP_TRADE_ID!r}")
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            if fx.netting_sets["netting_set_id"][0] != QCCP_NS_ID:
+                raise AssertionError(f"P8.25 {label}: netting_set_id must be {QCCP_NS_ID!r}")
+            if fx.counterparty["counterparty_reference"][0] != QCCP_CP_REF:
+                raise AssertionError(
+                    f"P8.25 {label}: counterparty_reference must be {QCCP_CP_REF!r}"
+                )
+
+        if "is_client_cleared" not in b1a.trades.columns:
+            raise AssertionError("P8.25 CCR-B1a: is_client_cleared must be present on trades")
+        if b1a.trades["is_client_cleared"][0] is not False:
+            raise AssertionError("P8.25 CCR-B1a: is_client_cleared must be False")
+        if b1b.trades["is_client_cleared"][0] is not True:
+            raise AssertionError("P8.25 CCR-B1b: is_client_cleared must be True")
+        if b1c.trades["is_client_cleared"][0] is not False:
+            raise AssertionError("P8.25 CCR-B1c: is_client_cleared must be False")
+
+        if "is_qccp" not in b1a.counterparty.columns:
+            raise AssertionError("P8.25 CCR-B1a: is_qccp must be present on counterparty")
+        if b1a.counterparty["is_qccp"][0] is not True:
+            raise AssertionError("P8.25 CCR-B1a: is_qccp must be True")
+        if b1b.counterparty["is_qccp"][0] is not True:
+            raise AssertionError("P8.25 CCR-B1b: is_qccp must be True")
+        if b1c.counterparty["is_qccp"][0] is not False:
+            raise AssertionError("P8.25 CCR-B1c: is_qccp must be False")
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            if fx.margin_agreements.height != 0:
+                raise AssertionError(f"P8.25 {label}: margin_agreements must be empty")
+            if fx.ccr_collateral.height != 0:
+                raise AssertionError(f"P8.25 {label}: ccr_collateral must be empty")
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            cqs = fx.counterparty["institution_cqs"][0]
+            if cqs != QCCP_INSTITUTION_CQS:
+                raise AssertionError(
+                    f"P8.25 {label}: institution_cqs must be {QCCP_INSTITUTION_CQS} (got {cqs})"
+                )
+
+        if not (0 < QCCP_EAD < 100_000_000):
+            raise AssertionError(f"P8.25: QCCP_EAD={QCCP_EAD} is outside plausible range")
+
+        _ = (QCCP_RW_PROPRIETARY, QCCP_RW_CLIENT_CLEARED, QCCP_RW_SA_FALLBACK)
+
+        return [("(python-only builder — no parquet)", 0)]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.qccp_builder",
+            "ccr.trade_builder",
+            "ccr.netting_set_builder",
+            "ccr.margin_builder",
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p827(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.27 builder (Python-only — no persistent parquet output).
+
+    P8.27 exercises the specific-WWR identification gate (CRR Art. 291(4)-(5)):
+    trade T_WWR_01 (equity derivative, underlying issued by counterparty CP_WWR_01)
+    has ``is_specific_wwr=True`` and must be broken out into a synthetic netting
+    set ``NS_WWR_01__wwr__T_WWR_01`` with ``wwr_lgd_override=1.0`` (Art. 291(5)(c)).
+    Trade T_NORMAL_01 (IR derivative) remains in the residual NS_WWR_01.
+    One CCR010 warning is emitted per original NS containing WWR trades; zero
+    CCR011 (has_general_wwr_flag=False).  The builder is Python-only; test-writer
+    imports the LazyFrame factories directly rather than reading parquet.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.wwr_builder import save_p827_fixtures
+
+        return save_p827_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.wwr_builder",
             "ccr.trade_builder",
             "ccr.netting_set_builder",
             "ccr.margin_builder",

@@ -288,6 +288,11 @@ COUNTERPARTY_SCHEMA: dict[str, ColumnSpec] = {
     # Art. 222(4) FCSM SFT carve-out: 0% RW (CMP) vs 10% RW (non-CMP).
     # Defaults to False (conservative — non-CMP treatment).
     "is_core_market_participant": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 272 Def (88) / PRA PS1/26 Art. 306: True when the counterparty
+    # is a qualified central counterparty (QCCP). Drives the Art. 306(1) 2%
+    # trade-exposure RW (and the Art. 307 4% client-cleared route). Defaults
+    # to False so pre-existing fixtures route to the non-QCCP / SA fallback.
+    "is_qccp": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
@@ -687,6 +692,17 @@ TRADE_SCHEMA: dict[str, ColumnSpec] = {
     "cdo_attachment": ColumnSpec(pl.Float64, required=False),
     "cdo_detachment": ColumnSpec(pl.Float64, required=False),
     "payment_leg_index_id": ColumnSpec(pl.String, required=False),
+    # CRR Art. 307: True when the trade is client-cleared through a clearing
+    # member to a QCCP — routes the trade exposure to the 4% RW branch (vs.
+    # the 2% proprietary branch in Art. 306(1)). Trade-level (not CP-level)
+    # because Art. 307 keys on the trade's clearing relationship. Defaults to
+    # False so pre-existing fixtures route to the proprietary/non-QCCP branch.
+    "is_client_cleared": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 291(1)(b)/(4)-(5): specific wrong-way risk flag. When True,
+    # ``engine/ccr/wwr.py::apply_wwr_gate`` breaks the trade out into its own
+    # single-trade synthetic netting set (id ``<original>__wwr__<trade_id>``)
+    # and assigns ``wwr_lgd_override = 1.0`` to that synthetic NS.
+    "is_specific_wwr": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 #: Netting-set-level input for SA-CCR. One row per netting set keyed by
@@ -727,6 +743,14 @@ NETTING_SET_SCHEMA: dict[str, ColumnSpec] = {
     "has_illiquid_collateral_or_hard_to_replace_otc": ColumnSpec(
         pl.Boolean, default=False, required=False
     ),
+    # CRR Art. 291(1)(a) / 291(6): general wrong-way risk flag. Conservative
+    # default False — flips ``engine/ccr/wwr.py::apply_wwr_gate`` into emitting
+    # a CCR011 WARNING for the netting set.
+    "has_general_wwr_flag": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 291(5)(c): LGD override applied by the WWR gate to synthetic
+    # single-trade netting sets carved out for specific WWR. Null on regular
+    # netting sets; set to 1.0 by the gate on the synthetic NS row.
+    "wwr_lgd_override": ColumnSpec(pl.Float64, default=None, required=False),
 }
 
 #: Margin-agreement-level (CSA) input for SA-CCR. Separate from
@@ -772,6 +796,52 @@ CCR_COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
     "issuer_type": ColumnSpec(pl.String, required=False),
     "residual_maturity_years": ColumnSpec(pl.Float64, required=False),
     "haircut_override": ColumnSpec(pl.Float64, required=False),
+}
+
+
+# =============================================================================
+# FAILED-TRADE (SETTLEMENT RISK) INPUT SCHEMA — P8.24
+# =============================================================================
+# One row per failed settlement (DvP or non-DvP free delivery) consumed by
+# ``engine/ccr/failed_trades.py``. Held under an optional leaf bundle on
+# ``RawCCRBundle.failed_trades``; absent when the firm has no failed trades.
+#
+# References:
+# - CRR Art. 378 + Table 1: DvP multiplier ladder.
+# - CRR Art. 379(1) + Table 2: non-DvP free-delivery treatment.
+# - CRR Art. 379(2)-(3): immateriality / CET1-deduction electives (schema
+#   reserves the flags; engine currently treats them as no-op false).
+# - CRR Art. 380: system-wide failure waiver (schema reserves the flag).
+
+#: Failed-trade input schema. ``settlement_type`` discriminates the two
+#: branches: ``"dvp"`` rows require ``agreed_settlement_price`` +
+#: ``current_market_value``; ``"non_dvp_free_delivery"`` rows require
+#: ``value_transferred`` + ``current_positive_exposure``. Optional booleans
+#: default False per Art. 378-380 scope rules.
+FAILED_TRADE_SCHEMA: dict[str, ColumnSpec] = {
+    # Required (5) — primary key + core settlement attributes.
+    "failed_trade_id": ColumnSpec(pl.String),
+    "counterparty_reference": ColumnSpec(pl.String),
+    # "dvp" | "non_dvp_free_delivery"
+    "settlement_type": ColumnSpec(pl.String),
+    "working_days_past_due": ColumnSpec(pl.Int32),
+    # "debt" | "equity" | "fx" | "commodity"
+    "instrument_class": ColumnSpec(pl.String),
+    # DvP-only (Art. 378 Table 1 inputs) — null for non-DvP rows.
+    "agreed_settlement_price": ColumnSpec(pl.Float64, required=False),
+    "current_market_value": ColumnSpec(pl.Float64, required=False),
+    # Non-DvP-only (Art. 379(1) Table 2 inputs) — null for DvP rows.
+    "value_transferred": ColumnSpec(pl.Float64, required=False),
+    "current_positive_exposure": ColumnSpec(pl.Float64, required=False),
+    # Optional boolean flags — Art. 378-380 scope and election gates.
+    # Art. 378 first paragraph: repo / sec-lending exclusion.
+    "is_repo_or_sec_lending": ColumnSpec(pl.Boolean, default=False, required=False),
+    # Art. 379(2): immateriality carve-out (100% RW alternative).
+    "is_immaterial": ColumnSpec(pl.Boolean, default=False, required=False),
+    # Art. 379(3): CET1 deduction election.
+    "elect_cet1_deduction": ColumnSpec(pl.Boolean, default=False, required=False),
+    # Art. 380: system-wide failure waiver.
+    "system_wide_failure_waiver": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 
