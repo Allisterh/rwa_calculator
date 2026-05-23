@@ -4,12 +4,16 @@ Contract tests for the CCR engine subpackage scaffold (P8.4).
 Pins the required module structure, logger declarations, Polars namespace
 registration, and public function signatures for ``rwa_calc.engine.ccr``.
 
-All tests in this file are expected to FAIL until the engine-implementer wave
-delivers the 8 module files described in the scenario proposal.
+P8.4 scaffold is fully implemented; per-formula bodies (P8.12, P8.13, P8.14,
+P8.17) have landed in subsequent batches with dedicated test files alongside.
+
+Deferred stubs (still raise NotImplementedError until their P-item lands):
+    - compute_pfe_ir_singleton          (P8.16)
 
 References:
     - CRR Art. 274-280: SA-CCR EAD calculation
     - CRR Art. 275(1): RC = max(V - C, 0) for unmargined netting sets
+    - CRR Art. 279c(1): MF_i = sqrt(min(M_i, 1y) / 1y) for unmargined trades
     - CRR Art. 295-297: Contractual netting recognition
 """
 
@@ -255,75 +259,41 @@ def test_compute_rc_unmargined_clamps_at_zero() -> None:
 
 
 # ===========================================================================
-# 7. compute_supervisory_delta_linear — NotImplementedError (stub, P8.13)
+# 9. compute_maturity_factor_unmargined — three regimes (P8.14)
 # ===========================================================================
 
 
-def test_compute_supervisory_delta_linear_raises_not_implemented() -> None:
-    """compute_supervisory_delta_linear must raise NotImplementedError (stub until P8.13)."""
+def test_compute_maturity_factor_unmargined_three_rows() -> None:
+    """MF_i = sqrt(min(M_i, 1y) / 1y) — three regimes (above-cap, sub-year, exact-quarter).
+
+    CRR Art. 279c(1): MF_i = sqrt(min(M_i, 1y) / 1y) for unmargined trades.
+    Row 0 (T-10Y): min(10.0, 1.0) / 1.0 = 1.0  -> sqrt(1.0)  = 1.0
+    Row 1 (T-6M):  min(0.5,  1.0) / 1.0 = 0.5  -> sqrt(0.5)  ≈ 0.7071...
+    Row 2 (T-3M):  min(0.25, 1.0) / 1.0 = 0.25 -> sqrt(0.25) = 0.5
+    """
+    from rwa_calc.engine.ccr.maturity_factor import compute_maturity_factor_unmargined
+
     # Arrange
-    try:
-        from rwa_calc.engine.ccr.supervisory_delta import compute_supervisory_delta_linear
-    except (ImportError, ModuleNotFoundError) as exc:
-        pytest.fail(
-            f"Cannot import compute_supervisory_delta_linear from "
-            f"rwa_calc.engine.ccr.supervisory_delta: {exc}. "
-            "Add the stub in P8.4."
-        )
+    lf = pl.LazyFrame(
+        {
+            "trade_id": ["T-10Y", "T-6M", "T-3M"],
+            "netting_set_id": ["NS-001", "NS-001", "NS-002"],
+            "years_to_maturity": [10.0, 0.5, 0.25],
+        }
+    )
 
-    lf = pl.LazyFrame({"trade_id": ["T-001"]})
+    # Act
+    result = compute_maturity_factor_unmargined(lf).collect()
 
-    # Act + Assert
-    with pytest.raises(NotImplementedError):
-        compute_supervisory_delta_linear(lf)
+    # Assert — column + dtype
+    assert "maturity_factor" in result.columns
+    assert result.schema["maturity_factor"] == pl.Float64
 
-
-# ===========================================================================
-# 8. compute_adjusted_notional_ir — NotImplementedError (stub, P8.12)
-# ===========================================================================
-
-
-def test_compute_adjusted_notional_ir_raises_not_implemented() -> None:
-    """compute_adjusted_notional_ir must raise NotImplementedError (stub until P8.12)."""
-    # Arrange
-    try:
-        from rwa_calc.engine.ccr.adjusted_notional import compute_adjusted_notional_ir
-    except (ImportError, ModuleNotFoundError) as exc:
-        pytest.fail(
-            f"Cannot import compute_adjusted_notional_ir from "
-            f"rwa_calc.engine.ccr.adjusted_notional: {exc}. "
-            "Add the stub in P8.4."
-        )
-
-    lf = pl.LazyFrame({"trade_id": ["T-001"]})
-
-    # Act + Assert
-    with pytest.raises(NotImplementedError):
-        compute_adjusted_notional_ir(lf)
-
-
-# ===========================================================================
-# 9. compute_maturity_factor_unmargined — NotImplementedError (stub, P8.14)
-# ===========================================================================
-
-
-def test_compute_maturity_factor_unmargined_raises_not_implemented() -> None:
-    """compute_maturity_factor_unmargined must raise NotImplementedError (stub until P8.14)."""
-    # Arrange
-    try:
-        from rwa_calc.engine.ccr.maturity_factor import compute_maturity_factor_unmargined
-    except (ImportError, ModuleNotFoundError) as exc:
-        pytest.fail(
-            f"Cannot import compute_maturity_factor_unmargined from "
-            f"rwa_calc.engine.ccr.maturity_factor: {exc}. "
-            "Add the stub in P8.4."
-        )
-
-    lf = pl.LazyFrame({"netting_set_id": ["NS-001"]})
-
-    # Act + Assert
-    with pytest.raises(NotImplementedError):
-        compute_maturity_factor_unmargined(lf)
+    # Assert — values
+    actual = result["maturity_factor"].to_list()
+    assert actual[0] == pytest.approx(1.0, rel=1e-12)
+    assert actual[1] == pytest.approx(0.7071067811865476, rel=1e-12)
+    assert actual[2] == pytest.approx(0.5, rel=1e-12)
 
 
 # ===========================================================================
@@ -350,23 +320,23 @@ def test_compute_pfe_ir_singleton_raises_not_implemented() -> None:
 
 
 # ===========================================================================
-# 11. compute_ead — NotImplementedError (stub, P8.17)
+# 11. compute_ead — returns LazyFrame with ead_ccr column (P8.17)
 # ===========================================================================
 
 
-def test_compute_ead_raises_not_implemented() -> None:
-    """compute_ead must raise NotImplementedError (stub until P8.17)."""
-    # Arrange
-    try:
-        from rwa_calc.engine.ccr.sa_ccr import compute_ead
-    except (ImportError, ModuleNotFoundError) as exc:
-        pytest.fail(
-            f"Cannot import compute_ead from rwa_calc.engine.ccr.sa_ccr: {exc}. "
-            "Add the stub in P8.4."
-        )
+def test_compute_ead_returns_lazyframe_with_ead_column() -> None:
+    """P8.17 — compute_ead now returns LazyFrame with ead_ccr column; α=1.4 default."""
+    from rwa_calc.engine.ccr.sa_ccr import compute_ead
 
-    lf = pl.LazyFrame({"netting_set_id": ["NS-001"]})
-
-    # Act + Assert
-    with pytest.raises(NotImplementedError):
-        compute_ead(lf)
+    lf = pl.LazyFrame(
+        {
+            "netting_set_id": ["NS-A"],
+            "rc_unmargined": [100.0],
+            "pfe_addon": [50.0],
+        }
+    )
+    result = compute_ead(lf)
+    assert isinstance(result, pl.LazyFrame)
+    collected = result.collect()
+    assert "ead_ccr" in collected.columns
+    assert collected["ead_ccr"][0] == pytest.approx(1.4 * 150.0, rel=1e-9)
