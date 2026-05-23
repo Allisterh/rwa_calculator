@@ -309,6 +309,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_p824,
         ),
+        (
+            "P8.25 (QCCP trade exposure RW — CCR-B1a 2%, CCR-B1b 4%, CCR-B1c 20% SA fallback)",
+            "ccr",
+            _generate_p825,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -1771,6 +1776,100 @@ def _generate_p824(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(fixtures_root)
         for mod in ("ccr.failed_trade_builder",):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p825(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.25 builder imports (Python-only builder — no persistent parquet output).
+
+    P8.25 tests the QCCP trade-exposure risk weight (CRR Art. 306/307): a single
+    GBP IR derivative against LCH Ltd (CP-QCCP-LCH) produces the same EAD across
+    three variants (CCR-B1a/b/c) but different risk weights depending on ``is_qccp``
+    and ``is_client_cleared``.  The fixture is a Python-only builder; test-writer
+    imports ``build_qccp_trade_fixture`` directly.
+
+    This function smoke-checks all three variants and verifies the critical
+    schema and data invariants the test-writer will assert.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.qccp_builder import (  # noqa: PLC0415
+            QCCP_CP_REF,
+            QCCP_EAD,
+            QCCP_INSTITUTION_CQS,
+            QCCP_NS_ID,
+            QCCP_RW_CLIENT_CLEARED,
+            QCCP_RW_PROPRIETARY,
+            QCCP_RW_SA_FALLBACK,
+            QCCP_TRADE_ID,
+            build_qccp_trade_fixture,
+        )
+
+        b1a = build_qccp_trade_fixture(is_qccp=True, is_client_cleared=False)
+        b1b = build_qccp_trade_fixture(is_qccp=True, is_client_cleared=True)
+        b1c = build_qccp_trade_fixture(is_qccp=False, is_client_cleared=False)
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            if fx.trades.height != 1:
+                raise AssertionError(f"P8.25 {label}: trades must have 1 row")
+            if fx.trades["trade_id"][0] != QCCP_TRADE_ID:
+                raise AssertionError(f"P8.25 {label}: trade_id must be {QCCP_TRADE_ID!r}")
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            if fx.netting_sets["netting_set_id"][0] != QCCP_NS_ID:
+                raise AssertionError(f"P8.25 {label}: netting_set_id must be {QCCP_NS_ID!r}")
+            if fx.counterparty["counterparty_reference"][0] != QCCP_CP_REF:
+                raise AssertionError(
+                    f"P8.25 {label}: counterparty_reference must be {QCCP_CP_REF!r}"
+                )
+
+        if "is_client_cleared" not in b1a.trades.columns:
+            raise AssertionError("P8.25 CCR-B1a: is_client_cleared must be present on trades")
+        if b1a.trades["is_client_cleared"][0] is not False:
+            raise AssertionError("P8.25 CCR-B1a: is_client_cleared must be False")
+        if b1b.trades["is_client_cleared"][0] is not True:
+            raise AssertionError("P8.25 CCR-B1b: is_client_cleared must be True")
+        if b1c.trades["is_client_cleared"][0] is not False:
+            raise AssertionError("P8.25 CCR-B1c: is_client_cleared must be False")
+
+        if "is_qccp" not in b1a.counterparty.columns:
+            raise AssertionError("P8.25 CCR-B1a: is_qccp must be present on counterparty")
+        if b1a.counterparty["is_qccp"][0] is not True:
+            raise AssertionError("P8.25 CCR-B1a: is_qccp must be True")
+        if b1b.counterparty["is_qccp"][0] is not True:
+            raise AssertionError("P8.25 CCR-B1b: is_qccp must be True")
+        if b1c.counterparty["is_qccp"][0] is not False:
+            raise AssertionError("P8.25 CCR-B1c: is_qccp must be False")
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            if fx.margin_agreements.height != 0:
+                raise AssertionError(f"P8.25 {label}: margin_agreements must be empty")
+            if fx.ccr_collateral.height != 0:
+                raise AssertionError(f"P8.25 {label}: ccr_collateral must be empty")
+
+        for label, fx in [("CCR-B1a", b1a), ("CCR-B1b", b1b), ("CCR-B1c", b1c)]:
+            cqs = fx.counterparty["institution_cqs"][0]
+            if cqs != QCCP_INSTITUTION_CQS:
+                raise AssertionError(
+                    f"P8.25 {label}: institution_cqs must be {QCCP_INSTITUTION_CQS} (got {cqs})"
+                )
+
+        if not (0 < QCCP_EAD < 100_000_000):
+            raise AssertionError(f"P8.25: QCCP_EAD={QCCP_EAD} is outside plausible range")
+
+        _ = (QCCP_RW_PROPRIETARY, QCCP_RW_CLIENT_CLEARED, QCCP_RW_SA_FALLBACK)
+
+        return [("(python-only builder — no parquet)", 0)]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.qccp_builder",
+            "ccr.trade_builder",
+            "ccr.netting_set_builder",
+            "ccr.margin_builder",
+        ):
             sys.modules.pop(mod, None)
 
 

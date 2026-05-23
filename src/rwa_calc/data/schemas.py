@@ -288,6 +288,11 @@ COUNTERPARTY_SCHEMA: dict[str, ColumnSpec] = {
     # Art. 222(4) FCSM SFT carve-out: 0% RW (CMP) vs 10% RW (non-CMP).
     # Defaults to False (conservative — non-CMP treatment).
     "is_core_market_participant": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 272 Def (88) / PRA PS1/26 Art. 306: True when the counterparty
+    # is a qualified central counterparty (QCCP). Drives the Art. 306(1) 2%
+    # trade-exposure RW (and the Art. 307 4% client-cleared route). Defaults
+    # to False so pre-existing fixtures route to the non-QCCP / SA fallback.
+    "is_qccp": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
@@ -687,6 +692,12 @@ TRADE_SCHEMA: dict[str, ColumnSpec] = {
     "cdo_attachment": ColumnSpec(pl.Float64, required=False),
     "cdo_detachment": ColumnSpec(pl.Float64, required=False),
     "payment_leg_index_id": ColumnSpec(pl.String, required=False),
+    # CRR Art. 307: True when the trade is client-cleared through a clearing
+    # member to a QCCP — routes the trade exposure to the 4% RW branch (vs.
+    # the 2% proprietary branch in Art. 306(1)). Trade-level (not CP-level)
+    # because Art. 307 keys on the trade's clearing relationship. Defaults to
+    # False so pre-existing fixtures route to the proprietary/non-QCCP branch.
+    "is_client_cleared": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 #: Netting-set-level input for SA-CCR. One row per netting set keyed by
