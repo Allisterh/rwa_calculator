@@ -76,10 +76,7 @@ def test_ccr_module_exists(modname: str) -> None:
     checked via ``importlib.import_module``.
     """
     # Arrange
-    if modname == "__init__":
-        full_name = "rwa_calc.engine.ccr"
-    else:
-        full_name = f"rwa_calc.engine.ccr.{modname}"
+    full_name = "rwa_calc.engine.ccr" if modname == "__init__" else f"rwa_calc.engine.ccr.{modname}"
 
     # Act + Assert
     try:

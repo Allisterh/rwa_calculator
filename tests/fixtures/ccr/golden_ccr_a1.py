@@ -34,6 +34,7 @@ References:
 
 from __future__ import annotations
 
+from datetime import date as _date
 from pathlib import Path
 
 import polars as pl
@@ -62,8 +63,6 @@ CCR_A1_DELTA: float = 1.0  # non-option directional long
 CCR_A1_IS_LONG: bool = True
 
 # 10-year tenor: 2026-01-15 start, 2036-01-15 maturity.
-from datetime import date as _date
-
 CCR_A1_START_DATE: _date = _date(2026, 1, 15)
 CCR_A1_MATURITY_DATE: _date = _date(2036, 1, 15)
 
