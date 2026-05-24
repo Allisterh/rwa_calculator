@@ -4,12 +4,22 @@ Credit Risk Mitigation (CRM) processor for RWA calculator.
 Pipeline position:
     Classifier -> CRMProcessor -> SA/IRB/Slotting Calculators
 
-Orchestrates all CRM techniques:
-- Provision deduction (CRR Art. 110-111)
-- CCF for off-balance sheet items (CRR Art. 111)
-- Collateral haircuts and allocation (CRR Art. 223-224, 230)
-- Guarantee substitution (CRR Art. 213-217)
-- Cross-approach CCF (CRR Art. 111 / COREP C07)
+Key responsibilities:
+- Deduct IFRS 9 provisions from EAD
+- Apply CCFs to off-balance sheet items
+- Apply collateral haircuts and allocation across exposures
+- Substitute guarantor risk weight / LGD for the protected portion of
+  guaranteed exposures
+- Surface cross-approach CCF treatment for COREP C07 reporting
+
+References:
+- CRR Art. 110: Treatment of credit risk adjustments (provision deduction)
+- CRR Art. 111: Exposure value and CCF for OBS items
+- CRR Art. 194: General principles governing the eligibility of CRM
+- CRR Art. 213-217: Eligible unfunded credit protection (guarantor types)
+- CRR Art. 223-224: Volatility-adjusted collateral values (FCCM haircuts)
+- CRR Art. 230: Allocation of collateral across exposures
+- COREP C07: Cross-approach CCF reporting
 
 Classes:
     CRMProcessor: Main processor implementing CRMProcessorProtocol
