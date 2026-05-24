@@ -17,12 +17,17 @@ Checks machine-verifiable invariants from CLAUDE.md:
    failures, unknown instruments, unknown articles (any instrument), and
    version mismatches are fatal; AST-walker ``unresolved`` findings remain
    soft warnings.
+10. Every non-exempt module under engine/ and data/schemas.py carries a
+    `References:` block in its module docstring (the CLAUDE.md mandated
+    shape). Pure reshape / format / IO helpers are listed in
+    ``REFERENCES_REQUIRED_EXEMPT``.
 
 Checks 5, 6, 7 enforce the data/engine separation. Check 8 enforces the
 observability contract (see docs/specifications/observability.md). Check 9
-keeps the watchfire citation matrix honest. Rare intentional exceptions are
-listed in the ALLOWLIST dicts below; adding a new entry there should be a
-deliberate, reviewed decision.
+keeps the watchfire citation matrix honest. Check 10 prevents drift in the
+module-docstring citation contract (see docs/development/citation-tracking.md).
+Rare intentional exceptions are listed in the ALLOWLIST dicts below; adding
+a new entry there should be a deliberate, reviewed decision.
 
 Usage:
     python scripts/arch_check.py [path]  # defaults to src/rwa_calc/
@@ -134,6 +139,25 @@ LOGGER_REQUIRED_EXEMPT: set[str] = {
     "engine/aggregator/_summaries.py",
     "engine/aggregator/_supporting_factors.py",
     "engine/aggregator/_utils.py",
+}
+
+# Modules exempt from the check-10 "must declare a References: block" rule.
+# Reshape / format / IO helpers under engine/ that carry no per-function
+# regulatory citations — adding a References block would either duplicate the
+# parent stage's citations or invent ones. New stage / calculator / aggregator
+# modules under engine/ and the data/schemas.py module MUST carry a
+# `References:` block in their module docstring.
+REFERENCES_REQUIRED_EXEMPT: set[str] = {
+    "engine/aggregator/_summaries.py",
+    "engine/aggregator/_utils.py",
+    "engine/aggregator/_equity_prep.py",
+    _PATH_AGGREGATOR_SCHEMAS,
+    "engine/utils.py",
+    "engine/fx_converter.py",
+    "engine/fx_rate_sync.py",
+    "engine/materialise.py",
+    "engine/loader.py",
+    "engine/irb/stats_backend.py",
 }
 
 # Files where an inline `"col" not in schema.names()` check is a legitimate
@@ -529,6 +553,42 @@ def check_engine_logger_contract(path: Path) -> list[str]:
     return violations
 
 
+def check_module_references(path: Path) -> list[str]:
+    """Every non-exempt module under engine/ and data/schemas.py carries a
+    ``References:`` block in its module docstring.
+
+    The CLAUDE.md docstring contract requires every regulatory module to cite
+    the CRR / PRA PS1/26 / BCBS articles it implements. Reshape, format, and
+    IO helpers that legitimately have no per-function regulatory citations are
+    listed in ``REFERENCES_REQUIRED_EXEMPT``. The check is a literal token
+    grep (``References:``) so existing protocol-only References blocks (e.g.
+    ``loader.py``-style) remain valid — strict citation-form enforcement is
+    the job of watchfire (check 9) on the ``@cites(...)`` decorators.
+    """
+    violations: list[str] = []
+    targets = list(_iter_engine_files(path))
+    schemas = path / "data" / "schemas.py"
+    if schemas.exists():
+        targets.append(schemas)
+    for py_file in targets:
+        rel = py_file.relative_to(path).as_posix()
+        if rel in REFERENCES_REQUIRED_EXEMPT:
+            continue
+        try:
+            tree = ast.parse(py_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        docstring = ast.get_docstring(tree) or ""
+        if "References:" not in docstring:
+            violations.append(
+                f"  {py_file}: module docstring missing `References:` block "
+                "(cite CRR / PS1/26 articles, or add to "
+                "REFERENCES_REQUIRED_EXEMPT in scripts/arch_check.py if a "
+                "pure helper)"
+            )
+    return violations
+
+
 def check_watchfire_citations() -> tuple[list[str], list[str]]:
     """Run `watchfire check` via its Python API.
 
@@ -616,6 +676,10 @@ def main() -> int:
         (
             "Engine modules declare a logger + no print()/basicConfig()",
             check_engine_logger_contract,
+        ),
+        (
+            "Engine + data/schemas.py modules carry a `References:` docstring block",
+            check_module_references,
         ),
     ]
 
