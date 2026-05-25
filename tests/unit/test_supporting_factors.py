@@ -2,7 +2,12 @@
 Unit tests for supporting factors (CRR2 Art. 501).
 
 Tests cover:
-- BTL exclusion from SME factor AND from E* (Art. 501 residential carve-out)
+- Residential-property collateral netting from E* (Art. 501 carve-out:
+  each row's contribution to E* is reduced by residential_collateral_value,
+  capped at drawn; mirrors the retail-threshold logic in Art. 123(c))
+- BTL rows still receive factor=1.0 (separate eligibility gate; in practice
+  a BTL row's RRE coverage usually equals or exceeds its drawn, so its E*
+  contribution naturally lands at 0)
 - Drawn-only tier weighting: tier calculation uses drawn_amount + interest,
   NOT ead_final (which includes CCF-adjusted undrawn commitments)
 - Infrastructure factor interaction with BTL
@@ -38,12 +43,14 @@ def _make_exposures(
     include_drawn: bool = True,
     include_counterparty: bool = True,
     include_lending_group: bool = False,
+    include_res_coll: bool = True,
 ) -> pl.LazyFrame:
     """Build a LazyFrame of exposures for supporting factor tests.
 
     Each row dict supports keys:
         ref, cp, ead, rwa, drawn (defaults to ead), interest (defaults to 0),
-        is_sme (True), is_infra (False), is_btl (False), lending_group (None).
+        is_sme (True), is_infra (False), is_btl (False), lending_group (None),
+        res_coll (defaults to 0.0 — residential_collateral_value covering this row).
     """
     data: dict = {
         "exposure_reference": [r["ref"] for r in rows],
@@ -61,15 +68,24 @@ def _make_exposures(
         data["is_buy_to_let"] = [r.get("is_btl", False) for r in rows]
     if include_lending_group:
         data["lending_group_reference"] = [r.get("lending_group") for r in rows]
+    if include_res_coll:
+        data["residential_collateral_value"] = [float(r.get("res_coll", 0.0)) for r in rows]
     return pl.LazyFrame(data)
 
 
 class TestBTLExcludedFromSMEFactor:
-    """BTL exposures get supporting_factor=1.0 AND are excluded from E*.
+    """BTL exposures get supporting_factor=1.0 regardless of E* netting.
 
     CRR Art. 501 carves out claims secured on residential property collateral
-    from the aggregate amount owed (E*), so BTL drawn does NOT contribute to
-    total_cp_drawn.
+    from the aggregate amount owed (E*). The engine implements this carve-out
+    by subtracting ``residential_collateral_value`` (capped at drawn) from
+    each row's contribution to E* — mirroring the retail-threshold logic in
+    Art. 123(c). In practice a BTL loan's RRE collateral typically equals or
+    exceeds its drawn balance, so a BTL row contributes 0 to E* by virtue of
+    the netting; these tests pin that scenario explicitly.
+
+    The BTL flag continues to gate the SF eligibility independently (BTL
+    rows always receive factor=1.0).
     """
 
     def test_btl_excluded_non_btl_below_threshold_gets_tier1(
@@ -78,21 +94,28 @@ class TestBTLExcludedFromSMEFactor:
         crr_config: CalculationConfig,
     ) -> None:
         """
-        CP with 1.5m non-BTL + 1.0m BTL (all drawn):
-        - total_cp_drawn = 1.5m (BTL excluded from E* per Art. 501 carve-out)
+        CP with 1.5m non-BTL + 1.0m BTL (BTL fully covered by RRE):
+        - total_cp_drawn = 1.5m (BTL contribution netted to 0 by RRE coverage)
         - Non-BTL gets pure Tier 1 factor (1.5m < EUR 2.5m threshold)
         - BTL gets 1.0
         """
         exposures = _make_exposures(
             [
                 {"ref": "E1", "cp": "CP1", "ead": 1_500_000, "rwa": 600_000, "is_btl": False},
-                {"ref": "E2", "cp": "CP1", "ead": 1_000_000, "rwa": 400_000, "is_btl": True},
+                {
+                    "ref": "E2",
+                    "cp": "CP1",
+                    "ead": 1_000_000,
+                    "rwa": 400_000,
+                    "is_btl": True,
+                    "res_coll": 1_000_000,  # fully secured on residential property
+                },
             ]
         )
 
         result = calculator.apply_factors(exposures, crr_config).collect()
 
-        # Both exposures should see total_cp_drawn = 1.5m (BTL excluded from E*)
+        # Both exposures should see total_cp_drawn = 1.5m (BTL netted to 0 in E*)
         assert result.filter(pl.col("exposure_reference") == "E1")["total_cp_drawn"][0] == 1_500_000
         assert result.filter(pl.col("exposure_reference") == "E2")["total_cp_drawn"][0] == 1_500_000
 
@@ -117,17 +140,24 @@ class TestBTLExcludedFromSMEFactor:
         calculator: SupportingFactorCalculator,
         crr_config: CalculationConfig,
     ) -> None:
-        """total_cp_drawn = 1.0m (Art. 501 excludes the 2.0m BTL from E*)."""
+        """total_cp_drawn = 1.0m (Art. 501 nets the 2.0m BTL out of E* via RRE coverage)."""
         exposures = _make_exposures(
             [
                 {"ref": "E1", "cp": "CP1", "ead": 1_000_000, "rwa": 400_000, "is_btl": False},
-                {"ref": "E2", "cp": "CP1", "ead": 2_000_000, "rwa": 800_000, "is_btl": True},
+                {
+                    "ref": "E2",
+                    "cp": "CP1",
+                    "ead": 2_000_000,
+                    "rwa": 800_000,
+                    "is_btl": True,
+                    "res_coll": 2_000_000,  # fully secured on residential property
+                },
             ]
         )
 
         result = calculator.apply_factors(exposures, crr_config).collect()
 
-        # total_cp_drawn excludes BTL drawn per Art. 501 residential carve-out
+        # total_cp_drawn nets BTL drawn down to 0 via RRE coverage per Art. 501
         total_cp = result["total_cp_drawn"][0]
         assert total_cp == pytest.approx(1_000_000)
 
@@ -136,11 +166,25 @@ class TestBTLExcludedFromSMEFactor:
         calculator: SupportingFactorCalculator,
         crr_config: CalculationConfig,
     ) -> None:
-        """CP with only BTL exposures: all get 1.0."""
+        """CP with only BTL exposures (all fully RRE-secured): all get 1.0."""
         exposures = _make_exposures(
             [
-                {"ref": "E1", "cp": "CP1", "ead": 1_000_000, "rwa": 400_000, "is_btl": True},
-                {"ref": "E2", "cp": "CP1", "ead": 500_000, "rwa": 200_000, "is_btl": True},
+                {
+                    "ref": "E1",
+                    "cp": "CP1",
+                    "ead": 1_000_000,
+                    "rwa": 400_000,
+                    "is_btl": True,
+                    "res_coll": 1_000_000,
+                },
+                {
+                    "ref": "E2",
+                    "cp": "CP1",
+                    "ead": 500_000,
+                    "rwa": 200_000,
+                    "is_btl": True,
+                    "res_coll": 500_000,
+                },
             ]
         )
 
@@ -804,9 +848,10 @@ class TestLendingGroupAggregation:
     ) -> None:
         """
         Lending group with one non-BTL SME (1.5m drawn) and one BTL SME (3m
-        drawn). Art. 501 carves residential-property-secured claims out of
-        E*, so E* = 1.5m and the non-BTL row gets pure Tier 1. The BTL row
-        gets factor=1.0 regardless.
+        drawn, fully RRE-secured). Art. 501 carves residential-property
+        coverage out of E* (per-row netting), so the BTL row contributes 0
+        to the group sum: E* = 1.5m and the non-BTL row gets pure Tier 1.
+        The BTL row gets factor=1.0 regardless.
         """
         exposures = _make_exposures(
             [
@@ -824,6 +869,7 @@ class TestLendingGroupAggregation:
                     "ead": 3_000_000,
                     "rwa": 1_200_000,
                     "is_btl": True,
+                    "res_coll": 3_000_000,  # fully secured on residential property
                     "lending_group": "LG1",
                 },
             ],
@@ -832,7 +878,7 @@ class TestLendingGroupAggregation:
 
         result = calculator.apply_factors(exposures, crr_config).collect()
 
-        # E* = 1.5m (BTL drawn excluded from the group sum)
+        # E* = 1.5m (BTL row's drawn fully netted by its RRE collateral)
         assert result["total_cp_drawn"].to_list() == pytest.approx([1_500_000, 1_500_000])
 
         e1 = result.filter(pl.col("exposure_reference") == "E1")
@@ -873,3 +919,162 @@ class TestLendingGroupAggregation:
         assert result["supporting_factor"].to_list() == pytest.approx(
             [expected_factor, expected_factor], rel=0.001
         )
+
+
+class TestResidentialCollateralNettedFromEStar:
+    """E* is reduced by ``residential_collateral_value`` per CRR Art. 501.
+
+    The carve-out in Art. 501 ("excluding claims or contingent claims secured
+    on residential property collateral") is implemented per-row, mirroring
+    the retail-threshold logic in ``engine/hierarchy.py`` (Art. 123(c)):
+
+        contribution_to_E* = max(0, drawn - residential_collateral_value)
+
+    This applies independently of the BTL flag — a non-BTL SME secured on
+    residential property still has the secured portion netted from E*.
+    """
+
+    def test_partial_rre_coverage_reduces_e_star_contribution(
+        self,
+        calculator: SupportingFactorCalculator,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """
+        Non-BTL SME with £1.0m drawn and £0.6m residential collateral:
+        contribution to E* = £0.4m (drawn minus collateral, capped at drawn).
+        """
+        exposures = _make_exposures(
+            [
+                {
+                    "ref": "E1",
+                    "cp": "CP1",
+                    "ead": 1_000_000,
+                    "rwa": 400_000,
+                    "is_btl": False,
+                    "res_coll": 600_000,
+                },
+            ]
+        )
+
+        result = calculator.apply_factors(exposures, crr_config).collect()
+
+        assert result["total_cp_drawn"][0] == pytest.approx(400_000)
+        # E* = 400k well below threshold → pure Tier 1 factor
+        assert result["supporting_factor"][0] == pytest.approx(0.7619, rel=0.001)
+
+    def test_full_rre_coverage_zeros_contribution(
+        self,
+        calculator: SupportingFactorCalculator,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """SME with res_coll >= drawn contributes 0 to E*."""
+        exposures = _make_exposures(
+            [
+                {
+                    "ref": "E1",
+                    "cp": "CP1",
+                    "ead": 800_000,
+                    "rwa": 320_000,
+                    "is_btl": False,
+                    "res_coll": 800_000,
+                },
+                {"ref": "E2", "cp": "CP1", "ead": 500_000, "rwa": 200_000, "res_coll": 0.0},
+            ]
+        )
+
+        result = calculator.apply_factors(exposures, crr_config).collect()
+
+        # E* = 0.5m (the secured row nets to 0)
+        assert result["total_cp_drawn"].to_list() == pytest.approx([500_000, 500_000])
+
+    def test_rre_coverage_capped_at_drawn(
+        self,
+        calculator: SupportingFactorCalculator,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """res_coll > drawn must not produce a negative contribution to E*."""
+        exposures = _make_exposures(
+            [
+                {
+                    "ref": "E1",
+                    "cp": "CP1",
+                    "ead": 500_000,
+                    "rwa": 200_000,
+                    "res_coll": 2_000_000,  # collateral exceeds drawn
+                },
+                {"ref": "E2", "cp": "CP1", "ead": 1_000_000, "rwa": 400_000, "res_coll": 0.0},
+            ]
+        )
+
+        result = calculator.apply_factors(exposures, crr_config).collect()
+
+        # E1 contributes 0 (not negative); E* = 1.0m from E2 alone
+        assert result["total_cp_drawn"].to_list() == pytest.approx([1_000_000, 1_000_000])
+
+    def test_partial_rre_coverage_in_lending_group(
+        self,
+        calculator: SupportingFactorCalculator,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """
+        Lending group with one fully-unsecured £2.0m SME and one £1.0m SME
+        with £600k RRE coverage. E* = 2.0m + 0.4m = 2.4m → just under
+        the EUR 2.5m threshold (~£2.18m at 0.8732 FX). The group sum
+        crosses the threshold despite either row being below it alone.
+        """
+        threshold_gbp = float(crr_config.thresholds.sme_exposure_threshold)
+
+        exposures = _make_exposures(
+            [
+                {
+                    "ref": "E1",
+                    "cp": "CP1",
+                    "ead": 2_000_000,
+                    "rwa": 800_000,
+                    "lending_group": "LG1",
+                    "res_coll": 0.0,
+                },
+                {
+                    "ref": "E2",
+                    "cp": "CP2",
+                    "ead": 1_000_000,
+                    "rwa": 400_000,
+                    "lending_group": "LG1",
+                    "res_coll": 600_000,
+                },
+            ],
+            include_lending_group=True,
+        )
+
+        result = calculator.apply_factors(exposures, crr_config).collect()
+
+        # E* = 2.0m + (1.0m - 0.6m) = 2.4m
+        assert result["total_cp_drawn"].to_list() == pytest.approx([2_400_000, 2_400_000])
+
+        expected_factor = (
+            min(2_400_000, threshold_gbp) * 0.7619 + max(2_400_000 - threshold_gbp, 0) * 0.85
+        ) / 2_400_000
+        assert result["supporting_factor"].to_list() == pytest.approx(
+            [expected_factor, expected_factor], rel=0.001
+        )
+
+    def test_missing_residential_collateral_column_no_netting(
+        self,
+        calculator: SupportingFactorCalculator,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """
+        Backward compat: frame without ``residential_collateral_value``
+        falls back to no netting (the column is optional in the engine).
+        """
+        exposures = _make_exposures(
+            [
+                {"ref": "E1", "cp": "CP1", "ead": 1_000_000, "rwa": 400_000},
+            ],
+            include_res_coll=False,
+        )
+
+        result = calculator.apply_factors(exposures, crr_config).collect()
+
+        # No netting → full drawn contributes to E*
+        assert result["total_cp_drawn"][0] == pytest.approx(1_000_000)
