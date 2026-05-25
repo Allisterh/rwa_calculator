@@ -21,8 +21,12 @@ A tiered discount applied to RWA for qualifying SME exposures.
 - E* aggregated across the SME's group of connected clients
   (`lending_group_reference`), with fallback to `counterparty_reference` when
   no lending group is mapped, per CRR Art. 501
-- Claims secured on residential property collateral (e.g. BTL) are excluded
-  from E* per the Art. 501 carve-out; those rows also receive `factor=1.0`
+- Claims secured on residential property collateral (e.g. BTL) are netted
+  from E* per the Art. 501 carve-out: each row's contribution to E* is
+  reduced by `residential_collateral_value` (capped at drawn so the
+  contribution never goes negative), mirroring the retail-threshold
+  treatment in CRR Art. 123(c). BTL rows additionally receive `factor=1.0`
+  via a separate eligibility gate.
 
 !!! info "Regulatory Scope vs Implementation"
     CRR Art. 501 applies the factor to **all** exposures to SMEs, including corporate, retail,
@@ -48,7 +52,7 @@ For exposures that span both tiers:
 SF = [min(D, threshold) x 0.7619 + max(D - threshold, 0) x 0.85] / D
 ```
 
-Where `D` (= E* in Art. 501) is the on-balance-sheet amount (`max(0, drawn_amount) + interest`) aggregated across the SME's group of connected clients (`lending_group_reference`, falling back to `counterparty_reference` when the lending group is null), excluding drawn from rows secured on residential property (BTL). `threshold` is EUR 2.5m (or GBP equivalent).
+Where `D` (= E* in Art. 501) is the on-balance-sheet amount (`max(0, drawn_amount) + interest`) aggregated across the SME's group of connected clients (`lending_group_reference`, falling back to `counterparty_reference` when the lending group is null), with each row's contribution reduced by the residential-property collateral value (`residential_collateral_value`, capped at drawn) per the Art. 501 carve-out — mirroring the retail-threshold treatment in CRR Art. 123(c). `threshold` is EUR 2.5m (or GBP equivalent).
 
 ## Infrastructure Supporting Factor (CRR Art. 501a)
 

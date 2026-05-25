@@ -20,9 +20,14 @@ The tier threshold is applied to drawn (on-balance-sheet) amounts only,
 not the full post-CRM EAD which includes CCF-adjusted undrawn commitments.
 Drawn amounts are aggregated across the SME's group of connected clients
 (``lending_group_reference``), with fallback to ``counterparty_reference``
-when no lending group is mapped. Buy-to-let / residential-property-secured
-drawn is excluded from E* per the Art. 501 carve-out, but the row itself
-also receives ``factor=1.0`` (BTL is not eligible for the SF). The resulting
+when no lending group is mapped. The Art. 501 residential carve-out
+("excluding claims or contingent claims secured on residential property
+collateral") is applied per row by subtracting ``residential_collateral_value``
+(capped at drawn) from each row's contribution to E*, mirroring the
+retail-threshold treatment in ``engine/hierarchy.py`` (CRR Art. 123(c)).
+Buy-to-let rows additionally receive ``factor=1.0`` (BTL is not eligible
+for the SF); a typical BTL row's RRE coverage equals its drawn balance so
+its E* contribution lands at 0 by virtue of the netting. The resulting
 blended factor is applied to each SME row's full RWA.
 
 Infrastructure Supporting Factor (CRR Art. 501a):
@@ -183,9 +188,12 @@ class SupportingFactorCalculator:
         property collateral. The implementation aggregates drawn amounts over
         ``lending_group_reference`` first and falls back to
         ``counterparty_reference`` when no lending group is mapped (mirroring
-        the retail aggregation pattern). BTL drawn is excluded from E*; BTL
-        rows themselves receive factor=1.0. The resulting blended factor is
-        applied to each SME row's full RWA.
+        the retail aggregation pattern). The residential carve-out is applied
+        per row by subtracting ``residential_collateral_value`` (capped at
+        drawn) from each row's contribution to E*, mirroring the retail-
+        threshold logic in ``engine/hierarchy.py`` (Art. 123(c)). BTL rows
+        receive factor=1.0 via a separate eligibility gate. The resulting
+        blended factor is applied to each SME row's full RWA.
 
         The tier calculation uses drawn_amount + interest ("amount owed"),
         NOT ead_final which includes CCF-adjusted undrawn commitments.
@@ -199,14 +207,16 @@ class SupportingFactorCalculator:
         - rwa_pre_factor: float (RWA before supporting factor)
         - counterparty_reference: str (optional, for fallback aggregation)
         - lending_group_reference: str (optional, primary aggregation key)
-        - is_buy_to_let: bool (optional, used to apply Art. 501 residential carve-out)
+        - residential_collateral_value: float (optional, netted from E* per
+          Art. 501 residential carve-out)
+        - is_buy_to_let: bool (optional, factor=1.0 eligibility gate)
 
         Adds columns:
         - supporting_factor: float
         - rwa_post_factor: float (RWA after supporting factor)
         - supporting_factor_applied: bool
         - total_cp_drawn: float (E* — drawn aggregated across the SME's group of
-          connected clients, with BTL drawn excluded per Art. 501)
+          connected clients, net of residential collateral per Art. 501)
 
         Args:
             exposures: Exposures with RWA calculated
@@ -241,6 +251,7 @@ class SupportingFactorCalculator:
         has_btl = "is_buy_to_let" in schema.names()
         has_defaulted = "is_defaulted" in schema.names()
         has_drawn = "drawn_amount" in schema.names()
+        has_res_coll = "residential_collateral_value" in schema.names()
 
         # Build the drawn (on-balance-sheet) expression for tier calculation.
         # Use drawn_amount + interest when available; fall back to ead_final.
@@ -276,12 +287,23 @@ class SupportingFactorCalculator:
             if group_key_expr is not None:
                 exposures = exposures.with_columns([group_key_expr])
 
-                # Art. 501 carve-out: claims secured on residential property are
-                # excluded from E*. BTL is the codebase's residential-property
-                # proxy. Defaulted exposures stay in E* (Art. 501 explicitly
-                # includes "any exposure in default").
-                is_btl_excl = pl.col("is_buy_to_let") if has_btl else pl.lit(False)
-                drawn_in_e_star = pl.when(is_btl_excl).then(0.0).otherwise(drawn_expr)
+                # Art. 501 carve-out: "excluding claims or contingent claims
+                # secured on residential property collateral". Implemented as
+                # per-row netting of residential_collateral_value (capped at
+                # drawn so the contribution never goes negative), mirroring
+                # the retail-threshold logic in engine/hierarchy.py:2444-2447
+                # (Art. 123(c)). Defaulted exposures stay in E* (Art. 501
+                # explicitly includes "any exposure in default").
+                if has_res_coll:
+                    res_coll_expr = (
+                        pl.col("residential_collateral_value")
+                        .fill_nan(0.0)
+                        .fill_null(0.0)
+                        .clip(lower_bound=0.0)
+                    )
+                    drawn_in_e_star = drawn_expr - pl.min_horizontal(res_coll_expr, drawn_expr)
+                else:
+                    drawn_in_e_star = drawn_expr
 
                 total_cp_drawn_expr = (
                     pl.when(pl.col("is_sme") & pl.col("_sme_group_key").is_not_null())
@@ -331,10 +353,11 @@ class SupportingFactorCalculator:
                 .otherwise(pl.lit(0.0))
             )
 
-            # BTL exposures are excluded from BOTH the SME factor AND from E*
-            # (CRR Art. 501 carves out claims secured on residential property
-            # collateral from the aggregate amount owed). E* exclusion is
-            # applied via drawn_in_e_star above.
+            # BTL exposures are excluded from the SME factor itself (the
+            # eligibility gate is separate from the E* netting). For E* the
+            # residential carve-out is applied via residential_collateral_value
+            # netting on drawn_in_e_star above; a typical BTL row's RRE
+            # collateral covers its drawn balance so its E* contribution is 0.
             is_btl = pl.col("is_buy_to_let") if has_btl else pl.lit(False)
             # Defaulted exposures are excluded from SME factor (CRR Art. 501)
             is_defaulted = pl.col("is_defaulted") if has_defaulted else pl.lit(False)
