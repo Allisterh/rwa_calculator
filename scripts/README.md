@@ -6,6 +6,15 @@ Utility scripts for the rwa-calc project.
 
 Automates version updates and PyPI deployment.
 
+> **Recommended path:** invoke `/release` in a Claude Code session instead of
+> calling `deploy.py` directly. The slash command previews which `[Unreleased]`
+> bullets will be promoted into the new version section before running the
+> script, so you can verify the changelog promotion before commit + tag.
+
+The `[Unreleased]` -> new-version promotion logic lives in
+`scripts/_deploy_changelog.py` (pure string transforms, unit-tested at
+`tests/unit/test_deploy_changelog.py`).
+
 ### Features
 
 - Updates version in all required files (pyproject.toml, __init__.py, docs)

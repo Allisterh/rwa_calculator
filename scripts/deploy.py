@@ -29,6 +29,11 @@ import sys
 from datetime import date
 from pathlib import Path
 
+# Make the sibling helper importable when this script is invoked directly.
+sys.path.insert(0, str(Path(__file__).parent))
+
+from _deploy_changelog import promote_unreleased, update_version_table  # noqa: E402
+
 # Project root (parent of scripts directory)
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -103,7 +108,7 @@ def update_version_in_file(file_path: Path, pattern: str, new_version: str) -> b
 
 
 def update_changelog(new_version: str, old_version: str) -> bool:
-    """Update changelog with new version section."""
+    """Promote [Unreleased] bullets into a new version section."""
     if not CHANGELOG_PATH.exists():
         print(f"  WARNING: {CHANGELOG_PATH} not found, skipping")
         return False
@@ -111,55 +116,18 @@ def update_changelog(new_version: str, old_version: str) -> bool:
     content = CHANGELOG_PATH.read_text(encoding="utf-8")
     today = date.today().strftime("%Y-%m-%d")
 
-    # Check if version already exists
     if f"## [{new_version}]" in content:
         print(f"  Changelog already has version {new_version}")
         return True
 
-    # Replace [Unreleased] section with new version
-    unreleased_pattern = "## [Unreleased]\n\n### Added\n- (Next release changes will go here)\n\n### Changed\n- (Next release changes will go here)\n\n---"
+    new_content = promote_unreleased(content, new_version, today=today)
+    new_content = update_version_table(new_content, new_version, old_version, today)
 
-    new_unreleased = f"""## [Unreleased]
+    if new_content == content:
+        print("  WARNING: No changelog change made (no [Unreleased] block found)")
+        return False
 
-### Added
-- (Next release changes will go here)
-
-### Changed
-- (Next release changes will go here)
-
----
-
-## [{new_version}] - {today}
-
-### Changed
-- Version bump for PyPI release"""
-
-    if unreleased_pattern in content:
-        content = content.replace(unreleased_pattern, new_unreleased)
-    else:
-        # Fallback: insert after [Unreleased] header
-        unreleased_simple = r"(## \[Unreleased\].*?)(## \[\d)"
-        match = re.search(unreleased_simple, content, re.DOTALL)
-        if match:
-            insert_point = match.start(2)
-            new_section = f"\n## [{new_version}] - {today}\n\n### Changed\n- Version bump for PyPI release\n\n---\n\n"
-            content = content[:insert_point] + new_section + content[insert_point:]
-        else:
-            print("  WARNING: Could not find insertion point in changelog")
-            return False
-
-    # Update version table
-    table_pattern = rf"\| {re.escape(old_version)} \| [\d-]+ \| Current \|"
-    table_replacement = (
-        f"| {new_version} | {today} | Current |\n| {old_version} | {today} | Previous |"
-    )
-
-    if re.search(table_pattern, content):
-        # Also update the old "Previous" to just "-"
-        content = re.sub(r"\| Previous \|$", "| - |", content, flags=re.MULTILINE)
-        content = re.sub(table_pattern, table_replacement, content)
-
-    CHANGELOG_PATH.write_text(content, encoding="utf-8")
+    CHANGELOG_PATH.write_text(new_content, encoding="utf-8")
     print(f"  Updated {CHANGELOG_PATH.relative_to(PROJECT_ROOT)}")
     return True
 
