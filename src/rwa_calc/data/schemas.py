@@ -213,6 +213,11 @@ LOAN_SCHEMA: dict[str, ColumnSpec] = {
     # the 1.5x retail/RE currency-mismatch multiplier when True. Defaults to
     # False (unhedged — multiplier fires under FX mismatch).
     "is_hedged": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 123B(2): hedge coverage proportion (0.0-1.0). When >= 0.90
+    # the loan is treated as fully hedged and the 1.5x currency-mismatch
+    # multiplier is suppressed even if ``is_hedged`` is False. Defaults to 0.0
+    # (no hedge coverage — multiplier fires under FX mismatch unless is_hedged).
+    "hedge_coverage_ratio": ColumnSpec(pl.Float64, default=0.0, required=False),
     # PRA PS1/26 Art. 161(1)(e)/(f)/(g): purchased-receivables F-IRB LGD routing.
     # Null for non-purchased-receivables exposures (default). When set, takes
     # precedence over the seniority-based LGD selector:
@@ -980,6 +985,7 @@ VALID_ENTITY_TYPES = {
     "company",
     "individual",
     "retail",
+    "natural_person",
     "specialised_lending",
     "equity",
     "covered_bond",

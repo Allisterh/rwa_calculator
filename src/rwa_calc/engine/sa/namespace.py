@@ -88,6 +88,7 @@ from rwa_calc.data.tables.b31_risk_weights import (
     B31_CORPORATE_SHORT_TERM_ECAI_RISK_WEIGHTS,
     B31_CORPORATE_SME_RW,
     B31_COVERED_BOND_UNRATED_FROM_SCRA,
+    B31_CURRENCY_MISMATCH_HEDGE_COVERAGE_FLOOR,
     B31_CURRENCY_MISMATCH_MULTIPLIER,
     B31_CURRENCY_MISMATCH_RW_CAP,
     B31_DEFAULTED_PROVISION_THRESHOLD,
@@ -313,6 +314,8 @@ _SA_B31_RW: dict[str, float] = {
     # Currency mismatch (PRA PS1/26 Art. 123B / CRE20.93)
     "currency_mismatch_multiplier": float(B31_CURRENCY_MISMATCH_MULTIPLIER),
     "currency_mismatch_cap": float(B31_CURRENCY_MISMATCH_RW_CAP),
+    # PRA PS1/26 Art. 123B(2): partial-hedge coverage threshold (>= 0.90 waives)
+    "currency_mismatch_hedge_floor": float(B31_CURRENCY_MISMATCH_HEDGE_COVERAGE_FLOOR),
     # B31 Art. 129(5) covered-bond unrated SCRA fallback (Grade C equivalent)
     "unrated_cb_default": float(B31_COVERED_BOND_UNRATED_FROM_SCRA["C"]),
 }
@@ -1979,13 +1982,22 @@ class SALazyFrame:
         has_mismatch = pl.col(income_col).is_not_null() & (pl.col(income_col) != pl.col("currency"))
 
         # Art. 123B(2) / CRE20.93: the 1.5x mismatch multiplier is suppressed when
-        # the exposure is hedged against currency risk. Default to False (unhedged)
-        # when the column is missing or null.
-        is_hedged_expr = (
+        # the exposure is hedged against currency risk. A full hedge can be signalled
+        # either by ``is_hedged=True`` OR by ``hedge_coverage_ratio >= 0.90`` (the
+        # Art. 123B(2) partial-hedge coverage floor). Both columns default to their
+        # "no hedge" sentinel when missing or null (False / 0.0).
+        is_hedged_flag = (
             pl.col("is_hedged").fill_null(False) if "is_hedged" in cols else pl.lit(False)
         )
+        hedge_coverage_ok = (
+            pl.col("hedge_coverage_ratio").fill_null(0.0)
+            >= _SA_B31_RW["currency_mismatch_hedge_floor"]
+            if "hedge_coverage_ratio" in cols
+            else pl.lit(False)
+        )
+        waive_expr = is_hedged_flag | hedge_coverage_ok
 
-        mismatch_applies = is_retail_or_re & has_mismatch & ~is_hedged_expr
+        mismatch_applies = is_retail_or_re & has_mismatch & ~waive_expr
 
         return self._lf.with_columns(
             [

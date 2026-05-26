@@ -260,6 +260,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p194f,
         ),
         (
+            "P1.94b (B31 hedge_coverage_ratio < 0.90 gate — Art. 123B(2) multiplier fires)",
+            "p1_94b",
+            _generate_p194b,
+        ),
+        (
             "P2.17 (CRR Art. 123 second subparagraph payroll/pension loan 35% RW)",
             "p2_17",
             _generate_p217,
@@ -1357,6 +1362,22 @@ def _generate_p194f(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_94f", None)
+
+
+def _generate_p194b(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.94b fixtures (B31 hedge_coverage_ratio < 0.90 gate — Art. 123B(2) fires)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_94b import save_p194b_fixtures
+
+        data_dir = output_dir / "data"
+        saved = save_p194b_fixtures(data_dir)
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_94b", None)
 
 
 def _generate_p217(output_dir: Path) -> list[tuple[str, int]]:

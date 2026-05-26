@@ -46,6 +46,8 @@ ENTITY_TYPE_TO_SA_CLASS: dict[str, str] = {
     "company": ExposureClass.CORPORATE.value,
     "individual": ExposureClass.RETAIL_OTHER.value,
     "retail": ExposureClass.RETAIL_OTHER.value,
+    # Alias for "individual" / "retail" per CRR Art. 112(1)(h) — natural-person non-SME obligors.
+    "natural_person": ExposureClass.RETAIL_OTHER.value,
     # Art. 112(1)(g): SL is a corporate sub-type under SA, not a separate class.
     # The sl_type column (from the specialised_lending join) drives SL-specific
     # risk weight lookup; the exposure_class_sa column is CORPORATE.
@@ -85,6 +87,8 @@ ENTITY_TYPE_TO_IRB_CLASS: dict[str, str] = {
     "company": ExposureClass.CORPORATE.value,
     "individual": ExposureClass.RETAIL_OTHER.value,
     "retail": ExposureClass.RETAIL_OTHER.value,
+    # Alias for "individual" / "retail" per CRR Art. 112(1)(h) — natural-person non-SME obligors.
+    "natural_person": ExposureClass.RETAIL_OTHER.value,
     "specialised_lending": ExposureClass.SPECIALISED_LENDING.value,
     "equity": ExposureClass.EQUITY.value,
     "covered_bond": ExposureClass.COVERED_BOND.value,

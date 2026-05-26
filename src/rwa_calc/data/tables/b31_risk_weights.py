@@ -261,6 +261,8 @@ B31_RETAIL_NON_REGULATORY_RW = Decimal("1.00")  # 100% for non-regulatory retail
 
 B31_CURRENCY_MISMATCH_MULTIPLIER: Decimal = Decimal("1.5")
 B31_CURRENCY_MISMATCH_RW_CAP: Decimal = Decimal("1.50")
+B31_CURRENCY_MISMATCH_HEDGE_COVERAGE_FLOOR: Decimal = Decimal("0.90")
+"""PRA PS1/26 Art. 123B(2) — currency-mismatch multiplier waived when hedge coverage >= 90%."""
 
 # =============================================================================
 # SA SPECIALISED LENDING — BASEL 3.1 (PRA PS1/26 Art. 122A-122B)
