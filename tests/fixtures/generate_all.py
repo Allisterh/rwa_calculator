@@ -275,6 +275,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p1122a,
         ),
         (
+            "P1.122(b) (IRB borrower + unrated SCRA-B institution guarantor)",
+            "p1_122b",
+            _generate_p1122b,
+        ),
+        (
             "P2.36 (sovereign/institution PD floor first-class config fields)",
             "p2_36",
             _generate_p236,
@@ -1394,6 +1399,22 @@ def _generate_p1122a(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_122a", None)
+
+
+def _generate_p1122b(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.122(b) fixtures (IRB borrower + unrated SCRA-B institution guarantor)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_122b import save_p1122b_fixtures
+
+        data_dir = output_dir / "data"
+        saved = save_p1122b_fixtures(data_dir)
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_122b", None)
 
 
 def _generate_p236(output_dir: Path) -> list[tuple[str, int]]:
