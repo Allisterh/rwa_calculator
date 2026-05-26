@@ -324,6 +324,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_ccr_a5,
         ),
+        (
+            "CCR-A10 golden (mixed-asset-class netting set — one trade per asset class)",
+            "ccr",
+            _generate_ccr_a10,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -1974,6 +1979,30 @@ def _generate_ccr_a5(output_dir: Path) -> list[tuple[str, int]]:
         for mod in (
             "ccr.golden_ccr_a5",
             "ccr.golden_ccr_a1",
+            "ccr.trade_builder",
+            "ccr.netting_set_builder",
+            "ccr.margin_builder",
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_ccr_a10(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate CCR-A10 golden fixtures (mixed-asset-class netting set, 5 trades, unmargined)."""
+    # golden_ccr_a10 uses relative imports from the ccr package, so load it as
+    # part of the 'ccr' package — same pattern as _generate_ccr_golden.
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.golden_ccr_a10 import save_ccr_a10_fixtures
+
+        saved = save_ccr_a10_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.golden_ccr_a10",
+            "ccr.golden_ccr_a1",
+            "ccr.golden_ccr_a2",
             "ccr.trade_builder",
             "ccr.netting_set_builder",
             "ccr.margin_builder",

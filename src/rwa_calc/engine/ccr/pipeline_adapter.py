@@ -87,6 +87,8 @@ def ccr_rows_to_exposures(
         source_netting_set_id = <netting_set_id>
         ccr_method            = "sa_ccr"
         addon_aggregate       = per-NS asset-class add-on aggregate
+        addon_by_asset_class  = Struct{interest_rate, fx, credit, equity,
+                                       commodity} per-class add-on breakdown
         pfe_multiplier        = Art. 278(3) multiplier
         pfe_addon             = Art. 278(1) PFE
         rc_unmargined         = Art. 275(1) replacement cost
@@ -138,9 +140,7 @@ def ccr_rows_to_exposures(
     # FX adjusted notional per Art. 279b(1)(b) — overlays the FX branch on top
     # of the IR output via coalesce so non-FX rows pass through unchanged.
     if fx_rates is not None:
-        trades_enriched = compute_adjusted_notional_fx(
-            trades_enriched, base_currency, fx_rates
-        )
+        trades_enriched = compute_adjusted_notional_fx(trades_enriched, base_currency, fx_rates)
     # Credit adjusted notional per Art. 279b(1)(a) — shares the IR supervisory-
     # duration kernel and overlays via coalesce; no gate needed (no-op for
     # non-credit rows).
@@ -164,6 +164,36 @@ def ccr_rows_to_exposures(
     addon_per_class = compute_addon_per_asset_class(trades_enriched)
     addon_per_ns = addon_per_class.group_by("netting_set_id").agg(
         pl.col("asset_class_addon").fill_null(0.0).sum().alias("addon_aggregate")
+    )
+    # 2b) Per-NS struct breakdown of the per-asset-class add-on so the
+    #     synthetic exposure row carries an auditable reconciliation of
+    #     ``addon_aggregate`` to its five Art. 277(1) asset-class components.
+    #     Missing asset classes in a netting set become 0.0 in the struct so
+    #     ``sum(struct) == addon_aggregate`` holds for every NS row.
+    #     LazyFrame-first: pivot via a group_by + conditional-sum over the
+    #     five fixed asset-class labels rather than the eager-only pl.pivot.
+    asset_class_struct_fields = ["interest_rate", "fx", "credit", "equity", "commodity"]
+    addon_by_class_per_ns = (
+        addon_per_class.group_by("netting_set_id")
+        .agg(
+            [
+                pl.when(pl.col("asset_class") == asset_class)
+                .then(pl.col("asset_class_addon"))
+                .otherwise(None)
+                .sum()
+                .fill_null(0.0)
+                .alias(asset_class)
+                for asset_class in asset_class_struct_fields
+            ]
+        )
+        .select(
+            [
+                pl.col("netting_set_id"),
+                pl.struct([pl.col(c) for c in asset_class_struct_fields]).alias(
+                    "addon_by_asset_class"
+                ),
+            ]
+        )
     )
 
     # 3) Per-NS v_net (sum of mtm_value over trades) and trade-level metadata
@@ -191,9 +221,12 @@ def ccr_rows_to_exposures(
         )
 
     # 5) Compose NS-grain frame for compute_pfe: v_net, c_net, addon_aggregate.
+    #    Carries ``addon_by_asset_class`` alongside so the per-class breakdown
+    #    rides the same lazy plan into the final select.
     ns_frame = (
         netting_sets_lf.join(ns_trade_aggregates, on="netting_set_id", how="left")
         .join(addon_per_ns, on="netting_set_id", how="left")
+        .join(addon_by_class_per_ns, on="netting_set_id", how="left")
         .join(c_net_per_ns, on="netting_set_id", how="left")
         .with_columns(
             [
@@ -230,6 +263,7 @@ def ccr_rows_to_exposures(
             # COREP exports can reconcile the EAD back to RC + PFE without
             # re-running the chain.
             pl.col("addon_aggregate"),
+            pl.col("addon_by_asset_class"),
             pl.col("pfe_multiplier"),
             pl.col("pfe_addon"),
             pl.col("rc_unmargined"),
