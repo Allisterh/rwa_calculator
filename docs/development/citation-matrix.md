@@ -12,7 +12,7 @@ Regenerate after annotation changes:
 uv run python scripts/generate_citation_matrix.py
 ```
 
-Last generated: 2026-05-25.
+Last generated: 2026-05-26.
 
 ## CRR (Capital Requirements Regulation)
 
@@ -317,9 +317,9 @@ Last generated: 2026-05-25.
 
 ### CRR Art. 143 — Permission to use the IRB Approach
 
-??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1238"
+??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1306"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1238:1454"
+    --8<-- "src/rwa_calc/engine/classifier.py:1306:1522"
     ```
 
 
@@ -345,9 +345,9 @@ Last generated: 2026-05-25.
     --8<-- "src/rwa_calc/engine/classifier.py:124:191"
     ```
 
-??? quote "`_align_irb_exposure_class` — src/rwa_calc/engine/classifier.py:1751"
+??? quote "`_align_irb_exposure_class` — src/rwa_calc/engine/classifier.py:1827"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1750:1771"
+    --8<-- "src/rwa_calc/engine/classifier.py:1826:1847"
     ```
 
 
@@ -358,9 +358,9 @@ Last generated: 2026-05-25.
 
 ### CRR Art. 148 — Conditions for implementing the IRB Approach across different classes of exposure and business units
 
-??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1239"
+??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1307"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1238:1454"
+    --8<-- "src/rwa_calc/engine/classifier.py:1306:1522"
     ```
 
 
@@ -371,9 +371,9 @@ Last generated: 2026-05-25.
 
 ### CRR Art. 150 — Conditions for permanent partial use
 
-??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1240"
+??? quote "`_resolve_model_permissions` — src/rwa_calc/engine/classifier.py:1308"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1238:1454"
+    --8<-- "src/rwa_calc/engine/classifier.py:1306:1522"
     ```
 
 
@@ -400,9 +400,9 @@ Last generated: 2026-05-25.
 
 ### CRR Art. 153 — Risk-weighted exposure amounts for exposures to corporates, institutions and central governments and central banks
 
-??? quote "`_build_is_defaulted_expr` — src/rwa_calc/engine/classifier.py:1854"
+??? quote "`_build_is_defaulted_expr` — src/rwa_calc/engine/classifier.py:1930"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1852:1885"
+    --8<-- "src/rwa_calc/engine/classifier.py:1928:1961"
     ```
 
 ??? quote "`apply_irb_formulas` — src/rwa_calc/engine/irb/formulas.py:358"
@@ -412,42 +412,42 @@ Last generated: 2026-05-25.
 
 ??? quote "`_correlation_expr_from_pd` — src/rwa_calc/engine/irb/formulas.py:509"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:509:616"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:509:622"
     ```
 
-??? quote "`_capital_k_expr_from_params` — src/rwa_calc/engine/irb/formulas.py:645"
+??? quote "`_capital_k_expr_from_params` — src/rwa_calc/engine/irb/formulas.py:651"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:645:680"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:651:686"
     ```
 
-??? quote "`_double_default_multiplier_expr` — src/rwa_calc/engine/irb/formulas.py:764"
+??? quote "`_double_default_multiplier_expr` — src/rwa_calc/engine/irb/formulas.py:770"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:764:782"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:770:788"
     ```
 
-??? quote "`calculate_double_default_k` — src/rwa_calc/engine/irb/formulas.py:785"
+??? quote "`calculate_double_default_k` — src/rwa_calc/engine/irb/formulas.py:791"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:785:803"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:791:809"
     ```
 
-??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/formulas.py:974"
+??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/formulas.py:980"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:974:1013"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:980:1019"
     ```
 
-??? quote "`calculate_k` — src/rwa_calc/engine/irb/formulas.py:1016"
+??? quote "`calculate_k` — src/rwa_calc/engine/irb/formulas.py:1022"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:1016:1044"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:1022:1050"
     ```
 
-??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/namespace.py:593"
+??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/namespace.py:614"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:593:627"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:614:648"
     ```
 
-??? quote "`calculate_k` — src/rwa_calc/engine/irb/namespace.py:629"
+??? quote "`calculate_k` — src/rwa_calc/engine/irb/namespace.py:650"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:629:642"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:650:663"
     ```
 
 ??? quote "`calculate_branch` — src/rwa_calc/engine/slotting/calculator.py:83"
@@ -494,9 +494,9 @@ Last generated: 2026-05-25.
     --8<-- "src/rwa_calc/engine/crm/collateral.py:427:539"
     ```
 
-??? quote "`_parametric_irb_risk_weight_expr` — src/rwa_calc/engine/irb/formulas.py:811"
+??? quote "`_parametric_irb_risk_weight_expr` — src/rwa_calc/engine/irb/formulas.py:817"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:811:863"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:817:869"
     ```
 
 ??? quote "`apply_guarantee_substitution` — src/rwa_calc/engine/irb/guarantee.py:49"
@@ -507,24 +507,24 @@ Last generated: 2026-05-25.
 
 ### CRR Art. 162 — Maturity
 
-??? quote "`_maturity_adjustment_expr_from_pd` — src/rwa_calc/engine/irb/formulas.py:694"
+??? quote "`_maturity_adjustment_expr_from_pd` — src/rwa_calc/engine/irb/formulas.py:700"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:694:744"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:700:750"
     ```
 
-??? quote "`_maturity_adjustment_expr_from_pd` — src/rwa_calc/engine/irb/formulas.py:695"
+??? quote "`_maturity_adjustment_expr_from_pd` — src/rwa_calc/engine/irb/formulas.py:701"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:694:744"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:700:750"
     ```
 
-??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/formulas.py:1047"
+??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/formulas.py:1053"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/formulas.py:1047:1081"
+    --8<-- "src/rwa_calc/engine/irb/formulas.py:1053:1087"
     ```
 
-??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/namespace.py:644"
+??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/namespace.py:665"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:644:682"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:665:703"
     ```
 
 
@@ -535,9 +535,9 @@ Last generated: 2026-05-25.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:53:139"
     ```
 
-??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:502"
+??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:523"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:502:525"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:523:546"
     ```
 
 
@@ -548,9 +548,9 @@ Last generated: 2026-05-25.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:142:192"
     ```
 
-??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:527"
+??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:548"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:527:591"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:548:612"
     ```
 
 
@@ -574,9 +574,9 @@ Last generated: 2026-05-25.
 
 ### CRR Art. 178 — Default of an obligor
 
-??? quote "`_build_is_defaulted_expr` — src/rwa_calc/engine/classifier.py:1853"
+??? quote "`_build_is_defaulted_expr` — src/rwa_calc/engine/classifier.py:1929"
     ```python
-    --8<-- "src/rwa_calc/engine/classifier.py:1852:1885"
+    --8<-- "src/rwa_calc/engine/classifier.py:1928:1961"
     ```
 
 
@@ -713,40 +713,60 @@ Last generated: 2026-05-25.
 
 ### CRR Art. 277 — Transactions with a linear risk profile
 
-??? quote "`assign_ir_maturity_bucket` — src/rwa_calc/engine/ccr/hedging_sets.py:38"
+??? quote "`assign_ir_maturity_bucket` — src/rwa_calc/engine/ccr/hedging_sets.py:56"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/hedging_sets.py:38:75"
+    --8<-- "src/rwa_calc/engine/ccr/hedging_sets.py:56:93"
     ```
 
-??? quote "`assign_hedging_set` — src/rwa_calc/engine/ccr/hedging_sets.py:78"
+??? quote "`assign_hedging_set` — src/rwa_calc/engine/ccr/hedging_sets.py:96"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/hedging_sets.py:78:125"
+    --8<-- "src/rwa_calc/engine/ccr/hedging_sets.py:96:191"
     ```
 
-??? quote "`compute_addon_per_asset_class` — src/rwa_calc/engine/ccr/pfe.py:125"
+??? quote "`compute_addon_per_asset_class` — src/rwa_calc/engine/ccr/pfe.py:136"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/pfe.py:125:220"
+    --8<-- "src/rwa_calc/engine/ccr/pfe.py:136:205"
     ```
 
 
 ### CRR Art. 278 — Transactions with a non-linear risk profile
 
-??? quote "`compute_pfe` — src/rwa_calc/engine/ccr/pfe.py:44"
+??? quote "`compute_pfe` — src/rwa_calc/engine/ccr/pfe.py:55"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/pfe.py:44:103"
+    --8<-- "src/rwa_calc/engine/ccr/pfe.py:55:114"
     ```
 
-??? quote "`compute_pfe_ir_singleton` — src/rwa_calc/engine/ccr/pfe.py:106"
+??? quote "`compute_pfe_ir_singleton` — src/rwa_calc/engine/ccr/pfe.py:117"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/pfe.py:106:119"
+    --8<-- "src/rwa_calc/engine/ccr/pfe.py:117:130"
     ```
 
 
 ### CRR Art. 279 — Treatment of collateral
 
-??? quote "`compute_adjusted_notional_ir` — src/rwa_calc/engine/ccr/adjusted_notional.py:39"
+??? quote "`compute_adjusted_notional_ir` — src/rwa_calc/engine/ccr/adjusted_notional.py:51"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:39:93"
+    --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:51:105"
+    ```
+
+??? quote "`compute_adjusted_notional_fx` — src/rwa_calc/engine/ccr/adjusted_notional.py:108"
+    ```python
+    --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:108:219"
+    ```
+
+??? quote "`compute_adjusted_notional_credit` — src/rwa_calc/engine/ccr/adjusted_notional.py:222"
+    ```python
+    --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:222:284"
+    ```
+
+??? quote "`compute_adjusted_notional_equity` — src/rwa_calc/engine/ccr/adjusted_notional.py:287"
+    ```python
+    --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:287:336"
+    ```
+
+??? quote "`compute_adjusted_notional_commodity` — src/rwa_calc/engine/ccr/adjusted_notional.py:339"
+    ```python
+    --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:339:387"
     ```
 
 ??? quote "`compute_maturity_factor_unmargined` — src/rwa_calc/engine/ccr/maturity_factor.py:46"
@@ -829,7 +849,7 @@ Last generated: 2026-05-25.
 
 ??? quote "`apply_factors` — src/rwa_calc/engine/sa/supporting_factors.py:174"
     ```python
-    --8<-- "src/rwa_calc/engine/sa/supporting_factors.py:174:398"
+    --8<-- "src/rwa_calc/engine/sa/supporting_factors.py:174:417"
     ```
 
 
@@ -956,9 +976,9 @@ Last generated: 2026-05-25.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:53:139"
     ```
 
-??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:503"
+??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:524"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:502:525"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:523:546"
     ```
 
 
@@ -979,8 +999,8 @@ Last generated: 2026-05-25.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:265:349"
     ```
 
-??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:528"
+??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:549"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:527:591"
+    --8<-- "src/rwa_calc/engine/irb/namespace.py:548:612"
     ```
 
