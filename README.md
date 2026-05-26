@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> *This package is still in active development and is not production ready - release 1.0.0 will confirm when ready*
+> *This package is still in active development and is not production ready - release 1.0.0 will confirm when ready for current CRR and 2.0.0 for Basel 3.1*
 
 # UK Credit Risk (CR) & Counterparty Credit Risk (CCR) RWA Calculator
 
