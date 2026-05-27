@@ -154,7 +154,7 @@ def test_adjusted_notional_credit_start_floor_applies() -> None:
     )
     # Sanity: without-floor would give a different answer.
     assert (
-        not pytest.approx(expected_without_floor, rel=1e-6) == actual
+        pytest.approx(expected_without_floor, rel=1e-6) != actual
         or abs(expected_with_floor - expected_without_floor) < 1.0
     ), "Floor and non-floor values are unexpectedly equal — test is not discriminating."
 

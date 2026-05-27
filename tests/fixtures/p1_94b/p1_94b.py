@@ -273,8 +273,7 @@ def create_p194b_loans() -> pl.DataFrame:
     # Step 1: Strip new columns before building with the declared schema.
     loan_schema_cols = dtypes_of(LOAN_SCHEMA)
     rows_base = [
-        {k: v for k, v in r.items() if k not in ("is_hedged", "hedge_coverage_ratio")}
-        for r in rows
+        {k: v for k, v in r.items() if k not in ("is_hedged", "hedge_coverage_ratio")} for r in rows
     ]
     df = pl.DataFrame(rows_base, schema=loan_schema_cols)
 
@@ -289,9 +288,7 @@ def create_p194b_loans() -> pl.DataFrame:
     # production LOAN_SCHEMA.  The engine-implementer will add it in Wave 4; the
     # parquet is forward-compatible from today.
     hedge_ratio_values = [r["hedge_coverage_ratio"] for r in rows]
-    df = df.with_columns(
-        pl.Series("hedge_coverage_ratio", hedge_ratio_values, dtype=pl.Float64)
-    )
+    df = df.with_columns(pl.Series("hedge_coverage_ratio", hedge_ratio_values, dtype=pl.Float64))
 
     return df
 
@@ -474,7 +471,9 @@ def print_summary(saved: dict[str, Path]) -> None:
     print(f"  Base retail SA RW (Art. 123(1)):       {SA_RETAIL_BASE_RW:.0%}")
     print(f"  Art. 123B multiplier:                  {CURRENCY_MISMATCH_MULTIPLIER:.2f}x")
     print()
-    print(f"  Arm (P194B_PARTIAL_HEDGE, is_hedged=False, hedge_coverage_ratio={HEDGE_COVERAGE_RATIO}):")
+    print(
+        f"  Arm (P194B_PARTIAL_HEDGE, is_hedged=False, hedge_coverage_ratio={HEDGE_COVERAGE_RATIO}):"
+    )
     print(f"    risk_weight                          = {RW_PARTIAL_HEDGE:.4f}")
     print(f"    rwa                                  = {RWA_PARTIAL_HEDGE:,.2f}")
     print("    currency_mismatch_multiplier_applied = True")
@@ -482,7 +481,10 @@ def print_summary(saved: dict[str, Path]) -> None:
 
     # Verify new columns in loans parquet
     loans_df = pl.read_parquet(saved["loans"])
-    for col_name, expected_dtype in [("is_hedged", pl.Boolean), ("hedge_coverage_ratio", pl.Float64)]:
+    for col_name, _expected_dtype in [
+        ("is_hedged", pl.Boolean),
+        ("hedge_coverage_ratio", pl.Float64),
+    ]:
         if col_name in loans_df.columns:
             actual_dtype = loans_df.schema[col_name]
             val = loans_df[col_name][0]

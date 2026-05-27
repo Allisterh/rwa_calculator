@@ -18,19 +18,17 @@ from __future__ import annotations
 from datetime import date
 
 import polars as pl
-import pytest
-
-from rwa_calc.contracts.bundles import CRMAdjustedBundle
-from rwa_calc.contracts.config import CalculationConfig
-from rwa_calc.domain.enums import ApproachType
-from rwa_calc.engine.aggregator import OutputAggregator
-from rwa_calc.engine.aggregator._schemas import EQUITY_APPROACHES, SA_APPROACHES
-from rwa_calc.engine.equity.calculator import EquityCalculator
 
 # Import builder helpers from integration conftest — they are plain functions,
 # not pytest fixtures, so a direct import is valid outside the conftest scope.
 from tests.integration.conftest import make_equity_exposure
 from tests.integration.test_equity_flow import _build_crm_adjusted_with_equity
+
+from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.domain.enums import ApproachType
+from rwa_calc.engine.aggregator import OutputAggregator
+from rwa_calc.engine.aggregator._schemas import EQUITY_APPROACHES, SA_APPROACHES
+from rwa_calc.engine.equity.calculator import EquityCalculator
 
 EMPTY = pl.LazyFrame({"exposure_reference": pl.Series([], dtype=pl.String)})
 
@@ -78,9 +76,7 @@ def test_aggregator_emits_lowercase_equity_approach() -> None:
         f"approach_applied should be lowercase '{expected}' "
         f"(ApproachType.EQUITY.value) but got '{actual}'"
     )
-    assert actual == "equity", (
-        f"approach_applied must be lowercase 'equity', got '{actual}'"
-    )
+    assert actual == "equity", f"approach_applied must be lowercase 'equity', got '{actual}'"
 
 
 # =============================================================================
@@ -98,13 +94,11 @@ def test_equity_approaches_frozenset_is_single_lowercase() -> None:
     Asserting the canonical state here ensures the cleanup is complete.
     """
     # Assert — equity set contains only lowercase canonical value
-    assert EQUITY_APPROACHES == frozenset({"equity"}), (
-        f"EQUITY_APPROACHES should be frozenset({{'equity'}}) "
-        f"but is {EQUITY_APPROACHES!r}"
+    assert frozenset({"equity"}) == EQUITY_APPROACHES, (
+        f"EQUITY_APPROACHES should be frozenset({{'equity'}}) but is {EQUITY_APPROACHES!r}"
     )
 
     # Assert — SA set contains only lowercase canonical value
-    assert SA_APPROACHES == frozenset({"standardised"}), (
-        f"SA_APPROACHES should be frozenset({{'standardised'}}) "
-        f"but is {SA_APPROACHES!r}"
+    assert frozenset({"standardised"}) == SA_APPROACHES, (
+        f"SA_APPROACHES should be frozenset({{'standardised'}}) but is {SA_APPROACHES!r}"
     )

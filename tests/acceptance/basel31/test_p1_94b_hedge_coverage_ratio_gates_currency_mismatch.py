@@ -78,7 +78,7 @@ from tests.fixtures.p1_94b.p1_94b import (
 _REPORTING_DATE = date(2027, 1, 4)
 
 # Absolute tolerances
-_RW_TOL = 1e-6   # risk_weight (dimensionless ratio)
+_RW_TOL = 1e-6  # risk_weight (dimensionless ratio)
 _RWA_TOL = 0.50  # £0.50 on rwa_final
 _EAD_TOL = 0.50  # £0.50 on ead_final
 
@@ -137,9 +137,7 @@ def p194b_row(p1_94b_sa_results: pl.DataFrame) -> dict:
     Asserts exactly one row is returned so all downstream tests operate on
     a single well-defined result.
     """
-    rows = p1_94b_sa_results.filter(
-        pl.col("exposure_reference") == LOAN_REF
-    ).to_dicts()
+    rows = p1_94b_sa_results.filter(pl.col("exposure_reference") == LOAN_REF).to_dicts()
     assert len(rows) == 1, (
         f"Expected exactly 1 SA result row for exposure_reference={LOAN_REF!r}, "
         f"got {len(rows)}. "
@@ -263,8 +261,7 @@ class TestB31P194BPartialHedgeBelowThreshold:
         # Assert ead_final
         ead = float(p194b_row["ead_final"])
         assert ead == pytest.approx(_EAD, abs=_EAD_TOL), (
-            f"P1.94b (P194B_PARTIAL_HEDGE): ead_final {ead:,.2f} != "
-            f"expected {_EAD:,.2f}."
+            f"P1.94b (P194B_PARTIAL_HEDGE): ead_final {ead:,.2f} != expected {_EAD:,.2f}."
         )
 
         # Assert currency_mismatch_multiplier_applied

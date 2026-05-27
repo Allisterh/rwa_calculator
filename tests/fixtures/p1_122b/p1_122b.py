@@ -701,14 +701,10 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("-" * 70)
     print("Scenario: IRB borrower + unrated SCRA-B institution guarantor")
     print(
-        f"  Borrower:  {BORROWER_REF} (entity_type='company', "
-        f"annual_revenue={ANNUAL_REVENUE:,.0f})"
+        f"  Borrower:  {BORROWER_REF} (entity_type='company', annual_revenue={ANNUAL_REVENUE:,.0f})"
     )
     print(f"             F-IRB: pd={PD_BORROWER}, model_id={MODEL_ID}")
-    print(
-        f"  Guarantor: {GUARANTOR_REF} (entity_type='bank', "
-        f"scra_grade='{GUARANTOR_SCRA_GRADE}')"
-    )
+    print(f"  Guarantor: {GUARANTOR_REF} (entity_type='bank', scra_grade='{GUARANTOR_SCRA_GRADE}')")
     print("             SA-fallback: cqs=None, pd=None, model_id=None")
     print(
         f"  Loan:      {LOAN_REF}  GBP {DRAWN_AMOUNT:,.0f}, "

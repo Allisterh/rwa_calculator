@@ -119,7 +119,7 @@ def test_equity_addon_single_name_single_trade_matches_ccr_a5_hand_calc() -> Non
     assert eq_row.height == 1, f"Expected 1 equity row, got {eq_row.height}"
 
     en = 1.0 * 50_000_000.0 * 0.99965770  # approx effective notional
-    expected = _addon_hs(_SF_EQ_SN, _RHO_SN, [en])  # ≈ 0.32 × EN = 15_994_523.30
+    _ = _addon_hs(_SF_EQ_SN, _RHO_SN, [en])  # ≈ 0.32 × EN = 15_994_523.30
     actual = eq_row["asset_class_addon"][0]
     assert actual == pytest.approx(15_994_523.295317, rel=1e-6), (
         f"CCR-A5 hand-calc: AddOn_EQ expected ≈ 15_994_523.30, got {actual!r}. "
