@@ -87,7 +87,7 @@ RWA into the firm-level totals.
 | [Legal enforceability](legal-enforceability.md) | Netting-set recognition gate; single-trade synthetic-NS fallback for non-enforceable agreements | Art. 272(4), 295–297 | Live |
 | [Wrong-way risk](wrong-way-risk.md) | Specific WWR (legal connection ⇒ LGD = 100% override); general WWR α multiplier | Art. 291 | Live (IR + FX) |
 | [CCP exposures](ccp-exposures.md) | QCCP 2% trade-leg RW; default-fund contribution treatment; non-QCCP fallback | Art. 306–311 | Live |
-| `failed-trades.md` | Unsettled DvP transactions and free deliveries; multiplier ladder by business-day delay | Art. 378–380 | Pending |
+| [Failed trades](failed-trades.md) | Unsettled DvP transactions and free deliveries; multiplier ladder by business-day delay | Art. 378–380 | Live |
 
 The "Pending" pages will land as the SA-CCR engine batches P8.35–P8.38
 (credit / equity / commodity add-ons, margined RC, WWR, CCP, failed-trade
