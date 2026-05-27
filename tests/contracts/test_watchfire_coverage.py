@@ -90,7 +90,7 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
     ("rwa_calc.engine.crm.collateral", "generate_netting_collateral",
      ("CRR Art. 195", "CRR Art. 223")),
     ("rwa_calc.engine.crm.collateral", "apply_collateral",
-     ("CRR Art. 223", "CRR Art. 230")),
+     ("PS1/26 Art. 230(2)", "PS1/26 Art. 230(1)", "CRR Art. 223", "CRR Art. 230")),
     ("rwa_calc.engine.crm.collateral", "apply_firb_supervisory_lgd_no_collateral",
      ("CRR Art. 161",)),
     ("rwa_calc.engine.crm.guarantees", "apply_guarantees",

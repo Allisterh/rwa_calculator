@@ -34,22 +34,20 @@ FLOOR_ELIGIBLE_APPROACHES: frozenset[str] = IRB_APPROACHES | frozenset(
     }
 )
 
-# Standardised Approach (SA) approach identifiers — covers the ApproachType.SA
-# enum value plus the uppercase fallback label used by aggregator outputs and
-# test fixtures.  Used by the portfolio-level summary to compute total SA RWA.
+# Standardised Approach (SA) approach identifiers — the ApproachType.SA enum
+# value used by aggregator outputs.  Used by the portfolio-level summary to
+# compute total SA RWA.
 SA_APPROACHES: frozenset[str] = frozenset(
     {
         "standardised",  # ApproachType.SA.value
-        "SA",  # Aggregator/test fallback label
     }
 )
 
-# Equity approach identifiers — equity exposures are tagged with "EQUITY" by
-# the equity-prep stage; the lowercase enum value is included for consistency.
+# Equity approach identifiers — equity exposures are tagged with the
+# ApproachType.EQUITY enum value by the equity-prep stage.
 EQUITY_APPROACHES: frozenset[str] = frozenset(
     {
         "equity",  # ApproachType.EQUITY.value
-        "EQUITY",  # Aggregator equity-prep tag (see _equity_prep.py)
     }
 )
 

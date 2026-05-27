@@ -177,13 +177,20 @@ class HaircutCalculator:
         # Scale collateral haircut by liquidation period, then apply the Art. 226(1)
         # non-daily-revaluation multiplier (order matters per the spec composition
         # H = H_n × sqrt(T_m/10) × sqrt((N_R + T_m - 1)/T_m)).
-        # Non-financial collateral (real_estate, receivables, other_physical) uses Art. 230
-        # HC values, not Art. 224 — do not scale those. However, the table join already
-        # returns the correct base value; scaling only affects financial collateral and gold.
+        # Non-financial collateral (real_estate, receivables, other_physical) uses
+        # Art. 230 / PS1/26 Art. 230(2) HC values which are NOT subject to Art. 226
+        # liquidation-period scaling — the Art. 230 HC is a credit-quality multiplier
+        # tied to the FCM LGD* formula, not a volatility adjustment. Only the
+        # Art. 224 financial-collateral haircuts (cash/gold/bonds/equity) scale.
+        is_non_financial_hc = (
+            pl.col("collateral_type").str.to_lowercase().is_in(NON_FINANCIAL_COLLATERAL_TYPES)
+        )
+        scaled_haircut = pl.col("collateral_haircut") * scaling_factor * reval_factor
         collateral = collateral.with_columns(
-            (pl.col("collateral_haircut") * scaling_factor * reval_factor).alias(
-                "collateral_haircut"
-            )
+            pl.when(is_non_financial_hc)
+            .then(pl.col("collateral_haircut"))
+            .otherwise(scaled_haircut)
+            .alias("collateral_haircut")
         )
 
         # Apply FX haircut (Art. 224 Table 4, scaled per Art. 226).

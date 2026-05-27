@@ -130,8 +130,10 @@ BASEL31_COLLATERAL_HAIRCUTS: dict[str, Decimal] = {
     "equity_other": Decimal("0.30"),  # CRR: 25%
     # Non-financial collateral — Art. 230(2) HC values (PRA PS1/26)
     # B31 Art. 230 uses HC in LGD* formula: ES = min(C(1-HC-Hfx), E(1+HE))
-    # HC=40% for all non-financial types; only LGDS differs (20% rec/RE, 25% other)
-    "real_estate": Decimal("0.00"),  # Handled via LTV, not HC haircut
+    # HC=40% for all non-financial types; only LGDS differs (20% rec/RE, 25% other).
+    # Note: SA real-estate exposures use the Art. 124A-L LTV loan-splitting path,
+    # which is a separate mechanism from the F-IRB FCM HC term tabulated here.
+    "real_estate": Decimal("0.40"),  # PS1/26 Art. 230(2): FCM HC=40% immovable property
     "receivables": Decimal("0.40"),  # Art. 230(2): HC=40% (not LGDS=20%)
     "other_physical": Decimal("0.40"),
 }

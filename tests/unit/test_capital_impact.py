@@ -310,8 +310,9 @@ class TestSupportingFactorImpact:
         attribution = _compute_exposure_attribution(comparison).collect()
         row = attribution.to_dicts()[0]
 
-        # supporting_impact = (1_060_000 - 807_614) / 1.06 = 252_386 / 1.06 ≈ 238_100
-        expected = (1_060_000.0 - 807_614.0) / 1.06
+        # supporting_impact = rwa_pre_factor - rwa_final = 1_060_000 - 807_614 = 252_386
+        # (both terms already carry the 1.06 IRB scaling multiplier per CRR Art. 153(1))
+        expected = 1_060_000.0 - 807_614.0
         assert row["supporting_factor_impact"] == pytest.approx(expected, abs=1.0)
         assert row["supporting_factor_impact"] > 0
 
@@ -335,6 +336,80 @@ class TestSupportingFactorImpact:
         expected = 100_000.0 - 76_190.0
         assert row["supporting_factor_impact"] == pytest.approx(expected, abs=1.0)
         assert row["supporting_factor_impact"] > 0
+
+    def test_irb_sme_supporting_factor_impact_no_double_divisor(self) -> None:
+        """IRB SME: supporting_factor_impact must NOT divide by 1.06 a second time.
+
+        Bug guard for P6.22: the IRB branch in _compute_exposure_attribution()
+        divides (rwa_pre_factor - rwa_final) by _CRR_SCALING_FACTOR (1.06), but
+        rwa_pre_factor already contains the 1.06 multiplier per CRR Art. 153(1).
+        The correct formula is simply rwa_pre_factor_crr - rwa_final_crr.
+
+        Hand-calc:
+          Exposure A (foundation_irb SME):
+            rwa_pre_factor_crr = 1_060_000.0
+            rwa_final_crr      =   807_614.0
+            supporting_factor  =     0.7619  (CRR Art. 501 tier 1)
+            CORRECT impact     = 1_060_000 - 807_614 = 252_386.0
+            BUGGY   impact     = 252_386 / 1.06      ≈ 238_100.0
+
+          Exposure B (SA SME, regression guard):
+            rwa_pre_factor_crr = 100_000.0
+            rwa_final_crr      =  76_190.0
+            supporting_factor  =   0.7619
+            CORRECT impact     = 100_000 - 76_190 = 23_810.0  (SA branch unchanged)
+        """
+        # Arrange
+        crr = _make_crr_results(
+            ["EXP_IRB", "EXP_SA"],
+            ["corporate", "corporate"],
+            ["foundation_irb", "SA"],
+            rwa_finals=[807_614.0, 76_190.0],
+            rwa_pre_factors=[1_060_000.0, 100_000.0],
+            supporting_factors=[0.7619, 0.7619],
+        )
+        b31 = _make_b31_results(
+            ["EXP_IRB", "EXP_SA"],
+            rwa_finals=[1_000_000.0, 85_000.0],
+            rwa_pre_floors=[1_000_000.0, 85_000.0],
+        )
+        comparison = _make_comparison(crr, b31)
+
+        # Act
+        attribution = _compute_exposure_attribution(comparison).collect()
+        rows = {r["exposure_reference"]: r for r in attribution.to_dicts()}
+        irb_row = rows["EXP_IRB"]
+        sa_row = rows["EXP_SA"]
+
+        # Assert — IRB row: no double division by 1.06
+        assert irb_row["supporting_factor_impact"] == pytest.approx(252_386.0, abs=1.0), (
+            f"IRB supporting_factor_impact was {irb_row['supporting_factor_impact']:.2f}; "
+            "expected 252_386.0 (rwa_pre_factor - rwa_final without /1.06). "
+            "Got the buggy value ~238_100.0 if the double-divisor bug is present."
+        )
+
+        # Assert — SA row (regression guard): SA branch must be unaffected
+        assert sa_row["supporting_factor_impact"] == pytest.approx(23_810.0, abs=1.0), (
+            f"SA supporting_factor_impact was {sa_row['supporting_factor_impact']:.2f}; "
+            "expected 23_810.0 (100_000 - 76_190)."
+        )
+
+        # Assert — additivity invariant on IRB row
+        irb_delta = irb_row["delta_rwa"]
+        irb_driver_sum = (
+            irb_row["scaling_factor_impact"]
+            + irb_row["supporting_factor_impact"]
+            + irb_row["output_floor_impact"]
+            + irb_row["methodology_impact"]
+        )
+        assert irb_driver_sum == pytest.approx(irb_delta, abs=0.01), (
+            f"Additivity invariant violated on IRB row: "
+            f"scaling={irb_row['scaling_factor_impact']:.2f} + "
+            f"supporting={irb_row['supporting_factor_impact']:.2f} + "
+            f"floor={irb_row['output_floor_impact']:.2f} + "
+            f"methodology={irb_row['methodology_impact']:.2f} "
+            f"= {irb_driver_sum:.2f} != delta={irb_delta:.2f}"
+        )
 
     def test_no_supporting_factor_means_zero_impact(self) -> None:
         """When supporting factor is 1.0 (not applied), impact should be 0."""

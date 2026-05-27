@@ -277,7 +277,7 @@ class TestEquityAggregation:
         )
 
         combined_df = result.results.collect()
-        equity_rows = combined_df.filter(pl.col("approach_applied") == "EQUITY")
+        equity_rows = combined_df.filter(pl.col("approach_applied") == "equity")
         assert len(equity_rows) == 1
         assert equity_rows["rwa_final"][0] == pytest.approx(500_000.0)
 
@@ -287,7 +287,7 @@ class TestEquityAggregation:
         equity_calculator: EquityCalculator,
         crr_config: CalculationConfig,
     ) -> None:
-        """Equity results have approach_applied='EQUITY', distinct from SA/IRB/SLOTTING."""
+        """Equity results have approach_applied='equity', distinct from SA/IRB/SLOTTING."""
         sa_results = pl.LazyFrame(
             {
                 "exposure_reference": ["LN001"],
@@ -320,9 +320,9 @@ class TestEquityAggregation:
 
         combined_df = result.results.collect()
         approaches = combined_df["approach_applied"].unique().to_list()
-        assert "EQUITY" in approaches
+        assert "equity" in approaches
         assert "SA" in approaches
-        equity_rows = combined_df.filter(pl.col("approach_applied") == "EQUITY")
+        equity_rows = combined_df.filter(pl.col("approach_applied") == "equity")
         assert len(equity_rows) == 2
 
     def test_equity_summary_by_approach(
@@ -357,7 +357,7 @@ class TestEquityAggregation:
 
         summary_df = result.summary_by_approach.collect()
         approaches_in_summary = summary_df["approach_applied"].to_list()
-        assert "EQUITY" in approaches_in_summary
+        assert "equity" in approaches_in_summary
 
 
 # =============================================================================

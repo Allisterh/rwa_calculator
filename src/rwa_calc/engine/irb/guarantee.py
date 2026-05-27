@@ -204,6 +204,15 @@ def _compute_guarantor_rw_sa(
         lf = lf.with_columns(
             pl.lit(None).cast(pl.Boolean).alias("guarantor_is_ccp_client_cleared"),
         )
+    # B31 SCRA dispatch fallback: ensure ``guarantor_scra_grade`` is referenceable
+    # by ``build_institution_guarantor_rw_expr``. The CRM processor populates this
+    # column from counterparties.scra_grade (engine/crm/guarantees.py); fall back
+    # to null for unit tests that construct LazyFrames directly without going
+    # through the CRM join.
+    if "guarantor_scra_grade" not in cols:
+        lf = lf.with_columns(
+            pl.lit(None).cast(pl.String).alias("guarantor_scra_grade"),
+        )
 
     _gec = pl.col("guarantor_exposure_class").fill_null("")
 
@@ -269,7 +278,13 @@ def _compute_guarantor_rw_sa(
             # Institution/MDB guarantors (institution, bank, mdb, etc.)
             # RW driven from INSTITUTION_RISK_WEIGHTS_CRR / _B31_ECRA.
             .when(_gec.is_in(["institution", "mdb"]))
-            .then(build_institution_guarantor_rw_expr("guarantor_cqs", config.is_basel_3_1))
+            .then(
+                build_institution_guarantor_rw_expr(
+                    "guarantor_cqs",
+                    config.is_basel_3_1,
+                    scra_grade_col="guarantor_scra_grade",
+                )
+            )
             # Corporate guarantors (corporate, company). RW driven from
             # CORPORATE_RISK_WEIGHTS (CRR Art. 122 Table 5) or
             # B31_CORPORATE_RISK_WEIGHTS (PRA PS1/26 Art. 122(2) Table 6) —

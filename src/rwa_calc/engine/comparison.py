@@ -686,15 +686,14 @@ def _compute_exposure_attribution(comparison: ComparisonBundle) -> pl.LazyFrame:
     # =========================================================================
     # Waterfall Step 2: Supporting factor removal
     #
-    # For IRB: post-scaling intermediate = CRR_rwa_final / 1.06
-    # Supporting factor added (CRR_rpf - CRR_rf) / 1.06 back.
-    # For SA: no scaling, so impact = CRR_rpf - CRR_rf directly.
+    # Both `rwa_pre_factor_crr` and `rwa_crr` (rwa_final) already include the
+    # 1.06 IRB scaling multiplier per CRR Art. 153(1), so their difference is
+    # already on the post-scaling RWA scale. The same formula applies to SA
+    # rows (where the 1.06 multiplier is absent on both sides). No further
+    # division by _CRR_SCALING_FACTOR is required.
     # =========================================================================
     joined = joined.with_columns(
-        pl.when(is_irb)
-        .then((pl.col("rwa_pre_factor_crr") - pl.col("rwa_crr")) / _CRR_SCALING_FACTOR)
-        .otherwise(pl.col("rwa_pre_factor_crr") - pl.col("rwa_crr"))
-        .alias("supporting_factor_impact"),
+        (pl.col("rwa_pre_factor_crr") - pl.col("rwa_crr")).alias("supporting_factor_impact"),
     )
 
     # =========================================================================

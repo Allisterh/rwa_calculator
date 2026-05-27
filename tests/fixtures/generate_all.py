@@ -205,6 +205,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p1165,
         ),
         (
+            "P1.190 (B31 Art. 230 F-IRB continuous LGD* formula — RE/other-physical/threshold)",
+            "p1_190",
+            _generate_p1190,
+        ),
+        (
             "P1.147 (ValidationRequest IRB mode requires model_permissions)",
             "api_validation",
             _generate_p1147,
@@ -260,6 +265,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p194f,
         ),
         (
+            "P1.94b (B31 hedge_coverage_ratio < 0.90 gate — Art. 123B(2) multiplier fires)",
+            "p1_94b",
+            _generate_p194b,
+        ),
+        (
             "P2.17 (CRR Art. 123 second subparagraph payroll/pension loan 35% RW)",
             "p2_17",
             _generate_p217,
@@ -273,6 +283,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "P1.122(a) (IRB borrower + null-PD corporate guarantor → SA-fallback branch)",
             "p1_122a",
             _generate_p1122a,
+        ),
+        (
+            "P1.122(b) (IRB borrower + unrated SCRA-B institution guarantor)",
+            "p1_122b",
+            _generate_p1122b,
         ),
         (
             "P2.36 (sovereign/institution PD floor first-class config fields)",
@@ -1073,6 +1088,19 @@ def _generate_p1165(output_dir: Path) -> list[tuple[str, int]]:
         sys.modules.pop("p1_165", None)
 
 
+def _generate_p1190(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.190 fixtures (B31 Art. 230 F-IRB continuous LGD* formula)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_190 import save_p1190_fixtures
+
+        saved = save_p1190_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_190", None)
+
+
 def _generate_p1147(output_dir: Path) -> list[tuple[str, int]]:
     """
     Validate P1.147 builder imports (Python-only builder — no persistent parquet output).
@@ -1354,6 +1382,22 @@ def _generate_p194f(output_dir: Path) -> list[tuple[str, int]]:
         sys.modules.pop("p1_94f", None)
 
 
+def _generate_p194b(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.94b fixtures (B31 hedge_coverage_ratio < 0.90 gate — Art. 123B(2) fires)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_94b import save_p194b_fixtures
+
+        data_dir = output_dir / "data"
+        saved = save_p194b_fixtures(data_dir)
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_94b", None)
+
+
 def _generate_p217(output_dir: Path) -> list[tuple[str, int]]:
     """Generate P2.17 fixtures (CRR Art. 123 second subparagraph payroll/pension loan 35% RW)."""
     sys.path.insert(0, str(output_dir))
@@ -1394,6 +1438,22 @@ def _generate_p1122a(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_122a", None)
+
+
+def _generate_p1122b(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.122(b) fixtures (IRB borrower + unrated SCRA-B institution guarantor)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_122b import save_p1122b_fixtures
+
+        data_dir = output_dir / "data"
+        saved = save_p1122b_fixtures(data_dir)
+        return [
+            (f"data/{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()
+        ]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_122b", None)
 
 
 def _generate_p236(output_dir: Path) -> list[tuple[str, int]]:
