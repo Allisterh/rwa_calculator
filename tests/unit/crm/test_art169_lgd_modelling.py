@@ -289,12 +289,16 @@ class TestArt169BFallback:
         )
         df = result.collect()
         # Art. 169B(2): LGD* = LGDS_re × ES/E + own_LGDU × EU/E
-        # B31 LGDS for real_estate = 0.20, OC ratio = 1.40
-        # effectively_secured = 700000/1.40 = 500000 (capped at EAD=1M)
+        # B31 LGDS for real_estate = 0.20, OC ratio = 1.0 (PS1/26 Art. 230(1):
+        # FCM applies HC multiplicatively at the haircut stage, no OC divisor
+        # for non-financial collateral under Basel 3.1).
+        # This unit test bypasses the haircut step (calls _apply_collateral_unified
+        # directly), so adjusted_value = market_value = 700_000 and:
+        # effectively_secured = 700000 / 1.0 = 700000 (capped at EAD=1M)
         # lgd_secured = 0.20 (single type)
-        # ES = 500000, EU = 500000
-        # LGD* = (0.20 × 500000 + 0.30 × 500000) / 1000000 = 0.25
-        assert df["lgd_post_crm"][0] == pytest.approx(0.25)
+        # ES = 700000, EU = 300000
+        # LGD* = (0.20 × 700000 + 0.30 × 300000) / 1000000 = 0.14 + 0.09 = 0.23
+        assert df["lgd_post_crm"][0] == pytest.approx(0.23)
 
     def test_airb_169b_vs_firb_different_lgdu(self):
         """Art. 169B uses own LGDU (30%), FIRB uses supervisory (40%)."""
@@ -332,10 +336,13 @@ class TestArt169BFallback:
             is_basel_3_1=True,
         ).collect()
 
-        # AIRB 169B: (0.20 × 500k + 0.30 × 500k) / 1M = 0.25
-        # FIRB: (0.20 × 500k + 0.40 × 500k) / 1M = 0.30
-        assert airb_result["lgd_post_crm"][0] == pytest.approx(0.25)
-        assert firb_result["lgd_post_crm"][0] == pytest.approx(0.30)
+        # Under PS1/26 Art. 230(1) OC=1.0 for non-financial collateral under
+        # B31, so this unit test (which bypasses the haircut step) sees
+        # eff = 700k unchanged. EAD=1M, EU=300k.
+        # AIRB 169B: (0.20 × 700k + 0.30 × 300k) / 1M = 0.14 + 0.09 = 0.23
+        # FIRB:     (0.20 × 700k + 0.40 × 300k) / 1M = 0.14 + 0.12 = 0.26
+        assert airb_result["lgd_post_crm"][0] == pytest.approx(0.23)
+        assert firb_result["lgd_post_crm"][0] == pytest.approx(0.26)
         assert airb_result["lgd_post_crm"][0] < firb_result["lgd_post_crm"][0]
 
     def test_airb_169b_missing_lgd_unsecured_col_falls_back(self):
@@ -402,8 +409,9 @@ class TestFoundationElection:
             is_basel_3_1=True,
         )
         df = result.collect()
-        # Foundation: LGD* = (0.20 × 500k + 0.40 × 500k) / 1M = 0.30
-        assert df["lgd_post_crm"][0] == pytest.approx(0.30)
+        # Foundation under PS1/26 Art. 230(1): OC=1.0, so eff=700k (no divisor).
+        # LGD* = (0.20 × 700k + 0.40 × 300k) / 1M = 0.14 + 0.12 = 0.26
+        assert df["lgd_post_crm"][0] == pytest.approx(0.26)
 
     def test_foundation_subordinated_uses_75pct(self):
         """Foundation election + subordinated → 75%."""
@@ -614,14 +622,14 @@ class TestMixedBatch:
             is_basel_3_1=True,
         ).collect()
 
-        # ES = 700k/1.4 = 500k, EU = 500k
-        # FIRB: (0.20×500k + 0.40×500k) / 1M = 0.30
+        # PS1/26 Art. 230(1): OC=1.0 under B31, so eff=700k. EAD=1M, EU=300k.
+        # FIRB: (0.20×700k + 0.40×300k) / 1M = 0.14 + 0.12 = 0.26
         firb = result.filter(pl.col("exposure_reference") == "FIRB_001")
-        assert firb["lgd_post_crm"][0] == pytest.approx(0.30)
+        assert firb["lgd_post_crm"][0] == pytest.approx(0.26)
 
-        # AIRB 169B: (0.20×500k + 0.25×500k) / 1M = 0.225
+        # AIRB 169B (own LGDU=0.25): (0.20×700k + 0.25×300k) / 1M = 0.14 + 0.075 = 0.215
         airb_169b = result.filter(pl.col("exposure_reference") == "AIRB_169B")
-        assert airb_169b["lgd_post_crm"][0] == pytest.approx(0.225)
+        assert airb_169b["lgd_post_crm"][0] == pytest.approx(0.215)
 
         # AIRB full modelling: keeps own LGD = 0.12
         airb_full = result.filter(pl.col("exposure_reference") == "AIRB_FULL")

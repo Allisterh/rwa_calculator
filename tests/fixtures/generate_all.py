@@ -205,6 +205,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p1165,
         ),
         (
+            "P1.190 (B31 Art. 230 F-IRB continuous LGD* formula — RE/other-physical/threshold)",
+            "p1_190",
+            _generate_p1190,
+        ),
+        (
             "P1.147 (ValidationRequest IRB mode requires model_permissions)",
             "api_validation",
             _generate_p1147,
@@ -1081,6 +1086,19 @@ def _generate_p1165(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_165", None)
+
+
+def _generate_p1190(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.190 fixtures (B31 Art. 230 F-IRB continuous LGD* formula)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_190 import save_p1190_fixtures
+
+        saved = save_p1190_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_190", None)
 
 
 def _generate_p1147(output_dir: Path) -> list[tuple[str, int]]:

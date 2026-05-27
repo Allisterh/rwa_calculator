@@ -190,19 +190,18 @@ class TestSequentialFillBasic:
     ):
         """When total collateral > EAD, sequential fill produces lower LGD than pro-rata.
 
-        Setup: EAD=1000.
+        Setup: EAD=1000 under PS1/26 Art. 230(1) (HC=40% non-financial, OC=1.0).
         Cash MV=400 → HC=0% → VAH=400, eff=400/1.0=400 (LGDS=0%)
-        RE MV=700 → HC=0% → VAH=700, eff=700/1.40=500 (LGDS=20%)
-        OP MV=500 → HC=40% → VAH=300, eff=300/1.40=214.3 (LGDS=25%)
-        Total eff=1114.3 > EAD=1000.
+        RE MV=700 → HC=40% → VAH=420, eff=420/1.0=420 (LGDS=20%)
+        OP MV=500 → HC=40% → VAH=300, eff=300/1.0=300 (LGDS=25%)
+        Total eff=1120 > EAD=1000.
 
-        Art. 230 per-type 30% threshold: RE=700/1000=70%≥30% ✓, OP=300/1000=30%≥30% ✓.
+        PS1/26 Art. 230(1) has no C* threshold (no per-type 30% gate under B31).
 
-        Sequential: fin absorbs 400, RE absorbs 500, other absorbs 100 → EU=0
-        LGD* = (0*400 + 0.20*500 + 0.25*100) / 1000 = 0.125
+        Sequential: fin absorbs 400, RE absorbs 420, other absorbs 180 → EU=0
+        LGD* = (0*400 + 0.20*420 + 0.25*180) / 1000 = (84 + 45) / 1000 = 0.129
 
         Pro-rata would give higher LGD because lower-LGDS fin is underused.
-
         Sequential is lower (more favourable) because financial fully absorbed first.
         """
         bundle = _create_bundle(
@@ -239,21 +238,21 @@ class TestSequentialFillBasic:
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        # Sequential fill: fin=400, RE=500, oth=100 → lgd_secured = 0.125
-        # lgd_post_crm = 0.125 (fully secured, EU=0)
-        assert lgd == pytest.approx(0.125, abs=0.001)
+        # Sequential fill under B31 (HC=40% on RE/OP, OC=1.0):
+        # fin=400, RE=420, OP=180 → lgd_secured = 0.129
+        # lgd_post_crm = 0.129 (fully secured, EU=0)
+        assert lgd == pytest.approx(0.129, abs=0.001)
 
     def test_undercollateralised_sequential_same_as_prorata(
         self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
     ):
         """When total collateral < EAD, sequential and pro-rata give same result.
 
-        Setup: EAD=1000.
-        RE MV=700 → HC=0% → VAH=700, eff=700/1.40=500 (LGDS=20%)
-        OP MV=700 → HC=40% → VAH=420, eff=420/1.40=300 (LGDS=25%)
-        Total eff=800 < 1000. Both types fully allocated regardless of ordering.
-
-        Art. 230 per-type 30% threshold: RE=700/1000=70%≥30% ✓, OP=420/1000=42%≥30% ✓.
+        Setup: EAD=1000 under PS1/26 Art. 230(1) (HC=40% non-financial, OC=1.0).
+        RE MV=700 → HC=40% → VAH=420, eff=420/1.0=420 (LGDS=20%)
+        OP MV=700 → HC=40% → VAH=420, eff=420/1.0=420 (LGDS=25%)
+        Total eff=840 < 1000. Both types fully allocated regardless of ordering.
+        PS1/26 has no C* threshold under B31.
         """
         bundle = _create_bundle(
             exposures_data={
@@ -286,10 +285,10 @@ class TestSequentialFillBasic:
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        # RE: eff=500, Other: eff=300. Total=800, EU=200.
-        # lgd_secured = (0.20*500 + 0.25*300) / 800 = 175/800 = 0.21875
-        # lgd_post_crm = 0.21875*800/1000 + 0.40*200/1000 = 0.175+0.08 = 0.255
-        assert lgd == pytest.approx(0.255, abs=0.001)
+        # B31: RE: eff=420, OP: eff=420. Total=840, EU=160.
+        # lgd_secured = (0.20*420 + 0.25*420) / 840 = 189/840 = 0.225
+        # lgd_post_crm = 0.225*840/1000 + 0.40*160/1000 = 0.189 + 0.064 = 0.253
+        assert lgd == pytest.approx(0.253, abs=0.001)
 
 
 class TestSequentialFillOrdering:
@@ -343,12 +342,13 @@ class TestSequentialFillOrdering:
     ):
         """Receivables (LGDS=20%) allocated before other_physical (LGDS=25%).
 
-        EAD=500. Rec MV=375, Other MV=350.
-        Haircuts: rec 40%, other 40% → VAH: rec=225, other=210.
-        Eff secured: rec=225/1.25=180, other=210/1.40=150.
-        Total=330 < 500. Sequential: rec=180, other=150 → EU=170
-        lgd_secured = (0.20*180 + 0.25*150) / 330 = 73.5/330 ≈ 0.2227
-        lgd_post_crm = 0.2227*330/500 + 0.40*170/500 = 0.147 + 0.136 = 0.283
+        EAD=500. Rec MV=375, Other MV=350. Under PS1/26 Art. 230(1): HC=40%
+        non-financial, OC=1.0.
+        VAH: rec=225, other=210.
+        Eff secured: rec=225/1.0=225, other=210/1.0=210.
+        Total=435 < 500. Sequential: rec=225, other=210 → EU=65
+        lgd_secured = (0.20*225 + 0.25*210) / 435 = 97.5/435 ≈ 0.2241
+        lgd_post_crm = 0.2241*435/500 + 0.40*65/500 = 0.195 + 0.052 = 0.247
         """
         bundle = _create_bundle(
             exposures_data={
@@ -381,7 +381,7 @@ class TestSequentialFillOrdering:
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        assert lgd == pytest.approx(0.283, abs=0.001)
+        assert lgd == pytest.approx(0.247, abs=0.001)
 
 
 class TestSequentialFillCRR:
@@ -596,13 +596,17 @@ class TestSequentialFillEdgeCases:
         assert lgd == pytest.approx(0.40, abs=0.001)
 
     def test_threshold_zeros_nonfinancial_below_30pct(
-        self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
+        self, crr_processor: CRMProcessor, firb_crr_config: CalculationConfig
     ):
-        """Non-financial collateral zeroed when raw value < 30% of EAD.
+        """Non-financial collateral zeroed when raw value < 30% of EAD (CRR only).
 
-        EAD=1000. RE raw=200 (20% < 30% threshold) → zeroed.
-        Cash=300 → only financial contributes.
-        lgd_post_crm = 0.0 * 300/1000 + 0.40 * 700/1000 = 0.28
+        EAD=1000. RE raw=200 (20% < 30% threshold) → zeroed by CRR Art. 230(2)
+        C* gate.  Cash=300 → only financial contributes.
+        lgd_post_crm = 0.0 * 300/1000 + 0.45 * 700/1000 = 0.315
+
+        Note: under PS1/26 Art. 230(1) there is no C* threshold, so the same
+        scenario under B31 would recognise the RE collateral (HC=40%, OC=1.0,
+        no gate). See test_b31_re_threshold_30pct for the B31 mirror.
         """
         bundle = _create_bundle(
             exposures_data={
@@ -631,11 +635,14 @@ class TestSequentialFillEdgeCases:
                 "is_eligible_financial_collateral": [True, False],
             },
         )
-        result = _run_crm(b31_processor, firb_b31_config, bundle)
+        result = _run_crm(crr_processor, firb_crr_config, bundle)
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        assert lgd == pytest.approx(0.28, abs=0.001)
+        # CRR LGDU senior unsecured corporate = 45% (no FSE distinction).
+        # Sub-threshold RE zeroed → only cash (eff=300, LGDS=0) contributes.
+        # lgd_post_crm = 0*300/1000 + 0.45*700/1000 = 0.315
+        assert lgd == pytest.approx(0.315, abs=0.001)
 
     def test_coverage_pct_capped_at_100(
         self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
@@ -746,13 +753,19 @@ class TestSequentialFillMultiExposure:
     def test_two_exposures_independent_waterfall(
         self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
     ):
-        """Each exposure gets its own independent waterfall.
+        """Each exposure gets its own independent waterfall under PS1/26 Art. 230(1).
 
-        EXP1: EAD=500, cash=300, RE=420 (eff=300). Total=600>500.
-        Sequential: fin=300, RE=200 → lgd_secured = (0*300+0.20*200)/500 = 0.08
+        B31: HC=40% non-financial, OC=1.0.
 
-        EXP2: EAD=500, RE=700 (eff=500). Total=500=EAD.
-        Sequential: RE=500 → lgd_secured = 0.20*500/500 = 0.20
+        EXP1: EAD=500, cash MV=300 (VAH=300, eff=300, LGDS=0),
+              RE MV=420 (VAH=252, eff=252, LGDS=20%). Total=552>500.
+        Sequential: fin=300, RE=200 → fully secured.
+        lgd_secured = (0*300 + 0.20*200)/500 = 0.08
+
+        EXP2: EAD=500, RE MV=700 (VAH=420, eff=420, LGDS=20%). EU=80.
+        Sequential: RE=420.
+        lgd_secured = 0.20.
+        lgd_post_crm = 0.20*420/500 + 0.40*80/500 = 0.168 + 0.064 = 0.232.
         """
         bundle = _create_bundle(
             exposures_data={
@@ -787,7 +800,7 @@ class TestSequentialFillMultiExposure:
         assert exp1["lgd_post_crm"][0] == pytest.approx(0.08, abs=0.001)
 
         exp2 = result.filter(pl.col("exposure_reference") == "EXP2")
-        assert exp2["lgd_post_crm"][0] == pytest.approx(0.20, abs=0.001)
+        assert exp2["lgd_post_crm"][0] == pytest.approx(0.232, abs=0.001)
 
 
 # =============================================================================
@@ -812,17 +825,19 @@ class TestPerTypeMinThreshold:
     """
 
     def test_mixed_re_op_combined_passes_individually_fails(
-        self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
+        self, crr_processor: CRMProcessor, firb_crr_config: CalculationConfig
     ):
-        """Mixed RE + OP: combined 40% > 30% but each type < 30% individually.
+        """CRR Art. 230(2): per-type 30% C* threshold (B31 has no C* gate).
 
         EAD=1000.
         RE MV=280 → HC=0% → VAH=280, 28% < 30% → FAILS per-type threshold.
         OP MV=200 → HC=40% → VAH=120, 12% < 30% → FAILS per-type threshold.
         Combined NF=400, 40% > 30% → would pass OLD global check.
 
-        New behavior: both zeroed. Only unsecured LGD applies.
-        lgd_post_crm = lgd_unsecured = 0.40 (B31 non-FSE)
+        Behavior: both zeroed. Only unsecured LGD applies.
+        lgd_post_crm = lgd_unsecured = 0.45 (CRR senior unsecured)
+
+        Note: under PS1/26 Art. 230(1) the C* threshold is removed entirely.
         """
         bundle = _create_bundle(
             exposures_data={
@@ -851,25 +866,27 @@ class TestPerTypeMinThreshold:
                 "is_eligible_financial_collateral": [False, False],
             },
         )
-        result = _run_crm(b31_processor, firb_b31_config, bundle)
+        result = _run_crm(crr_processor, firb_crr_config, bundle)
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        # Both types fail 30% individually → fully unsecured
-        assert lgd == pytest.approx(0.40, abs=0.001)
+        # Both types fail 30% individually → fully unsecured (CRR LGDU=0.45)
+        assert lgd == pytest.approx(0.45, abs=0.001)
 
     def test_re_passes_independently_op_fails(
-        self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
+        self, crr_processor: CRMProcessor, firb_crr_config: CalculationConfig
     ):
-        """RE passes 30% but OP fails 30% — independent per-type check.
+        """CRR Art. 230(2): RE passes 30% but OP fails 30% — independent per-type check.
 
         EAD=1000.
         RE MV=420 → HC=0% → VAH=420, 42% ≥ 30% ✓, eff=420/1.40=300
         OP MV=200 → HC=40% → VAH=120, 12% < 30% ✗ → zeroed.
 
         Only RE contributes.  Total_secured=300, EU=700.
-        lgd_secured = 0.20
-        lgd_post_crm = 0.20*300/1000 + 0.40*700/1000 = 0.06+0.28 = 0.34
+        lgd_secured = 0.35 (CRR RE senior)
+        lgd_post_crm = 0.35*300/1000 + 0.45*700/1000 = 0.105+0.315 = 0.420
+
+        Note: under PS1/26 Art. 230(1) the C* threshold is removed entirely.
         """
         bundle = _create_bundle(
             exposures_data={
@@ -898,11 +915,11 @@ class TestPerTypeMinThreshold:
                 "is_eligible_financial_collateral": [False, False],
             },
         )
-        result = _run_crm(b31_processor, firb_b31_config, bundle)
+        result = _run_crm(crr_processor, firb_crr_config, bundle)
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        assert lgd == pytest.approx(0.34, abs=0.001)
+        assert lgd == pytest.approx(0.420, abs=0.001)
 
     def test_receivables_no_threshold(
         self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
@@ -999,17 +1016,19 @@ class TestPerTypeMinThreshold:
         assert lgd == pytest.approx(0.346, abs=0.005)
 
     def test_financial_plus_failing_re_only_financial_counts(
-        self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
+        self, crr_processor: CRMProcessor, firb_crr_config: CalculationConfig
     ):
-        """Financial collateral unaffected when RE fails per-type threshold.
+        """CRR Art. 230(2): Financial collateral unaffected when RE fails per-type threshold.
 
         EAD=1000.
         Cash MV=300 → eff=300 (financial, no threshold).
-        RE MV=100 → HC=0% → VAH=100, 10% < 30% → zeroed.
+        RE MV=100 → HC=0% → VAH=100, 10% < 30% → zeroed by CRR C* gate.
 
         Only cash contributes. Total_secured=300, EU=700.
         lgd_secured = 0.0
-        lgd_post_crm = 0.0*300/1000 + 0.40*700/1000 = 0.28
+        lgd_post_crm = 0.0*300/1000 + 0.45*700/1000 = 0.315 (CRR LGDU=0.45)
+
+        Note: under PS1/26 Art. 230(1) the C* threshold is removed entirely.
         """
         bundle = _create_bundle(
             exposures_data={
@@ -1038,11 +1057,11 @@ class TestPerTypeMinThreshold:
                 "is_eligible_financial_collateral": [True, False],
             },
         )
-        result = _run_crm(b31_processor, firb_b31_config, bundle)
+        result = _run_crm(crr_processor, firb_crr_config, bundle)
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        assert lgd == pytest.approx(0.28, abs=0.001)
+        assert lgd == pytest.approx(0.315, abs=0.001)
 
     def test_per_type_threshold_crr_same_behavior(
         self, crr_processor: CRMProcessor, firb_crr_config: CalculationConfig
@@ -1091,16 +1110,19 @@ class TestPerTypeMinThreshold:
         assert lgd == pytest.approx(0.45, abs=0.001)
 
     def test_re_at_exactly_30pct_passes_per_type(
-        self, b31_processor: CRMProcessor, firb_b31_config: CalculationConfig
+        self, crr_processor: CRMProcessor, firb_crr_config: CalculationConfig
     ):
-        """RE at exactly 30% of EAD passes the per-type threshold.
+        """CRR Art. 230(2): RE at exactly 30% of EAD passes the per-type threshold.
 
         EAD=1000.
-        RE MV=300 → HC=0% → VAH=300, 30% = 30% → passes.
+        RE MV=300 → HC=0% → VAH=300, 30% = 30% → passes CRR C* gate.
         eff=300/1.40=214.3.
 
-        lgd_secured = 0.20. Total_secured=214.3, EU=785.7.
-        lgd_post_crm = 0.20*214.3/1000 + 0.40*785.7/1000 = 0.04286+0.31429 = 0.357
+        lgd_secured = 0.35 (CRR senior). Total_secured=214.3, EU=785.7.
+        lgd_post_crm = 0.35*214.3/1000 + 0.45*785.7/1000 = 0.075 + 0.354 = 0.429
+
+        Note: under PS1/26 Art. 230(1) there is no C* threshold; the same MV
+        passes unconditionally and is processed with HC=40% / OC=1.0.
         """
         bundle = _create_bundle(
             exposures_data={
@@ -1129,8 +1151,8 @@ class TestPerTypeMinThreshold:
                 "is_eligible_financial_collateral": [False],
             },
         )
-        result = _run_crm(b31_processor, firb_b31_config, bundle)
+        result = _run_crm(crr_processor, firb_crr_config, bundle)
         row = result.filter(pl.col("exposure_reference") == "EXP1")
         lgd = row["lgd_post_crm"][0]
 
-        assert lgd == pytest.approx(0.357, abs=0.005)
+        assert lgd == pytest.approx(0.429, abs=0.005)

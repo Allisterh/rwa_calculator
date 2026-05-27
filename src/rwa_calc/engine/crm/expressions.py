@@ -24,6 +24,7 @@ References:
 from __future__ import annotations
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.data.schemas import (
     COVERED_BOND_COLLATERAL_TYPES,
@@ -82,9 +83,26 @@ def collateral_lgd_expr(is_basel_3_1: bool) -> pl.Expr:
     )
 
 
-def overcollateralisation_ratio_expr() -> pl.Expr:
-    """Build expression mapping collateral_type to overcollateralisation ratio."""
+@cites("PS1/26 Art. 230(1)")
+def overcollateralisation_ratio_expr(is_basel_3_1: bool = False) -> pl.Expr:
+    """Build expression mapping collateral_type to overcollateralisation ratio.
+
+    CRR Art. 230 (Table 5) requires explicit overcollateralisation divisors for
+    non-financial collateral (RE/other physical 1.4x, receivables 1.25x).
+
+    PS1/26 Art. 230(1) replaces the CRR step-function with a continuous LGD*
+    formula in which the haircut HC is applied multiplicatively at the haircut
+    stage; no overcollateralisation divisor is applied for non-financial
+    collateral under Basel 3.1 — the OC ratio is 1.0 for real_estate /
+    other_physical / receivables. Financial and life-insurance ratios are
+    unchanged at 1.0 under both frameworks.
+    """
     ct = _coll_type_lower()
+    if is_basel_3_1:
+        # Under PS1/26 Art. 230(1) the FCM HC is applied multiplicatively and
+        # no overcollateralisation divisor is applied to non-financial
+        # collateral. Financial and life-insurance ratios remain 1.0.
+        return pl.lit(1.0)
     return (
         pl.when(ct.is_in(LIFE_INSURANCE_COLLATERAL_TYPES))
         .then(pl.lit(OVERCOLLATERALISATION_RATIOS["life_insurance"]))

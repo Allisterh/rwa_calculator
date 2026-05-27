@@ -302,6 +302,8 @@ def generate_netting_collateral(
     return synthetic
 
 
+@cites("PS1/26 Art. 230(2)")
+@cites("PS1/26 Art. 230(1)")
 @cites("CRR Art. 223")
 @cites("CRR Art. 230")
 def apply_collateral(
@@ -632,7 +634,7 @@ def _apply_collateral_unified(
     annotated = adjusted_collateral.with_columns(
         [
             collateral_lgd_expr(is_basel_3_1).alias("collateral_lgd"),
-            overcollateralisation_ratio_expr().alias("overcollateralisation_ratio"),
+            overcollateralisation_ratio_expr(is_basel_3_1).alias("overcollateralisation_ratio"),
             is_financial_collateral_type_expr().alias("is_financial_collateral_type"),
             collateral_category_expr().alias("_coll_category"),
             airb_flag_expr.alias("_is_airb_model_collateral"),
@@ -855,36 +857,41 @@ def _apply_collateral_unified(
         combine_exprs.append(_sum6(f"_e{suffix}").alias(f"_eff_{suffix}_a"))
     exposures = exposures.with_columns(combine_exprs)
 
-    # Per-type minimum collateralisation thresholds (Art. 230)
+    # Per-type minimum collateralisation thresholds (CRR Art. 230)
     # Art. 230 requires the threshold to apply per collateral type, not across
     # the combined non-financial pool.  Each type (real_estate, other_physical)
     # must independently meet its 30% threshold to be eligible for LGDS
     # reduction.  Financial, covered_bond, and receivables have no threshold.
-    _type_threshold: dict[str, tuple[float, str]] = {
-        "re": (MIN_COLLATERALISATION_THRESHOLDS["real_estate"], "collateral_re_value"),
-        "op": (
-            MIN_COLLATERALISATION_THRESHOLDS["other_physical"],
-            "collateral_other_physical_value",
-        ),
-    }
-    nf_threshold_exprs = []
-    for suffix in _wf_suffixes:
-        if suffix not in _type_threshold:
-            continue  # No threshold for fin/cb/rec
-        threshold, raw_col = _type_threshold[suffix]
-        if threshold <= 0:
-            continue
-        col_name = f"_eff_{suffix}_a"
-        # Art. 230 minimum-collateralisation threshold uses E with CCF=100%
-        # per Art. 223(4) — the threshold is a fraction of the pre-CCF basis.
-        nf_threshold_exprs.append(
-            pl.when(pl.col(raw_col) >= threshold * pl.col("ead_for_crm"))
-            .then(pl.col(col_name))
-            .otherwise(pl.lit(0.0))
-            .alias(col_name)
-        )
-    if nf_threshold_exprs:
-        exposures = exposures.with_columns(nf_threshold_exprs)
+    #
+    # PS1/26 Art. 230(1) replaces the CRR step-function with a continuous LGD*
+    # formula and removes the C* / C** thresholds entirely — under Basel 3.1
+    # any positive eligible non-financial collateral is recognised at LGDS.
+    if not is_basel_3_1:
+        _type_threshold: dict[str, tuple[float, str]] = {
+            "re": (MIN_COLLATERALISATION_THRESHOLDS["real_estate"], "collateral_re_value"),
+            "op": (
+                MIN_COLLATERALISATION_THRESHOLDS["other_physical"],
+                "collateral_other_physical_value",
+            ),
+        }
+        nf_threshold_exprs = []
+        for suffix in _wf_suffixes:
+            if suffix not in _type_threshold:
+                continue  # No threshold for fin/cb/rec
+            threshold, raw_col = _type_threshold[suffix]
+            if threshold <= 0:
+                continue
+            col_name = f"_eff_{suffix}_a"
+            # Art. 230 minimum-collateralisation threshold uses E with CCF=100%
+            # per Art. 223(4) — the threshold is a fraction of the pre-CCF basis.
+            nf_threshold_exprs.append(
+                pl.when(pl.col(raw_col) >= threshold * pl.col("ead_for_crm"))
+                .then(pl.col(col_name))
+                .otherwise(pl.lit(0.0))
+                .alias(col_name)
+            )
+        if nf_threshold_exprs:
+            exposures = exposures.with_columns(nf_threshold_exprs)
 
     # --- Art. 231 sequential fill (waterfall) ---
     # Allocate from lowest LGDS to highest. Each category absorbs up to
