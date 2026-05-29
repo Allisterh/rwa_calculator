@@ -265,6 +265,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p1127,
         ),
         (
+            "P1.130 (B31 Art. 92(2A) output floor binding — unrated F-IRB + SA portfolio)",
+            "p1_130",
+            _generate_p1130,
+        ),
+        (
             "P2.18 (B31 Art. 226(1) 20-day secured-lending / FX-mismatch / weekly reval)",
             "p2_18",
             _generate_p218,
@@ -1410,6 +1415,19 @@ def _generate_p1127(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_127", None)
+
+
+def _generate_p1130(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.130 fixtures (B31 Art. 92(2A) output floor binding — unrated F-IRB + SA portfolio)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_130 import save_p1130_fixtures
+
+        saved = save_p1130_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_130", None)
 
 
 def _generate_p218(output_dir: Path) -> list[tuple[str, int]]:
