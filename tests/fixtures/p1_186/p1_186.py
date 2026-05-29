@@ -206,7 +206,7 @@ class _Loan:
         LOAN_P186_SFT: is_sft=True  → engine infers T_m=5d  (Art. 224(2)(c))
 
     has_one_day_maturity_floor=False: no artificial maturity floor.
-    has_netting_agreement=False: no netting → full gross EAD before CRM.
+    netting_agreement_reference=None: no netting → full gross EAD before CRM.
     has_sufficient_collateral_data=False: no IRB path override.
     """
 
@@ -220,7 +220,7 @@ class _Loan:
     seniority: str
     is_sft: bool
     has_one_day_maturity_floor: bool
-    has_netting_agreement: bool
+    netting_agreement_reference: str | None
     has_sufficient_collateral_data: bool
 
     def to_dict(self) -> dict:
@@ -235,7 +235,7 @@ class _Loan:
             "seniority": self.seniority,
             "is_sft": self.is_sft,
             "has_one_day_maturity_floor": self.has_one_day_maturity_floor,
-            "has_netting_agreement": self.has_netting_agreement,
+            "netting_agreement_reference": self.netting_agreement_reference,
             "has_sufficient_collateral_data": self.has_sufficient_collateral_data,
         }
 
@@ -339,7 +339,7 @@ def create_p1186_loans() -> pl.DataFrame:
         "interest": 0.0,
         "seniority": "senior",
         "has_one_day_maturity_floor": False,
-        "has_netting_agreement": False,
+        "netting_agreement_reference": None,
         "has_sufficient_collateral_data": False,
     }
 

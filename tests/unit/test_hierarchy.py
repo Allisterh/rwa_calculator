@@ -2018,7 +2018,7 @@ class TestFacilityUndrawnCalculation:
                 "drawn_amount": [60_000_000.0, 60_000_000.0, -40_000_000.0],
                 "lgd": [0.45, 0.45, 0.45],
                 "seniority": ["senior", "senior", "senior"],
-                "has_netting_agreement": [False, False, True],
+                "netting_agreement_reference": [None, None, "AGR01"],
             }
         ).lazy()
 
@@ -2042,12 +2042,12 @@ class TestFacilityUndrawnCalculation:
         self,
         resolver: HierarchyResolver,
     ) -> None:
-        """A negative drawn without has_netting_agreement is still clipped.
+        """A negative drawn without netting_agreement_reference is still clipped.
 
         Regression guard: the netting-aware aggregation must not change the
-        historical treatment of accidental data-quality negatives. Without an
-        explicit netting flag, the negative loan contributes 0 to the facility
-        utilisation total and the undrawn reflects only the positive sum.
+        historical treatment of accidental data-quality negatives. Without a
+        netting agreement reference, the negative loan contributes 0 to the
+        facility utilisation total and the undrawn reflects only the positive sum.
         """
         facilities = pl.DataFrame(
             {
@@ -2078,7 +2078,7 @@ class TestFacilityUndrawnCalculation:
                 "drawn_amount": [60_000_000.0, 60_000_000.0, -40_000_000.0],
                 "lgd": [0.45, 0.45, 0.45],
                 "seniority": ["senior", "senior", "senior"],
-                "has_netting_agreement": [False, False, False],
+                "netting_agreement_reference": [None, None, None],
             }
         ).lazy()
 

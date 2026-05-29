@@ -214,8 +214,12 @@ LOAN_SCHEMA: dict[str, ColumnSpec] = {
     "has_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sft": ColumnSpec(pl.Boolean, default=False, required=False),
     "effective_maturity": ColumnSpec(pl.Float64, required=False),
-    "has_netting_agreement": ColumnSpec(pl.Boolean, default=False, required=False),
-    "netting_facility_reference": ColumnSpec(pl.String, required=False),
+    # CRR Art. 195/219 on-balance-sheet netting. A non-null reference is the sole
+    # signal that the exposure participates in a netting agreement: a deposit
+    # (negative drawn amount) and the loans it offsets net iff they carry the SAME
+    # reference. Netting is driven exclusively by this reference — never by
+    # facility hierarchy or counterparty — reflecting the legal right of set-off.
+    "netting_agreement_reference": ColumnSpec(pl.String, required=False),
     "due_diligence_performed": ColumnSpec(pl.Boolean, default=False, required=False),
     "due_diligence_override_rw": ColumnSpec(pl.Float64, required=False),
     # PRA PS1/26 Art. 123B(2) / CRE20.93: loan-level hedge flag that suppresses

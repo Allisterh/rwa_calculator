@@ -141,6 +141,7 @@ def find_misdirected_airb_model_collateral(
 
 
 @cites("CRR Art. 195")
+@cites("CRR Art. 219")
 @cites("CRR Art. 223")
 def generate_netting_collateral(
     exposures: pl.LazyFrame,
@@ -148,26 +149,26 @@ def generate_netting_collateral(
     """
     Generate synthetic cash collateral from negative-drawn netting-eligible loans.
 
-    When a loan has a negative drawn amount (credit balance) and is covered by a
-    netting agreement (CRR Art. 195), the absolute value of that negative balance
-    can reduce sibling exposures in the same facility — treated as cash collateral.
+    When a loan has a negative drawn amount (credit balance / deposit) and carries
+    a ``netting_agreement_reference`` (CRR Art. 195/219), the absolute value of
+    that negative balance can reduce other exposures covered by the SAME netting
+    agreement — treated as synthetic cash collateral.
 
-    The netting agreement belongs to the negative-balance loan (the deposit). All
-    positive-drawn exposures under the same netting facility benefit from the pool,
-    regardless of their own has_netting_agreement flag.
-
-    The netting facility is determined by:
-    1. netting_facility_reference (explicit, if provided on the negative loan)
-    2. root_facility_reference (top-level facility in hierarchy)
-    3. parent_facility_reference (direct parent, fallback)
+    Netting is driven SOLELY by ``netting_agreement_reference``: only exposures
+    sharing the same reference net together. This reflects the legal right of
+    set-off, which is defined by the netting agreement itself — not by facility
+    hierarchy or counterparty. A deposit from one counterparty may net a loan to a
+    different counterparty (and across different facilities) iff both carry the
+    same reference; conversely two exposures in the same facility do NOT net unless
+    they share the reference.
 
     CRR Art. 219 limits on-balance-sheet netting to drawn loans and deposits
-    (cash-on-cash). Synthetic cash collateral is allocated pro-rata by the
-    drawn portion (`on_bs_for_ead`) to positive-drawn LOAN siblings in the same
-    netting facility — contingents and synthetic facility_undrawn rows are
+    (cash-on-cash). Synthetic cash collateral is allocated pro-rata by the drawn
+    portion (`on_bs_for_ead`) to positive-drawn LOAN siblings carrying the same
+    reference — contingents and synthetic facility_undrawn rows are
     off-balance-sheet and excluded from the beneficiary set. Netting pools are
-    grouped by (netting_facility, currency) so the haircut pipeline can apply
-    FX haircuts when the pool currency differs from the sibling's currency.
+    grouped by (netting_agreement_reference, currency) so the haircut pipeline can
+    apply FX haircuts when the pool currency differs from the sibling's currency.
 
     Args:
         exposures: Exposures with ead_for_crm, on_bs_for_ead, exposure_type set
@@ -177,9 +178,7 @@ def generate_netting_collateral(
     """
     schema = exposures.collect_schema()
     schema_names = set(schema.names())
-    if "has_netting_agreement" not in schema_names:
-        return None
-    if "parent_facility_reference" not in schema_names:
+    if "netting_agreement_reference" not in schema_names:
         return None
 
     # Graceful fallback for direct unit-test callers (production always
@@ -199,30 +198,16 @@ def generate_netting_collateral(
     if "exposure_type" not in schema_names:
         exposures = exposures.with_columns(pl.lit("loan").alias("exposure_type"))
 
-    has_root = "root_facility_reference" in schema_names
-    has_netting_ref = "netting_facility_reference" in schema_names
-
-    # Pool netting group: explicit reference > root > direct parent
-    pool_group_parts = [pl.col("parent_facility_reference")]
-    if has_root:
-        pool_group_parts.insert(0, pl.col("root_facility_reference"))
-    if has_netting_ref:
-        pool_group_parts.insert(0, pl.col("netting_facility_reference"))
-
-    pool_group_expr = pl.coalesce(pool_group_parts).alias("_netting_group")
-
-    # Negative-drawn loans with a netting agreement provide the pool
+    # Negative-drawn loans carrying a netting agreement reference provide the pool
     negative_loans = exposures.filter(
-        (pl.col("has_netting_agreement") == True)  # noqa: E712
-        & (pl.col("drawn_amount") < 0)
-        & pl.col("parent_facility_reference").is_not_null()
-    ).with_columns(pool_group_expr)
+        pl.col("netting_agreement_reference").is_not_null() & (pl.col("drawn_amount") < 0)
+    )
 
-    # Sum abs(drawn_amount) per (netting_group, currency) → netting pool
+    # Sum abs(drawn_amount) per (netting_agreement_reference, currency) → netting pool.
     # Currency is kept so the synthetic collateral carries the source currency,
     # allowing the haircut pipeline to apply FX haircuts when currencies differ.
     netting_pool = (
-        negative_loans.group_by(["_netting_group", "currency"])
+        negative_loans.group_by(["netting_agreement_reference", "currency"])
         .agg(
             pl.col("drawn_amount").abs().sum().alias("netting_pool"),
         )
@@ -231,61 +216,40 @@ def generate_netting_collateral(
 
     # CRR Art. 219: drawn-on-drawn cash netting. Synthetic cash collateral may
     # only benefit the drawn portion of loan exposures — contingents and
-    # facility_undrawn synthetic rows are off-balance-sheet and ineligible.
-    # A sibling matches a pool if the pool's netting group equals its
-    # parent_facility_reference OR root_facility_reference.
+    # facility_undrawn synthetic rows are off-balance-sheet and ineligible. A
+    # sibling matches a pool iff it carries the same netting_agreement_reference.
     positive_siblings = exposures.filter(
         (pl.col("exposure_type") == "loan")
         & (pl.col("on_bs_for_ead") > 0)
-        & pl.col("parent_facility_reference").is_not_null()
-    )
-
-    sibling_cols = [
+        & pl.col("netting_agreement_reference").is_not_null()
+    ).select(
         "exposure_reference",
-        "parent_facility_reference",
+        "netting_agreement_reference",
         "currency",
         "on_bs_for_ead",
         "maturity_date",
-    ]
-    if has_root:
-        sibling_cols.append("root_facility_reference")
-
-    positive_siblings = positive_siblings.select(sibling_cols)
-
-    # Match siblings to pools: pool's netting group can match at parent or root level
-    match_parent = positive_siblings.join(
-        netting_pool,
-        left_on="parent_facility_reference",
-        right_on="_netting_group",
-        how="inner",
     )
 
-    if has_root:
-        match_root = positive_siblings.join(
-            netting_pool,
-            left_on="root_facility_reference",
-            right_on="_netting_group",
-            how="inner",
-        )
-        matched = pl.concat([match_parent, match_root], how="diagonal").unique(
-            subset=["exposure_reference", "_pool_currency"], keep="first"
-        )
-    else:
-        matched = match_parent
+    # Match siblings to pools by shared netting agreement reference.
+    matched = positive_siblings.join(
+        netting_pool,
+        on="netting_agreement_reference",
+        how="inner",
+    )
 
     # Total drawn EAD per pool for pro-rata allocation. CRR Art. 219 nets cash
     # against drawn loans, so the pro-rata basis is the on-BS (drawn) portion,
     # NOT ead_for_crm (which includes the off-BS nominal at CCF=100% per
     # Art. 223(4) — that override is for collateral valuation, not for OBS
     # netting allocation basis).
-    facility_totals = matched.group_by("_pool_currency", "netting_pool").agg(
+    facility_totals = matched.group_by("netting_agreement_reference", "_pool_currency").agg(
         pl.col("on_bs_for_ead").sum().alias("_facility_total_drawn"),
     )
 
     # Join totals back for pro-rata
     allocated = matched.join(
         facility_totals,
-        on=["_pool_currency", "netting_pool"],
+        on=["netting_agreement_reference", "_pool_currency"],
         how="left",
     ).filter(pl.col("_facility_total_drawn") > 0)
 

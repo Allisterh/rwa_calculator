@@ -123,8 +123,7 @@ LOAN_SCHEMA = {
     "beel": pl.Float64,                  # Best estimate expected loss
     "seniority": pl.String,             # senior/subordinated
     "is_buy_to_let": pl.Boolean,        # BTL property lending
-    "has_netting_agreement": pl.Boolean, # Netting agreement flag
-    "netting_facility_reference": pl.String, # Netting facility reference
+    "netting_agreement_reference": pl.String, # CRR Art. 195/219 netting set (drives netting)
 }
 ```
 

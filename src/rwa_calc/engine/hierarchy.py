@@ -902,7 +902,7 @@ class HierarchyResolver:
                 "is_under_construction": pl.Boolean,
                 "has_one_day_maturity_floor": pl.Boolean,
                 "is_sft": pl.Boolean,
-                "has_netting_agreement": pl.Boolean,
+                "netting_agreement_reference": pl.String,
                 "is_revolving": pl.Boolean,
                 "is_qrre_transactor": pl.Boolean,
                 "facility_limit": pl.Float64,
@@ -921,11 +921,12 @@ class HierarchyResolver:
         """Sum drawn amounts per (root or standalone) facility, netting-aware.
 
         Positive drawn balances always sum normally. Negative drawn balances
-        only contribute when the loan carries ``has_netting_agreement=True``
+        only contribute when the loan carries a ``netting_agreement_reference``
         (CRR Art. 195 / 219, PS1/26 Art. 195 / 219) — these represent deposits
         booked under an on-balance-sheet netting agreement and reduce facility
-        utilisation. Negative drawn amounts without a netting flag are clamped
-        to 0 (data-quality guard), preserving the historical behaviour.
+        utilisation. Negative drawn amounts without a netting agreement
+        reference are clamped to 0 (data-quality guard), preserving the
+        historical behaviour.
 
         Returns an empty 2-col frame if ``loans`` lacks ``loan_reference``, in
         which case all facilities are treated as 100% undrawn.
@@ -950,10 +951,10 @@ class HierarchyResolver:
 
         loan_with_parent = _resolve_to_root_facility(loan_with_parent, root_lookup)
 
-        if "has_netting_agreement" in loan_cols:
+        if "netting_agreement_reference" in loan_cols:
             drawn_expr = (
                 pl.when(
-                    (pl.col("drawn_amount") < 0) & ~pl.col("has_netting_agreement").fill_null(False)
+                    (pl.col("drawn_amount") < 0) & pl.col("netting_agreement_reference").is_null()
                 )
                 .then(pl.lit(0.0))
                 .otherwise(pl.col("drawn_amount"))
@@ -1219,7 +1220,7 @@ class HierarchyResolver:
             col_or_false("has_one_day_maturity_floor"),
             col_or_false("is_sft"),
             col_or_null("effective_maturity", pl.Float64),
-            pl.lit(False).alias("has_netting_agreement"),
+            pl.lit(None).cast(pl.String).alias("netting_agreement_reference"),
             # QRRE classification fields (CRR Art. 147(5), CRE30.55).
             # Both columns are synthesised to False and null-filled by the
             # entry-point normalisation, so we can read them directly.
@@ -1323,19 +1324,19 @@ class HierarchyResolver:
             child_mappings = _filter_mappings_by_child_type(facility_mappings, child_type)
             # Mirror the netting-aware aggregation used at root level: a negative
             # drawn loan only offsets sub-facility utilisation when the loan is
-            # flagged with has_netting_agreement (CRR Art. 195/219). For
-            # contingents (no netting flag) the historical clip-at-0 applies.
+            # carrying a netting_agreement_reference (CRR Art. 195/219). For
+            # contingents (no netting reference) the historical clip-at-0 applies.
             select_cols = [pl.col(ref_col), pl.col(amount_col)]
             has_netting_flag = (
                 child_type == "loan"
                 and amount_col == "drawn_amount"
-                and "has_netting_agreement" in cols
+                and "netting_agreement_reference" in cols
             )
             if has_netting_flag:
-                select_cols.append(pl.col("has_netting_agreement"))
+                select_cols.append(pl.col("netting_agreement_reference"))
                 amount_expr = (
                     pl.when(
-                        (pl.col(amount_col) < 0) & ~pl.col("has_netting_agreement").fill_null(False)
+                        (pl.col(amount_col) < 0) & pl.col("netting_agreement_reference").is_null()
                     )
                     .then(pl.lit(0.0))
                     .otherwise(pl.col(amount_col))
@@ -1845,9 +1846,9 @@ class HierarchyResolver:
                 else pl.lit(None).cast(pl.Float64).alias("effective_maturity")
             ),
             (
-                pl.col("has_netting_agreement").fill_null(False)
-                if "has_netting_agreement" in loan_cols
-                else pl.lit(False).alias("has_netting_agreement")
+                pl.col("netting_agreement_reference")
+                if "netting_agreement_reference" in loan_cols
+                else pl.lit(None).cast(pl.String).alias("netting_agreement_reference")
             ),
             # facility_termination_date is facility-level; inherited via facility join later
             pl.lit(None).cast(pl.Date).alias("facility_termination_date"),
@@ -2022,7 +2023,7 @@ class HierarchyResolver:
                     if "effective_maturity" in cont_cols
                     else pl.lit(None).cast(pl.Float64).alias("effective_maturity")
                 ),
-                pl.lit(False).alias("has_netting_agreement"),
+                pl.lit(None).cast(pl.String).alias("netting_agreement_reference"),
                 # facility_termination_date is facility-level; inherited via facility join later
                 pl.lit(None).cast(pl.Date).alias("facility_termination_date"),
             ]

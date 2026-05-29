@@ -617,8 +617,7 @@ def generate_loans(
             "is_under_construction": np.full(n_loans, None),  # P1.140 ADC
             "has_one_day_maturity_floor": np.full(n_loans, None),  # Repo/SFT 1-day floor
             "is_sft": np.full(n_loans, None),  # CRR Art. 162(1): SFT F-IRB 0.5y maturity
-            "has_netting_agreement": np.full(n_loans, None),  # Netting flag (CRR Art. 195)
-            "netting_facility_reference": np.full(n_loans, None),  # Facility for netting agreement
+            "netting_agreement_reference": np.full(n_loans, None),  # CRR Art. 195/219 netting set
             "due_diligence_performed": np.full(n_loans, None),  # Art. 110A (B31 only)
             "due_diligence_override_rw": np.full(n_loans, None),  # Art. 110A override RW (B31 only)
             "is_hedged": np.full(n_loans, None),  # P1.94a B31 currency-mismatch gate

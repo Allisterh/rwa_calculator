@@ -88,7 +88,7 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
      "SupportingFactorCalculator.apply_factors", ("CRR Art. 501",)),
     # --- CRM ---
     ("rwa_calc.engine.crm.collateral", "generate_netting_collateral",
-     ("CRR Art. 195", "CRR Art. 223")),
+     ("CRR Art. 195", "CRR Art. 219", "CRR Art. 223")),
     ("rwa_calc.engine.crm.collateral", "apply_collateral",
      ("PS1/26 Art. 230(2)", "PS1/26 Art. 230(1)", "CRR Art. 223", "CRR Art. 230")),
     ("rwa_calc.engine.crm.collateral", "apply_firb_supervisory_lgd_no_collateral",

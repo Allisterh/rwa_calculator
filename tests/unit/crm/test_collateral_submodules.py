@@ -40,8 +40,8 @@ from rwa_calc.engine.crm.collateral import (
 class TestGenerateNettingCollateral:
     """CRR Art. 195: synthetic cash collateral from negative-drawn netting loans."""
 
-    def test_no_netting_agreement_column_returns_none(self) -> None:
-        """Missing has_netting_agreement column: returns None."""
+    def test_no_netting_reference_column_returns_none(self) -> None:
+        """Missing netting_agreement_reference column: returns None."""
         lf = pl.LazyFrame(
             {
                 "exposure_reference": ["EXP001"],
@@ -53,18 +53,24 @@ class TestGenerateNettingCollateral:
         result = generate_netting_collateral(lf)
         assert result is None
 
-    def test_no_parent_facility_column_returns_none(self) -> None:
-        """Missing parent_facility_reference column: returns None."""
+    def test_nets_without_parent_facility(self) -> None:
+        """Facility is irrelevant: a shared reference nets standalone exposures."""
         lf = pl.LazyFrame(
             {
-                "exposure_reference": ["EXP001"],
-                "drawn_amount": [-50_000.0],
-                "has_netting_agreement": [True],
-                "ead_gross": [0.0],
+                "exposure_reference": ["DEPOSIT", "LOAN_A"],
+                "drawn_amount": [-50_000.0, 200_000.0],
+                "netting_agreement_reference": ["AGR01", "AGR01"],
+                "ead_gross": [0.0, 200_000.0],
+                "currency": ["GBP", "GBP"],
+                "maturity_date": [None, None],
             }
         )
         result = generate_netting_collateral(lf)
-        assert result is None
+        assert result is not None
+        df = result.collect()
+        assert len(df) == 1
+        assert df["beneficiary_reference"][0] == "LOAN_A"
+        assert df["market_value"][0] == pytest.approx(50_000.0)
 
     def _netting_frame(self, rows: dict) -> pl.LazyFrame:
         """Build frame with all columns needed by generate_netting_collateral."""
@@ -83,7 +89,7 @@ class TestGenerateNettingCollateral:
             {
                 "exposure_reference": ["EXP001"],
                 "drawn_amount": [100_000.0],
-                "has_netting_agreement": [True],
+                "netting_agreement_reference": ["AGR01"],
                 "parent_facility_reference": ["FAC001"],
                 "ead_gross": [100_000.0],
                 "currency": ["GBP"],
@@ -100,7 +106,7 @@ class TestGenerateNettingCollateral:
             {
                 "exposure_reference": ["DEPOSIT", "LOAN_A"],
                 "drawn_amount": [-200_000.0, 500_000.0],
-                "has_netting_agreement": [True, False],
+                "netting_agreement_reference": ["AGR01", "AGR01"],
                 "parent_facility_reference": ["FAC001", "FAC001"],
                 "ead_gross": [0.0, 500_000.0],
                 "currency": ["GBP", "GBP"],
@@ -120,7 +126,7 @@ class TestGenerateNettingCollateral:
             {
                 "exposure_reference": ["DEP_GBP", "DEP_EUR", "LOAN_A"],
                 "drawn_amount": [-100_000.0, -200_000.0, 500_000.0],
-                "has_netting_agreement": [True, True, False],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
                 "parent_facility_reference": ["FAC001", "FAC001", "FAC001"],
                 "ead_gross": [0.0, 0.0, 500_000.0],
                 "currency": ["GBP", "EUR", "GBP"],
@@ -134,13 +140,13 @@ class TestGenerateNettingCollateral:
             currencies = set(df["currency"].to_list())
             assert "GBP" in currencies
 
-    def test_netting_eligible_requires_true_flag(self) -> None:
-        """Only loans with has_netting_agreement=True provide netting pool."""
+    def test_netting_eligible_requires_reference(self) -> None:
+        """Only loans with a netting_agreement_reference provide a netting pool."""
         lf = self._netting_frame(
             {
                 "exposure_reference": ["DEPOSIT", "LOAN_A"],
                 "drawn_amount": [-200_000.0, 500_000.0],
-                "has_netting_agreement": [False, False],
+                "netting_agreement_reference": [None, None],
                 "parent_facility_reference": ["FAC001", "FAC001"],
                 "ead_gross": [0.0, 500_000.0],
                 "currency": ["GBP", "GBP"],
@@ -157,7 +163,7 @@ class TestGenerateNettingCollateral:
             {
                 "exposure_reference": ["DEPOSIT", "LOAN_A"],
                 "drawn_amount": [-200_000.0, 500_000.0],
-                "has_netting_agreement": [True, False],
+                "netting_agreement_reference": ["AGR01", "AGR01"],
                 "parent_facility_reference": ["FAC001", "FAC001"],
                 "ead_gross": [0.0, 500_000.0],
                 "currency": ["GBP", "GBP"],
@@ -176,7 +182,7 @@ class TestGenerateNettingCollateral:
             {
                 "exposure_reference": ["DEPOSIT", "LOAN_A"],
                 "drawn_amount": [-200_000.0, 500_000.0],
-                "has_netting_agreement": [True, False],
+                "netting_agreement_reference": ["AGR01", "AGR01"],
                 "parent_facility_reference": ["FAC001", "FAC001"],
                 "ead_gross": [0.0, 500_000.0],
                 "currency": ["GBP", "GBP"],
@@ -196,7 +202,7 @@ class TestGenerateNettingCollateral:
             {
                 "exposure_reference": ["DEPOSIT", "LOAN_A", "LOAN_B"],
                 "drawn_amount": [-100_000.0, 600_000.0, 400_000.0],
-                "has_netting_agreement": [True, False, False],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
                 "parent_facility_reference": ["FAC001", "FAC001", "FAC001"],
                 "ead_gross": [0.0, 600_000.0, 400_000.0],
                 "currency": ["GBP", "GBP", "GBP"],

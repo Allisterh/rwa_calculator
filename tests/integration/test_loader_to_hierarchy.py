@@ -92,8 +92,7 @@ def _make_loan_df(**overrides: Any) -> pl.DataFrame:
         "beel": 0.0,
         "seniority": "senior",
         "is_buy_to_let": False,
-        "has_netting_agreement": False,
-        "netting_facility_reference": None,
+        "netting_agreement_reference": None,
     }
     defaults.update(overrides)
     df = pl.DataFrame([defaults])

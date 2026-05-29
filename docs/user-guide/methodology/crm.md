@@ -412,7 +412,7 @@ adjustment = (3 - 0.25) / (5 - 0.25) = 2.75 / 4.75 = 0.579
 
 ## On-Balance Sheet Netting (CRR Art. 195 / Art. 219)
 
-When a legally enforceable netting agreement exists, mutual claims between the firm and the counterparty can be netted. In practice, this means a negative drawn amount (credit balance / deposit) on one loan can reduce sibling exposures within the same facility.
+When a legally enforceable netting agreement exists, mutual claims covered by that agreement can be netted. In practice, this means a negative drawn amount (credit balance / deposit) on one loan can reduce other exposures **covered by the same netting agreement**. Netting is driven **solely by a shared `netting_agreement_reference`** — the agreement is the legal right-of-set-off boundary, so netting follows the reference rather than facility hierarchy or counterparty. A deposit booked against one counterparty can net a loan to a different counterparty (and under a different facility) when both carry the same reference.
 
 CRR Art. 219 limits on-balance-sheet netting to **drawn loans and deposits** — it is a cash-on-cash mechanism. Off-balance-sheet items (contingent exposures and synthetic facility-undrawn rows representing unused commitment headroom) are **not eligible** to receive the netting benefit.
 
@@ -420,8 +420,8 @@ CRR Art. 219 limits on-balance-sheet netting to **drawn loans and deposits** —
 
 The calculator implements netting as **synthetic cash collateral**:
 
-1. Loans with `has_netting_agreement = True` and `drawn_amount < 0` contribute their absolute drawn amount to a **netting pool** per `(netting_facility, currency)`, where the netting facility is determined by priority: `netting_facility_reference` → `root_facility_reference` → `parent_facility_reference`
-2. The pool is allocated **pro-rata by drawn portion (`on_bs_for_ead`)** to positive-drawn **loan** siblings in the same netting facility — contingents and facility-undrawn rows are excluded per Art. 219; eligible loan siblings benefit regardless of their own `has_netting_agreement` flag
+1. Loans with a non-null `netting_agreement_reference` and `drawn_amount < 0` contribute their absolute drawn amount to a **netting pool** per `(netting_agreement_reference, currency)`
+2. The pool is allocated **pro-rata by drawn portion (`on_bs_for_ead`)** to positive-drawn **loan** siblings carrying the **same reference** — contingents and facility-undrawn rows are excluded per Art. 219; facility hierarchy and counterparty are irrelevant to the match
 3. Each allocation becomes a synthetic cash collateral row fed into the existing collateral pipeline
 
 This reuses the full collateral mechanics:
@@ -437,16 +437,14 @@ This reuses the full collateral mechanics:
 
 ### Input Data
 
-Set `has_netting_agreement = True` on the negative-drawn loan record to enable netting. The loan must be under a facility (`parent_facility_reference` is not null) for netting to apply.
-
-Optionally set `netting_facility_reference` to explicitly control which facility defines the netting group. If omitted, the calculator uses `root_facility_reference` (top-level facility in the hierarchy) or falls back to `parent_facility_reference`.
+Set `netting_agreement_reference` to the same value on every exposure covered by one netting agreement — both the negative-drawn deposit and the loans it offsets. Exposures with no reference are never netted. No facility or counterparty linkage is required: the reference alone defines the netting set.
 
 ### Example
 
 ```python
-# Facility FAC_01 with two loans:
-# Loan A: drawn = -200 (credit balance), has_netting_agreement = True
-# Loan B: drawn = 1000, has_netting_agreement = True
+# Two loans (any facility / counterparty) sharing netting_agreement_reference = "AGR1":
+# Loan A: drawn = -200 (credit balance), netting_agreement_reference = "AGR1"
+# Loan B: drawn = 1000,                  netting_agreement_reference = "AGR1"
 
 # Result (SA):
 # Loan A EAD = 0 (floored)
@@ -456,9 +454,9 @@ Optionally set `netting_facility_reference` to explicitly control which facility
 A mixed facility containing a drawn loan, a contingent guarantee, and an undrawn commitment receives the full netting benefit on the drawn loan only:
 
 ```python
-# Facility FAC_01 with:
-# Loan A: drawn = -300 (deposit), has_netting_agreement = True
-# Loan B: drawn = 500 (drawn loan)
+# Exposures sharing netting_agreement_reference = "AGR1":
+# Loan A: drawn = -300 (deposit), netting_agreement_reference = "AGR1"
+# Loan B: drawn = 500 (drawn loan), netting_agreement_reference = "AGR1"
 # Contingent C: nominal = 1000 (off-balance-sheet guarantee)
 # Facility undrawn: undrawn = 2000 (synthetic row for unused headroom)
 

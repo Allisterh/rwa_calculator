@@ -120,8 +120,7 @@ _LOAN_DEFAULTS: dict[str, Any] = {
     "beel": 0.0,
     "seniority": "senior",
     "is_buy_to_let": False,
-    "has_netting_agreement": False,
-    "netting_facility_reference": None,
+    "netting_agreement_reference": None,
 }
 
 _FACILITY_DEFAULTS: dict[str, Any] = {

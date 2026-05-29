@@ -307,8 +307,7 @@ facilities = pl.DataFrame({
 | `has_one_day_maturity_floor` | `Boolean` | No | Eligible for the CRR Art. 162(3) 1-day `M` floor in lieu of the standard 1-year floor |
 | `is_sft` | `Boolean` | No | Securities Financing Transaction — see Facility schema |
 | `effective_maturity` | `Float64` | No | Explicit numeric `M` override (years) per CRR Art. 162(3) / PS1/26. Bypasses the 1-year floor when populated |
-| `has_netting_agreement` | `Boolean` | No | Whether loan is part of a netting agreement |
-| `netting_facility_reference` | `String` | No | Reference to netting facility (if applicable) |
+| `netting_agreement_reference` | `String` | No | CRR Art. 195/219 on-balance-sheet netting set. A non-null reference is the sole signal that the loan participates in a netting agreement; exposures net against each other **iff they share the same reference** — independent of facility or counterparty |
 | `due_diligence_performed` | `Boolean` | No | Basel 3.1 Art. 110A: True if the firm has performed the prescribed due-diligence assessment of the obligor. Required for the SA RW override below to apply. Absence raises diagnostic warning **SA004** under B3.1 |
 | `due_diligence_override_rw` | `Float64` | No | Basel 3.1 Art. 110A SA RW override (decimal, e.g. `1.50` for 150%). Applied as `max(calculated_rw, override_rw)` — the override can only **increase** the regulatory RW, never decrease it. CRR-only runs ignore this column |
 
@@ -334,8 +333,7 @@ loans = pl.DataFrame({
     "beel": [None, None, None],
     "seniority": ["senior", "senior", "senior"],
     "is_buy_to_let": [False, False, False],
-    "has_netting_agreement": [False, False, False],
-    "netting_facility_reference": [None, None, None],
+    "netting_agreement_reference": [None, None, None],
 })
 ```
 
