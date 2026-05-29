@@ -59,11 +59,11 @@ from rwa_calc.data.schemas import (
     B31_SOVEREIGN_LIKE_ENTITY_TYPES,
     RGLA_PSE_ENTITY_TYPES,
 )
+from rwa_calc.data.tables.b31_risk_weights import B31_RRE_THREE_PROPERTY_LIMIT
 from rwa_calc.data.tables.entity_class_mapping import (
     ENTITY_TYPE_TO_IRB_CLASS,
     ENTITY_TYPE_TO_SA_CLASS,
 )
-from rwa_calc.data.tables.b31_risk_weights import B31_RRE_THREE_PROPERTY_LIMIT
 from rwa_calc.data.tables.eu_sovereign import (
     build_eu_domestic_currency_expr,
     denomination_currency_expr,

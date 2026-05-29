@@ -119,8 +119,7 @@ def _loans(loans: list[dict]) -> pl.LazyFrame:
         "is_payroll_loan": [],
         "is_buy_to_let": [],
         "has_one_day_maturity_floor": [],
-        "has_netting_agreement": [],
-        "netting_facility_reference": [],
+        "netting_agreement_reference": [],
         "due_diligence_performed": [],
         "due_diligence_override_rw": [],
     }
@@ -142,8 +141,7 @@ def _loans(loans: list[dict]) -> pl.LazyFrame:
         rows["is_payroll_loan"].append(False)
         rows["is_buy_to_let"].append(False)
         rows["has_one_day_maturity_floor"].append(False)
-        rows["has_netting_agreement"].append(False)
-        rows["netting_facility_reference"].append(None)
+        rows["netting_agreement_reference"].append(None)
         rows["due_diligence_performed"].append(None)
         rows["due_diligence_override_rw"].append(None)
     return pl.LazyFrame(rows)

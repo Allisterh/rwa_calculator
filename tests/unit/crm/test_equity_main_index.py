@@ -543,8 +543,7 @@ class TestOtherListedEquityPipeline:
                     "is_payroll_loan": [False],
                     "is_buy_to_let": [False],
                     "has_one_day_maturity_floor": [False],
-                    "has_netting_agreement": [False],
-                    "netting_facility_reference": [None],
+                    "netting_agreement_reference": [None],
                     "due_diligence_performed": [None],
                     "due_diligence_override_rw": [None],
                 }

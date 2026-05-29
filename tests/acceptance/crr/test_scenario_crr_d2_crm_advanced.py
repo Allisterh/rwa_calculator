@@ -106,8 +106,7 @@ _LOAN_SCHEMA: dict[str, pl.DataType] = {
     "is_payroll_loan": pl.Boolean,
     "is_buy_to_let": pl.Boolean,
     "has_one_day_maturity_floor": pl.Boolean,
-    "has_netting_agreement": pl.Boolean,
-    "netting_facility_reference": pl.String,
+    "netting_agreement_reference": pl.String,
     "due_diligence_performed": pl.Boolean,
     "due_diligence_override_rw": pl.Float64,
 }
@@ -268,8 +267,7 @@ def _loan(
         "is_payroll_loan": False,
         "is_buy_to_let": False,
         "has_one_day_maturity_floor": False,
-        "has_netting_agreement": False,
-        "netting_facility_reference": None,
+        "netting_agreement_reference": None,
         "due_diligence_performed": None,
         "due_diligence_override_rw": None,
     }

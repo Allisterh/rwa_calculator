@@ -60,8 +60,10 @@ class Loan:
     lgd: float  # A-IRB modelled LGD (optional)
     beel: float  # Best estimate expected loss
     seniority: str  # senior, subordinated - affects F-IRB LGD (45% vs 75%)
-    has_netting_agreement: bool = False  # CRR Art. 195: on-balance sheet netting
-    netting_facility_reference: str | None = None  # Facility the netting agreement applies to
+    # CRR Art. 195/219: on-balance-sheet netting. A non-null reference is the sole
+    # signal that the loan participates in a netting agreement; exposures net iff
+    # they share the same reference (not by facility/counterparty).
+    netting_agreement_reference: str | None = None
     is_sft: bool = False  # CRR Art. 162(1): SFT flag — drives T_m=5 in haircut scaling
 
     def to_dict(self) -> dict:
@@ -78,8 +80,7 @@ class Loan:
             "lgd": self.lgd,
             "beel": self.beel,
             "seniority": self.seniority,
-            "has_netting_agreement": self.has_netting_agreement,
-            "netting_facility_reference": self.netting_facility_reference,
+            "netting_agreement_reference": self.netting_agreement_reference,
             "is_sft": self.is_sft,
         }
 

@@ -1,23 +1,26 @@
 """
-Tests for on-balance sheet netting (CRR Article 195).
+Tests for on-balance sheet netting (CRR Article 195/219).
 
-When a loan has a negative drawn amount (credit balance / deposit) and is
-covered by a netting agreement, the absolute value of that negative balance
-generates synthetic cash collateral that reduces sibling exposures in the
-same facility — pro-rata by EAD.
+When a loan has a negative drawn amount (credit balance / deposit) and carries a
+``netting_agreement_reference``, the absolute value of that negative balance
+generates synthetic cash collateral that reduces other exposures carrying the
+SAME reference — pro-rata by drawn EAD.
+
+Netting is driven SOLELY by the netting agreement reference: only exposures
+sharing the same reference net together, regardless of facility hierarchy or
+counterparty. A deposit from one counterparty can net a loan to a different
+counterparty (or under a different facility) when both share the reference.
 
 Covers:
-- No netting flag → no synthetic collateral generated
-- SA: single negative + single positive loan in same facility → EAD reduced
+- No netting_agreement_reference column → no synthetic collateral generated
+- SA: single negative + single positive loan sharing a reference → EAD reduced
 - SA: single negative + two positive loans → pro-rata allocation
+- Cross-counterparty / cross-facility netting via a shared reference
+- Same facility but different/absent reference → no netting
 - FIRB: netting reduces LGD (cash collateral path), not direct EAD
-- Mixed netting / non-netting in facility → only netting-eligible benefit
 - Currency mismatch → FX haircut applied
-- No negative-drawn netting loans → no synthetic collateral
 - Netting exceeds exposure → EAD floored at 0
-- Missing column (backward compat) → returns None
-- No parent_facility_reference → standalone loans excluded
-- Multiple negative-drawn loans pool together
+- Drawn-only scope (CRR Art. 219): contingents / facility_undrawn excluded
 """
 
 from __future__ import annotations
@@ -72,13 +75,15 @@ def _netting_exposure(
     facility_ref: str = "FAC_01",
     cp_ref: str = "CP001",
     currency: str = "GBP",
-    has_netting: bool = True,
+    agreement_ref: str | None = "AGR01",
     approach: str = ApproachType.SA.value,
-    root_facility_ref: str | None = None,
-    netting_facility_ref: str | None = None,
 ) -> dict:
-    """Create an exposure row with netting fields."""
-    row: dict = {
+    """Create an exposure row carrying a netting agreement reference.
+
+    ``agreement_ref`` defaults to a shared value so the common single-facility
+    case nets; pass ``None`` to opt an exposure out of netting entirely.
+    """
+    return {
         "exposure_reference": ref,
         "counterparty_reference": cp_ref,
         "exposure_class": "corporate",
@@ -92,13 +97,8 @@ def _netting_exposure(
         "parent_facility_reference": facility_ref,
         "currency": currency,
         "maturity_date": None,
-        "has_netting_agreement": has_netting,
+        "netting_agreement_reference": agreement_ref,
     }
-    if root_facility_ref is not None:
-        row["root_facility_reference"] = root_facility_ref
-    if netting_facility_ref is not None:
-        row["netting_facility_reference"] = netting_facility_ref
-    return row
 
 
 def _make_bundle(
@@ -168,7 +168,7 @@ class TestNettingCollateralGeneration:
     """Unit tests for _generate_netting_collateral method."""
 
     def test_missing_column_returns_none(self, processor: CRMProcessor):
-        """Backward compat: no has_netting_agreement column → None."""
+        """No netting_agreement_reference column → None."""
         exposures = pl.LazyFrame(
             {
                 "exposure_reference": ["EXP001"],
@@ -192,7 +192,7 @@ class TestNettingCollateralGeneration:
                 "parent_facility_reference": ["FAC_01"],
                 "currency": ["GBP"],
                 "maturity_date": [None],
-                "has_netting_agreement": [True],
+                "netting_agreement_reference": ["AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
@@ -200,8 +200,8 @@ class TestNettingCollateralGeneration:
         df = result.collect()
         assert len(df) == 0
 
-    def test_no_parent_facility_excluded(self, processor: CRMProcessor):
-        """Standalone loans (no parent_facility_reference) are excluded."""
+    def test_no_parent_facility_still_nets_via_agreement_ref(self, processor: CRMProcessor):
+        """Facility is irrelevant: standalone loans net via a shared reference."""
         exposures = pl.LazyFrame(
             {
                 "exposure_reference": ["EXP001", "EXP002"],
@@ -210,16 +210,19 @@ class TestNettingCollateralGeneration:
                 "parent_facility_reference": [None, None],
                 "currency": ["GBP", "GBP"],
                 "maturity_date": [None, None],
-                "has_netting_agreement": [True, True],
+                "netting_agreement_reference": ["AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
         assert result is not None
         df = result.collect()
-        assert len(df) == 0
+        # Pool = 500 from EXP001, fully benefits EXP002 — no facility needed.
+        assert len(df) == 1
+        assert df["beneficiary_reference"][0] == "EXP002"
+        assert df["market_value"][0] == pytest.approx(500.0)
 
     def test_single_negative_single_positive(self, processor: CRMProcessor):
-        """One negative + one positive → one synthetic collateral row."""
+        """One negative + one positive sharing a reference → one synthetic row."""
         exposures = pl.LazyFrame(
             {
                 "exposure_reference": ["NEG01", "POS01"],
@@ -228,7 +231,7 @@ class TestNettingCollateralGeneration:
                 "parent_facility_reference": ["FAC_01", "FAC_01"],
                 "currency": ["GBP", "GBP"],
                 "maturity_date": [None, None],
-                "has_netting_agreement": [True, True],
+                "netting_agreement_reference": ["AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
@@ -246,7 +249,7 @@ class TestNettingCollateralGeneration:
         assert row["currency"] == "GBP"
 
     def test_pro_rata_allocation(self, processor: CRMProcessor):
-        """Netting pool split pro-rata by ead_gross among positive siblings."""
+        """Netting pool split pro-rata by drawn portion among positive siblings."""
         exposures = pl.LazyFrame(
             {
                 "exposure_reference": ["NEG01", "POS01", "POS02"],
@@ -255,7 +258,7 @@ class TestNettingCollateralGeneration:
                 "parent_facility_reference": ["FAC_01", "FAC_01", "FAC_01"],
                 "currency": ["GBP", "GBP", "GBP"],
                 "maturity_date": [None, None, None],
-                "has_netting_agreement": [True, True, True],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
@@ -270,7 +273,7 @@ class TestNettingCollateralGeneration:
         assert pos02["market_value"][0] == pytest.approx(120.0)
 
     def test_multiple_negatives_pool_together(self, processor: CRMProcessor):
-        """Multiple negative-drawn loans sum into one netting pool per facility."""
+        """Multiple negative-drawn loans sum into one pool per reference."""
         exposures = pl.LazyFrame(
             {
                 "exposure_reference": ["NEG01", "NEG02", "POS01"],
@@ -279,7 +282,7 @@ class TestNettingCollateralGeneration:
                 "parent_facility_reference": ["FAC_01", "FAC_01", "FAC_01"],
                 "currency": ["GBP", "GBP", "GBP"],
                 "maturity_date": [None, None, None],
-                "has_netting_agreement": [True, True, True],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
@@ -289,8 +292,8 @@ class TestNettingCollateralGeneration:
         # Pool = 100 + 200 = 300, all goes to POS01
         assert df["market_value"][0] == pytest.approx(300.0)
 
-    def test_non_netting_siblings_still_benefit(self, processor: CRMProcessor):
-        """All facility siblings benefit, even without their own netting flag."""
+    def test_all_siblings_sharing_reference_benefit(self, processor: CRMProcessor):
+        """Every exposure carrying the same reference benefits pro-rata."""
         exposures = pl.LazyFrame(
             {
                 "exposure_reference": ["NEG01", "POS01", "POS02"],
@@ -299,18 +302,39 @@ class TestNettingCollateralGeneration:
                 "parent_facility_reference": ["FAC_01", "FAC_01", "FAC_01"],
                 "currency": ["GBP", "GBP", "GBP"],
                 "maturity_date": [None, None, None],
-                "has_netting_agreement": [True, True, False],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
         df = result.collect().sort("beneficiary_reference")
 
-        # Both POS01 and POS02 benefit (netting agreement is on NEG01)
         assert len(df) == 2
         pos01 = df.filter(pl.col("beneficiary_reference") == "POS01")
         assert pos01["market_value"][0] == pytest.approx(200.0 * 1000 / 1500)
         pos02 = df.filter(pl.col("beneficiary_reference") == "POS02")
         assert pos02["market_value"][0] == pytest.approx(200.0 * 500 / 1500)
+
+    def test_different_reference_excluded(self, processor: CRMProcessor):
+        """A sibling carrying a different reference does NOT benefit."""
+        exposures = pl.LazyFrame(
+            {
+                "exposure_reference": ["NEG01", "POS01", "POS02"],
+                "drawn_amount": [-200.0, 1000.0, 500.0],
+                "ead_gross": [0.0, 1000.0, 500.0],
+                "parent_facility_reference": ["FAC_01", "FAC_01", "FAC_01"],
+                "currency": ["GBP", "GBP", "GBP"],
+                "maturity_date": [None, None, None],
+                # POS02 is under a DIFFERENT agreement despite the same facility.
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR02"],
+            }
+        )
+        result = processor._generate_netting_collateral(exposures)
+        df = result.collect()
+
+        # Only POS01 shares AGR01 with the deposit; full pool of 200 to POS01.
+        assert len(df) == 1
+        assert df["beneficiary_reference"][0] == "POS01"
+        assert df["market_value"][0] == pytest.approx(200.0)
 
 
 # =============================================================================
@@ -367,14 +391,14 @@ class TestNettingSAEndToEnd:
         pos = df.filter(pl.col("exposure_reference") == "POS01")
         assert pos["ead_final"][0] == pytest.approx(0.0)
 
-    def test_all_facility_siblings_benefit(
+    def test_all_siblings_with_reference_benefit(
         self, processor: CRMProcessor, sa_config: CalculationConfig
     ):
-        """All facility siblings benefit from netting, not just netting-flagged ones."""
+        """Every exposure carrying the shared reference benefits from netting."""
         rows = [
-            _netting_exposure("NEG01", drawn=-200.0, has_netting=True),
-            _netting_exposure("POS01", drawn=1000.0, has_netting=True),
-            _netting_exposure("POS02", drawn=500.0, has_netting=False),
+            _netting_exposure("NEG01", drawn=-200.0),
+            _netting_exposure("POS01", drawn=1000.0),
+            _netting_exposure("POS02", drawn=500.0),
         ]
         df = _run_crm(processor, sa_config, rows)
 
@@ -426,11 +450,11 @@ class TestNettingSAEndToEnd:
                 "liquidation_period_days": pl.Int32,
             },
         )
-        # Use has_netting=False to disable internal netting generation;
+        # Use agreement_ref=None to disable internal netting generation;
         # pre-built collateral above provides the equivalent cash collateral.
         no_netting_rows = [
-            _netting_exposure("NEG01", drawn=-1000.0, currency="EUR", has_netting=False),
-            _netting_exposure("POS01", drawn=1000.0, currency="GBP", has_netting=False),
+            _netting_exposure("NEG01", drawn=-1000.0, currency="EUR", agreement_ref=None),
+            _netting_exposure("POS01", drawn=1000.0, currency="GBP", agreement_ref=None),
         ]
         df = _run_crm(processor, sa_config, no_netting_rows, collateral=prebuilt_collateral)
 
@@ -440,11 +464,13 @@ class TestNettingSAEndToEnd:
         # EAD = 1000 - 920 = 80
         assert pos["ead_final"][0] == pytest.approx(80.0, abs=1.0)
 
-    def test_no_netting_flag_no_change(self, processor: CRMProcessor, sa_config: CalculationConfig):
-        """No netting agreement → pipeline unchanged."""
+    def test_no_agreement_ref_no_change(
+        self, processor: CRMProcessor, sa_config: CalculationConfig
+    ):
+        """No netting agreement reference → pipeline unchanged."""
         rows = [
-            _netting_exposure("NEG01", drawn=-200.0, has_netting=False),
-            _netting_exposure("POS01", drawn=1000.0, has_netting=False),
+            _netting_exposure("NEG01", drawn=-200.0, agreement_ref=None),
+            _netting_exposure("POS01", drawn=1000.0, agreement_ref=None),
         ]
         df = _run_crm(processor, sa_config, rows)
 
@@ -457,10 +483,10 @@ class TestNettingSAEndToEnd:
     ):
         """Pool exceeds total positive EAD → all siblings get ead_final=0."""
         rows = [
-            _netting_exposure("LOAN_01", drawn=-100.0, has_netting=True),
-            _netting_exposure("LOAN_02", drawn=10.0, has_netting=False),
-            _netting_exposure("LOAN_03", drawn=20.0, has_netting=False),
-            _netting_exposure("LOAN_04", drawn=5.0, has_netting=False),
+            _netting_exposure("LOAN_01", drawn=-100.0),
+            _netting_exposure("LOAN_02", drawn=10.0),
+            _netting_exposure("LOAN_03", drawn=20.0),
+            _netting_exposure("LOAN_04", drawn=5.0),
         ]
         df = _run_crm(processor, sa_config, rows)
 
@@ -469,98 +495,62 @@ class TestNettingSAEndToEnd:
             assert row["ead_final"][0] == pytest.approx(0.0), f"{ref} should be fully netted"
 
 
-class TestNettingFacilityHierarchy:
-    """Netting across facility hierarchy levels."""
+class TestNettingByAgreementReference:
+    """Netting follows the agreement reference, not facility or counterparty."""
 
-    def test_netting_via_root_facility(self, processor: CRMProcessor, sa_config: CalculationConfig):
-        """Loans under different sub-facilities net via shared root facility."""
-        rows = [
-            _netting_exposure(
-                "NEG01",
-                drawn=-200.0,
-                has_netting=True,
-                facility_ref="FAC_SUB1",
-                root_facility_ref="FAC_ROOT",
-            ),
-            _netting_exposure(
-                "POS01",
-                drawn=600.0,
-                has_netting=False,
-                facility_ref="FAC_SUB1",
-                root_facility_ref="FAC_ROOT",
-            ),
-            _netting_exposure(
-                "POS02",
-                drawn=400.0,
-                has_netting=False,
-                facility_ref="FAC_SUB2",
-                root_facility_ref="FAC_ROOT",
-            ),
-        ]
-        df = _run_crm(processor, sa_config, rows)
-
-        pos01 = df.filter(pl.col("exposure_reference") == "POS01")
-        pos02 = df.filter(pl.col("exposure_reference") == "POS02")
-
-        # Pool=200 split pro-rata via root: POS01=200*600/1000=120, POS02=200*400/1000=80
-        assert pos01["ead_final"][0] == pytest.approx(480.0, abs=1.0)
-        assert pos02["ead_final"][0] == pytest.approx(320.0, abs=1.0)
-
-    def test_explicit_netting_facility_overrides_root(
+    def test_cross_counterparty_cross_facility_netting(
         self, processor: CRMProcessor, sa_config: CalculationConfig
     ):
-        """Explicit netting_facility_reference takes priority over root."""
+        """A deposit nets a loan to a different counterparty AND facility.
+
+        This is the core behavioural change: the netting agreement reference is
+        the legal set-off boundary, so a credit balance for counterparty A under
+        facility FAC_A offsets a loan to counterparty B under facility FAC_B when
+        both are covered by the same agreement (AGR1).
+        """
         rows = [
-            # Netting agreement is with FAC_SUB1 specifically, not root
             _netting_exposure(
-                "NEG01",
-                drawn=-200.0,
-                has_netting=True,
-                facility_ref="FAC_SUB1",
-                root_facility_ref="FAC_ROOT",
-                netting_facility_ref="FAC_SUB1",
+                "NEG01", drawn=-200.0, cp_ref="CPA", facility_ref="FAC_A", agreement_ref="AGR1"
             ),
             _netting_exposure(
-                "POS01",
-                drawn=1000.0,
-                has_netting=False,
-                facility_ref="FAC_SUB1",
-                root_facility_ref="FAC_ROOT",
-                netting_facility_ref=None,
+                "POS01", drawn=1000.0, cp_ref="CPB", facility_ref="FAC_B", agreement_ref="AGR1"
             ),
-            # POS02 is under a different sub-facility — should NOT benefit
-            _netting_exposure(
-                "POS02",
-                drawn=500.0,
-                has_netting=False,
-                facility_ref="FAC_SUB2",
-                root_facility_ref="FAC_ROOT",
-                netting_facility_ref=None,
-            ),
-        ]
-        df = _run_crm(processor, sa_config, rows)
-
-        pos01 = df.filter(pl.col("exposure_reference") == "POS01")
-        pos02 = df.filter(pl.col("exposure_reference") == "POS02")
-
-        # Only POS01 shares netting group FAC_SUB1 with NEG01
-        # POS02's netting group = root (FAC_ROOT) — different from NEG01's FAC_SUB1
-        assert pos01["ead_final"][0] == pytest.approx(800.0, abs=1.0)
-        assert pos02["ead_final"][0] == pytest.approx(500.0)
-
-    def test_no_root_falls_back_to_parent(
-        self, processor: CRMProcessor, sa_config: CalculationConfig
-    ):
-        """Without root_facility_reference, netting falls back to parent facility."""
-        rows = [
-            _netting_exposure("NEG01", drawn=-200.0, has_netting=True),
-            _netting_exposure("POS01", drawn=1000.0, has_netting=False),
         ]
         df = _run_crm(processor, sa_config, rows)
 
         pos = df.filter(pl.col("exposure_reference") == "POS01")
-        # Falls back to parent_facility_reference (FAC_01) — same as before
         assert pos["ead_final"][0] == pytest.approx(800.0, abs=1.0)
+
+    def test_only_matching_reference_nets_in_same_facility(
+        self, processor: CRMProcessor, sa_config: CalculationConfig
+    ):
+        """Same facility, different references → only the matching loan nets."""
+        rows = [
+            _netting_exposure("NEG01", drawn=-200.0, facility_ref="FAC_01", agreement_ref="AGR1"),
+            _netting_exposure("POS01", drawn=1000.0, facility_ref="FAC_01", agreement_ref="AGR1"),
+            # POS02 shares the facility but a different agreement → must NOT net.
+            _netting_exposure("POS02", drawn=500.0, facility_ref="FAC_01", agreement_ref="AGR2"),
+        ]
+        df = _run_crm(processor, sa_config, rows)
+
+        pos01 = df.filter(pl.col("exposure_reference") == "POS01")
+        pos02 = df.filter(pl.col("exposure_reference") == "POS02")
+
+        assert pos01["ead_final"][0] == pytest.approx(800.0, abs=1.0)
+        assert pos02["ead_final"][0] == pytest.approx(500.0)
+
+    def test_same_facility_no_reference_no_netting(
+        self, processor: CRMProcessor, sa_config: CalculationConfig
+    ):
+        """Without an agreement reference, shared facility does NOT net."""
+        rows = [
+            _netting_exposure("NEG01", drawn=-200.0, facility_ref="FAC_01", agreement_ref=None),
+            _netting_exposure("POS01", drawn=1000.0, facility_ref="FAC_01", agreement_ref=None),
+        ]
+        df = _run_crm(processor, sa_config, rows)
+
+        pos = df.filter(pl.col("exposure_reference") == "POS01")
+        assert pos["ead_final"][0] == pytest.approx(1000.0)
 
 
 class TestNettingFIRBEndToEnd:
@@ -583,12 +573,12 @@ class TestNettingFIRBEndToEnd:
 
 
 class TestNettingMissingColumn:
-    """Backward compatibility when has_netting_agreement column is absent."""
+    """Pipeline works when the netting_agreement_reference column is absent."""
 
     def test_missing_netting_column_pipeline_works(
         self, processor: CRMProcessor, sa_config: CalculationConfig
     ):
-        """Pipeline works normally when has_netting_agreement column is missing."""
+        """Pipeline works normally when netting_agreement_reference is missing."""
         rows = [
             {
                 "exposure_reference": "EXP001",
@@ -604,7 +594,7 @@ class TestNettingMissingColumn:
                 "parent_facility_reference": "FAC_01",
                 "currency": "GBP",
                 "maturity_date": None,
-                # no has_netting_agreement column
+                # no netting_agreement_reference column
             }
         ]
         df = _run_crm(processor, sa_config, rows)
@@ -621,9 +611,9 @@ class TestNettingDrawnOnlyScope:
     """CRR Art. 219: OBS netting is drawn-on-drawn cash netting only.
 
     Contingents and synthetic facility_undrawn rows are off-balance-sheet
-    and ineligible to receive the netting benefit. Pro-rata allocation among
-    eligible loan siblings is by drawn portion (on_bs_for_ead), not by
-    ead_for_crm.
+    and ineligible to receive the netting benefit even when they carry the
+    agreement reference. Pro-rata allocation among eligible loan siblings is
+    by drawn portion (on_bs_for_ead), not by ead_for_crm.
     """
 
     def test_contingent_excluded_from_netting(self, processor: CRMProcessor):
@@ -641,7 +631,7 @@ class TestNettingDrawnOnlyScope:
                 "parent_facility_reference": ["FAC_01", "FAC_01", "FAC_01"],
                 "currency": ["GBP", "GBP", "GBP"],
                 "maturity_date": [None, None, None],
-                "has_netting_agreement": [True, False, False],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
@@ -666,7 +656,7 @@ class TestNettingDrawnOnlyScope:
                 "parent_facility_reference": ["FAC_01", "FAC_01", "FAC_01"],
                 "currency": ["GBP", "GBP", "GBP"],
                 "maturity_date": [None, None, None],
-                "has_netting_agreement": [True, False, False],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
@@ -694,7 +684,7 @@ class TestNettingDrawnOnlyScope:
                 "parent_facility_reference": ["FAC_01", "FAC_01", "FAC_01"],
                 "currency": ["GBP", "GBP", "GBP"],
                 "maturity_date": [None, None, None],
-                "has_netting_agreement": [True, False, False],
+                "netting_agreement_reference": ["AGR01", "AGR01", "AGR01"],
             }
         )
         result = processor._generate_netting_collateral(exposures)
@@ -705,7 +695,7 @@ class TestNettingDrawnOnlyScope:
         assert loan_b == pytest.approx(40.0)
 
     def test_mixed_facility_only_drawn_loan_benefits(self, processor: CRMProcessor):
-        """Facility mixing all three exposure types: only the drawn loan benefits."""
+        """Reference mixing all three exposure types: only the drawn loan benefits."""
         exposures = pl.LazyFrame(
             {
                 "exposure_reference": ["NEG01", "LOAN01", "CONT01", "FAC_U_01"],
@@ -718,7 +708,7 @@ class TestNettingDrawnOnlyScope:
                 "parent_facility_reference": ["FAC_01"] * 4,
                 "currency": ["GBP"] * 4,
                 "maturity_date": [None] * 4,
-                "has_netting_agreement": [True, False, False, False],
+                "netting_agreement_reference": ["AGR01"] * 4,
             }
         )
         result = processor._generate_netting_collateral(exposures)
