@@ -190,6 +190,9 @@ def generate_counterparties(config: BenchmarkDataConfig) -> pl.LazyFrame:
                 "is_qccp": pl.Series(np.zeros(n, dtype=bool)),
                 "borrower_income_currency": pl.Series(income_currencies, dtype=pl.String),
                 "is_natural_person": pl.Series(ind_mask),
+                # Art. 124E(1)(b) qualifying-property count: null = unknown, so no
+                # income-producing re-route. Benchmark counterparties carry no count.
+                "qualifying_property_count": pl.Series([None] * n, dtype=pl.Int32),
                 "is_social_housing": pl.Series(np.zeros(n, dtype=bool)),
                 "sovereign_cqs": pl.Series([None] * n, dtype=pl.Int32),
                 "local_currency": pl.Series([None] * n, dtype=pl.String),
@@ -409,6 +412,9 @@ def generate_facilities(
                 "is_obs_commitment": np.full(n_facilities, None),  # Default True via schema
                 "is_payroll_loan": np.full(n_facilities, None),  # Payroll loan flag
                 "is_buy_to_let": np.full(n_facilities, None),  # BTL flag for SME supporting factor
+                "is_uk_residential_mortgage_commitment": np.full(
+                    n_facilities, None
+                ),  # P2.33 Art. 111 Table A1 Row 4(b) 50% CCF; default False via schema
                 "is_defaulted": np.full(n_facilities, None),  # CRR Art. 178 row-level default flag
                 "is_under_construction": np.full(n_facilities, None),  # P1.140 ADC
                 "has_one_day_maturity_floor": np.full(n_facilities, None),  # Repo/SFT 1-day floor
@@ -863,6 +869,10 @@ def generate_ratings(
                 "model_id": pl.Series([None] * n_rated, dtype=pl.String),
                 # PRA PS1/26 Art. 120(2B) / Art. 122(3) issue-specific short-term ECAI.
                 "is_short_term": np.full(n_rated, False),
+                # P2.44 Art. 122B(1)/139(2B) SA-SL rating provenance; schema defaults
+                # (issue-specific True, inferred False) preserve standard routing.
+                "rating_is_issue_specific": np.full(n_rated, True),
+                "rating_is_inferred": np.full(n_rated, False),
                 "scope_type": pl.Series([None] * n_rated, dtype=pl.String),
                 "scope_id": pl.Series([None] * n_rated, dtype=pl.String),
             }
@@ -968,6 +978,9 @@ def generate_contingents(
                 "ccf_modelled": np.full(n_contingents, None),  # No modelled CCF for benchmarks
                 "ead_modelled": np.full(n_contingents, None),  # No modelled EAD for benchmarks
                 "is_short_term_trade_lc": is_short_term_trade_lc,  # True for LCs
+                "is_uk_residential_mortgage_commitment": np.full(
+                    n_contingents, None
+                ),  # P2.33 Art. 111 Table A1 Row 4(b) 50% CCF; default False via schema
                 "is_obs_commitment": np.full(
                     n_contingents, None
                 ),  # Default False via schema (issued OBS)
