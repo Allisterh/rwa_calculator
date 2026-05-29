@@ -212,9 +212,9 @@ Last generated: 2026-05-29.
 
 ### CRR Art. 131 — Exposures to institutions and corporates with a short-term credit assessment
 
-??? quote "`_apply_short_term_rating_override` — src/rwa_calc/engine/hierarchy.py:2299"
+??? quote "`_apply_short_term_rating_override` — src/rwa_calc/engine/hierarchy.py:2300"
     ```python
-    --8<-- "src/rwa_calc/engine/hierarchy.py:2299:2386"
+    --8<-- "src/rwa_calc/engine/hierarchy.py:2300:2387"
     ```
 
 
@@ -251,17 +251,17 @@ Last generated: 2026-05-29.
 
 ### CRR Art. 135 — Use of credit assessments by ECAIs
 
-??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2242"
+??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2243"
     ```python
-    --8<-- "src/rwa_calc/engine/hierarchy.py:2242:2297"
+    --8<-- "src/rwa_calc/engine/hierarchy.py:2243:2298"
     ```
 
 
 ### CRR Art. 136 — Mapping of ECAI's credit assessments
 
-??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2243"
+??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2244"
     ```python
-    --8<-- "src/rwa_calc/engine/hierarchy.py:2242:2297"
+    --8<-- "src/rwa_calc/engine/hierarchy.py:2243:2298"
     ```
 
 
@@ -280,25 +280,25 @@ Last generated: 2026-05-29.
 
 ### CRR Art. 138 — General requirements
 
-??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2244"
+??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2245"
     ```python
-    --8<-- "src/rwa_calc/engine/hierarchy.py:2242:2297"
+    --8<-- "src/rwa_calc/engine/hierarchy.py:2243:2298"
     ```
 
 
 ### CRR Art. 139 — Issuer and issue credit assessment
 
-??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2245"
+??? quote "`_attach_counterparty_rating` — src/rwa_calc/engine/hierarchy.py:2246"
     ```python
-    --8<-- "src/rwa_calc/engine/hierarchy.py:2242:2297"
+    --8<-- "src/rwa_calc/engine/hierarchy.py:2243:2298"
     ```
 
 
 ### CRR Art. 140 — Long-term and short-term credit assessments
 
-??? quote "`_apply_short_term_rating_override` — src/rwa_calc/engine/hierarchy.py:2300"
+??? quote "`_apply_short_term_rating_override` — src/rwa_calc/engine/hierarchy.py:2301"
     ```python
-    --8<-- "src/rwa_calc/engine/hierarchy.py:2299:2386"
+    --8<-- "src/rwa_calc/engine/hierarchy.py:2300:2387"
     ```
 
 
@@ -494,9 +494,9 @@ Last generated: 2026-05-29.
     --8<-- "src/rwa_calc/data/tables/firb_lgd.py:452:474"
     ```
 
-??? quote "`apply_firb_supervisory_lgd_no_collateral` — src/rwa_calc/engine/crm/collateral.py:451"
+??? quote "`apply_firb_supervisory_lgd_no_collateral` — src/rwa_calc/engine/crm/collateral.py:415"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/collateral.py:451:563"
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:415:527"
     ```
 
 ??? quote "`_parametric_irb_risk_weight_expr` — src/rwa_calc/engine/irb/formulas.py:817"
@@ -597,7 +597,7 @@ Last generated: 2026-05-29.
 
 ??? quote "`generate_netting_collateral` — src/rwa_calc/engine/crm/collateral.py:143"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/collateral.py:143:324"
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:143:288"
     ```
 
 
@@ -624,6 +624,14 @@ Last generated: 2026-05-29.
 ??? quote "`_apply_maturity_mismatch_to_guarantees` — src/rwa_calc/engine/crm/guarantees.py:1286"
     ```python
     --8<-- "src/rwa_calc/engine/crm/guarantees.py:1286:1390"
+    ```
+
+
+### CRR Art. 219 — On-balance sheet netting
+
+??? quote "`generate_netting_collateral` — src/rwa_calc/engine/crm/collateral.py:144"
+    ```python
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:143:288"
     ```
 
 
@@ -655,14 +663,14 @@ Last generated: 2026-05-29.
     --8<-- "src/rwa_calc/engine/ccr/sft_fccm.py:71:256"
     ```
 
-??? quote "`generate_netting_collateral` — src/rwa_calc/engine/crm/collateral.py:144"
+??? quote "`generate_netting_collateral` — src/rwa_calc/engine/crm/collateral.py:145"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/collateral.py:143:324"
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:143:288"
     ```
 
-??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:329"
+??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:293"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/collateral.py:327:448"
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:291:412"
     ```
 
 
@@ -699,9 +707,9 @@ Last generated: 2026-05-29.
 
 ### CRR Art. 230 — Calculating risk-weighted exposure amounts and expected loss amounts for other eligible collateral under the IRB Approach
 
-??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:330"
+??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:294"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/collateral.py:327:448"
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:291:412"
     ```
 
 
@@ -1091,14 +1099,14 @@ Last generated: 2026-05-29.
 
 ### PS1/26 Art. 230 — PRA Rulebook: CRR Firms: (CRR) Instrument 2026
 
-??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:327"
+??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:291"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/collateral.py:327:448"
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:291:412"
     ```
 
-??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:328"
+??? quote "`apply_collateral` — src/rwa_calc/engine/crm/collateral.py:292"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/collateral.py:327:448"
+    --8<-- "src/rwa_calc/engine/crm/collateral.py:291:412"
     ```
 
 ??? quote "`overcollateralisation_ratio_expr` — src/rwa_calc/engine/crm/expressions.py:86"
