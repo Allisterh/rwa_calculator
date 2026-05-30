@@ -1629,7 +1629,7 @@ RAW_EXPOSURE_SCHEMA = {
     "ccf_modelled": pl.Float64,  # A-IRB modelled CCF (0.0-1.5, can exceed 100% for retail)
     "ead_modelled": pl.Float64,  # A-IRB modelled facility-level EAD (Art. 166D(3)/(4))
     "is_short_term_trade_lc": pl.Boolean,  # Short-term LC for goods movement - 20% CCF under F-IRB (Art. 166(9))
-    "is_payroll_loan": pl.Boolean,  # Payroll/pension loan — 35% RW under Basel 3.1 (Art. 123(3)(a-b))
+    "is_payroll_loan": pl.Boolean,  # Payroll/pension loan — 35% RW under Basel 3.1 (Art. 123(4))
     "is_buy_to_let": pl.Boolean,  # BTL property lending - excluded from SME supporting factor (CRR Art. 501)
     "has_one_day_maturity_floor": pl.Boolean,  # Art. 162(3): repos/SFTs with daily margining — 1-day M floor
     "is_sft": pl.Boolean,  # CRR Art. 162(1): repurchase / securities / commodities lending/borrowing — F-IRB M = 0.5y
