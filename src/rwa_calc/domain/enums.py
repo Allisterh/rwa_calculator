@@ -109,6 +109,31 @@ class ExposureClass(StrEnum):
     """Other items (CRR Art. 112(q))"""
 
 
+class ExposureSubclass(StrEnum):
+    """
+    Corporate exposure sub-classes for the Basel 3.1 COREP split (PRA PS1/26 Art. 147A(1)).
+
+    Derived by the Classifier (Basel 3.1 only — CRR leaves it null) for rows whose
+    ``exposure_class`` is corporate / corporate_sme. Routes the C 02.00 / OF 02.00
+    F-IRB corporate sub-rows (0295/0296/0297) and the A-IRB sub-rows (0355/0356).
+    """
+
+    CORPORATE_FINANCIAL_LARGE = "corporate_financial_large"
+    """Financial sector entity OR large corporate (annual revenue > GBP 440m).
+
+    Art. 147A(1)(e): FSE and large corporates are F-IRB only — COREP row 0295."""
+
+    CORPORATE_OTHER = "corporate_other"
+    """Other general corporate (non-FSE, non-large, non-SME).
+
+    Art. 147A(1)(f): COREP row 0297 (F-IRB) / 0356 (A-IRB)."""
+
+    CORPORATE_SME = "corporate_sme"
+    """Corporate SME (turnover <= GBP 44m).
+
+    Art. 147A(1)(f): COREP row 0296 (F-IRB) / 0355 (A-IRB)."""
+
+
 class ApproachType(StrEnum):
     """
     Calculation approach for credit risk.

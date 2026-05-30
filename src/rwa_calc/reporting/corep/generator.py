@@ -959,16 +959,39 @@ class COREPGenerator:
             pl.col(ec_col).alias("_ec"),
             pl.col(rwa_col).fill_null(0.0).alias("_rwa"),
         ]
+        # The classifier-derived ``exposure_subclass`` (PRA PS1/26 Art. 147A(1)(e)/(f))
+        # is the canonical corporate split signal: ``corporate_financial_large``
+        # (FSE OR revenue > GBP 440m) -> row 0295, ``corporate_sme`` -> 0296/0355,
+        # ``corporate_other`` -> 0297/0356. When it is absent (e.g. CRR frames or
+        # pre-classifier inputs) fall back to the is_sme / FSE-flag heuristic.
+        has_subclass = "exposure_subclass" in cols
         has_sme = "is_sme" in cols
-        has_fse = "apply_fi_scalar" in cols or "cp_is_financial_sector_entity" in cols
+        has_fse = (
+            has_subclass
+            or "apply_fi_scalar" in cols
+            or "cp_is_financial_sector_entity" in cols
+        )
         has_pt = "property_type" in cols
-        if has_sme:
-            sub_select.append(pl.col("is_sme").fill_null(False).alias("_sme"))
+        if has_sme or has_subclass:
+            has_sme = True
+            if has_subclass:
+                sme_expr = pl.col("exposure_subclass") == "corporate_sme"
+                if "is_sme" in cols:
+                    sme_expr = sme_expr | pl.col("is_sme").fill_null(False)
+            else:
+                sme_expr = pl.col("is_sme").fill_null(False)
+            sub_select.append(sme_expr.alias("_sme"))
         if has_fse:
-            fse_col = (
-                "apply_fi_scalar" if "apply_fi_scalar" in cols else "cp_is_financial_sector_entity"
-            )
-            sub_select.append(pl.col(fse_col).fill_null(False).alias("_fse"))
+            if has_subclass:
+                fse_expr = pl.col("exposure_subclass") == "corporate_financial_large"
+            else:
+                fse_col = (
+                    "apply_fi_scalar"
+                    if "apply_fi_scalar" in cols
+                    else "cp_is_financial_sector_entity"
+                )
+                fse_expr = pl.col(fse_col).fill_null(False)
+            sub_select.append(fse_expr.alias("_fse"))
         if has_pt:
             sub_select.append(pl.col("property_type").alias("_pt"))
 

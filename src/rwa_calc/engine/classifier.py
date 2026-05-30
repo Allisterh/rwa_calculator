@@ -74,6 +74,7 @@ from rwa_calc.data.tables.eu_sovereign import (
 from rwa_calc.domain.enums import (
     ApproachType,
     ExposureClass,
+    ExposureSubclass,
     PermissionMode,
     SpecialisedLendingType,
 )
@@ -177,6 +178,7 @@ class ExposureClassifier:
             schema_names,
             has_model_permissions=has_model_permissions,
         )
+        classified = self._derive_exposure_subclass(classified, config, schema_names)
 
         # Single materialisation barrier — both diagnostic emits below run
         # against in-memory data instead of re-executing the upstream lazy
@@ -1660,6 +1662,61 @@ class ExposureClassifier:
 
         # Step 4: align exposure_class for IRB-routed rgla_* / pse_*
         return self._align_irb_exposure_class(exposures.with_columns([approach_expr, lgd_expr]))
+
+    @staticmethod
+    @cites("PS1/26, paragraph 147A.1")
+    def _derive_exposure_subclass(
+        exposures: pl.LazyFrame,
+        config: CalculationConfig,
+        schema_names: set[str],
+    ) -> pl.LazyFrame:
+        """Derive the Basel 3.1 corporate ``exposure_subclass`` (PRA PS1/26 Art. 147A(1)).
+
+        Basel 3.1 only — under CRR the column is null. For rows whose
+        ``exposure_class`` is corporate / corporate_sme, the three-way split is:
+
+          - ``corporate_financial_large`` — FSE (``cp_is_financial_sector_entity``)
+            OR large corporate (``cp_annual_revenue`` > the Art. 147A(1)(d) GBP 440m
+            threshold). Art. 147A(1)(e).
+          - ``corporate_sme`` — ``is_sme`` (turnover <= GBP 44m). Art. 147A(1)(f).
+          - ``corporate_other`` — otherwise. Art. 147A(1)(f).
+
+        Reuses the FSE predicate and the large-corporate revenue threshold accessor
+        (``config.thresholds.large_corporate_revenue_threshold``) shared with
+        ``_apply_b31_approach_restrictions``; non-corporate rows stay null.
+        """
+        null_subclass = pl.lit(None, dtype=pl.String).alias("exposure_subclass")
+        if not config.is_basel_3_1:
+            return exposures.with_columns(null_subclass)
+
+        is_corporate = pl.col("exposure_class").is_in(
+            [ExposureClass.CORPORATE.value, ExposureClass.CORPORATE_SME.value]
+        )
+
+        is_fse = pl.lit(False)
+        if "cp_is_financial_sector_entity" in schema_names:
+            is_fse = (pl.col("cp_is_financial_sector_entity") == True).fill_null(False)  # noqa: E712
+
+        is_large_by_revenue = pl.lit(False)
+        if "cp_annual_revenue" in schema_names:
+            is_large_by_revenue = (
+                pl.col("cp_annual_revenue")
+                > float(config.thresholds.large_corporate_revenue_threshold)
+            ).fill_null(False)
+
+        is_sme = pl.col("is_sme").fill_null(False)
+
+        subclass = (
+            pl.when(~is_corporate)
+            .then(pl.lit(None, dtype=pl.String))
+            .when(is_fse | is_large_by_revenue)
+            .then(pl.lit(ExposureSubclass.CORPORATE_FINANCIAL_LARGE.value))
+            .when(is_sme)
+            .then(pl.lit(ExposureSubclass.CORPORATE_SME.value))
+            .otherwise(pl.lit(ExposureSubclass.CORPORATE_OTHER.value))
+            .alias("exposure_subclass")
+        )
+        return exposures.with_columns(subclass)
 
     @staticmethod
     def _build_permission_exprs(

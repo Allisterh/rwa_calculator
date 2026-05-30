@@ -444,6 +444,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p2_47",
             _generate_p247,
         ),
+        (
+            "P2.41 (COREP C 02.00 corporate sub-row split — FSE + large-corp-by-revenue → row 0295)",
+            "p2_41",
+            _generate_p241,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2521,6 +2526,19 @@ def _generate_p247(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p2_47", None)
+
+
+def _generate_p241(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P2.41 fixtures (COREP C 02.00 corporate sub-row 0295/0296/0297 split)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_41 import save_p241_fixtures
+
+        saved = save_p241_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_41", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

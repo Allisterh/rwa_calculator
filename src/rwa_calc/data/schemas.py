@@ -1536,6 +1536,12 @@ CLASSIFIER_OUTPUT_SCHEMA: dict[str, ColumnSpec] = {
     # at least one component fails Art. 124A — splitter routes BOTH secured rows
     # through Art. 124J (Other RE) and allocates full pro-rata EAD (no 0.55xV cap).
     "re_split_force_other_re": ColumnSpec(pl.Boolean, default=False, required=False),
+    # PRA PS1/26 Art. 147A(1)(e)/(f) corporate sub-class — Basel 3.1 only (null
+    # under CRR). Drives the COREP C 02.00 / OF 02.00 corporate sub-row split:
+    # corporate_financial_large (FSE or revenue > GBP 440m) -> 0295,
+    # corporate_sme -> 0296/0355, corporate_other -> 0297/0356. Populated by
+    # Classifier._derive_exposure_subclass for corporate / corporate_sme rows.
+    "exposure_subclass": ColumnSpec(pl.String, required=False),
 }
 
 
