@@ -38,6 +38,8 @@ from rwa_calc.reporting.pillar3.generator import (
 )
 from tests.fixtures.p3_5.p3_5 import (
     EXPECTED_DICT_KEY as _FIXTURE_EXPECTED_DICT_KEY,
+)
+from tests.fixtures.p3_5.p3_5 import (
     EXPECTED_HEIGHT,
     EXPECTED_R1_C,
     EXPECTED_R1_D,

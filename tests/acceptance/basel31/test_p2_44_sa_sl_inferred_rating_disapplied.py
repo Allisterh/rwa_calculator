@@ -60,6 +60,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import polars as pl
 import pytest
@@ -70,7 +71,6 @@ from rwa_calc.domain.enums import PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
 from tests.fixtures.p2_44.p2_44 import (
     ANTI_EXPECTED_RISK_WEIGHT,
-    COUNTERPARTY_REF,
     EXPECTED_EAD,
     EXPECTED_EXPOSURE_CLASS_SA,
     EXPECTED_RISK_WEIGHT,
@@ -170,7 +170,7 @@ def p2_44_sa_results() -> pl.DataFrame:
         "SA results should not be None — check PermissionMode.STANDARDISED config "
         "and that the SL specialised-lending counterparty routes to SA."
     )
-    return results.sa_results.collect()
+    return cast(pl.DataFrame, results.sa_results.collect())
 
 
 def _get_exposure_row(df: pl.DataFrame) -> dict:

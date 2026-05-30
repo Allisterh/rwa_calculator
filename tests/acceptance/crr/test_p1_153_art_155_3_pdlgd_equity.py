@@ -40,26 +40,25 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import date
-from decimal import Decimal
 
 import polars as pl
 import pytest
-
-from rwa_calc.contracts.config import CalculationConfig
-from rwa_calc.domain.enums import PermissionMode
-from rwa_calc.engine.equity.calculator import EquityCalculator
 from tests.fixtures.p1_153.p1_153 import (
     EXPECTED_CORRELATION,
     EXPECTED_EL,
     EXPECTED_K,
     EXPECTED_MATURITY_ADJUSTMENT,
-    EXPECTED_RWA,
     EXPECTED_RISK_WEIGHT,
+    EXPECTED_RWA,
     LGD_SUPERVISORY,
     MATURITY_YEARS,
     PD_FLOOR,
     SCALING_FACTOR,
 )
+
+from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.domain.enums import PermissionMode
+from rwa_calc.engine.equity.calculator import EquityCalculator
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -273,7 +272,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Act: read PD_FLOOR from fixture module.
         Assert: PD_FLOOR == 0.0040.
         """
-        assert PD_FLOOR == pytest.approx(0.0040, abs=1e-8), (
+        assert pytest.approx(0.0040, abs=1e-8) == PD_FLOOR, (
             f"{SCENARIO_ID}: Art. 165(1)(c) PD floor must be 0.0040 (0.40%). "
             f"Got {PD_FLOOR}."
         )
@@ -286,7 +285,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Act: read LGD_SUPERVISORY from fixture module.
         Assert: LGD_SUPERVISORY == 0.90.
         """
-        assert LGD_SUPERVISORY == pytest.approx(0.90, abs=1e-8), (
+        assert pytest.approx(0.90, abs=1e-8) == LGD_SUPERVISORY, (
             f"{SCENARIO_ID}: Art. 165(2) LGD must be 0.90 (90%). "
             f"Got {LGD_SUPERVISORY}."
         )
@@ -299,7 +298,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Act: read MATURITY_YEARS from fixture module.
         Assert: MATURITY_YEARS == 5.0.
         """
-        assert MATURITY_YEARS == pytest.approx(5.0, abs=1e-8), (
+        assert pytest.approx(5.0, abs=1e-8) == MATURITY_YEARS, (
             f"{SCENARIO_ID}: Art. 165(3) maturity must be 5.0 years. "
             f"Got {MATURITY_YEARS}."
         )
@@ -312,7 +311,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Act: read SCALING_FACTOR from fixture module.
         Assert: SCALING_FACTOR == 1.06.
         """
-        assert SCALING_FACTOR == pytest.approx(1.06, abs=1e-8), (
+        assert pytest.approx(1.06, abs=1e-8) == SCALING_FACTOR, (
             f"{SCENARIO_ID}: Art. 153 scaling factor must be 1.06. "
             f"Got {SCALING_FACTOR}."
         )
@@ -323,7 +322,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
 
         Cross-checks the hand-calc golden value from the fixture module.
         """
-        assert EXPECTED_CORRELATION == pytest.approx(0.21824769037, rel=1e-6), (
+        assert pytest.approx(0.21824769037, rel=1e-6) == EXPECTED_CORRELATION, (
             f"{SCENARIO_ID}: expected correlation ≈ 0.218248. "
             f"Got {EXPECTED_CORRELATION}."
         )
@@ -334,7 +333,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
 
         Cross-checks the hand-calc golden value from the fixture module.
         """
-        assert EXPECTED_K == pytest.approx(0.07367139, rel=1e-5), (
+        assert pytest.approx(0.07367139, rel=1e-5) == EXPECTED_K, (
             f"{SCENARIO_ID}: expected K ≈ 0.073671. Got {EXPECTED_K}."
         )
 
@@ -344,7 +343,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
 
         Cross-checks the hand-calc golden value from the fixture module.
         """
-        assert EXPECTED_MATURITY_ADJUSTMENT == pytest.approx(1.96561, rel=1e-4), (
+        assert pytest.approx(1.96561, rel=1e-4) == EXPECTED_MATURITY_ADJUSTMENT, (
             f"{SCENARIO_ID}: expected MA ≈ 1.96561. Got {EXPECTED_MATURITY_ADJUSTMENT}."
         )
 
@@ -354,7 +353,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
 
         Cross-checks the hand-calc golden value from the fixture module.
         """
-        assert EXPECTED_EL == pytest.approx(3_600.0, abs=0.5), (
+        assert pytest.approx(3_600.0, abs=0.5) == EXPECTED_EL, (
             f"{SCENARIO_ID}: expected EL = 3,600. Got {EXPECTED_EL}."
         )
 
@@ -364,7 +363,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
 
         Cross-checks the hand-calc golden value from the fixture module.
         """
-        assert EXPECTED_RWA == pytest.approx(1_918_731.0, rel=1e-4), (
+        assert pytest.approx(1_918_731.0, rel=1e-4) == EXPECTED_RWA, (
             f"{SCENARIO_ID}: expected RWA ≈ 1,918,731. Got {EXPECTED_RWA}."
         )
 

@@ -405,7 +405,7 @@ def save_p231_fixtures(output_dir: Path | None = None) -> dict[str, Path]:
 
 def print_summary(saved: dict[str, Path]) -> None:
     """Print a human-readable generation summary."""
-    print(f"P2.31 fixture generation complete")
+    print("P2.31 fixture generation complete")
     print("-" * 70)
     for name, path in saved.items():
         df = pl.read_parquet(path)

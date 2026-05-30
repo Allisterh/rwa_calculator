@@ -363,7 +363,7 @@ if __name__ == "__main__":
     _verify_lf()
     _verify_constants()
     print("P3.5 fixture self-check passed.")
-    print(f"  5 obligors: 3 grade-A (1 defaulted), 2 grade-BBB (0 defaulted)")
+    print("  5 obligors: 3 grade-A (1 defaulted), 2 grade-BBB (0 defaulted)")
     print(f"  Grade A  — c={EXPECTED_R1_C}, d={EXPECTED_R1_D}, "
           f"e={EXPECTED_R1_E:.4f}%, f={EXPECTED_R1_F}%, g={EXPECTED_R1_G:.5f}%")
     print(f"  Grade BBB — c={EXPECTED_R2_C}, d={EXPECTED_R2_D}, "

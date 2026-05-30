@@ -102,7 +102,6 @@ class TestMRIssuedEnumMember:
         # Guard: skip value assertion if MR_ISSUED is not yet in the enum
         # so the overall test suite error is an AssertionError from the
         # preceding test, not an AttributeError here.
-        pytest.importorskip  # no-op; marker for intent
         if "MR_ISSUED" not in RiskType.__members__:
             pytest.skip("MR_ISSUED not yet in RiskType — skip value check")
 

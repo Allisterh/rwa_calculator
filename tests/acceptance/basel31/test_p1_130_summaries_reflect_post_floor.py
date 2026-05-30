@@ -46,7 +46,6 @@ from rwa_calc.contracts.config import CalculationConfig, PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
 from tests.fixtures.p1_130.p1_130 import (
     EXPECTED_FLOOR_THRESHOLD,
-    EXPECTED_SA_RWA,
     EXPECTED_S_TREA,
     EXPECTED_TOTAL_RWA_POST_FLOOR,
 )

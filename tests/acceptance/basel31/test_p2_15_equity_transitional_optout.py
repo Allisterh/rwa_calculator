@@ -56,8 +56,8 @@ from tests.fixtures.p2_15.p2_15 import (
     EXPECTED_RWA_CIU_OPT_OUT_FALSE,
     EXPECTED_RWA_CIU_OPT_OUT_TRUE,
     EXPECTED_RWA_CONTROL,
-    EXPOSURE_REF_CONTROL,
     EXPOSURE_REF_CIU,
+    EXPOSURE_REF_CONTROL,
     create_p215_ciu_holdings,
     create_p215_equity_exposures,
 )

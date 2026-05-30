@@ -46,8 +46,8 @@ from rwa_calc.reporting.pillar3.templates import (
     CR9_FIRB_CLASSES,
 )
 from tests.fixtures.p2_49.p2_49 import (
-    AIRB_CRE_SME_KEY,
     AIRB_CORP_OTHER_NON_SME_KEY,
+    AIRB_CRE_SME_KEY,
     AIRB_RRE_NON_SME_KEY,
     EXPECTED_AIRB_CLASS_COUNT,
     EXPECTED_FIRB_CLASS_COUNT,
@@ -56,7 +56,6 @@ from tests.fixtures.p2_49.p2_49 import (
     FIRB_OTHER_NON_SME_KEY,
     build_cr9_irb_results_lf,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture

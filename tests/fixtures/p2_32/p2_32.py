@@ -424,7 +424,7 @@ def print_summary(saved: dict[str, Path]) -> None:
             flags = df["is_purchased_receivable_commitment"].to_list()
             refs = df["facility_reference"].to_list()
             risk_types = df["risk_type"].to_list() if "risk_type" in cols else [None] * len(refs)
-            for ref, flag, rt in zip(refs, flags, risk_types):
+            for ref, flag, rt in zip(refs, flags, risk_types, strict=True):
                 print(f"    {ref}: risk_type={rt!r}, is_purchased_receivable_commitment={flag}")
     print("-" * 70)
     print(f"Scenario: {SCENARIO_ID_B31} — purchased-receivables undrawn commitment CCF")

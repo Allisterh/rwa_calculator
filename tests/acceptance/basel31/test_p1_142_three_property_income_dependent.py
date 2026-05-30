@@ -62,8 +62,6 @@ from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig, PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
 from tests.fixtures.p1_142.p1_142 import (
-    CP_BREACH_REF,
-    CP_CTRL_REF,
     EXPECTED_RW_BREACH,
     EXPECTED_RW_CTRL,
     EXPECTED_RWA_BREACH,

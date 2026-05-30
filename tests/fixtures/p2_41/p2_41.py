@@ -686,6 +686,6 @@ if __name__ == "__main__":
     print_summary(saved)
     print("\nP2.41 fixture self-check passed.")
     print(f"  4 counterparties: {CP_FSE}, {CP_LRGCORP}, {CP_CORPOTHER}, {CP_SME}")
-    print(f"  4 loans, 4 ratings, 2 model_permissions")
+    print("  4 loans, 4 ratings, 2 model_permissions")
     print(f"  Anti-degenerate: {CP_LRGCORP} is NOT FSE but revenue={REVENUE_LRGCORP:,.0f} > 440m")
-    print(f"  Expected COREP rows: 0295 (CP1+CP2), 0296 (CP4), 0297 (CP3)")
+    print("  Expected COREP rows: 0295 (CP1+CP2), 0296 (CP4), 0297 (CP3)")

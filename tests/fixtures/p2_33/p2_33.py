@@ -348,7 +348,7 @@ def print_summary(saved: dict[str, Path]) -> None:
         if "is_uk_residential_mortgage_commitment" in cols:
             flags = df["is_uk_residential_mortgage_commitment"].to_list()
             refs = df["facility_reference"].to_list()
-            for ref, flag in zip(refs, flags):
+            for ref, flag in zip(refs, flags, strict=True):
                 print(f"    {ref}: is_uk_residential_mortgage_commitment={flag}")
     print("-" * 70)
     print(f"Scenario: {SCENARIO_ID} — UK residential-mortgage commitment 50% CCF override")

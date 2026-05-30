@@ -342,38 +342,6 @@ class TestP241ExposureSubclassCorep:
         )
 
     # ------------------------------------------------------------------
-    # A-IRB non-SME corporate (CP3 → row 0356)
-    # ------------------------------------------------------------------
-
-    def test_p2_41_row_0356_contains_corpother_rwa(self, per_loan_rwa, corep_c02) -> None:
-        """
-        Row 0356 (A-IRB Other general corporates non-SME) == rwa_corpother.
-
-        CP3 (LN-P241-CORPOTHER, MODEL-P241-AIRB, revenue=100m, FSE=False,
-        is_sme=False) routes to A-IRB row 0356 (non-SME other corporates).
-
-        This assertion is not affected by the P2.41 fix (CP3 is not the
-        large-corp-by-revenue case) but validates the A-IRB routing path.
-
-        Arrange: P2.41 fixtures + Basel 3.1 IRB config.
-        Act:     generate C 02.00.
-        Assert:  row 0356 col 0010 ≈ rwa_corpother (within ±£1).
-        """
-        # Arrange
-        rwa_corpother = per_loan_rwa[LOAN_CORPOTHER]
-
-        # Act
-        actual_0356 = self._row_rwa(corep_c02, "0356")
-
-        # Assert
-        assert actual_0356 == pytest.approx(rwa_corpother, abs=_ABS_TOL), (
-            f"P2.41: COREP row 0356 (A-IRB Other corporates non-SME) = {actual_0356:,.2f} "
-            f"but expected {rwa_corpother:,.2f} (= rwa_corpother from LN-P241-CORPOTHER). "
-            "CP3 (MODEL-P241-AIRB, annual_revenue=100m, is_sme=False, FSE=False) "
-            "should route to A-IRB row 0356."
-        )
-
-    # ------------------------------------------------------------------
     # A-IRB non-SME other row (0356) and F-IRB non-SME row (0297)
     # ------------------------------------------------------------------
 

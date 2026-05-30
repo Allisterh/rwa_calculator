@@ -406,7 +406,7 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("-" * 70)
     print("Scenario: SA-SL inferred-rating fallback suppression Art. 139(2B)")
     print(f"  Counterparty: {COUNTERPARTY_REF}  entity_type=specialised_lending  GB")
-    print(f"  SL metadata:  sl_type=object_finance  is_hvcre=False")
+    print("  SL metadata:  sl_type=object_finance  is_hvcre=False")
     print(f"  Loan:         {EXPOSURE_REF}  GBP {DRAWN_AMOUNT:,.0f}  senior  provisions=0")
     print(f"  Rating:       {RATING_REF}  AgencyA  CQS {RATING_CQS}")
     print(f"                rating_is_inferred={RATING_IS_INFERRED}")

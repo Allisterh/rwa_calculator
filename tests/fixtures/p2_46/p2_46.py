@@ -600,9 +600,9 @@ def main() -> None:
     print()
     print("P2.46 fixture self-check passed.")
     print(f"  3 counterparties: {CP_PPU}, {CP_ROLLOUT}, {CP_NOPERM}")
-    print(f"  3 loans (GBP 1,000,000 each, senior unrated corporate)")
-    print(f"  3 ratings (model_id on PPU/ROLLOUT, null on NOPERM)")
-    print(f"  2 model_permissions (approach=standardised, ppu_reason column appended)")
+    print("  3 loans (GBP 1,000,000 each, senior unrated corporate)")
+    print("  3 ratings (model_id on PPU/ROLLOUT, null on NOPERM)")
+    print("  2 model_permissions (approach=standardised, ppu_reason column appended)")
 
 
 if __name__ == "__main__":

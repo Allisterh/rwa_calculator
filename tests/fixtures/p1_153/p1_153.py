@@ -384,7 +384,7 @@ def print_summary(saved: dict[str, Path]) -> None:
     print(f"    LGD (non-diversified-PE, Art. 165(2))      = {LGD_SUPERVISORY:.2f}  (90%)")
     print(f"    M (Art. 165(3))                            = {MATURITY_YEARS:.1f} years")
     print(f"    scaling factor (Art. 153)                  = {SCALING_FACTOR}")
-    print(f"    has_default_definition_info                = True  (no 1.5x, Art. 155(3))")
+    print("    has_default_definition_info                = True  (no 1.5x, Art. 155(3))")
     print()
     print("  Expected outputs:")
     print(f"    correlation (R)      ≈ {EXPECTED_CORRELATION:.6f}")

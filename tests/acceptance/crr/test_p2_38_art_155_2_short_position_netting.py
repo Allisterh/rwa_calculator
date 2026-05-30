@@ -25,14 +25,10 @@ References:
 from __future__ import annotations
 
 import dataclasses
-from datetime import date
+from typing import cast
 
 import polars as pl
 import pytest
-
-from rwa_calc.contracts.config import CalculationConfig
-from rwa_calc.domain.enums import PermissionMode
-from rwa_calc.engine.equity.calculator import EquityCalculator
 from tests.fixtures.p2_38.p2_38 import (
     COUNTERPARTY_REF,
     EXPECTED_EAD_FINAL_LONG,
@@ -41,13 +37,16 @@ from tests.fixtures.p2_38.p2_38 import (
     EXPECTED_RWA_SHORT,
     EXPECTED_RWA_TOTAL,
     IRB_SIMPLE_RW_EXCHANGE_TRADED,
-    ISSUER_REF,
     LONG_EXPOSURE_REF,
     NO_NETTING_BASELINE_RWA,
     REPORTING_DATE,
     SHORT_EXPOSURE_REF,
     create_p238_equity_exposures,
 )
+
+from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.domain.enums import PermissionMode
+from rwa_calc.engine.equity.calculator import EquityCalculator
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -109,7 +108,8 @@ def netting_result(
     engine Wave 4 the equity calculator ignores them; after Wave 4 it nets.
     """
     exposures_lf = create_p238_equity_exposures().lazy()
-    return equity_calculator.calculate_branch(exposures_lf, crr_irb_config).collect()
+    result = equity_calculator.calculate_branch(exposures_lf, crr_irb_config).collect()
+    return cast(pl.DataFrame, result)
 
 
 @pytest.fixture(scope="module")

@@ -179,7 +179,7 @@ def _get_child_rows(df: pl.DataFrame) -> pl.DataFrame:
     """
     # Filter by counterparty reference to avoid hard-coding exposure_reference
     return df.filter(
-        (pl.col("counterparty_reference") == COUNTERPARTY_REF)
+        pl.col("counterparty_reference") == COUNTERPARTY_REF
     )
 
 

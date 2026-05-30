@@ -63,12 +63,10 @@ References:
 from __future__ import annotations
 
 from datetime import date
+from typing import cast
 
 import polars as pl
 import pytest
-
-from rwa_calc.contracts.config import CalculationConfig
-from rwa_calc.engine.ccf import CCFCalculator
 from tests.fixtures.p2_31.p2_31 import (
     CONT_REF_ACCEPT,
     CONT_REF_DOCLC,
@@ -83,12 +81,13 @@ from tests.fixtures.p2_31.p2_31 import (
     EXPECTED_EAD_OVERRIDE,
     EXPECTED_EAD_PERFBOND,
     RESOLVED_RISK_TYPE_ACCEPT,
-    RESOLVED_RISK_TYPE_DOCLC,
     RESOLVED_RISK_TYPE_OVERRIDE,
-    RESOLVED_RISK_TYPE_PERFBOND,
     SCENARIO_ID,
     create_p231_contingents,
 )
+
+from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.engine.ccf import CCFCalculator
 
 # ---------------------------------------------------------------------------
 # Module-scoped fixture: run CCF stage once for all test classes
@@ -131,7 +130,7 @@ def p2_31_crr_ccf_results() -> pl.DataFrame:
     # Act — apply CCF stage directly (no full pipeline needed)
     result_lf = calculator.apply_ccf(contingents_lf, config)
 
-    return result_lf.collect()
+    return cast(pl.DataFrame, result_lf.collect())
 
 
 # ---------------------------------------------------------------------------

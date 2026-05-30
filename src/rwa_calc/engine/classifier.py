@@ -2181,7 +2181,9 @@ class ExposureClassifier:
         - Art. 123A(1)(b)(ii): an obligor's aggregate exposure must not exceed
           GBP 880k (threshold limb) AND no single obligor's aggregate exposure may
           exceed 0.2% of the total regulatory-retail portfolio (granularity limb,
-          BCBS CRE20.66). Both limbs are Basel-3.1-only.
+          BCBS CRE20.66). Both limbs are Basel-3.1-only. The granularity limb is
+          gated on ``config.enforce_retail_granularity`` (default True) so it can
+          be suppressed under CRE20.66's national-discretion clause.
         - Art. 123A(1)(b)(iii): Non-SME entities must be managed as part of a
           retail pool (cp_is_managed_as_retail=True) to qualify.  Null values
           default to True for backward compatibility.
@@ -2244,10 +2246,14 @@ class ExposureClassifier:
             # Art. 123A(1)(a): SMEs auto-qualify — no condition 3 needed
             .when(is_sme_for_art_123a)
             .then(pl.lit(True))
-            # Art. 123A(1)(b)(ii) granularity limb: > 0.2% of the retail portfolio
-            .when(granularity_fail)
-            .then(pl.lit(False))
         )
+
+        # Art. 123A(1)(b)(ii) granularity limb: > 0.2% of the retail portfolio.
+        # Gated on config.enforce_retail_granularity (default True) so the limb
+        # can be suppressed where granularity is assessed by another method under
+        # CRE20.66's national-discretion clause, or to isolate the other limbs.
+        if config.enforce_retail_granularity:
+            expr = expr.when(granularity_fail).then(pl.lit(False))
 
         # Art. 123A(1)(b)(iii): Non-SME must be managed as retail pool
         if "cp_is_managed_as_retail" in schema_names:

@@ -66,8 +66,6 @@ from rwa_calc.domain.enums import PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
 from tests.fixtures.p5_15.p5_15 import (
     BREACH_DRAWN,
-    CP_BREACH,
-    CP_CONTROL_PASS,
     EXPECTED_RW_CORPORATE,
     EXPECTED_RW_RETAIL,
     EXPECTED_RWA_BREACH,
@@ -551,13 +549,13 @@ class TestP515PortfolioArithmetic:
 
     def test_p5_15_portfolio_total_is_503000(self) -> None:
         """PORTFOLIO_TOTAL == 503,000 GBP (500×1,000 + 2,000 + 1,000)."""
-        assert PORTFOLIO_TOTAL == pytest.approx(503_000.0, abs=0.01), (
+        assert pytest.approx(503_000.0, abs=0.01) == PORTFOLIO_TOTAL, (
             f"PORTFOLIO_TOTAL should be 503,000. Got {PORTFOLIO_TOTAL:,.2f}."
         )
 
     def test_p5_15_granularity_limit_is_1006(self) -> None:
         """GRANULARITY_LIMIT == 1,006.00 GBP (0.2% × 503,000)."""
-        assert GRANULARITY_LIMIT == pytest.approx(1_006.0, abs=0.01), (
+        assert pytest.approx(1_006.0, abs=0.01) == GRANULARITY_LIMIT, (
             f"GRANULARITY_LIMIT should be 1,006.00. Got {GRANULARITY_LIMIT:,.2f}."
         )
 

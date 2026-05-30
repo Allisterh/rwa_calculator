@@ -67,11 +67,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
-from rwa_calc.contracts.bundles import RawDataBundle
-from rwa_calc.contracts.config import CalculationConfig, PermissionMode
-from rwa_calc.engine.pipeline import PipelineOrchestrator
-from rwa_calc.reporting.corep.generator import COREPGenerator
 from tests.fixtures.p2_46.p2_46 import (
     EXPECTED_PPU_EAD,
     EXPECTED_RESIDUAL_EAD,
@@ -81,6 +76,11 @@ from tests.fixtures.p2_46.p2_46 import (
     LOAN_PPU,
     LOAN_ROLLOUT,
 )
+
+from rwa_calc.contracts.bundles import RawDataBundle
+from rwa_calc.contracts.config import CalculationConfig, PermissionMode
+from rwa_calc.engine.pipeline import PipelineOrchestrator
+from rwa_calc.reporting.corep.generator import COREPGenerator
 
 # ---------------------------------------------------------------------------
 # Fixture paths
