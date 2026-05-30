@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import polars as pl
+from watchfire import cites
 
 from rwa_calc.reporting.pillar3.templates import (
     CMS1_COLUMNS,
@@ -82,6 +83,7 @@ if TYPE_CHECKING:
 
     from rwa_calc.api.export import ExportResult
     from rwa_calc.api.service import CalculationResponse
+    from rwa_calc.contracts.bundles import OutputFloorSummary
     from rwa_calc.contracts.config import Pillar3CapitalRatioOverrides
 
 logger = logging.getLogger(__name__)
@@ -141,6 +143,7 @@ class Pillar3Generator:
         *,
         framework: str = "CRR",
         capital_ratios: Pillar3CapitalRatioOverrides | None = None,
+        output_floor_summary: OutputFloorSummary | None = None,
     ) -> Pillar3TemplateBundle:
         """Generate all Pillar III templates from a pipeline results LazyFrame."""
         cols = _available_columns(results)
@@ -151,7 +154,9 @@ class Pillar3Generator:
         slotting_data = _filter_by_approach(results, "slotting", cols)
 
         return Pillar3TemplateBundle(
-            ov1=self._generate_ov1(results, cols, framework, errors, capital_ratios),
+            ov1=self._generate_ov1(
+                results, cols, framework, errors, capital_ratios, output_floor_summary
+            ),
             cr4=self._generate_cr4(sa_data, cols, framework, errors),
             cr5=self._generate_cr5(sa_data, cols, framework, errors),
             cr6=self._generate_all_cr6(irb_data, cols, framework, errors),
@@ -233,6 +238,7 @@ class Pillar3Generator:
         framework: str,
         errors: list[str],
         capital_ratios: Pillar3CapitalRatioOverrides | None = None,
+        output_floor_summary: OutputFloorSummary | None = None,
     ) -> pl.DataFrame | None:
         rwa_col = _pick(cols, "rwa_final", "final_rwa", "rwa")
         if not rwa_col:
@@ -257,6 +263,7 @@ class Pillar3Generator:
                 total_rwa=total_rwa,
                 own_funds=own_funds,
                 capital_ratios=capital_ratios,
+                output_floor_summary=output_floor_summary,
                 column_refs=column_refs,
             )
             for row_def in get_ov1_rows(framework)
@@ -1006,7 +1013,18 @@ def _filter_off_bs(data: pl.DataFrame, cols: set[str]) -> pl.DataFrame:
 
 
 _OV1_RATIO_REFS: frozenset[str] = frozenset({"5a", "5b", "6a", "6b", "7a", "7b"})
-_OV1_EXPLICIT_NULL_REFS: frozenset[str] = frozenset({"26", "27", "11", "12", "13", "14"})
+# Floor rows whose column ``a`` is a multiplier (26) or RWA adjustment (27):
+# column ``c`` (own-funds requirement) is meaningless for these and must stay
+# null — they are excluded from the 8%-of-a auto-shim.
+_OV1_FLOOR_NO_SHIM_REFS: frozenset[str] = frozenset({"26", "27"})
+# Equity sub-approach discriminators (Basel 3.1 OV1 memo rows 11-14): each
+# filters approach_applied=="equity" AND a sub-approach column == value.
+_OV1_EQUITY_SUBAPPROACH_REFS: dict[str, tuple[str, str]] = {
+    "11": ("equity_transitional_approach", "irb_transitional"),
+    "12": ("ciu_approach", "look_through"),
+    "13": ("ciu_approach", "mandate_based"),
+    "14": ("ciu_approach", "fallback"),
+}
 # Refs whose value is _approach_rwa(approach_col, rwa_col, <approach>).
 _OV1_APPROACH_REFS: dict[str, str] = {
     "3": "foundation_irb",
@@ -1027,6 +1045,7 @@ def _ov1_row_values(
     total_rwa: float | None,
     own_funds: float | None,
     capital_ratios: Pillar3CapitalRatioOverrides | None,
+    output_floor_summary: OutputFloorSummary | None,
     column_refs: list[str],
 ) -> dict[str, object]:
     """Compute OV1 cell values for a single template row."""
@@ -1041,13 +1060,16 @@ def _ov1_row_values(
         total_rwa=total_rwa,
         own_funds=own_funds,
         capital_ratios=capital_ratios,
+        output_floor_summary=output_floor_summary,
     )
 
     # Column b (T-1) always None — requires prior period data
     values.setdefault("b", None)
     # Auto-shim: own funds = a * 0.08, except for ratio rows where column c
-    # is intentionally None (a is itself a percentage).
-    if ref not in _OV1_RATIO_REFS and values.get("a") is not None and values.get("c") is None:
+    # is intentionally None (a is itself a percentage) and the floor rows
+    # 26/27 where column a is a multiplier/adjustment, not an RWA amount.
+    no_shim = ref in _OV1_RATIO_REFS or ref in _OV1_FLOOR_NO_SHIM_REFS
+    if not no_shim and values.get("a") is not None and values.get("c") is None:
         values["c"] = float(values["a"] or 0.0) * 0.08
 
     return _make_row(row_def, values, column_refs)
@@ -1064,6 +1086,7 @@ def _ov1_cell_values(
     total_rwa: float | None,
     own_funds: float | None,
     capital_ratios: Pillar3CapitalRatioOverrides | None,
+    output_floor_summary: OutputFloorSummary | None,
 ) -> dict[str, object]:
     """Resolve the populated cell values for one OV1 row (pre auto-shim)."""
     if ref in ("29", "1"):
@@ -1074,10 +1097,14 @@ def _ov1_cell_values(
         return {"a": _ov1_ratio_value(capital_ratios, ref)}
     if ref == "24":
         return {"a": _ov1_memo_250_row(data, cols, rwa_col)}
-    if ref in _OV1_EXPLICIT_NULL_REFS:
-        # Output floor multiplier/adjustment (26/27) come from config not
-        # pipeline data; equity sub-rows (11-14) lack pipeline granularity.
-        return {"a": None}
+    if ref in _OV1_EQUITY_SUBAPPROACH_REFS:
+        return {"a": _ov1_equity_subapproach_rwa(ref, data, cols, approach_col, rwa_col)}
+    if ref == "26":
+        # Output floor multiplier — first non-null per-row output_floor_pct.
+        return {"a": _ov1_floor_multiplier(data, cols)}
+    if ref == "27":
+        # Output floor adjustment (OF-ADJ) — lives only on the summary bundle.
+        return {"a": output_floor_summary.of_adj if output_floor_summary else None}
     if approach_col:
         return _ov1_approach_cell(ref, data, approach_col, rwa_col)
     return {}
@@ -1135,6 +1162,45 @@ def _ov1_memo_250_row(
         return None
     memo = data.filter((pl.col(rw_col) >= 2.495) & (pl.col(rw_col) <= 2.505))
     return _col_sum(memo, rwa_col)
+
+
+@cites("PS1/26, paragraph 132")
+def _ov1_equity_subapproach_rwa(
+    ref: str,
+    data: pl.DataFrame,
+    cols: set[str],
+    approach_col: str | None,
+    rwa_col: str,
+) -> float | None:
+    """OV1 memo rows 11-14: equity RWEA broken down by sub-approach.
+
+    Sums ``rwa_final`` for ``approach_applied == "equity"`` AND the
+    discriminator column/value for the row (IRB transitional, look-through,
+    mandate-based, fall-back). These are "of which" sub-rows of equity already
+    counted in row 2 — they are not added to the row-29 total.
+
+    References:
+        PRA PS1/26 Annex XX (UKB OV1 rows 11-14), Art. 132-132C (CIU sub-approaches).
+    """
+    disc = _OV1_EQUITY_SUBAPPROACH_REFS.get(ref)
+    if disc is None:
+        return None
+    disc_col, disc_val = disc
+    if not approach_col or disc_col not in cols:
+        return None
+    subset = data.filter(
+        (pl.col(approach_col) == "equity") & (pl.col(disc_col) == disc_val)
+    )
+    return _col_sum(subset, rwa_col)
+
+
+def _ov1_floor_multiplier(data: pl.DataFrame, cols: set[str]) -> float | None:
+    """OV1 row 26: output floor multiplier (first non-null ``output_floor_pct``)."""
+    floor_col = _pick(cols, "output_floor_pct")
+    if not floor_col or data.height == 0:
+        return None
+    result = data.select(pl.col(floor_col).drop_nulls().first()).item()
+    return float(result) if result is not None else None
 
 
 # ---------------------------------------------------------------------------

@@ -399,6 +399,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p5_15",
             _generate_p515,
         ),
+        (
+            "P2.29 (OV1 equity sub-approach rows 11-14 + output-floor rows 26/27 — Python-only)",
+            "p2_29",
+            _generate_p229,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2278,6 +2283,27 @@ def _generate_p515(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p5_15", None)
+
+
+def _generate_p229(output_dir: Path) -> list[tuple[str, int]]:
+    """Validate P2.29 fixture module (Python-only; no parquet artefacts).
+
+    This fixture provides factory functions and constants for the OV1
+    equity sub-approach rows (11-14) and output-floor rows (26/27).
+    The test drives ``Pillar3Generator.generate_from_lazyframe`` directly
+    with a seeded LazyFrame + ``OutputFloorSummary``; no parquet is written.
+    """
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_29 import build_equity_results_lf, build_output_floor_summary
+
+        lf = build_equity_results_lf()
+        df = lf.collect()
+        _ = build_output_floor_summary()  # verifies construction
+        return [("p2_29.py (Python-only)", df.height)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_29", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
