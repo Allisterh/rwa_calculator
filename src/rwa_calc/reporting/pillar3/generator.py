@@ -52,6 +52,7 @@ from rwa_calc.reporting.pillar3.templates import (
     CR7_COLUMNS,
     CR8_COLUMNS,
     CR8_ROWS,
+    CR9_1_COLUMN_REFS,
     CR9_AIRB_CLASSES,
     CR9_APPROACH_DISPLAY,
     CR9_COLUMN_REFS,
@@ -100,7 +101,7 @@ class Pillar3TemplateBundle:
 
     Single-table templates are ``pl.DataFrame | None``.
     Per-class/type templates are ``dict[str, pl.DataFrame]``.
-    CMS1/CMS2/CR9 are Basel 3.1 only — None/empty under CRR.
+    CMS1/CMS2/CR9/CR9.1 are Basel 3.1 only — None/empty under CRR.
     """
 
     ov1: pl.DataFrame | None = None
@@ -112,6 +113,7 @@ class Pillar3TemplateBundle:
     cr7a: dict[str, pl.DataFrame] = field(default_factory=dict)
     cr8: pl.DataFrame | None = None
     cr9: dict[str, pl.DataFrame] = field(default_factory=dict)
+    cr9_1: dict[str, pl.DataFrame] = field(default_factory=dict)
     cr10: dict[str, pl.DataFrame] = field(default_factory=dict)
     cms1: pl.DataFrame | None = None
     cms2: pl.DataFrame | None = None
@@ -165,6 +167,7 @@ class Pillar3Generator:
             cr7a=self._generate_all_cr7a(results, cols, framework, errors),
             cr8=self._generate_cr8(irb_data, cols, errors),
             cr9=self._generate_all_cr9(irb_data, cols, framework, errors),
+            cr9_1=self._generate_cr9_1(irb_data, cols, framework, errors),
             cr10=self._generate_all_cr10(slotting_data, cols, framework, errors),
             cms1=self._generate_cms1(results, cols, framework, errors),
             cms2=self._generate_cms2(
@@ -701,6 +704,113 @@ class Pillar3Generator:
         if not rows_out:
             return _cr9_empty_schema(column_refs)
         return pl.DataFrame(rows_out, schema=_cr9_schema(column_refs))
+
+    # ---- CR9.1 — ECAI-based PD back-testing (Art. 180(1)(f)) ----
+
+    def _generate_cr9_1(
+        self,
+        irb_data: pl.LazyFrame,
+        cols: set[str],
+        framework: str,
+        errors: list[str],
+    ) -> dict[str, pl.DataFrame]:
+        """Generate UKB CR9.1 ECAI-based PD back-testing templates.
+
+        Basel 3.1 only. Supplementary to CR9 for firms using Art. 180(1)(f)
+        ECAI-based PD estimation: obligors in scope (``ecai_pd_mapping`` truthy)
+        are grouped by their firm-grade-to-ECAI mapping
+        (``external_rating_equivalent``) rather than by the fixed CR6 PD-range
+        bands. Returns separate DataFrames per approach-class combination,
+        keyed as ``"{approach} - {class_key}"``.
+
+        References:
+            PRA PS1/26 Art. 452(h), Art. 180(1)(f), Annex XXII paras 12-15
+        """
+        if framework != "BASEL_3_1":
+            return {}
+
+        ec_col = _pick(cols, "exposure_class")
+        approach_col = _pick(cols, "approach_applied", "approach")
+        mapping_col = _pick(cols, "ecai_pd_mapping")
+        grade_col = _pick(cols, "external_rating_equivalent")
+        if not ec_col or not approach_col or not mapping_col or not grade_col:
+            return {}
+
+        report_pd_col = _pick(cols, "irb_pd_floored", "irb_pd_original")
+        if not report_pd_col:
+            errors.append("CR9.1: no PD column available — skipping ECAI backtesting")
+            return {}
+
+        data = irb_data.collect()
+        if data.height == 0:
+            return {}
+
+        # Only obligors flagged for Art. 180(1)(f) ECAI-based PD estimation.
+        data = data.filter(pl.col(mapping_col))
+        if data.height == 0:
+            return {}
+
+        result: dict[str, pl.DataFrame] = {}
+
+        for approach_val, _approach_display, class_defs in [
+            ("foundation_irb", "F-IRB", CR9_FIRB_CLASSES),
+            ("advanced_irb", "A-IRB", CR9_AIRB_CLASSES),
+        ]:
+            approach_data = data.filter(pl.col(approach_col) == approach_val)
+            if approach_data.height == 0:
+                continue
+
+            for class_key, class_display in class_defs:
+                class_data = approach_data.filter(pl.col(ec_col) == class_key)
+                if class_data.height == 0:
+                    continue
+
+                key = f"{approach_val} - {class_key}"
+                result[key] = self._generate_cr9_1_for_class(
+                    class_data,
+                    cols,
+                    report_pd_col,
+                    grade_col,
+                    class_display,
+                )
+
+        return result
+
+    def _generate_cr9_1_for_class(
+        self,
+        class_data: pl.DataFrame,
+        cols: set[str],
+        report_pd_col: str,
+        grade_col: str,
+        class_display: str,
+    ) -> pl.DataFrame:
+        """Generate a single CR9.1 template for one exposure class.
+
+        One row per distinct ECAI grade (``external_rating_equivalent``),
+        followed by an aggregate Total row. Columns c-h reuse the CR9 value
+        computation; the dynamic ECAI column carries the grade label.
+        """
+        column_refs = CR9_1_COLUMN_REFS
+        rows_out: list[dict[str, object]] = []
+
+        for grade in class_data[grade_col].unique(maintain_order=True).to_list():
+            bucket = class_data.filter(pl.col(grade_col) == grade)
+            values = _compute_cr9_values(bucket, cols, report_pd_col)
+            values["a"] = class_display
+            values["b"] = grade
+            row = _make_row(P3Row(str(grade), str(grade)), values, column_refs)
+            row[grade_col] = grade
+            rows_out.append(row)
+
+        # Aggregate Total row across all grades.
+        total_values = _compute_cr9_values(class_data, cols, report_pd_col)
+        total_values["a"] = class_display
+        total_values["b"] = "Total"
+        total_row = _make_row(P3Row("Total", "Total", is_total=True), total_values, column_refs)
+        total_row[grade_col] = "Total"
+        rows_out.append(total_row)
+
+        return pl.DataFrame(rows_out, schema=_cr9_1_schema(column_refs, grade_col))
 
     # ---- CR10 ----
 
@@ -1490,6 +1600,13 @@ def _cr9_schema(column_refs: list[str]) -> dict[str, pl.DataType]:
 def _cr9_empty_schema(column_refs: list[str]) -> pl.DataFrame:
     """Empty CR9 frame with the correct schema."""
     return pl.DataFrame([], schema=_cr9_schema(column_refs))
+
+
+def _cr9_1_schema(column_refs: list[str], grade_col: str) -> dict[str, pl.DataType]:
+    """Schema for CR9.1 frames: a/b/grade are String, remaining cols Float64."""
+    schema = _cr9_schema(column_refs)
+    schema[grade_col] = pl.String
+    return schema
 
 
 def _cr9_bucket_row(
