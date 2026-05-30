@@ -68,7 +68,7 @@ WHITELIST: list[tuple[str, str, tuple[str, ...]]] = [
     ("rwa_calc.engine.sa.namespace", "SALazyFrame.apply_guarantee_substitution",
      ("CRR Art. 213",)),
     ("rwa_calc.engine.sa.namespace", "SALazyFrame.apply_currency_mismatch_multiplier",
-     ("PS1/26, paragraph 123B",)),
+     ("PS1/26, paragraph 123B", "PS1/26, paragraph 123B.3")),
     ("rwa_calc.engine.sa.namespace", "SALazyFrame.apply_due_diligence_override",
      ("PS1/26, paragraph 110A",)),
     ("rwa_calc.engine.sa.namespace", "SALazyFrame.calculate_rwa",
