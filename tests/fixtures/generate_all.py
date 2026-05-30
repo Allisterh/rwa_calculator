@@ -424,6 +424,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p2_30",
             _generate_p230,
         ),
+        (
+            "P2.31 (Annex I obs_product -> risk_type fill — ACCEPTANCE/FR, PERF_BOND/MLR, explicit-wins)",
+            "p2_31",
+            _generate_p231,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2398,6 +2403,19 @@ def _generate_p230(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p2_30", None)
+
+
+def _generate_p231(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P2.31 fixtures (Annex I obs_product -> risk_type fill, explicit-wins control)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_31 import save_p231_fixtures
+
+        saved = save_p231_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_31", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

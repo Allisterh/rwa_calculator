@@ -139,6 +139,12 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     "seniority": ColumnSpec(pl.String, default="senior", required=False),
     "risk_type": ColumnSpec(pl.String, required=False),
     "underlying_risk_type": ColumnSpec(pl.String, required=False),
+    # CRR Annex I paras 1-4 / Art. 111(1): a normalised concrete OBS product key
+    # (e.g. "ACCEPTANCE", "PERFORMANCE_BOND", "DOCUMENTARY_CREDIT"), distinct from
+    # the free-text ``product_type``. When ``risk_type`` is null/empty the CCF
+    # engine resolves the abstract Annex I risk_type bucket from this product via
+    # ANNEX1_PRODUCT_RISK_TYPE. Explicit ``risk_type`` always wins.
+    "obs_product": ColumnSpec(pl.String, required=False),
     "ccf_modelled": ColumnSpec(pl.Float64, required=False),
     "ead_modelled": ColumnSpec(pl.Float64, required=False),
     "is_short_term_trade_lc": ColumnSpec(pl.Boolean, default=False, required=False),
@@ -277,6 +283,11 @@ CONTINGENTS_SCHEMA: dict[str, ColumnSpec] = {
     "seniority": ColumnSpec(pl.String, default="senior", required=False),
     "risk_type": ColumnSpec(pl.String, required=False),
     "underlying_risk_type": ColumnSpec(pl.String, required=False),
+    # CRR Annex I paras 1-4 / Art. 111(1): normalised concrete OBS product key.
+    # Mirrored from FACILITY_SCHEMA; when ``risk_type`` is null/empty the CCF
+    # engine resolves the Annex I risk_type bucket from this product via
+    # ANNEX1_PRODUCT_RISK_TYPE. Explicit ``risk_type`` always wins.
+    "obs_product": ColumnSpec(pl.String, required=False),
     "ccf_modelled": ColumnSpec(pl.Float64, required=False),
     "ead_modelled": ColumnSpec(pl.Float64, required=False),
     "is_short_term_trade_lc": ColumnSpec(pl.Boolean, default=False, required=False),
@@ -1313,6 +1324,37 @@ RISK_TYPE_SYNONYMS: dict[str, str] = {
     "low_risk": "LR",
 }
 
+# CRR Annex I paras 1-4 / Art. 111(1): canonical normalised OBS *product* keys
+# accepted on the ``obs_product`` column. Each maps (via ANNEX1_PRODUCT_RISK_TYPE
+# in data/tables/ccf.py) to an abstract Annex I risk_type bucket. Distinct from
+# the free-text ``product_type``.
+VALID_OBS_PRODUCTS = {
+    "ACCEPTANCE",
+    "PERFORMANCE_BOND",
+    "WARRANTY",
+    "TENDER_BOND",
+    "BID_BOND",
+    "DOCUMENTARY_CREDIT",
+    "TRADE_LC",
+}
+
+# Lowercase synonyms accepted on input for the obs_product column. Maps every
+# permitted spelling to its canonical uppercase form in VALID_OBS_PRODUCTS.
+# Consumed by build_product_to_risk_type_expr in data/tables/ccf.py so product
+# matching is case-insensitive. Mirrors RISK_TYPE_SYNONYMS in shape.
+OBS_PRODUCT_SYNONYMS: dict[str, str] = {
+    "acceptance": "ACCEPTANCE",
+    "bankers_acceptance": "ACCEPTANCE",
+    "performance_bond": "PERFORMANCE_BOND",
+    "perf_bond": "PERFORMANCE_BOND",
+    "warranty": "WARRANTY",
+    "tender_bond": "TENDER_BOND",
+    "bid_bond": "BID_BOND",
+    "documentary_credit": "DOCUMENTARY_CREDIT",
+    "doc_credit": "DOCUMENTARY_CREDIT",
+    "trade_lc": "TRADE_LC",
+}
+
 VALID_BS_TYPES = {"ONB", "OFB"}
 
 VALID_CHILD_TYPES = {"facility", "loan", "contingent"}
@@ -1342,6 +1384,7 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
         "seniority": VALID_SENIORITY,
         "risk_type": VALID_RISK_TYPES_INPUT,
         "underlying_risk_type": VALID_RISK_TYPES_INPUT,
+        "obs_product": VALID_OBS_PRODUCTS,
         "purchased_receivables_subtype": VALID_PURCHASED_RECEIVABLES_SUBTYPES,
     },
     "loans": {
@@ -1354,6 +1397,7 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
         "bs_type": VALID_BS_TYPES,
         "risk_type": VALID_RISK_TYPES_INPUT,
         "underlying_risk_type": VALID_RISK_TYPES_INPUT,
+        "obs_product": VALID_OBS_PRODUCTS,
         "purchased_receivables_subtype": VALID_PURCHASED_RECEIVABLES_SUBTYPES,
         "exposure_collateral_type": VALID_COLLATERAL_TYPES,
     },

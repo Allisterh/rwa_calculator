@@ -70,6 +70,7 @@ from rwa_calc.data.tables.ccf import (
     OC_SHORT_MATURITY_THRESHOLD_DAYS,
     SA_CCF_B31,
     build_firb_ccf_expr,
+    build_product_to_risk_type_expr,
     build_sa_ccf_expr,
 )
 from rwa_calc.domain.enums import ApproachType
@@ -221,6 +222,10 @@ class CCFCalculator:
         defaults: list[tuple[str, pl.Expr]] = [
             ("risk_type", pl.lit("").alias("risk_type")),
             ("underlying_risk_type", pl.lit("").alias("underlying_risk_type")),
+            # CRR Annex I / Art. 111(1): optional concrete OBS product key. Default
+            # empty so the obs_product -> risk_type fill is a no-op when callers
+            # (e.g. unit tests) construct exposures without it.
+            ("obs_product", pl.lit("").alias("obs_product")),
             ("approach", pl.lit("sa").alias("approach")),
             ("ccf_modelled", pl.lit(None).cast(pl.Float64).alias("ccf_modelled")),
             (
@@ -277,6 +282,9 @@ class CCFCalculator:
 
         return exposures, added
 
+    # CRR Annex I product bands take effect via Art. 111(1); the obs_product fill
+    # is attributed to Art. 111 (watchfire requires an article-based citation).
+    @cites("CRR Art. 111")
     @cites("PS1/26, paragraph 111")
     def _compute_ccf(
         self,
@@ -288,11 +296,32 @@ class CCFCalculator:
         Determines SA and F-IRB CCFs from risk_type, then selects the final CCF
         based on the exposure's approach (SA/F-IRB/A-IRB).
 
+        CRR Annex I / Art. 111(1) obs_product fill: before resolving CCFs, any row
+        whose ``risk_type`` is null/empty has its ``risk_type`` resolved from the
+        concrete ``obs_product`` key via ANNEX1_PRODUCT_RISK_TYPE (framework-
+        invariant). An explicit ``risk_type`` always wins — the fill is gated on
+        the existing value being null/empty.
+
         Applies the PRA PS1/26 Art. 111(1) Table A1 Row 4(b) override: a UK
         residential-property commitment (``is_uk_residential_mortgage_commitment``)
         gets a 50% SA CCF under Basel 3.1, except where the otherwise-resolved
         CCF is 10% (Row 6 UCC) or 100% (Row 2) — the Row 4(b) carve-out.
         """
+        # CRR Annex I / Art. 111(1): resolve risk_type from the concrete OBS
+        # product when (and only when) no explicit risk_type was supplied. Explicit
+        # risk_type always wins; an unmapped/null product yields null and leaves
+        # risk_type unchanged.
+        risk_type_is_blank = pl.col("risk_type").cast(pl.Utf8, strict=False).fill_null(
+            ""
+        ).str.len_chars() == 0
+        product_risk_type = build_product_to_risk_type_expr("obs_product")
+        exposures = exposures.with_columns(
+            pl.when(risk_type_is_blank & product_risk_type.is_not_null())
+            .then(product_risk_type)
+            .otherwise(pl.col("risk_type"))
+            .alias("risk_type"),
+        )
+
         is_b31 = config.is_basel_3_1
 
         if is_b31:

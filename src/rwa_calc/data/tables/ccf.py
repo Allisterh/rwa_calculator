@@ -49,7 +49,33 @@ from decimal import Decimal
 import polars as pl
 from watchfire import cites
 
-from rwa_calc.data.schemas import RISK_TYPE_SYNONYMS
+from rwa_calc.data.schemas import OBS_PRODUCT_SYNONYMS, RISK_TYPE_SYNONYMS
+
+# =============================================================================
+# ANNEX I PRODUCT -> RISK_TYPE MAPPING (CRR Annex I paras 1-4 / Art. 111(1))
+# =============================================================================
+
+# Maps a normalised concrete OBS *product* key to its abstract Annex I
+# ``risk_type`` bucket. Framework-INVARIANT: every product in scope resolves to
+# the same risk_type under both CRR and PRA PS1/26 Table A1; the framework split
+# lives only downstream in SA_CCF_CRR / SA_CCF_B31. Keyed by the uppercase values
+# produced by ``data.schemas.OBS_PRODUCT_SYNONYMS``.
+#
+# - ACCEPTANCE -> FR (CRR Annex I para 1 / Table A1 Row 1): bankers' acceptances
+#   are direct credit substitutes -> 100% CCF.
+# - PERFORMANCE_BOND / WARRANTY / TENDER_BOND / BID_BOND -> MLR (CRR Annex I
+#   Row 6(b) / Table A1 Row 6(b)): non-direct-credit-substitute guarantees -> 20%.
+# - DOCUMENTARY_CREDIT / TRADE_LC -> MLR (CRR Annex I Row 6(a) / Table A1
+#   Row 6(a)): self-liquidating trade-related letters of credit -> 20%.
+ANNEX1_PRODUCT_RISK_TYPE: dict[str, str] = {
+    "ACCEPTANCE": "FR",
+    "PERFORMANCE_BOND": "MLR",
+    "WARRANTY": "MLR",
+    "TENDER_BOND": "MLR",
+    "BID_BOND": "MLR",
+    "DOCUMENTARY_CREDIT": "MLR",
+    "TRADE_LC": "MLR",
+}
 
 # =============================================================================
 # SA CCF TABLES (CRR Art. 111 / PRA PS1/26 Art. 111 Table A1)
@@ -132,6 +158,37 @@ def _normalize_risk_type(risk_type_col: str) -> pl.Expr:
     casted = pl.col(risk_type_col).cast(pl.Utf8, strict=False).fill_null("")
     lowered = casted.str.to_lowercase()
     return lowered.replace_strict(RISK_TYPE_SYNONYMS, default=casted.str.to_uppercase())
+
+
+# CRR Annex I product bands are given regulatory effect by Art. 111(1); the
+# watchfire parser only accepts an article-based citation, so the Annex I mapping
+# is attributed to Art. 111.
+@cites("CRR Art. 111")
+def build_product_to_risk_type_expr(
+    product_col: str = "obs_product",
+) -> pl.Expr:
+    """Build a Polars expression mapping a concrete OBS product to its risk_type.
+
+    Resolves the abstract Annex I ``risk_type`` bucket (FR / MLR / ...) from a
+    normalised concrete product key via ``ANNEX1_PRODUCT_RISK_TYPE``. The mapping
+    is framework-invariant (CRR Annex I == PRA PS1/26 Table A1 for every product
+    in scope). Unknown / unmapped products and nulls produce a null result, so
+    the caller can leave the existing ``risk_type`` resolution untouched.
+
+    Args:
+        product_col: Name of the obs_product column on the frame.
+
+    Returns:
+        String Polars expression evaluating to the resolved risk_type (or null
+        when the product is null / unmapped).
+    """
+    casted = pl.col(product_col).cast(pl.Utf8, strict=False).fill_null("")
+    lowered = casted.str.to_lowercase()
+    canonical = lowered.replace_strict(OBS_PRODUCT_SYNONYMS, default=casted.str.to_uppercase())
+    return canonical.replace_strict(
+        ANNEX1_PRODUCT_RISK_TYPE,
+        default=pl.lit(None, dtype=pl.Utf8),
+    )
 
 
 @cites("CRR Art. 111")
