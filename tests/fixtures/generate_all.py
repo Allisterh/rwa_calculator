@@ -450,6 +450,7 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p241,
         ),
         (
+<<<<<<< HEAD
             "P2.38 (CRR Art. 155(2) non-trading-book short-position netting — long+short ISSUER-A)",
             "p2_38",
             _generate_p238,
@@ -458,6 +459,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "P2.46 (Art. 150(1) PPU provenance ppu_reason — C 07.00 rows 0050/0060 discrimination)",
             "p2_46",
             _generate_p246,
+=======
+            "P2.48 (CR8 RWEA-flow statement — two-period IRB snapshot, opening + residual + closing)",
+            "p2_48",
+            _generate_p248,
+>>>>>>> batch/20260530-0519/P2.48
         ),
     ]
 
@@ -2551,6 +2557,7 @@ def _generate_p241(output_dir: Path) -> list[tuple[str, int]]:
         sys.modules.pop("p2_41", None)
 
 
+<<<<<<< HEAD
 def _generate_p238(output_dir: Path) -> list[tuple[str, int]]:
     """Generate P2.38 fixtures (CRR Art. 155(2) non-trading-book short-position netting)."""
     sys.path.insert(0, str(output_dir))
@@ -2575,6 +2582,28 @@ def _generate_p246(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p2_46", None)
+=======
+def _generate_p248(output_dir: Path) -> list[tuple[str, int]]:
+    """Validate P2.48 fixture module (Python-only; no parquet artefacts).
+
+    This fixture provides factory functions and constants for the CR8 RWEA-flow
+    statement two-period snapshot scenario.  The test drives
+    ``Pillar3Generator.generate_from_lazyframe`` with a seeded current-period
+    LazyFrame plus an optional ``previous_period_results`` LazyFrame; no parquet
+    is written.
+    """
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_48 import build_current_period_lf, build_prior_period_lf
+
+        prior_df = build_prior_period_lf().collect()
+        current_df = build_current_period_lf().collect()
+        # Report combined row count (3 prior + 3 current)
+        return [("p2_48.py (Python-only)", prior_df.height + current_df.height)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_48", None)
+>>>>>>> batch/20260530-0519/P2.48
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

@@ -135,10 +135,25 @@ class Pillar3Generator:
 
     # ---- public interface ----
 
-    def generate(self, response: CalculationResponse) -> Pillar3TemplateBundle:
-        """Generate all Pillar III templates from a ``CalculationResponse``."""
+    def generate(
+        self,
+        response: CalculationResponse,
+        *,
+        previous_period_results: pl.LazyFrame | None = None,
+    ) -> Pillar3TemplateBundle:
+        """Generate all Pillar III templates from a ``CalculationResponse``.
+
+        When ``previous_period_results`` (a prior-run results LazyFrame of the
+        same shape as the current results) is supplied, the CR8 RWEA flow
+        statement gains an opening balance (row 1) and a signed residual
+        (row 8); otherwise CR8 rows 1-8 stay null (unchanged behaviour).
+        """
         results_lf = response.scan_results()
-        return self.generate_from_lazyframe(results_lf, framework=response.framework)
+        return self.generate_from_lazyframe(
+            results_lf,
+            framework=response.framework,
+            previous_period_results=previous_period_results,
+        )
 
     def generate_from_lazyframe(
         self,
@@ -147,14 +162,26 @@ class Pillar3Generator:
         framework: str = "CRR",
         capital_ratios: Pillar3CapitalRatioOverrides | None = None,
         output_floor_summary: OutputFloorSummary | None = None,
+        previous_period_results: pl.LazyFrame | None = None,
     ) -> Pillar3TemplateBundle:
-        """Generate all Pillar III templates from a pipeline results LazyFrame."""
+        """Generate all Pillar III templates from a pipeline results LazyFrame.
+
+        ``previous_period_results`` is an optional prior-period results
+        LazyFrame (same shape as ``results``) used to populate the CR8 opening
+        balance (row 1) and signed residual (row 8). When ``None`` CR8 rows 1-8
+        stay null.
+        """
         cols = _available_columns(results)
         errors: list[str] = []
 
         sa_data = _filter_by_approach(results, "standardised", cols)
         irb_data = _filter_irb_non_slotting(results, cols)
         slotting_data = _filter_by_approach(results, "slotting", cols)
+
+        prior_irb_data: pl.LazyFrame | None = None
+        if previous_period_results is not None:
+            prior_cols = _available_columns(previous_period_results)
+            prior_irb_data = _filter_irb_non_slotting(previous_period_results, prior_cols)
 
         return Pillar3TemplateBundle(
             ov1=self._generate_ov1(
@@ -166,7 +193,7 @@ class Pillar3Generator:
             cr6a=self._generate_cr6a(results, cols, framework, errors),
             cr7=self._generate_cr7(results, cols, framework, errors),
             cr7a=self._generate_all_cr7a(results, cols, framework, errors),
-            cr8=self._generate_cr8(irb_data, cols, errors),
+            cr8=self._generate_cr8(irb_data, cols, errors, prior_irb_data),
             cr9=self._generate_all_cr9(irb_data, cols, framework, errors),
             cr9_1=self._generate_cr9_1(irb_data, cols, framework, errors),
             cr10=self._generate_all_cr10(slotting_data, cols, framework, errors),
@@ -574,12 +601,28 @@ class Pillar3Generator:
 
     # ---- CR8 ----
 
+    @cites("PS1/26, paragraph 147.2")
     def _generate_cr8(
         self,
         irb_data: pl.LazyFrame,
         cols: set[str],
         errors: list[str],
+        prior_irb_data: pl.LazyFrame | None = None,
     ) -> pl.DataFrame | None:
+        """Generate the CR8 RWEA flow statement for IRB credit-risk exposures.
+
+        Row 9 (closing) sums the current-period IRB (non-slotting) ``rwa_final``;
+        when ``prior_irb_data`` is supplied, row 1 (opening) sums the prior
+        period on the same like-for-like basis and row 8 (Other) carries the
+        signed residual ``closing - opening`` (positive = increase, negative =
+        decrease per PS1/26 Annex XXII §11). Rows 2-7 (per-driver flow
+        components) stay null — they need exposure-level period-over-period
+        lineage not available from two point-in-time snapshots. When
+        ``prior_irb_data`` is None, rows 1-8 stay null (unchanged behaviour).
+
+        References:
+            CRR Part 8 Art. 438(h); PRA PS1/26 Annex XXII §11.
+        """
         rwa_col = _pick(cols, "rwa_final", "final_rwa", "rwa")
         if not rwa_col:
             errors.append("CR8: missing RWA column")
@@ -588,16 +631,26 @@ class Pillar3Generator:
         data = irb_data.collect()
         column_refs = [c.ref for c in CR8_COLUMNS]
         closing_rwa = _col_sum(data, rwa_col)
-        rows_out: list[dict[str, object]] = []
 
+        opening_rwa: float | None = None
+        other_rwa: float | None = None
+        if prior_irb_data is not None:
+            opening_rwa = _col_sum(prior_irb_data.collect(), rwa_col)
+            # Row 8 (Other) = signed residual = closing - opening (rows 2-7 = 0).
+            other_rwa = (closing_rwa or 0.0) - (opening_rwa or 0.0)
+
+        rows_out: list[dict[str, object]] = []
         for row_def in CR8_ROWS:
             if row_def.ref == "9":
                 values: dict[str, object] = {"a": closing_rwa}
             elif row_def.ref == "1":
-                # Opening balance — requires prior period data
-                values = {"a": None}
+                # Opening balance — prior-period closing (None without prior data).
+                values = {"a": opening_rwa}
+            elif row_def.ref == "8":
+                # Other — signed residual delta (None without prior data).
+                values = {"a": other_rwa}
             else:
-                # Flow drivers — require multi-period comparison
+                # Flow drivers (rows 2-7) — require multi-period comparison.
                 values = {"a": None}
             rows_out.append(_make_row(row_def, values, column_refs))
 
