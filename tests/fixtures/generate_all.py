@@ -429,6 +429,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p2_31",
             _generate_p231,
         ),
+        (
+            "P2.49 (CR9 column-a taxonomy extension — 5 F-IRB + 10 A-IRB leaf classes)",
+            "p2_49",
+            _generate_p249,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2416,6 +2421,70 @@ def _generate_p231(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p2_31", None)
+
+
+def _generate_p249(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P2.49 builder imports (no parquet output — Python-only builder).
+
+    P2.49 extends the CR9 column-a exposure-class taxonomy from 4+6 leaves to
+    5+10 leaves.  The seed frame is a LazyFrame built in-memory and passed
+    directly to Pillar3Generator._generate_all_cr9; it is never written to
+    parquet.  This function smoke-checks the import, verifies frame shape, and
+    confirms the three new discriminator columns are present with correct types.
+    """
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_49 import (  # noqa: F401
+            EXPECTED_AIRB_CLASS_COUNT,
+            EXPECTED_FIRB_CLASS_COUNT,
+            EXPECTED_KEYS,
+            build_cr9_irb_results_lf,
+        )
+
+        lf = build_cr9_irb_results_lf()
+        df = lf.collect()
+
+        # Invariant 1: 15 rows — one per leaf class (5 F-IRB + 10 A-IRB)
+        if df.height != 15:
+            raise AssertionError(f"Expected 15 rows, got {df.height}")
+
+        # Invariant 2: three new discriminator columns must be present
+        for col_name in ("is_sme", "property_type", "cp_is_financial_sector_entity"):
+            if col_name not in df.columns:
+                raise AssertionError(f"Column {col_name!r} must be present")
+
+        # Invariant 3: is_sme and cp_is_financial_sector_entity are Boolean
+        schema = df.schema
+        if schema["is_sme"] != pl.Boolean:
+            raise AssertionError(
+                f"is_sme must be Boolean, got {schema['is_sme']}"
+            )
+        if schema["cp_is_financial_sector_entity"] != pl.Boolean:
+            raise AssertionError(
+                f"cp_is_financial_sector_entity must be Boolean, "
+                f"got {schema['cp_is_financial_sector_entity']}"
+            )
+
+        # Invariant 4: expected leaf counts match scenario constants
+        if EXPECTED_FIRB_CLASS_COUNT != 5:
+            raise AssertionError(
+                f"EXPECTED_FIRB_CLASS_COUNT must be 5, got {EXPECTED_FIRB_CLASS_COUNT}"
+            )
+        if EXPECTED_AIRB_CLASS_COUNT != 10:
+            raise AssertionError(
+                f"EXPECTED_AIRB_CLASS_COUNT must be 10, got {EXPECTED_AIRB_CLASS_COUNT}"
+            )
+        if len(EXPECTED_KEYS) != 15:
+            raise AssertionError(
+                f"EXPECTED_KEYS must have 15 entries, got {len(EXPECTED_KEYS)}"
+            )
+
+        # No parquet files written — report zero files, zero records.
+        return [("(python-only builder — no parquet)", 0)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_49", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

@@ -2,7 +2,8 @@
 
 Tests cover:
     - ``Pillar3TemplateBundle.cr9_1`` field populated for BASEL_3_1 framework
-    - Key "advanced_irb - corporate" produced by ``_generate_cr9_1``
+    - Key "advanced_irb - corporate_other_non_sme" produced by ``_generate_cr9_1``
+      (P2.49 update: was "advanced_irb - corporate" before taxonomy extension)
     - Output height = 3 (2 grade rows + 1 total row)
     - Dynamic ECAI column "external_rating_equivalent" carries "A" / "BBB"
     - Per-row c/d/e/f/g/h values for R1 (grade "A"), R2 (grade "BBB"), Total
@@ -19,6 +20,7 @@ collection error.
 
 References:
     - P3.5 scenario proposal: tmp/batch-20260530-0213/P3.5-scenario.md
+    - P2.49 scenario proposal: CR9 taxonomy extension (5 F-IRB / 10 A-IRB leaves)
     - CR9.1 template definition: src/rwa_calc/reporting/pillar3/templates.py (CR9_1_COLUMNS)
     - CR9 generator (reference pattern): src/rwa_calc/reporting/pillar3/generator.py:604-703
     - PRA PS1/26 Art. 180(1)(f): ECAI-based PD estimation
@@ -35,7 +37,7 @@ from rwa_calc.reporting.pillar3.generator import (
     Pillar3TemplateBundle,
 )
 from tests.fixtures.p3_5.p3_5 import (
-    EXPECTED_DICT_KEY,
+    EXPECTED_DICT_KEY as _FIXTURE_EXPECTED_DICT_KEY,
     EXPECTED_HEIGHT,
     EXPECTED_R1_C,
     EXPECTED_R1_D,
@@ -57,6 +59,25 @@ from tests.fixtures.p3_5.p3_5 import (
     EXPECTED_TOT_H,
     build_cr9_1_results_lf,
 )
+
+# ---------------------------------------------------------------------------
+# P2.49 taxonomy update: shadow fixture constant with new leaf key.
+#
+# The P3.5 fixture was written before the P2.49 taxonomy extension.  After
+# P2.49, the A-IRB "corporate" collapsed parent key is replaced by two leaf
+# sub-class keys.  The P3.5 seed frame uses exposure_class="corporate" with
+# is_sme=False / cp_is_financial_sector_entity absent, which routes to
+# "advanced_irb - corporate_other_non_sme" under the new predicate logic.
+#
+# EXPECTED_DICT_KEY is redefined here (shadowing the imported fixture value
+# "advanced_irb - corporate") so that all test lookups use the correct
+# post-P2.49 key.  The fixture file itself is not modified — fixture-builder
+# owns tests/fixtures/.
+# ---------------------------------------------------------------------------
+EXPECTED_DICT_KEY: str = "advanced_irb - corporate_other_non_sme"
+
+# Keep reference to old fixture constant for diagnostic messages only
+_LEGACY_EXPECTED_DICT_KEY: str = _FIXTURE_EXPECTED_DICT_KEY
 
 
 # ---------------------------------------------------------------------------

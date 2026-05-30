@@ -57,6 +57,7 @@ from rwa_calc.reporting.pillar3.templates import (
     CR9_APPROACH_DISPLAY,
     CR9_COLUMN_REFS,
     CR9_FIRB_CLASSES,
+    CR9ClassSpec,
     CR10_CATEGORY_MAP,
     CR10_SLOTTING_ROWS,
     HVCRE_RISK_WEIGHTS,
@@ -604,6 +605,7 @@ class Pillar3Generator:
 
     # ---- CR9 — PD back-testing per exposure class (Art. 452(h)) ----
 
+    @cites("PS1/26, paragraph 147.2")
     def _generate_all_cr9(
         self,
         irb_data: pl.LazyFrame,
@@ -652,8 +654,9 @@ class Pillar3Generator:
             if approach_data.height == 0:
                 continue
 
-            for class_key, class_display in class_defs:
-                class_data = approach_data.filter(pl.col(ec_col) == class_key)
+            for class_key, class_display, spec in class_defs:
+                predicate = _cr9_class_predicate(spec, ec_col, cols)
+                class_data = approach_data.filter(predicate)
                 if class_data.height == 0:
                     continue
 
@@ -707,6 +710,7 @@ class Pillar3Generator:
 
     # ---- CR9.1 — ECAI-based PD back-testing (Art. 180(1)(f)) ----
 
+    @cites("PS1/26, paragraph 147.2")
     def _generate_cr9_1(
         self,
         irb_data: pl.LazyFrame,
@@ -760,8 +764,9 @@ class Pillar3Generator:
             if approach_data.height == 0:
                 continue
 
-            for class_key, class_display in class_defs:
-                class_data = approach_data.filter(pl.col(ec_col) == class_key)
+            for class_key, class_display, spec in class_defs:
+                predicate = _cr9_class_predicate(spec, ec_col, cols)
+                class_data = approach_data.filter(predicate)
                 if class_data.height == 0:
                     continue
 
@@ -1587,6 +1592,44 @@ def _compute_cr6_values(
         values["h"] = float(values["h"]) * 100.0
 
     return values
+
+
+def _cr9_class_predicate(spec: CR9ClassSpec, ec_col: str, cols: set[str]) -> pl.Expr:
+    """Resolve a CR9 leaf-class descriptor into a row-filter ``pl.Expr``.
+
+    Builds the predicate over ``exposure_class`` plus the optional discriminator
+    columns (``is_sme``, ``property_type``, ``cp_is_financial_sector_entity``).
+    Degrades gracefully when a discriminator column is absent on the frame: the
+    corresponding clause is dropped, so a generic corporate leaf with absent
+    flags still matches (the residual ``corporate`` rows collapse onto
+    ``corporate_other_non_sme`` for the financial/large split).
+
+    References:
+        PRA PS1/26 Annex XXII, Art. 147(2)(b)-(d), 147A.
+    """
+    predicate = pl.col(ec_col).is_in(list(spec.exposure_classes))
+
+    if spec.is_sme is not None:
+        sme_col = _pick(cols, "is_sme")
+        if sme_col:
+            predicate = predicate & (pl.col(sme_col) == spec.is_sme)
+
+    if spec.property_type is not None:
+        prop_col = _pick(cols, "property_type")
+        if prop_col:
+            predicate = predicate & (pl.col(prop_col) == spec.property_type)
+
+    if spec.financial_large is not None:
+        fin_col = _pick(cols, "cp_is_financial_sector_entity", "apply_fi_scalar")
+        if fin_col:
+            flag = pl.col(fin_col).fill_null(False)
+            predicate = predicate & (flag == spec.financial_large)
+        elif spec.financial_large:
+            # Discriminator absent: no row can be financial/large, so the
+            # residual corporate rows fall through to the non-SME leaf.
+            predicate = pl.lit(value=False)
+
+    return predicate
 
 
 def _cr9_schema(column_refs: list[str]) -> dict[str, pl.DataType]:
