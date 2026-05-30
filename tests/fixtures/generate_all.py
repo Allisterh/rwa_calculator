@@ -464,6 +464,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p2_48",
             _generate_p248,
         ),
+        (
+            "P2.25b (CR5 RE loan-split sub-row bucketing — not-materially-dependent 55%-LTV split, B3.1 only)",
+            "p2_25",
+            _generate_p225,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2404,6 +2409,26 @@ def _generate_p515(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p5_15", None)
+
+
+def _generate_p225(output_dir: Path) -> list[tuple[str, int]]:
+    """Validate P2.25(b) fixture module (Python-only; no parquet artefacts).
+
+    This fixture provides factory functions and constants for the CR5 RE
+    loan-split sub-row bucketing (rows 9f/9g, not-materially-dependent, B3.1).
+    The test drives ``Pillar3Generator._generate_cr5`` directly with a seeded
+    two-row LazyFrame; no parquet is written.
+    """
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_25 import build_re_split_results_lf
+
+        lf = build_re_split_results_lf()
+        df = lf.collect()
+        return [("p2_25.py (Python-only)", df.height)]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_25", None)
 
 
 def _generate_p229(output_dir: Path) -> list[tuple[str, int]]:
