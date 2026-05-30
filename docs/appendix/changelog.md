@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- (Next release changes will go here)
+
+### Changed
+- (Next release changes will go here)
+
+---
+
+## [0.2.19] - 2026-05-30
+
+### Added
 - **P4.20** (v0.2.45) — COREP **C 08.02** now keys IRB rows by the firm's own internal rating grade when an `internal_rating_grade` (`RATINGS_SCHEMA`) / `cp_internal_rating_grade` (`HIERARCHY_OUTPUT_SCHEMA`) column is supplied, with graceful fallback to the fixed PD buckets when absent/all-null. Per COREP Annex II §C 08.02 (one row per obligor grade); reporting-granularity only, no RWA impact. Pinned by `tests/unit/test_p4_20_c0802_internal_grades.py` (19 tests; existing fixed-bucket output byte-identical — `tests/unit/test_corep.py` 711 passed).
 - **P2.25(b)** (v0.2.45) — Pillar III **CR5** now reports a regulatory-RE *not-materially-dependent* loan split at the 55% LTV boundary: new Basel-3.1 "of which" sub-rows 9f (secured ≤55% LTV @20%) / 9g (above-55% residual @counterparty RW), partitioned by `re_split_role`. Per PRA PS1/26 Annex XX §CR5 (Art. 124F/124L); CRR CR5 byte-identical, sub-rows not double-counted into the grand total. Pinned by `tests/unit/reporting/pillar3/test_p2_25_cr5_re_55ltv_split.py` (11 tests). Sub-item (c) equity-transitional end-state RW deferred (needs an engine `equity_rw_end_state` column; overlaps P3.6b).
 - **P1.188 — Stale `PS9/24` regulatory-instrument citations replaced with the final `PS1/26`.** The post-model-adjustment docstrings/comments in `contracts/config.py`, `data/schemas.py`, `engine/irb/adjustments.py` and the `pyproject.toml` package description still cited `PS9/24` (the superseded 2024 PRA consultation paper), whose numbering was reassigned to `PS1/26` on publication of the final policy statement (effective 1 Jan 2027). Five in-scope source occurrences plus the package description were corrected; article numbers (Art. 153(5A)/154(4A)/158(6A)) and surrounding text are unchanged. Cosmetic/metadata only — no calculation impact. Pinned by `tests/contracts/test_ps126_citation_currency.py` (6 parametrized: `PS9/24` absent and `PS1/26` present per source file). Ref: PRA PS1/26 (final); PS9/24 (consultation — superseded).
