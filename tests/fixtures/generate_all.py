@@ -449,6 +449,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p2_41",
             _generate_p241,
         ),
+        (
+            "P2.38 (CRR Art. 155(2) non-trading-book short-position netting — long+short ISSUER-A)",
+            "p2_38",
+            _generate_p238,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2539,6 +2544,19 @@ def _generate_p241(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p2_41", None)
+
+
+def _generate_p238(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P2.38 fixtures (CRR Art. 155(2) non-trading-book short-position netting)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p2_38 import save_p238_fixtures
+
+        saved = save_p238_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p2_38", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:

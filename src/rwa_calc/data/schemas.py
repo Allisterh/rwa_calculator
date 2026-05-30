@@ -600,6 +600,19 @@ EQUITY_EXPOSURE_SCHEMA: dict[str, ColumnSpec] = {
     # the 1.5x scaling applies. Default True is the non-conservative branch, so
     # the 1.5x edge case must set this explicitly False.
     "has_default_definition_info": ColumnSpec(pl.Boolean, default=True, required=False),
+    # CRR Art. 155(2) non-trading-book short-position netting inputs.
+    # position_value: signed market value (+long / -short). When absent the
+    #   equity calculator falls back to the fair_value/carrying_value/ead chain
+    #   (every position stands alone on its absolute value).
+    # issuer_reference: netting key — same string means the same individual
+    #   stock (Art. 155(2) permits netting only within one issuer). Null -> no
+    #   netting for that row.
+    # is_explicitly_hedged: True -> the offsetting short is an explicit hedge
+    #   covering at least one year, so it may net the matching long. Default
+    #   False -> the short is treated as a standalone long on its absolute value.
+    "position_value": ColumnSpec(pl.Float64, required=False),
+    "issuer_reference": ColumnSpec(pl.String, required=False),
+    "is_explicitly_hedged": ColumnSpec(pl.Boolean, default=False, required=False),
     # Risk weight: 100% (listed), 250% (unlisted), 400% (speculative)
 }
 

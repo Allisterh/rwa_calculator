@@ -717,7 +717,12 @@ class EquityCalculator:
         - Private equity (diversified portfolio): 190%
         - Exchange-traded: 290%
         - Other equity: 370%
+
+        Before assigning risk weights this nets non-trading-book short positions
+        against long positions in the same individual stock per Art. 155(2)
+        (see ``_net_short_positions``).
         """
+        exposures = self._net_short_positions(exposures)
         return exposures.with_columns(
             [
                 pl.when(pl.col("equity_type").str.to_lowercase() == "central_bank")
@@ -741,6 +746,77 @@ class EquityCalculator:
                 .otherwise(pl.lit(_IRB_RW[EquityType.OTHER]))
                 .alias("risk_weight"),
             ]
+        )
+
+    @cites("CRR Art. 155(2)")
+    def _net_short_positions(self, exposures: pl.LazyFrame) -> pl.LazyFrame:
+        """Net non-trading-book short positions against longs (CRR Art. 155(2)).
+
+        Under the IRB Simple Risk Weight Method, short cash positions and
+        derivatives held in the non-trading book may offset long positions in
+        the *same individual stock* provided the offsetting short is an explicit
+        hedge covering at least one year. Other short positions are treated as
+        long with the relevant RW applied to their absolute value.
+
+        Mechanics (LazyFrame-first, column-absence defensive):
+        - Eligibility requires the optional inputs ``position_value`` and
+          ``issuer_reference``; absent either, ``exposures`` is returned
+          unchanged so production frames behave exactly as before.
+        - A row is netting-eligible when it carries a non-null
+          ``issuer_reference`` and ``is_explicitly_hedged`` is True (the boolean
+          encodes "explicit hedge >= 1 year", ``CRR_EQUITY_NETTING_MIN_HEDGE_YEARS``).
+        - Net long per issuer = ``max(0, sum(signed position_value))`` over the
+          eligible rows. The surviving long row(s) carry the netted EAD pro-rata
+          to their gross long value; absorbed shorts (and any rows whose group
+          nets to <= 0) collapse to ``ead_final`` 0. Net-short residual is
+          floored at 0 (out of scope here).
+        - Ineligible rows keep their existing ``ead_final`` (the absolute-value
+          ``fair_value``/``carrying_value``/``ead`` chain).
+        """
+        schema_names = exposures.collect_schema().names()
+        if "position_value" not in schema_names or "issuer_reference" not in schema_names:
+            return exposures
+
+        is_hedged = (
+            pl.col("is_explicitly_hedged").fill_null(False)
+            if "is_explicitly_hedged" in schema_names
+            else pl.lit(False)
+        )
+        # Eligible: a hedged position on a known issuer with a signed value.
+        eligible = (
+            pl.col("issuer_reference").is_not_null()
+            & pl.col("position_value").is_not_null()
+            & is_hedged
+        )
+        signed = pl.col("position_value").fill_null(0.0)
+        gross_long = pl.when(eligible & (signed > 0)).then(signed).otherwise(pl.lit(0.0))
+
+        # Per-issuer windowed aggregates over eligible rows only.
+        net_long_per_issuer = (
+            pl.when(eligible)
+            .then(signed)
+            .otherwise(pl.lit(0.0))
+            .sum()
+            .over("issuer_reference")
+            .clip(lower_bound=0.0)
+        )
+        gross_long_per_issuer = gross_long.sum().over("issuer_reference")
+
+        # Distribute the issuer's net long across its long rows pro-rata to
+        # their gross long value; eligible shorts (and longs in a net-short or
+        # fully-netted group) collapse to 0. Ineligible rows are untouched.
+        share = (
+            pl.when(gross_long_per_issuer > 0)
+            .then(gross_long / gross_long_per_issuer)
+            .otherwise(pl.lit(0.0))
+        )
+        netted_ead = net_long_per_issuer * share
+
+        return exposures.with_columns(
+            pl.when(eligible)
+            .then(netted_ead)
+            .otherwise(pl.col("ead_final"))
+            .alias("ead_final"),
         )
 
     @cites("CRR Art. 155(3)")
