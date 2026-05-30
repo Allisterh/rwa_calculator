@@ -108,9 +108,7 @@ def _get_cr8_row(bundle: Pillar3TemplateBundle, row_ref: str) -> pl.DataFrame:
     """Return the single CR8 row matching row_ref, asserting exactly one result."""
     assert bundle.cr8 is not None, "CR8 must be generated"
     row = bundle.cr8.filter(pl.col("row_ref") == row_ref)
-    assert row.height == 1, (
-        f"Expected exactly 1 CR8 row with ref '{row_ref}', got {row.height}"
-    )
+    assert row.height == 1, f"Expected exactly 1 CR8 row with ref '{row_ref}', got {row.height}"
     return row
 
 
@@ -160,9 +158,7 @@ class TestP248CR8WithPriorPeriod:
             f"CR8 row 1 (opening): expected {EXPECTED_OPENING:,.2f}, got {opening}"
         )
 
-    def test_p2_48_cr8_row8_other_equals_signed_delta(
-        self, bundle: Pillar3TemplateBundle
-    ) -> None:
+    def test_p2_48_cr8_row8_other_equals_signed_delta(self, bundle: Pillar3TemplateBundle) -> None:
         """Row 8 (Other) must equal closing − opening = +150_000 (positive = increase).
 
         Sign convention per PS1/26 Annex XXII §11: increases are positive.
@@ -258,9 +254,7 @@ class TestP248CR8DecreaseControl:
         """Bundle with snapshots swapped: opening=1_150_000, closing=1_000_000."""
         return _build_bundle_decrease_control()
 
-    def test_p2_48_cr8_row8_negative_for_decrease(
-        self, bundle: Pillar3TemplateBundle
-    ) -> None:
+    def test_p2_48_cr8_row8_negative_for_decrease(self, bundle: Pillar3TemplateBundle) -> None:
         """Row 8 must be -150_000 when opening > closing (RWEA decreased).
 
         Sign convention: negative = decrease (PS1/26 Annex XXII §11).
@@ -274,8 +268,7 @@ class TestP248CR8DecreaseControl:
 
         # Assert
         assert row_8 == pytest.approx(EXPECTED_ROW_8_DECREASE, abs=0.01), (
-            f"CR8 row 8 (decrease control): expected {EXPECTED_ROW_8_DECREASE:+,.2f}, "
-            f"got {row_8}"
+            f"CR8 row 8 (decrease control): expected {EXPECTED_ROW_8_DECREASE:+,.2f}, got {row_8}"
         )
 
 
@@ -293,9 +286,7 @@ class TestP248CR8BackwardsCompat:
         gen = Pillar3Generator()
         return gen.generate_from_lazyframe(build_current_period_lf(), framework="CRR")
 
-    def test_p2_48_cr8_closing_populated_without_prior(
-        self, bundle: Pillar3TemplateBundle
-    ) -> None:
+    def test_p2_48_cr8_closing_populated_without_prior(self, bundle: Pillar3TemplateBundle) -> None:
         """Row 9 (closing) must be populated even without prior period data.
 
         This is the existing behaviour and must not regress.
@@ -311,9 +302,7 @@ class TestP248CR8BackwardsCompat:
             f"CR8 row 9 (closing, no prior): expected {EXPECTED_CLOSING:,.2f}, got {closing}"
         )
 
-    def test_p2_48_cr8_rows_1_to_8_null_without_prior(
-        self, bundle: Pillar3TemplateBundle
-    ) -> None:
+    def test_p2_48_cr8_rows_1_to_8_null_without_prior(self, bundle: Pillar3TemplateBundle) -> None:
         """Rows 1-8 must all be None when no prior period is supplied.
 
         Backwards-compat: existing callers that don't pass previous_period_results
@@ -330,6 +319,4 @@ class TestP248CR8BackwardsCompat:
             val = row["a"][0]
 
             # Assert
-            assert val is None, (
-                f"CR8 row {ref} must be None without prior period, got {val}"
-            )
+            assert val is None, f"CR8 row {ref} must be None without prior period, got {val}"

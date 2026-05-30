@@ -311,9 +311,9 @@ class CCFCalculator:
         # product when (and only when) no explicit risk_type was supplied. Explicit
         # risk_type always wins; an unmapped/null product yields null and leaves
         # risk_type unchanged.
-        risk_type_is_blank = pl.col("risk_type").cast(pl.Utf8, strict=False).fill_null(
-            ""
-        ).str.len_chars() == 0
+        risk_type_is_blank = (
+            pl.col("risk_type").cast(pl.Utf8, strict=False).fill_null("").str.len_chars() == 0
+        )
         product_risk_type = build_product_to_risk_type_expr("obs_product")
         exposures = exposures.with_columns(
             pl.when(risk_type_is_blank & product_risk_type.is_not_null())
@@ -373,9 +373,7 @@ class CCFCalculator:
         if is_b31:
             row_4b_ccf = float(SA_CCF_B31["MR"])
             carve_out_ccfs = (float(SA_CCF_B31["LR"]), float(SA_CCF_B31["FR"]))
-            is_resi_commitment = pl.col(
-                "is_uk_residential_mortgage_commitment"
-            ).fill_null(False)
+            is_resi_commitment = pl.col("is_uk_residential_mortgage_commitment").fill_null(False)
             sa_not_in_carve_out = ~pl.col("_sa_ccf_from_risk_type").is_in(carve_out_ccfs)
             exposures = exposures.with_columns(
                 pl.when(is_resi_commitment & sa_not_in_carve_out)
@@ -471,10 +469,9 @@ class CCFCalculator:
         oc_ccf = float(SA_CCF_B31["OC"])
         ucc_ccf = float(SA_CCF_B31["LR"])
 
-        is_pr_commitment = (
-            pl.col("is_purchased_receivable_commitment").fill_null(False)
-            & pl.col("is_revolving").fill_null(False)
-        )
+        is_pr_commitment = pl.col("is_purchased_receivable_commitment").fill_null(False) & pl.col(
+            "is_revolving"
+        ).fill_null(False)
         # Table A1 Row 7 UCC criterion: the commitment is unconditionally
         # cancellable (LR risk_type) -> 10%; otherwise the Row 5 OC 40% default.
         is_ucc = pl.col("risk_type").fill_null("").str.to_lowercase().is_in(["lr", "low_risk"])

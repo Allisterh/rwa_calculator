@@ -268,7 +268,9 @@ def print_summary(saved: dict[str, Path]) -> None:
         df = pl.read_parquet(path)
         print(f"  {name:<25} {len(df):>3} row(s)  ->  {path}")
     print("-" * 70)
-    print(f"Scenario B31-L24: unlisted equity, business_age_years=2.0 < {BUSINESS_AGE_THRESHOLD_YEARS}y")
+    print(
+        f"Scenario B31-L24: unlisted equity, business_age_years=2.0 < {BUSINESS_AGE_THRESHOLD_YEARS}y"
+    )
     print(f"  Counterparty:    {COUNTERPARTY_REF}")
     print(f"  Exposure:        {EXPOSURE_REF}")
     print("  equity_type:     unlisted (base RW 250%, Art. 133(3))")

@@ -56,10 +56,10 @@ from rwa_calc.engine.ccf import sa_ccf_expression
 CONT_REF_ROW3: str = "OBS-ROW3-001"
 CONT_REF_ROW4: str = "NIF-ROW4-001"
 
-RISK_TYPE_ROW3: str = "MR_ISSUED"           # Row 3 — NEW (not yet in enum pre-fix)
-RISK_TYPE_ROW4: str = "MR"                  # Row 4 — existing
+RISK_TYPE_ROW3: str = "MR_ISSUED"  # Row 3 — NEW (not yet in enum pre-fix)
+RISK_TYPE_ROW4: str = "MR"  # Row 4 — existing
 CANONICAL_ROW3: str = "medium_risk_issued"  # expected canonical value post-fix
-CANONICAL_ROW4: str = "medium_risk"         # expected canonical value
+CANONICAL_ROW4: str = "medium_risk"  # expected canonical value
 
 NOMINAL_AMOUNT: float = 1_000_000.00
 EXPECTED_CCF: float = 0.50
@@ -297,8 +297,7 @@ class TestMRIssuedSeparability:
 
         # Assert
         assert resolved == "MR_ISSUED", (
-            f"RISK_TYPE_SYNONYMS['mr_issued'] should resolve to 'MR_ISSUED', "
-            f"got {resolved!r}"
+            f"RISK_TYPE_SYNONYMS['mr_issued'] should resolve to 'MR_ISSUED', got {resolved!r}"
         )
         assert resolved != RISK_TYPE_SYNONYMS.get("mr", "MR"), (
             "MR_ISSUED and MR must resolve to *distinct* canonical codes"
@@ -319,8 +318,7 @@ class TestMRIssuedSeparability:
 
         # Assert
         assert resolved == "MR_ISSUED", (
-            f"RISK_TYPE_SYNONYMS['medium_risk_issued'] should be 'MR_ISSUED', "
-            f"got {resolved!r}"
+            f"RISK_TYPE_SYNONYMS['medium_risk_issued'] should be 'MR_ISSUED', got {resolved!r}"
         )
 
     def test_row3_and_row4_risk_types_are_distinct_strings(self) -> None:

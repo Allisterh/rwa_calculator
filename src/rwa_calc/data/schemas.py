@@ -159,9 +159,7 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     # Row 4(b) rate (50%), unless that CCF is already 10% or 100% (the Row 4(b)
     # "not subject to a 10% or 100% conversion factor" carve-out). No effect
     # under CRR (Table A1 is Basel 3.1 only).
-    "is_uk_residential_mortgage_commitment": ColumnSpec(
-        pl.Boolean, default=False, required=False
-    ),
+    "is_uk_residential_mortgage_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
     # PRA PS1/26 Art. 166E(5): undrawn purchase commitments for *revolving*
     # purchased-receivables facilities attract a 40% CCF by default (Table A1
     # Row 5 "Other Commitments"), dropping to 10% where the commitment also
@@ -169,9 +167,7 @@ FACILITY_SCHEMA: dict[str, ColumnSpec] = {
     # Basel 3.1 the CCF engine routes the row to the OC (40%) / LR (10%) rate
     # regardless of the otherwise-resolved risk_type. No effect under CRR
     # (Art. 166E(5) is Basel 3.1 only).
-    "is_purchased_receivable_commitment": ColumnSpec(
-        pl.Boolean, default=False, required=False
-    ),
+    "is_purchased_receivable_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_payroll_loan": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_buy_to_let": ColumnSpec(pl.Boolean, default=False, required=False),
     # CRR Art. 178 row-level default flag. When True, the exposure is routed
@@ -299,15 +295,11 @@ CONTINGENTS_SCHEMA: dict[str, ColumnSpec] = {
     # PRA PS1/26 Art. 111(1) Table A1 Row 4(b): commitments to extend credit
     # secured by residential property attract a 50% CCF. Mirrored from
     # FACILITY_SCHEMA for parity; see the FACILITY_SCHEMA notes for full detail.
-    "is_uk_residential_mortgage_commitment": ColumnSpec(
-        pl.Boolean, default=False, required=False
-    ),
+    "is_uk_residential_mortgage_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
     # PRA PS1/26 Art. 166E(5): revolving purchased-receivables undrawn purchase
     # commitment flag. Mirrored from FACILITY_SCHEMA for parity; see the
     # FACILITY_SCHEMA notes for full detail.
-    "is_purchased_receivable_commitment": ColumnSpec(
-        pl.Boolean, default=False, required=False
-    ),
+    "is_purchased_receivable_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
     # CRR Art. 178 row-level default flag. See FACILITY_SCHEMA for full notes.
     "is_defaulted": ColumnSpec(pl.Boolean, default=False, required=False),
     # PRA PS1/26 Art. 124(3) / Art. 124K: True when the financed property is

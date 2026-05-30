@@ -1356,9 +1356,7 @@ def _ov1_equity_subapproach_rwa(
     disc_col, disc_val = disc
     if not approach_col or disc_col not in cols:
         return None
-    subset = data.filter(
-        (pl.col(approach_col) == "equity") & (pl.col(disc_col) == disc_val)
-    )
+    subset = data.filter((pl.col(approach_col) == "equity") & (pl.col(disc_col) == disc_val))
     return _col_sum(subset, rwa_col)
 
 

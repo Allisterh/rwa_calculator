@@ -83,12 +83,12 @@ SCENARIO_ID: str = "P2.30"
 COUNTERPARTY_REF: str = "CP-CORP-01"
 
 # Exposure references
-CONT_REF_ROW3: str = "OBS-ROW3-001"   # Annex I Row 3: other issued OBS item
-CONT_REF_ROW4: str = "NIF-ROW4-001"   # Annex I Row 4: NIF/RUF commitment
+CONT_REF_ROW3: str = "OBS-ROW3-001"  # Annex I Row 3: other issued OBS item
+CONT_REF_ROW4: str = "NIF-ROW4-001"  # Annex I Row 4: NIF/RUF commitment
 
 # Risk types — MR_ISSUED is pre-schema (not yet in VALID_RISK_TYPES_INPUT)
 RISK_TYPE_ROW3: str = "MR_ISSUED"  # NEW — Annex I Row 3; engine-implementer adds this
-RISK_TYPE_ROW4: str = "MR"         # Existing — Annex I Row 4 (NIFs / RUFs)
+RISK_TYPE_ROW4: str = "MR"  # Existing — Annex I Row 4 (NIFs / RUFs)
 
 # Shared economics
 NOMINAL_AMOUNT: float = 1_000_000.00
@@ -98,8 +98,8 @@ VALUE_DATE: date = date(2027, 1, 1)
 MATURITY_DATE: date = date(2029, 6, 30)  # > 1y — typical NIF/RUF / issued contingent term
 
 # is_obs_commitment discrimination
-IS_OBS_COMMITMENT_ROW3: bool = False   # Row 3: issued OBS item (not a commitment)
-IS_OBS_COMMITMENT_ROW4: bool = True    # Row 4: commitment (NIF/RUF)
+IS_OBS_COMMITMENT_ROW3: bool = False  # Row 3: issued OBS item (not a commitment)
+IS_OBS_COMMITMENT_ROW4: bool = True  # Row 4: commitment (NIF/RUF)
 
 # Expected CCF and EAD (both rows resolve to 50% under SA)
 EXPECTED_CCF: float = 0.50
@@ -239,7 +239,7 @@ def create_p230_contingents() -> pl.DataFrame:
     rows = [
         _Contingent(
             contingent_reference=CONT_REF_ROW3,
-            product_type="PERF_BOND",          # typical Annex I Row 3 product
+            product_type="PERF_BOND",  # typical Annex I Row 3 product
             book_code="CORP_LENDING",
             counterparty_reference=COUNTERPARTY_REF,
             value_date=VALUE_DATE,
@@ -249,13 +249,13 @@ def create_p230_contingents() -> pl.DataFrame:
             lgd=0.45,
             beel=0.0,
             seniority="senior",
-            risk_type=RISK_TYPE_ROW3,   # "MR_ISSUED" — pre-schema, new value
+            risk_type=RISK_TYPE_ROW3,  # "MR_ISSUED" — pre-schema, new value
             is_obs_commitment=IS_OBS_COMMITMENT_ROW3,
             bs_type=BS_TYPE,
         ),
         _Contingent(
             contingent_reference=CONT_REF_ROW4,
-            product_type="NIF",                # typical Annex I Row 4 product
+            product_type="NIF",  # typical Annex I Row 4 product
             book_code="CORP_LENDING",
             counterparty_reference=COUNTERPARTY_REF,
             value_date=VALUE_DATE,
@@ -265,7 +265,7 @@ def create_p230_contingents() -> pl.DataFrame:
             lgd=0.45,
             beel=0.0,
             seniority="senior",
-            risk_type=RISK_TYPE_ROW4,   # "MR" — existing value
+            risk_type=RISK_TYPE_ROW4,  # "MR" — existing value
             is_obs_commitment=IS_OBS_COMMITMENT_ROW4,
             bs_type=BS_TYPE,
         ),
@@ -273,11 +273,7 @@ def create_p230_contingents() -> pl.DataFrame:
 
     # Build only columns that exist in CONTINGENTS_SCHEMA — risk_type is pl.String
     # so "MR_ISSUED" writes without coercion.
-    schema_cols = {
-        k: v
-        for k, v in dtypes_of(CONTINGENTS_SCHEMA).items()
-        if k in rows[0].to_dict()
-    }
+    schema_cols = {k: v for k, v in dtypes_of(CONTINGENTS_SCHEMA).items() if k in rows[0].to_dict()}
     return pl.DataFrame([r.to_dict() for r in rows], schema=schema_cols)
 
 
@@ -331,11 +327,15 @@ def print_summary(saved: dict[str, Path]) -> None:
                 )
     print("-" * 70)
     print(f"Scenario: {SCENARIO_ID} — Annex I Row 3 (MR_ISSUED) vs Row 4 (MR) discrimination")
-    print(f"  Row 3 ({CONT_REF_ROW3}): risk_type={RISK_TYPE_ROW3!r}, "
-          f"is_obs_commitment={IS_OBS_COMMITMENT_ROW3}")
+    print(
+        f"  Row 3 ({CONT_REF_ROW3}): risk_type={RISK_TYPE_ROW3!r}, "
+        f"is_obs_commitment={IS_OBS_COMMITMENT_ROW3}"
+    )
     print(f"    Expected ccf={EXPECTED_CCF}, ead={EXPECTED_EAD:,.0f}")
-    print(f"  Row 4 ({CONT_REF_ROW4}): risk_type={RISK_TYPE_ROW4!r}, "
-          f"is_obs_commitment={IS_OBS_COMMITMENT_ROW4}")
+    print(
+        f"  Row 4 ({CONT_REF_ROW4}): risk_type={RISK_TYPE_ROW4!r}, "
+        f"is_obs_commitment={IS_OBS_COMMITMENT_ROW4}"
+    )
     print(f"    Expected ccf={EXPECTED_CCF}, ead={EXPECTED_EAD:,.0f}")
     print()
     print("  Key assertion: risk_type values are DISTINCT")

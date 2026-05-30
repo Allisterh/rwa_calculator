@@ -260,8 +260,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         """
         actual_ead = pdlgd_equity_result["ead_final"]
         assert actual_ead == pytest.approx(EAD), (
-            f"{SCENARIO_ID}: ead_final should equal input EAD {EAD:,.0f}. "
-            f"Got {actual_ead:,.0f}."
+            f"{SCENARIO_ID}: ead_final should equal input EAD {EAD:,.0f}. Got {actual_ead:,.0f}."
         )
 
     def test_p1_153_crr_j21_pd_floor_parameter(self) -> None:
@@ -273,8 +272,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Assert: PD_FLOOR == 0.0040.
         """
         assert pytest.approx(0.0040, abs=1e-8) == PD_FLOOR, (
-            f"{SCENARIO_ID}: Art. 165(1)(c) PD floor must be 0.0040 (0.40%). "
-            f"Got {PD_FLOOR}."
+            f"{SCENARIO_ID}: Art. 165(1)(c) PD floor must be 0.0040 (0.40%). Got {PD_FLOOR}."
         )
 
     def test_p1_153_crr_j21_lgd_parameter(self) -> None:
@@ -286,8 +284,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Assert: LGD_SUPERVISORY == 0.90.
         """
         assert pytest.approx(0.90, abs=1e-8) == LGD_SUPERVISORY, (
-            f"{SCENARIO_ID}: Art. 165(2) LGD must be 0.90 (90%). "
-            f"Got {LGD_SUPERVISORY}."
+            f"{SCENARIO_ID}: Art. 165(2) LGD must be 0.90 (90%). Got {LGD_SUPERVISORY}."
         )
 
     def test_p1_153_crr_j21_maturity_parameter(self) -> None:
@@ -299,8 +296,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Assert: MATURITY_YEARS == 5.0.
         """
         assert pytest.approx(5.0, abs=1e-8) == MATURITY_YEARS, (
-            f"{SCENARIO_ID}: Art. 165(3) maturity must be 5.0 years. "
-            f"Got {MATURITY_YEARS}."
+            f"{SCENARIO_ID}: Art. 165(3) maturity must be 5.0 years. Got {MATURITY_YEARS}."
         )
 
     def test_p1_153_crr_j21_scaling_factor_parameter(self) -> None:
@@ -312,8 +308,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Assert: SCALING_FACTOR == 1.06.
         """
         assert pytest.approx(1.06, abs=1e-8) == SCALING_FACTOR, (
-            f"{SCENARIO_ID}: Art. 153 scaling factor must be 1.06. "
-            f"Got {SCALING_FACTOR}."
+            f"{SCENARIO_ID}: Art. 153 scaling factor must be 1.06. Got {SCALING_FACTOR}."
         )
 
     def test_p1_153_crr_j21_expected_correlation(self) -> None:
@@ -323,8 +318,7 @@ class TestP1153_CRRart1553_PdLgdEquityApproach:
         Cross-checks the hand-calc golden value from the fixture module.
         """
         assert pytest.approx(0.21824769037, rel=1e-6) == EXPECTED_CORRELATION, (
-            f"{SCENARIO_ID}: expected correlation ≈ 0.218248. "
-            f"Got {EXPECTED_CORRELATION}."
+            f"{SCENARIO_ID}: expected correlation ≈ 0.218248. Got {EXPECTED_CORRELATION}."
         )
 
     def test_p1_153_crr_j21_expected_k(self) -> None:

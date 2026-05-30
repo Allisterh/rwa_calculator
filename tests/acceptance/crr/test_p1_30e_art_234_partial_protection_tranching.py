@@ -96,21 +96,21 @@ _REPORTING_DATE = date(2026, 6, 1)
 # Expected tranche dimensions
 # ---------------------------------------------------------------------------
 
-_EXPECTED_ROW_COUNT = 3           # three-way Art. 234 split
-_EXPECTED_EAD_TOTAL = LOAN_EAD    # 1,000,000 — conservation
-_EXPECTED_EAD_FIRST_LOSS = FIRST_LOSS_WIDTH     # 200,000
-_EXPECTED_EAD_PROTECTED = PROTECTED_WIDTH        # 400,000
-_EXPECTED_EAD_SENIOR = SENIOR_WIDTH              # 400,000
+_EXPECTED_ROW_COUNT = 3  # three-way Art. 234 split
+_EXPECTED_EAD_TOTAL = LOAN_EAD  # 1,000,000 — conservation
+_EXPECTED_EAD_FIRST_LOSS = FIRST_LOSS_WIDTH  # 200,000
+_EXPECTED_EAD_PROTECTED = PROTECTED_WIDTH  # 400,000
+_EXPECTED_EAD_SENIOR = SENIOR_WIDTH  # 400,000
 
 _EXPECTED_GUARANTEED_PORTION = GUARANTEE_AMOUNT_COVERED  # 400,000 on mezzanine row
-_EXPECTED_UNGUARANTEED_FL = FIRST_LOSS_WIDTH              # 200,000 on first-loss row
-_EXPECTED_UNGUARANTEED_SEN = SENIOR_WIDTH                 # 400,000 on senior row
+_EXPECTED_UNGUARANTEED_FL = FIRST_LOSS_WIDTH  # 200,000 on first-loss row
+_EXPECTED_UNGUARANTEED_SEN = SENIOR_WIDTH  # 400,000 on senior row
 
-_EXPECTED_RWA_TOTAL = EXPECTED_RWA_TOTAL    # 800,000
+_EXPECTED_RWA_TOTAL = EXPECTED_RWA_TOTAL  # 800,000
 _EXPECTED_BLENDED_RW = EXPECTED_BLENDED_RW  # 0.80
 
-_EXPECTED_GUARANTOR_RW = GUARANTOR_RW   # 0.50 on mezzanine row
-_EXPECTED_BORROWER_RW = BORROWER_RW     # 1.00 on retained rows
+_EXPECTED_GUARANTOR_RW = GUARANTOR_RW  # 0.50 on mezzanine row
+_EXPECTED_BORROWER_RW = BORROWER_RW  # 1.00 on retained rows
 
 
 # ---------------------------------------------------------------------------
@@ -217,18 +217,14 @@ class TestP130eArt234PartialProtectionTranching:
 
         Under Art. 234 this must contain exactly three rows (the three tranches).
         """
-        rows = sa_results_df.filter(
-            pl.col("parent_exposure_reference") == LOAN_REF
-        )
+        rows = sa_results_df.filter(pl.col("parent_exposure_reference") == LOAN_REF)
         return rows
 
     # -----------------------------------------------------------------------
     # Structure: three rows, not two
     # -----------------------------------------------------------------------
 
-    def test_p1_30e_art_234_produces_three_tranche_rows(
-        self, tranche_rows: pl.DataFrame
-    ) -> None:
+    def test_p1_30e_art_234_produces_three_tranche_rows(self, tranche_rows: pl.DataFrame) -> None:
         """
         CRR Art. 234: mezzanine guarantee must split EXP-234-1 into EXACTLY three rows.
 
@@ -257,9 +253,7 @@ class TestP130eArt234PartialProtectionTranching:
     # Guarantor row: exactly one row has guarantor_reference=CP-INST-1
     # -----------------------------------------------------------------------
 
-    def test_p1_30e_art_234_exactly_one_guarantor_row(
-        self, tranche_rows: pl.DataFrame
-    ) -> None:
+    def test_p1_30e_art_234_exactly_one_guarantor_row(self, tranche_rows: pl.DataFrame) -> None:
         """
         CRR Art. 234: exactly ONE tranche row carries guarantor_reference=CP-INST-1.
 
@@ -272,9 +266,7 @@ class TestP130eArt234PartialProtectionTranching:
         so this is a belt-and-braces check for the mezzanine row specifically.
         """
         # Arrange
-        guaranteed_rows = tranche_rows.filter(
-            pl.col("guarantor_reference") == GUARANTOR_REF
-        )
+        guaranteed_rows = tranche_rows.filter(pl.col("guarantor_reference") == GUARANTOR_REF)
 
         # Assert
         assert guaranteed_rows.height == 1, (
@@ -298,9 +290,7 @@ class TestP130eArt234PartialProtectionTranching:
         (above) is the primary discriminator.
         """
         # Arrange
-        guaranteed_rows = tranche_rows.filter(
-            pl.col("guarantor_reference") == GUARANTOR_REF
-        )
+        guaranteed_rows = tranche_rows.filter(pl.col("guarantor_reference") == GUARANTOR_REF)
         # If no guaranteed row exists at all, this will produce an empty filter;
         # but if exactly one row passes (from the buggy 2-row output), it exists.
         # The primary failure point is the row-count test above.
@@ -337,9 +327,7 @@ class TestP130eArt234PartialProtectionTranching:
         so only 1 null-guarantor row exists instead of 2.
         """
         # Arrange
-        retained_rows = tranche_rows.filter(
-            pl.col("guarantor_reference").is_null()
-        )
+        retained_rows = tranche_rows.filter(pl.col("guarantor_reference").is_null())
 
         # Assert
         assert retained_rows.height == 2, (
@@ -364,14 +352,12 @@ class TestP130eArt234PartialProtectionTranching:
         on which retained row corresponds to first-loss.
         """
         # Arrange
-        retained_rows = tranche_rows.filter(
-            pl.col("guarantor_reference").is_null()
-        ).sort("ead_final")
+        retained_rows = tranche_rows.filter(pl.col("guarantor_reference").is_null()).sort(
+            "ead_final"
+        )
 
         if retained_rows.height == 0:
-            pytest.fail(
-                "P1.30e Art. 234: no retained rows found with guarantor_reference=null."
-            )
+            pytest.fail("P1.30e Art. 234: no retained rows found with guarantor_reference=null.")
 
         # Take the row with smaller EAD as the first-loss tranche
         first_loss_ead = retained_rows["ead_final"][0]
@@ -384,9 +370,7 @@ class TestP130eArt234PartialProtectionTranching:
             f"Current engine has single retained row EAD={600_000:,.0f} (first-loss attach)."
         )
 
-    def test_p1_30e_art_234_senior_retained_ead_is_400k(
-        self, tranche_rows: pl.DataFrame
-    ) -> None:
+    def test_p1_30e_art_234_senior_retained_ead_is_400k(self, tranche_rows: pl.DataFrame) -> None:
         """
         CRR Art. 234: senior retained tranche must have EAD=400,000.
 
@@ -397,14 +381,12 @@ class TestP130eArt234PartialProtectionTranching:
         TODAY THIS FAILS: the single remainder row has EAD=600,000, not 400,000.
         """
         # Arrange
-        retained_rows = tranche_rows.filter(
-            pl.col("guarantor_reference").is_null()
-        ).sort("ead_final")
+        retained_rows = tranche_rows.filter(pl.col("guarantor_reference").is_null()).sort(
+            "ead_final"
+        )
 
         if retained_rows.height == 0:
-            pytest.fail(
-                "P1.30e Art. 234: no retained rows found with guarantor_reference=null."
-            )
+            pytest.fail("P1.30e Art. 234: no retained rows found with guarantor_reference=null.")
 
         if retained_rows.height < 2:
             pytest.fail(
@@ -427,9 +409,7 @@ class TestP130eArt234PartialProtectionTranching:
     # EAD conservation
     # -----------------------------------------------------------------------
 
-    def test_p1_30e_art_234_ead_conservation(
-        self, tranche_rows: pl.DataFrame
-    ) -> None:
+    def test_p1_30e_art_234_ead_conservation(self, tranche_rows: pl.DataFrame) -> None:
         """
         EAD conservation: sum of all tranche EADs must equal original EAD (1,000,000).
 
@@ -471,9 +451,7 @@ class TestP130eArt234PartialProtectionTranching:
         correct substituted risk weight on the guaranteed sub-row.
         """
         # Arrange
-        guaranteed_rows = tranche_rows.filter(
-            pl.col("guarantor_reference") == GUARANTOR_REF
-        )
+        guaranteed_rows = tranche_rows.filter(pl.col("guarantor_reference") == GUARANTOR_REF)
 
         if guaranteed_rows.height == 0:
             pytest.fail(
@@ -500,9 +478,7 @@ class TestP130eArt234PartialProtectionTranching:
         This assertion PASSES today (regression pin).
         """
         # Arrange
-        guaranteed_rows = tranche_rows.filter(
-            pl.col("guarantor_reference") == GUARANTOR_REF
-        )
+        guaranteed_rows = tranche_rows.filter(pl.col("guarantor_reference") == GUARANTOR_REF)
 
         if guaranteed_rows.height == 0:
             pytest.fail(
@@ -519,9 +495,7 @@ class TestP130eArt234PartialProtectionTranching:
     # Aggregate scalar checks (pass today; regression pins post-fix)
     # -----------------------------------------------------------------------
 
-    def test_p1_30e_art_234_total_rwa_is_800k(
-        self, tranche_rows: pl.DataFrame
-    ) -> None:
+    def test_p1_30e_art_234_total_rwa_is_800k(self, tranche_rows: pl.DataFrame) -> None:
         """
         CRR Art. 234: ΣRWA across all three tranches == 800,000.
 
@@ -537,13 +511,10 @@ class TestP130eArt234PartialProtectionTranching:
 
         # Assert
         assert total_rwa == pytest.approx(_EXPECTED_RWA_TOTAL, rel=1e-6), (
-            f"P1.30e Art. 234: ΣRWA expected {_EXPECTED_RWA_TOTAL:,.0f}, "
-            f"got {total_rwa:,.2f}"
+            f"P1.30e Art. 234: ΣRWA expected {_EXPECTED_RWA_TOTAL:,.0f}, got {total_rwa:,.2f}"
         )
 
-    def test_p1_30e_art_234_blended_risk_weight_is_80_pct(
-        self, tranche_rows: pl.DataFrame
-    ) -> None:
+    def test_p1_30e_art_234_blended_risk_weight_is_80_pct(self, tranche_rows: pl.DataFrame) -> None:
         """
         CRR Art. 234: blended post-CRM risk weight == 0.80 (80%).
 

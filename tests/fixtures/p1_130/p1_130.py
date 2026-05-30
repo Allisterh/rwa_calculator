@@ -112,7 +112,7 @@ EAD_SA_1: float = 50_000_000.0
 # IRB parameters
 PD_IRB_1: float = 0.0010  # 0.10%
 PD_IRB_2: float = 0.0015  # 0.15%
-LGD_FIRB: float = 0.40    # Basel 3.1 F-IRB senior unsecured corporate (Art. 161(1)(aa))
+LGD_FIRB: float = 0.40  # Basel 3.1 F-IRB senior unsecured corporate (Art. 161(1)(aa))
 EFFECTIVE_MATURITY: float = 2.5  # years
 
 # Floor factor (2030+ fully phased; test config uses reporting_date=2030-01-01)

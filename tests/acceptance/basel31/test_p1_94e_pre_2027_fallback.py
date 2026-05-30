@@ -67,7 +67,7 @@ from tests.fixtures.single_exposure import calculate_single_sa_exposure
 # Tolerances
 # ---------------------------------------------------------------------------
 
-_RW_TOL = 1e-6   # risk_weight (dimensionless ratio)
+_RW_TOL = 1e-6  # risk_weight (dimensionless ratio)
 _RWA_TOL = 0.50  # £0.50 on rwa
 
 # ---------------------------------------------------------------------------
@@ -130,9 +130,7 @@ class TestP194EPreEffectiveDateMultiplierSuppressed:
             config=config_pre_2027,
         )
 
-    def test_p1_94e_pre_2027_risk_weight_equals_base_retail_rw(
-        self, pre_2027_result: dict
-    ) -> None:
+    def test_p1_94e_pre_2027_risk_weight_equals_base_retail_rw(self, pre_2027_result: dict) -> None:
         """
         Pre-2027: risk_weight must equal base retail SA RW — multiplier suppressed.
 
@@ -249,8 +247,7 @@ class TestP194EOnEffectiveDateMultiplierFires:
         """
         rwa = float(b31_result["rwa"])
         assert rwa == pytest.approx(RWA_B31, abs=_RWA_TOL), (
-            f"Run B (reporting_date=2027-01-01): rwa {rwa:,.2f} != "
-            f"expected {RWA_B31:,.2f}."
+            f"Run B (reporting_date=2027-01-01): rwa {rwa:,.2f} != expected {RWA_B31:,.2f}."
         )
 
     def test_p1_94e_b31_currency_mismatch_multiplier_applied(self, b31_result: dict) -> None:

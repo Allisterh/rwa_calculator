@@ -270,9 +270,7 @@ def _verify_constants() -> None:
     assert abs(EXPECTED_CLOSING - 1_150_000.0) < 1e-6, (
         f"Closing constant incorrect: {EXPECTED_CLOSING}"
     )
-    assert abs(EXPECTED_ROW_8 - 150_000.0) < 1e-6, (
-        f"Row-8 constant incorrect: {EXPECTED_ROW_8}"
-    )
+    assert abs(EXPECTED_ROW_8 - 150_000.0) < 1e-6, f"Row-8 constant incorrect: {EXPECTED_ROW_8}"
     assert abs(EXPECTED_ROW_8_DECREASE - (-150_000.0)) < 1e-6, (
         f"Row-8 decrease constant incorrect: {EXPECTED_ROW_8_DECREASE}"
     )
@@ -290,13 +288,19 @@ if __name__ == "__main__":
     _verify_irb_filter()
     _verify_constants()
     print("P2.48 fixture self-check passed.")
-    print(f"  Prior (T-1): FIRB={PRIOR_FIRB_RWA:,.2f}, AIRB={PRIOR_AIRB_RWA:,.2f}, "
-          f"slotting={PRIOR_SLOTTING_RWA:,.2f} (excluded)")
-    print(f"  Current (T): FIRB={CURRENT_FIRB_RWA:,.2f}, AIRB={CURRENT_AIRB_RWA:,.2f}, "
-          f"slotting={CURRENT_SLOTTING_RWA:,.2f} (excluded)")
+    print(
+        f"  Prior (T-1): FIRB={PRIOR_FIRB_RWA:,.2f}, AIRB={PRIOR_AIRB_RWA:,.2f}, "
+        f"slotting={PRIOR_SLOTTING_RWA:,.2f} (excluded)"
+    )
+    print(
+        f"  Current (T): FIRB={CURRENT_FIRB_RWA:,.2f}, AIRB={CURRENT_AIRB_RWA:,.2f}, "
+        f"slotting={CURRENT_SLOTTING_RWA:,.2f} (excluded)"
+    )
     print(f"  Opening (row 1) = {EXPECTED_OPENING:,.2f}")
     print(f"  Closing (row 9) = {EXPECTED_CLOSING:,.2f}")
     print(f"  Row 8 Other    = {EXPECTED_ROW_8:+,.2f}  (positive = increase)")
     print(f"  Decrease ctrl  = {EXPECTED_ROW_8_DECREASE:+,.2f}  (negative = decrease)")
-    print(f"  Reconciliation: {EXPECTED_OPENING:,.2f} + {EXPECTED_ROW_8:+,.2f}"
-          f" = {EXPECTED_OPENING + EXPECTED_ROW_8:,.2f} == {EXPECTED_CLOSING:,.2f} ✓")
+    print(
+        f"  Reconciliation: {EXPECTED_OPENING:,.2f} + {EXPECTED_ROW_8:+,.2f}"
+        f" = {EXPECTED_OPENING + EXPECTED_ROW_8:,.2f} == {EXPECTED_CLOSING:,.2f} ✓"
+    )

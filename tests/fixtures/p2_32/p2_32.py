@@ -130,9 +130,9 @@ SCENARIO_ID_CRR: str = "CRR-D.CCF9"
 COUNTERPARTY_REF: str = "CP_PR_CORP_001"
 
 # Facility references
-FAC_REF_OC: str = "PR_COMMIT_40"   # B3.1: CCF = 0.40 (OC / Art.166E(5) main limb)
-FAC_REF_LR: str = "PR_COMMIT_10"   # B3.1: CCF = 0.10 (LR/UCC exception)
-FAC_REF_MR: str = "PR_COMMIT_MR"   # B3.1: CCF = 0.40 (overrides generic MR = 0.50)
+FAC_REF_OC: str = "PR_COMMIT_40"  # B3.1: CCF = 0.40 (OC / Art.166E(5) main limb)
+FAC_REF_LR: str = "PR_COMMIT_10"  # B3.1: CCF = 0.10 (LR/UCC exception)
+FAC_REF_MR: str = "PR_COMMIT_MR"  # B3.1: CCF = 0.40 (overrides generic MR = 0.50)
 FAC_REF_CRR: str = "PR_COMMIT_40_CRR"  # CRR control: flag is no-op
 
 # Shared economics
@@ -143,22 +143,22 @@ VALUE_DATE: date = date(2027, 1, 1)
 MATURITY_DATE: date = date(2030, 6, 30)  # > 1y to qualify as committed OC
 
 # Expected outputs (Basel 3.1)
-EXPECTED_CCF_OC: float = 0.40      # Art. 166E(5) main limb → SA_CCF_B31["OC"]
-EXPECTED_CCF_LR: float = 0.10      # Art. 166E(5) UCC/LR exception → SA_CCF_B31["LR"]
-EXPECTED_CCF_MR: float = 0.40      # Art. 166E(5) override — generic MR=0.50 → 0.40
+EXPECTED_CCF_OC: float = 0.40  # Art. 166E(5) main limb → SA_CCF_B31["OC"]
+EXPECTED_CCF_LR: float = 0.10  # Art. 166E(5) UCC/LR exception → SA_CCF_B31["LR"]
+EXPECTED_CCF_MR: float = 0.40  # Art. 166E(5) override — generic MR=0.50 → 0.40
 
 EXPECTED_EAD_OC: float = 400_000.00  # 1_000_000 × 0.40
 EXPECTED_EAD_LR: float = 100_000.00  # 1_000_000 × 0.10
 EXPECTED_EAD_MR: float = 400_000.00  # 1_000_000 × 0.40 (pre-fix: 500_000)
 
 # Pre-fix (generic MR) expected output — used by tests to confirm the fix fires
-PRE_FIX_CCF_MR: float = 0.50   # SA_CCF_B31["MR"] without Art. 166E(5) override
+PRE_FIX_CCF_MR: float = 0.50  # SA_CCF_B31["MR"] without Art. 166E(5) override
 PRE_FIX_EAD_MR: float = 500_000.00
 
 # Regulatory scalar cross-references (ccf.py lines)
-SA_CCF_B31_OC: float = 0.40   # ccf.py line 75
-SA_CCF_B31_LR: float = 0.10   # ccf.py line 77
-SA_CCF_B31_MR: float = 0.50   # ccf.py line 74
+SA_CCF_B31_OC: float = 0.40  # ccf.py line 75
+SA_CCF_B31_LR: float = 0.10  # ccf.py line 77
+SA_CCF_B31_MR: float = 0.50  # ccf.py line 74
 
 
 # ---------------------------------------------------------------------------

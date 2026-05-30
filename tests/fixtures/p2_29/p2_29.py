@@ -113,10 +113,10 @@ FLOOR_PCT: float = 0.725
 
 # --- Equity row rwa_final values ---
 
-RWA_IRB_TRANSITIONAL: float = 1_600.00   # row 11
-RWA_LOOK_THROUGH: float = 1_500.00       # row 12
-RWA_MANDATE_BASED: float = 960.00        # row 13
-RWA_FALLBACK: float = 6_250.00           # row 14
+RWA_IRB_TRANSITIONAL: float = 1_600.00  # row 11
+RWA_LOOK_THROUGH: float = 1_500.00  # row 12
+RWA_MANDATE_BASED: float = 960.00  # row 13
+RWA_FALLBACK: float = 6_250.00  # row 14
 
 # Sum across all 4 equity rows (= U-TREA for this minimal portfolio)
 U_TREA: float = RWA_IRB_TRANSITIONAL + RWA_LOOK_THROUGH + RWA_MANDATE_BASED + RWA_FALLBACK
@@ -131,31 +131,31 @@ OF_ADJ_IRB_T2_CREDIT: float = 500.0
 OF_ADJ_IRB_CET1_DEDUCTION: float = 0.0
 OF_ADJ_GCRA_AMOUNT: float = 0.0
 OF_ADJ_SA_T2_CREDIT: float = 0.0
-OF_ADJ: float = 6_250.0          # 12.5 * 500.0
+OF_ADJ: float = 6_250.0  # 12.5 * 500.0
 
 # S-TREA and floor threshold
 S_TREA: float = 100_000.0
-FLOOR_THRESHOLD: float = FLOOR_PCT * S_TREA    # 72_500.0
-FLOORED_MODELLED_RWA: float = FLOOR_THRESHOLD + OF_ADJ   # 78_750.0
-SHORTFALL: float = FLOORED_MODELLED_RWA - U_TREA         # 68_440.0
+FLOOR_THRESHOLD: float = FLOOR_PCT * S_TREA  # 72_500.0
+FLOORED_MODELLED_RWA: float = FLOOR_THRESHOLD + OF_ADJ  # 78_750.0
+SHORTFALL: float = FLOORED_MODELLED_RWA - U_TREA  # 68_440.0
 
 # --- Expected OV1 cell values ---
 
 # Column a (RWEA T)
-EXPECTED_ROW_11_A: float = RWA_IRB_TRANSITIONAL   # 1_600.00
-EXPECTED_ROW_12_A: float = RWA_LOOK_THROUGH        # 1_500.00
-EXPECTED_ROW_13_A: float = RWA_MANDATE_BASED       # 960.00
-EXPECTED_ROW_14_A: float = RWA_FALLBACK            # 6_250.00
-EXPECTED_ROW_26_A: float = FLOOR_PCT               # 0.725
-EXPECTED_ROW_27_A: float = OF_ADJ                  # 6_250.0
+EXPECTED_ROW_11_A: float = RWA_IRB_TRANSITIONAL  # 1_600.00
+EXPECTED_ROW_12_A: float = RWA_LOOK_THROUGH  # 1_500.00
+EXPECTED_ROW_13_A: float = RWA_MANDATE_BASED  # 960.00
+EXPECTED_ROW_14_A: float = RWA_FALLBACK  # 6_250.00
+EXPECTED_ROW_26_A: float = FLOOR_PCT  # 0.725
+EXPECTED_ROW_27_A: float = OF_ADJ  # 6_250.0
 
 # Column c (own funds = 0.08 × a for rows 11-14; null for 26/27)
-EXPECTED_ROW_11_C: float = EXPECTED_ROW_11_A * 0.08   # 128.00
-EXPECTED_ROW_12_C: float = EXPECTED_ROW_12_A * 0.08   # 120.00
-EXPECTED_ROW_13_C: float = EXPECTED_ROW_13_A * 0.08   # 76.80
-EXPECTED_ROW_14_C: float = EXPECTED_ROW_14_A * 0.08   # 500.00
-EXPECTED_ROW_26_C: None = None   # ratio — no own-funds shim
-EXPECTED_ROW_27_C: None = None   # adjustment — no own-funds shim
+EXPECTED_ROW_11_C: float = EXPECTED_ROW_11_A * 0.08  # 128.00
+EXPECTED_ROW_12_C: float = EXPECTED_ROW_12_A * 0.08  # 120.00
+EXPECTED_ROW_13_C: float = EXPECTED_ROW_13_A * 0.08  # 76.80
+EXPECTED_ROW_14_C: float = EXPECTED_ROW_14_A * 0.08  # 500.00
+EXPECTED_ROW_26_C: None = None  # ratio — no own-funds shim
+EXPECTED_ROW_27_C: None = None  # adjustment — no own-funds shim
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +286,9 @@ def _verify_lf() -> None:
         "rwa_final",
         "output_floor_pct",
     }
-    assert expected_cols.issubset(set(df.columns)), f"Missing columns: {expected_cols - set(df.columns)}"
+    assert expected_cols.issubset(set(df.columns)), (
+        f"Missing columns: {expected_cols - set(df.columns)}"
+    )
 
     # Row 11 discriminators
     row11 = df.filter(pl.col("exposure_id") == "EQ-TRANS-01")
@@ -317,10 +319,16 @@ if __name__ == "__main__":
     _verify_lf()
     _verify_summary()
     print("P2.29 fixture self-check passed.")
-    print(f"  4 equity rows: IRB-trans={RWA_IRB_TRANSITIONAL}, LT={RWA_LOOK_THROUGH}, "
-          f"MB={RWA_MANDATE_BASED}, FB={RWA_FALLBACK}")
-    print(f"  OutputFloorSummary: floor_pct={FLOOR_PCT}, of_adj={OF_ADJ}, "
-          f"binding={True}, shortfall={SHORTFALL}")
-    print(f"  Expected OV1 column-c: row11={EXPECTED_ROW_11_C}, row12={EXPECTED_ROW_12_C}, "
-          f"row13={EXPECTED_ROW_13_C}, row14={EXPECTED_ROW_14_C}")
+    print(
+        f"  4 equity rows: IRB-trans={RWA_IRB_TRANSITIONAL}, LT={RWA_LOOK_THROUGH}, "
+        f"MB={RWA_MANDATE_BASED}, FB={RWA_FALLBACK}"
+    )
+    print(
+        f"  OutputFloorSummary: floor_pct={FLOOR_PCT}, of_adj={OF_ADJ}, "
+        f"binding={True}, shortfall={SHORTFALL}"
+    )
+    print(
+        f"  Expected OV1 column-c: row11={EXPECTED_ROW_11_C}, row12={EXPECTED_ROW_12_C}, "
+        f"row13={EXPECTED_ROW_13_C}, row14={EXPECTED_ROW_14_C}"
+    )
     print(f"  Rows 26/27 column-c: {EXPECTED_ROW_26_C!r} (must stay null after fix)")

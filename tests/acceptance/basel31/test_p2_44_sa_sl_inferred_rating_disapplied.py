@@ -296,9 +296,7 @@ class TestP244SASLInferredRatingDisapplied:
     # Structural / exposure-class assertions
     # -------------------------------------------------------------------------
 
-    def test_p2_44_exposure_class_sa_is_corporate(
-        self, p2_44_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p2_44_exposure_class_sa_is_corporate(self, p2_44_sa_results: pl.DataFrame) -> None:
         """
         P2.44: exposure_class_sa = "corporate" (SA sub-type for SL under Art. 122B(1)).
 
@@ -321,9 +319,7 @@ class TestP244SASLInferredRatingDisapplied:
             f"(SA sub-type for SL Art. 122B(1)). Got {row['exposure_class_sa']!r}."
         )
 
-    def test_p2_44_sl_type_is_object_finance(
-        self, p2_44_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p2_44_sl_type_is_object_finance(self, p2_44_sa_results: pl.DataFrame) -> None:
         """
         P2.44: sl_type = "object_finance" (load-bearing for Art. 122B(2)(a) 100% RW).
 

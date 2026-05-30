@@ -316,9 +316,7 @@ def create_p1153_equity_exposure() -> pl.DataFrame:
     # True -> institution has adequate default-definition data -> 1.5x NOT applied (Art. 155(3)).
     # Forward-compatible: once EQUITY_EXPOSURE_SCHEMA declares this field, with_columns
     # is a no-op update on the already-typed Boolean column.
-    return df.with_columns(
-        pl.Series("has_default_definition_info", [True], dtype=pl.Boolean)
-    )
+    return df.with_columns(pl.Series("has_default_definition_info", [True], dtype=pl.Boolean))
 
 
 # ---------------------------------------------------------------------------

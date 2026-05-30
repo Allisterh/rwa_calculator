@@ -114,13 +114,13 @@ _EAD = Decimal("100_000")
 _REPORTING_DATE = date(2027, 1, 4)
 
 # Absolute tolerances
-_RW_TOL = 1e-6   # risk_weight (dimensionless ratio)
+_RW_TOL = 1e-6  # risk_weight (dimensionless ratio)
 _RWA_TOL = 0.50  # 50p on rwa
 
 # Pre-fix (current engine) values for Arm A.
 # The engine applies Art. 123B(2) waiver on hedge_coverage_ratio (0.95 >= 0.90)
 # directly, without the revolving rescale to fully-drawn base — so waiver holds.
-_PRE_FIX_RW_A = SA_RETAIL_QRRE_BASE_RW      # 0.75 (waiver fires incorrectly pre-fix)
+_PRE_FIX_RW_A = SA_RETAIL_QRRE_BASE_RW  # 0.75 (waiver fires incorrectly pre-fix)
 _PRE_FIX_RWA_A = DRAWN_AMOUNT * _PRE_FIX_RW_A  # 75,000.0
 
 
@@ -302,9 +302,7 @@ class TestP194DArmARevolvingMultiplierFires:
             f"full_draw_base = max(100k, 400k) = {FULL_DRAW_BASE_A:,.0f}."
         )
 
-    def test_p1_94d_arm_a_revolving_rwa_equals_multiplied_rwa(
-        self, arm_a_result: dict
-    ) -> None:
+    def test_p1_94d_arm_a_revolving_rwa_equals_multiplied_rwa(self, arm_a_result: dict) -> None:
         """
         Arm A (revolving, partially drawn): rwa = 100,000 * 1.125 = 112,500.
 
@@ -425,9 +423,7 @@ class TestP194DArmBNonRevolvingWaiverHolds:
             f"Post-fix regression: the revolving branch must be gated on is_revolving."
         )
 
-    def test_p1_94d_arm_b_non_revolving_rwa_equals_base_rwa(
-        self, arm_b_result: dict
-    ) -> None:
+    def test_p1_94d_arm_b_non_revolving_rwa_equals_base_rwa(self, arm_b_result: dict) -> None:
         """
         Arm B (non-revolving): rwa = 100,000 * 0.75 = 75,000.
 
@@ -441,9 +437,7 @@ class TestP194DArmBNonRevolvingWaiverHolds:
             f"EAD = {DRAWN_AMOUNT:,.0f} × risk_weight {RW_NON_REVOLVING:.4f}."
         )
 
-    def test_p1_94d_arm_b_non_revolving_multiplier_not_applied(
-        self, arm_b_result: dict
-    ) -> None:
+    def test_p1_94d_arm_b_non_revolving_multiplier_not_applied(self, arm_b_result: dict) -> None:
         """
         Arm B (non-revolving): currency_mismatch_multiplier_applied = False.
 

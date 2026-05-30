@@ -95,10 +95,10 @@ ISSUER_REF: str = "ISSUER-A"
 REPORTING_DATE: date = date(2026, 6, 30)
 
 # Exposure economics
-LONG_POSITION_VALUE: float = 1_000_000.0   # +long
-SHORT_POSITION_VALUE: float = -400_000.0   # -short (signed)
-LONG_FAIR_VALUE: float = 1_000_000.0       # abs(long) = EAD basis before netting
-SHORT_FAIR_VALUE: float = 400_000.0        # abs(short) = EAD basis before netting
+LONG_POSITION_VALUE: float = 1_000_000.0  # +long
+SHORT_POSITION_VALUE: float = -400_000.0  # -short (signed)
+LONG_FAIR_VALUE: float = 1_000_000.0  # abs(long) = EAD basis before netting
+SHORT_FAIR_VALUE: float = 400_000.0  # abs(short) = EAD basis before netting
 
 # ---------------------------------------------------------------------------
 # IRB Simple risk weight (Art. 155(2) — exchange-traded)
@@ -365,14 +365,20 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("Scenario CRR-J21: CRR Art. 155(2) non-trading-book short-position netting")
     print()
     print(f"  Counterparty:   {COUNTERPARTY_REF} — corporate, GB, performing")
-    print(f"  Long exposure:  {LONG_EXPOSURE_REF} — exchange_traded, +GBP {LONG_POSITION_VALUE:,.0f}")
-    print(f"  Short exposure: {SHORT_EXPOSURE_REF} — exchange_traded, -GBP {abs(SHORT_POSITION_VALUE):,.0f}")
+    print(
+        f"  Long exposure:  {LONG_EXPOSURE_REF} — exchange_traded, +GBP {LONG_POSITION_VALUE:,.0f}"
+    )
+    print(
+        f"  Short exposure: {SHORT_EXPOSURE_REF} — exchange_traded, -GBP {abs(SHORT_POSITION_VALUE):,.0f}"
+    )
     print(f"  Issuer key:     {ISSUER_REF}")
     print(f"  Reporting:      {REPORTING_DATE}")
     print()
     print("  Art. 155(2) hand-calculation:")
     print(f"    IRB Simple RW (exchange_traded)  = {IRB_SIMPLE_RW_EXCHANGE_TRADED:.2f}  (290%)")
-    print(f"    Net long = max(0, L+S)           = max(0, {LONG_POSITION_VALUE:,.0f} + {SHORT_POSITION_VALUE:,.0f})")
+    print(
+        f"    Net long = max(0, L+S)           = max(0, {LONG_POSITION_VALUE:,.0f} + {SHORT_POSITION_VALUE:,.0f})"
+    )
     print(f"                                     = {EXPECTED_NET_LONG:,.0f}")
     print()
     print("  Expected outputs (post-engine netting):")
@@ -384,7 +390,9 @@ def print_summary(saved: dict[str, Path]) -> None:
     print(f"    K = rwa / 12.5              = {EXPECTED_K:,.0f}")
     print()
     print("  Anti-confound:")
-    print(f"    Netted RWA {EXPECTED_RWA_TOTAL:,.0f} < no-netting {NO_NETTING_BASELINE_RWA:,.0f}  [OK]")
+    print(
+        f"    Netted RWA {EXPECTED_RWA_TOTAL:,.0f} < no-netting {NO_NETTING_BASELINE_RWA:,.0f}  [OK]"
+    )
     print()
 
     # Verify new columns are present and correctly typed

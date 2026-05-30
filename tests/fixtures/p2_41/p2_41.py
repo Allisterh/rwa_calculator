@@ -133,10 +133,10 @@ MODEL_AIRB: str = "CORP-AIRB-P241"
 # Revenue thresholds (PRA PS1/26 Art. 147A(1)(d)):
 #   GBP 44m  = SME turnover ceiling
 #   GBP 440m = large-corporate threshold
-REVENUE_FSE: float = 200_000_000.0     # FSE; below 440m; FSE limb fires
+REVENUE_FSE: float = 200_000_000.0  # FSE; below 440m; FSE limb fires
 REVENUE_LRGCORP: float = 500_000_000.0  # NOT FSE; above 440m; large-corp limb fires
 REVENUE_CORPOTHER: float = 100_000_000.0  # not FSE; in [44m, 440m]; corporate_other
-REVENUE_SME: float = 30_000_000.0       # < 44m GBP SME threshold
+REVENUE_SME: float = 30_000_000.0  # < 44m GBP SME threshold
 
 # EADs (round numbers for easy hand-calculation)
 EAD_FSE: float = 50_000_000.0
@@ -147,14 +147,14 @@ EAD_SME: float = 20_000_000.0
 # IRB parameters
 # F-IRB rows (CP1, CP2): PD from rating; LGD = 0.40 (B3.1 F-IRB senior unsecured,
 # PRA PS1/26 Art. 161(1)(aa))
-PD_FSE: float = 0.0050    # 0.50%
+PD_FSE: float = 0.0050  # 0.50%
 PD_LRGCORP: float = 0.0080  # 0.80%
 LGD_FIRB: float = 0.40
 
 # A-IRB rows (CP3, CP4): PD from rating; LGD populated (A-IRB own estimate)
 PD_CORPOTHER: float = 0.0050  # 0.50%
-PD_SME: float = 0.0100         # 1.00%
-LGD_AIRB: float = 0.30         # A-IRB own LGD estimate (above 25% AIRB floor for corp)
+PD_SME: float = 0.0100  # 1.00%
+LGD_AIRB: float = 0.30  # A-IRB own LGD estimate (above 25% AIRB floor for corp)
 
 EFFECTIVE_MATURITY: float = 2.5  # years
 
@@ -166,7 +166,7 @@ REPORTING_DATE: date = date(2027, 6, 1)
 
 # COREP row references for the load-bearing assertions
 COREP_ROW_FINANCIAL_LARGE: str = "0295"  # F-IRB — Financial and large corporates
-COREP_ROW_CORPORATE_SME: str = "0296"    # F-IRB — Other general corporates (SME)
+COREP_ROW_CORPORATE_SME: str = "0296"  # F-IRB — Other general corporates (SME)
 COREP_ROW_CORPORATE_OTHER: str = "0297"  # F-IRB — Other general corporates (non-SME)
 
 
@@ -323,7 +323,7 @@ def create_p241_counterparties() -> pl.DataFrame:
             default_status=False,
             apply_fi_scalar=False,
             is_managed_as_retail=False,
-            is_financial_sector_entity=False,   # NOT FSE — only revenue limb applies
+            is_financial_sector_entity=False,  # NOT FSE — only revenue limb applies
         ),
         _Counterparty(
             counterparty_reference=CP_CORPOTHER,
@@ -583,8 +583,12 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("-" * 70)
     print("Scenario: COREP C 02.00 corporate sub-row split (Basel 3.1)")
     print(f"  CP1 FSE (row 0295):       EAD={EAD_FSE:,.0f}, PD={PD_FSE:.2%}, LGD={LGD_FIRB:.0%}")
-    print(f"  CP2 large-corp (row 0295):EAD={EAD_LRGCORP:,.0f}, PD={PD_LRGCORP:.2%}, LGD={LGD_FIRB:.0%}")
-    print(f"  CP3 corp-other (row 0297):EAD={EAD_CORPOTHER:,.0f}, PD={PD_CORPOTHER:.2%}, LGD={LGD_AIRB:.0%}")
+    print(
+        f"  CP2 large-corp (row 0295):EAD={EAD_LRGCORP:,.0f}, PD={PD_LRGCORP:.2%}, LGD={LGD_FIRB:.0%}"
+    )
+    print(
+        f"  CP3 corp-other (row 0297):EAD={EAD_CORPOTHER:,.0f}, PD={PD_CORPOTHER:.2%}, LGD={LGD_AIRB:.0%}"
+    )
     print(f"  CP4 SME (row 0296):       EAD={EAD_SME:,.0f}, PD={PD_SME:.2%}, LGD={LGD_AIRB:.0%}")
     print(
         f"  Anti-degenerate: CP2 is_financial_sector_entity=False, "

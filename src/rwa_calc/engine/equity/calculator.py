@@ -653,12 +653,14 @@ class EquityCalculator:
         is_dedicated_treatment = (
             pl.col("equity_type")
             .str.to_lowercase()
-            .is_in([
-                EquityType.CENTRAL_BANK,
-                EquityType.SUBORDINATED_DEBT,
-                EquityType.CIU,
-                EquityType.GOVERNMENT_SUPPORTED,
-            ])
+            .is_in(
+                [
+                    EquityType.CENTRAL_BANK,
+                    EquityType.SUBORDINATED_DEBT,
+                    EquityType.CIU,
+                    EquityType.GOVERNMENT_SUPPORTED,
+                ]
+            )
         )
         is_unlisted = (
             ~pl.col("is_exchange_traded").fill_null(False)
@@ -677,8 +679,7 @@ class EquityCalculator:
             else pl.lit(False)
         )
         is_higher_risk = is_unlisted & (
-            (is_pe_or_pe_div & is_young_or_unknown)
-            | (~is_dedicated_treatment & is_young_evidenced)
+            (is_pe_or_pe_div & is_young_or_unknown) | (~is_dedicated_treatment & is_young_evidenced)
         )
 
         return exposures.with_columns(
@@ -813,10 +814,7 @@ class EquityCalculator:
         netted_ead = net_long_per_issuer * share
 
         return exposures.with_columns(
-            pl.when(eligible)
-            .then(netted_ead)
-            .otherwise(pl.col("ead_final"))
-            .alias("ead_final"),
+            pl.when(eligible).then(netted_ead).otherwise(pl.col("ead_final")).alias("ead_final"),
         )
 
     @cites("CRR Art. 155(3)")
@@ -897,9 +895,7 @@ class EquityCalculator:
         )
         exposures = exposures.with_columns(correlation.alias("correlation"))
 
-        k = _capital_k_expr_from_params(
-            pl.col("pd_floored"), pl.col("lgd"), pl.col("correlation")
-        )
+        k = _capital_k_expr_from_params(pl.col("pd_floored"), pl.col("lgd"), pl.col("correlation"))
         ma = _maturity_adjustment_expr_from_pd(pl.col("pd_floored"))
         exposures = exposures.with_columns(
             k.alias("k"),

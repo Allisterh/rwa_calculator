@@ -98,8 +98,8 @@ from rwa_calc.data.schemas import (
 # ---------------------------------------------------------------------------
 
 # Counterparty references
-BORROWER_REF: str = "CP-CORP-1"       # corporate, unrated, 100% CRR SA RW
-GUARANTOR_REF: str = "CP-INST-1"      # institution, CQS 2, 50% CRR SA RW (Art. 120 Table 3)
+BORROWER_REF: str = "CP-CORP-1"  # corporate, unrated, 100% CRR SA RW
+GUARANTOR_REF: str = "CP-INST-1"  # institution, CQS 2, 50% CRR SA RW (Art. 120 Table 3)
 
 # Exposure / loan reference (scenario-architect designation: EXP-234-1 as a loan)
 LOAN_REF: str = "EXP-234-1"
@@ -113,8 +113,8 @@ RTG_GUARANTOR_REF: str = "RTG-P130E-GUARANTOR"
 
 # Dates — CRR framework effective up to 31 Dec 2026
 LOAN_VALUE_DATE: date = date(2026, 1, 2)
-LOAN_MATURITY_DATE: date = date(2031, 1, 2)        # 5y residual; maturity mismatch absent
-GUARANTEE_MATURITY_DATE: date = date(2031, 1, 2)   # matches loan — no Art. 239(3) adjustment
+LOAN_MATURITY_DATE: date = date(2031, 1, 2)  # 5y residual; maturity mismatch absent
+GUARANTEE_MATURITY_DATE: date = date(2031, 1, 2)  # matches loan — no Art. 239(3) adjustment
 RATING_DATE: date = date(2026, 1, 2)
 
 # Loan economics
@@ -123,32 +123,32 @@ LOAN_INTEREST: float = 0.0
 LOAN_EAD: float = LOAN_DRAWN_AMOUNT  # EAD = drawn + interest = 1,000,000
 
 # Guarantee economics — Art. 234 mezzanine tranche [a, d)
-GUARANTEE_AMOUNT_COVERED: float = 400_000.0   # protected tranche width = d - a
-ATTACHMENT_AMOUNT: float = 200_000.0           # a: Art. 234 attachment point
-DETACHMENT_AMOUNT: float = 600_000.0           # d: Art. 234 detachment point
-ORIGINAL_MATURITY_YEARS: float = 5.0           # >= 1y → Art. 237(2)(a) eligibility satisfied
+GUARANTEE_AMOUNT_COVERED: float = 400_000.0  # protected tranche width = d - a
+ATTACHMENT_AMOUNT: float = 200_000.0  # a: Art. 234 attachment point
+DETACHMENT_AMOUNT: float = 600_000.0  # d: Art. 234 detachment point
+ORIGINAL_MATURITY_YEARS: float = 5.0  # >= 1y → Art. 237(2)(a) eligibility satisfied
 
 # Derived tranche widths
-FIRST_LOSS_WIDTH: float = ATTACHMENT_AMOUNT                           # [0, a)   = 200,000
-PROTECTED_WIDTH: float = DETACHMENT_AMOUNT - ATTACHMENT_AMOUNT        # [a, d)   = 400,000
-SENIOR_WIDTH: float = LOAN_EAD - DETACHMENT_AMOUNT                    # [d, EAD] = 400,000
+FIRST_LOSS_WIDTH: float = ATTACHMENT_AMOUNT  # [0, a)   = 200,000
+PROTECTED_WIDTH: float = DETACHMENT_AMOUNT - ATTACHMENT_AMOUNT  # [a, d)   = 400,000
+SENIOR_WIDTH: float = LOAN_EAD - DETACHMENT_AMOUNT  # [d, EAD] = 400,000
 
 # CQS assignments
 # Borrower: unrated — not added to ratings (no external CQS entry)
-GUARANTOR_CQS: int = 2   # institution CQS 2 → 50% SA RW (CRR Art. 120 Table 3)
+GUARANTOR_CQS: int = 2  # institution CQS 2 → 50% SA RW (CRR Art. 120 Table 3)
 
 # SA risk weights (CRR framework)
-BORROWER_RW: float = 1.00   # corporate unrated, CRR Art. 122 Table 5
+BORROWER_RW: float = 1.00  # corporate unrated, CRR Art. 122 Table 5
 GUARANTOR_RW: float = 0.50  # institution CQS 2, CRR Art. 120 Table 3
 
 # Hand-calc expected values (assertions live in acceptance tests, not here)
-EXPECTED_RWA_FIRST_LOSS: float = FIRST_LOSS_WIDTH * BORROWER_RW     # 200,000
-EXPECTED_RWA_PROTECTED: float = PROTECTED_WIDTH * GUARANTOR_RW      # 200,000
-EXPECTED_RWA_SENIOR: float = SENIOR_WIDTH * BORROWER_RW             # 400,000
+EXPECTED_RWA_FIRST_LOSS: float = FIRST_LOSS_WIDTH * BORROWER_RW  # 200,000
+EXPECTED_RWA_PROTECTED: float = PROTECTED_WIDTH * GUARANTOR_RW  # 200,000
+EXPECTED_RWA_SENIOR: float = SENIOR_WIDTH * BORROWER_RW  # 400,000
 EXPECTED_RWA_TOTAL: float = (
     EXPECTED_RWA_FIRST_LOSS + EXPECTED_RWA_PROTECTED + EXPECTED_RWA_SENIOR
 )  # 800,000
-EXPECTED_EAD_TOTAL: float = LOAN_EAD                                # 1,000,000 (conserved)
+EXPECTED_EAD_TOTAL: float = LOAN_EAD  # 1,000,000 (conserved)
 EXPECTED_BLENDED_RW: float = EXPECTED_RWA_TOTAL / EXPECTED_EAD_TOTAL  # 0.80 (80%)
 
 
@@ -315,7 +315,7 @@ def create_p130e_ratings() -> pl.DataFrame:
         counterparty_reference=GUARANTOR_REF,
         rating_type="external",
         rating_agency="S&P",
-        rating_value="A",          # representative S&P value for CQS 2 (A+ to A-)
+        rating_value="A",  # representative S&P value for CQS 2 (A+ to A-)
         cqs=GUARANTOR_CQS,
         pd=None,
         rating_date=RATING_DATE,
@@ -427,21 +427,31 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("-" * 70)
     print("Scenario: CRR Art. 234 mezzanine partial-protection tranching")
     print(f"  Borrower:  {BORROWER_REF} (corporate, unrated, CRR RW={BORROWER_RW:.0%})")
-    print(f"  Guarantor: {GUARANTOR_REF} (institution, CQS {GUARANTOR_CQS}, CRR RW={GUARANTOR_RW:.0%})")
+    print(
+        f"  Guarantor: {GUARANTOR_REF} (institution, CQS {GUARANTOR_CQS}, CRR RW={GUARANTOR_RW:.0%})"
+    )
     print(f"  Loan:      {LOAN_REF}  GBP {LOAN_DRAWN_AMOUNT:,.0f}")
     print(f"  Guarantee: {GUARANTEE_REF}  amount_covered={GUARANTEE_AMOUNT_COVERED:,.0f}")
     print(f"             attachment_amount={ATTACHMENT_AMOUNT:,.0f}")
     print(f"             detachment_amount={DETACHMENT_AMOUNT:,.0f}")
     print()
     print("  Art. 234 three-way split:")
-    print(f"    first-loss [0, {ATTACHMENT_AMOUNT:,.0f})  = {FIRST_LOSS_WIDTH:,.0f} @ {BORROWER_RW:.0%}"
-          f"  → RWA = {EXPECTED_RWA_FIRST_LOSS:,.0f}")
-    print(f"    protected  [{ATTACHMENT_AMOUNT:,.0f}, {DETACHMENT_AMOUNT:,.0f}) = {PROTECTED_WIDTH:,.0f} @ {GUARANTOR_RW:.0%}"
-          f"  → RWA = {EXPECTED_RWA_PROTECTED:,.0f}")
-    print(f"    senior     [{DETACHMENT_AMOUNT:,.0f}, {LOAN_EAD:,.0f}] = {SENIOR_WIDTH:,.0f} @ {BORROWER_RW:.0%}"
-          f"  → RWA = {EXPECTED_RWA_SENIOR:,.0f}")
-    print(f"  Σ EAD = {EXPECTED_EAD_TOTAL:,.0f}  Σ RWA = {EXPECTED_RWA_TOTAL:,.0f}"
-          f"  blended RW = {EXPECTED_BLENDED_RW:.0%}")
+    print(
+        f"    first-loss [0, {ATTACHMENT_AMOUNT:,.0f})  = {FIRST_LOSS_WIDTH:,.0f} @ {BORROWER_RW:.0%}"
+        f"  → RWA = {EXPECTED_RWA_FIRST_LOSS:,.0f}"
+    )
+    print(
+        f"    protected  [{ATTACHMENT_AMOUNT:,.0f}, {DETACHMENT_AMOUNT:,.0f}) = {PROTECTED_WIDTH:,.0f} @ {GUARANTOR_RW:.0%}"
+        f"  → RWA = {EXPECTED_RWA_PROTECTED:,.0f}"
+    )
+    print(
+        f"    senior     [{DETACHMENT_AMOUNT:,.0f}, {LOAN_EAD:,.0f}] = {SENIOR_WIDTH:,.0f} @ {BORROWER_RW:.0%}"
+        f"  → RWA = {EXPECTED_RWA_SENIOR:,.0f}"
+    )
+    print(
+        f"  Σ EAD = {EXPECTED_EAD_TOTAL:,.0f}  Σ RWA = {EXPECTED_RWA_TOTAL:,.0f}"
+        f"  blended RW = {EXPECTED_BLENDED_RW:.0%}"
+    )
     print()
     print("  Schema extensions required (engine-implementer):")
     print("    schemas.py GUARANTEE_SCHEMA: add attachment_amount (Float64, required=False)")

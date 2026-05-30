@@ -717,9 +717,7 @@ def _build_remainder_sub_rows(multi_joined: pl.LazyFrame) -> pl.LazyFrame:
     first_loss_width = attach.clip(lower_bound=0.0, upper_bound=pl.col("ead_after_collateral"))
     senior_width = (pl.col("ead_after_collateral") - detach).clip(lower_bound=0.0)
 
-    is_tranched = pl.col("attachment_amount").is_not_null() & (
-        pl.col("attachment_amount") > 0.0
-    )
+    is_tranched = pl.col("attachment_amount").is_not_null() & (pl.col("attachment_amount") > 0.0)
 
     legacy_rows = _retained_tranche_rows(
         remainder.filter(~is_tranched), schema_names, retained_total, "__REM"

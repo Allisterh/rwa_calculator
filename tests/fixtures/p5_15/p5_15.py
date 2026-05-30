@@ -502,18 +502,30 @@ def print_summary(saved: dict[str, Path]) -> None:
     print(f"  Portfolio total:         {PORTFOLIO_TOTAL:>12,.0f} GBP")
     print(f"  0.2% granularity limit:  {GRANULARITY_LIMIT:>12,.2f} GBP")
     print()
-    print(f"  RETAIL-BREACH        drawn={BREACH_DRAWN:>8,.0f}  ratio={BREACH_RATIO:.6f}  > 0.002  -> FAIL")
-    print(f"  RETAIL-CONTROL-PASS  drawn={PASS_DRAWN:>8,.0f}  ratio={PASS_RATIO:.6f}  < 0.002  -> PASS")
-    print(f"  Control obligors (×{NUM_CTRL_OBLIGORS})  drawn={CTRL_DRAWN:>8,.0f}  ratio={CTRL_RATIO:.6f}  < 0.002  -> PASS")
+    print(
+        f"  RETAIL-BREACH        drawn={BREACH_DRAWN:>8,.0f}  ratio={BREACH_RATIO:.6f}  > 0.002  -> FAIL"
+    )
+    print(
+        f"  RETAIL-CONTROL-PASS  drawn={PASS_DRAWN:>8,.0f}  ratio={PASS_RATIO:.6f}  < 0.002  -> PASS"
+    )
+    print(
+        f"  Control obligors (×{NUM_CTRL_OBLIGORS})  drawn={CTRL_DRAWN:>8,.0f}  ratio={CTRL_RATIO:.6f}  < 0.002  -> PASS"
+    )
     print()
     print("  Expected classifier output:")
-    print(f"    RETAIL-BREACH:       qualifies_as_retail=False  -> CORPORATE  RW={EXPECTED_RW_CORPORATE:.0%}  RWA={EXPECTED_RWA_BREACH:,.0f}")
-    print(f"    RETAIL-CONTROL-PASS: qualifies_as_retail=True   -> RETAIL_OTHER RW={EXPECTED_RW_RETAIL:.0%}  RWA={EXPECTED_RWA_PASS:,.0f}")
+    print(
+        f"    RETAIL-BREACH:       qualifies_as_retail=False  -> CORPORATE  RW={EXPECTED_RW_CORPORATE:.0%}  RWA={EXPECTED_RWA_BREACH:,.0f}"
+    )
+    print(
+        f"    RETAIL-CONTROL-PASS: qualifies_as_retail=True   -> RETAIL_OTHER RW={EXPECTED_RW_RETAIL:.0%}  RWA={EXPECTED_RWA_PASS:,.0f}"
+    )
     print()
     # Verify no drawn amounts exceed GBP 880k (threshold limb must NOT fire)
     loans_df = pl.read_parquet(saved["loans"])
     max_drawn = loans_df["drawn_amount"].max()
-    print(f"  Max drawn across all loans: {max_drawn:,.0f} GBP (must be << 880,000 — threshold limb must not fire)")
+    print(
+        f"  Max drawn across all loans: {max_drawn:,.0f} GBP (must be << 880,000 — threshold limb must not fire)"
+    )
 
 
 def main() -> None:

@@ -1776,9 +1776,7 @@ class TestCR5CurrencyMismatchBucketing:
     bucket (ref "p") shows 0.
     """
 
-    def test_p1_94g_cr5_b31_mismatch_ead_in_75pct_bucket(
-        self, generator: Pillar3Generator
-    ) -> None:
+    def test_p1_94g_cr5_b31_mismatch_ead_in_75pct_bucket(self, generator: Pillar3Generator) -> None:
         """Mismatch row (RW=1.125, pre-mismatch=0.75) must land in the 75% B31 bucket.
 
         Arrange: retail_other row with currency_mismatch_multiplier_applied=True,

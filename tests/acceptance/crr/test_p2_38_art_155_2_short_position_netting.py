@@ -115,9 +115,7 @@ def netting_result(
 @pytest.fixture(scope="module")
 def long_row(netting_result: pl.DataFrame) -> dict:
     """The long (EQ-NET-LONG) result row as a dict."""
-    rows = netting_result.filter(
-        pl.col("exposure_reference") == LONG_EXPOSURE_REF
-    ).to_dicts()
+    rows = netting_result.filter(pl.col("exposure_reference") == LONG_EXPOSURE_REF).to_dicts()
     assert len(rows) == 1, f"{SCENARIO_ID}: expected exactly one long row, got {len(rows)}"
     return rows[0]
 
@@ -125,9 +123,7 @@ def long_row(netting_result: pl.DataFrame) -> dict:
 @pytest.fixture(scope="module")
 def short_row(netting_result: pl.DataFrame) -> dict:
     """The short (EQ-NET-SHORT) result row as a dict."""
-    rows = netting_result.filter(
-        pl.col("exposure_reference") == SHORT_EXPOSURE_REF
-    ).to_dicts()
+    rows = netting_result.filter(pl.col("exposure_reference") == SHORT_EXPOSURE_REF).to_dicts()
     assert len(rows) == 1, f"{SCENARIO_ID}: expected exactly one short row, got {len(rows)}"
     return rows[0]
 
@@ -267,15 +263,11 @@ class TestP238CRRart1552ShortPositionNetting:
         """
         # Arrange — filter by counterparty
         counterparty_col = (
-            "counterparty_reference"
-            if "counterparty_reference" in netting_result.columns
-            else None
+            "counterparty_reference" if "counterparty_reference" in netting_result.columns else None
         )
 
         if counterparty_col is not None:
-            issuer_rows = netting_result.filter(
-                pl.col(counterparty_col) == COUNTERPARTY_REF
-            )
+            issuer_rows = netting_result.filter(pl.col(counterparty_col) == COUNTERPARTY_REF)
         else:
             issuer_rows = netting_result
 

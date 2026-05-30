@@ -134,7 +134,9 @@ DEFAULT_HOLDING_RW: float = 1.00  # 100%
 # --- opted_out=False (higher-of active) ---
 
 #: higher-of: max(IRB_SIMPLE_RW_EQUITY_OTHER=3.70, transitional=1.60) = 3.70
-EXPECTED_HOLDING_RW_OPT_OUT_FALSE: float = max(IRB_SIMPLE_RW_EQUITY_OTHER, TRANSITIONAL_STANDARD_BAND_2027)
+EXPECTED_HOLDING_RW_OPT_OUT_FALSE: float = max(
+    IRB_SIMPLE_RW_EQUITY_OTHER, TRANSITIONAL_STANDARD_BAND_2027
+)
 # = 3.70
 
 #: CIU look-through RW (single equity holding): weighted_sum / fund_nav
@@ -370,13 +372,13 @@ def create_p215_equity_exposures() -> pl.DataFrame:
             carrying_value=EAD,
             fair_value=EAD,
             is_speculative=False,
-            is_exchange_traded=True,   # listed stock
+            is_exchange_traded=True,  # listed stock
             is_government_supported=False,
             is_significant_investment=False,
             ciu_approach=None,
             fund_reference=None,
             fund_nav=None,
-            business_age_years=10.0,   # >= 5.0 → NOT young business (Art. 133(4) inert)
+            business_age_years=10.0,  # >= 5.0 → NOT young business (Art. 133(4) inert)
         ),
     ]
     return pl.DataFrame([r.to_dict() for r in rows], schema=dtypes_of(EQUITY_EXPOSURE_SCHEMA))
@@ -405,7 +407,7 @@ def create_p215_ciu_holdings() -> pl.DataFrame:
             fund_reference=FUND_REFERENCE,
             holding_reference=HOLDING_REF_EQ,
             exposure_class="EQUITY",
-            cqs=None,          # null — equity has no ECAI CQS grade
+            cqs=None,  # null — equity has no ECAI CQS grade
             holding_value=HOLDING_VALUE_EQ,  # GBP 1,000,000 = fund_nav (no leverage)
         ),
     ]
@@ -461,26 +463,42 @@ def print_summary(saved: dict[str, Path]) -> None:
         print(f"  {name:<25} {len(df):>3} row(s)  ->  {path}")
     print("-" * 80)
     print("Scenario: equity transitional irrevocable opt-out (PRA Rules 4.9-4.10)")
-    print(f"  reporting_date: 2027-06-30 (Rule 4.2 standard band = {TRANSITIONAL_STANDARD_BAND_2027:.0%})")
+    print(
+        f"  reporting_date: 2027-06-30 (Rule 4.2 standard band = {TRANSITIONAL_STANDARD_BAND_2027:.0%})"
+    )
     print()
     print("  EQ-OPTOUT-CIU-001 (load-bearing — CIU look-through, single EQUITY holding, null CQS):")
-    print(f"    opted_out=False: holding_rw={EXPECTED_HOLDING_RW_OPT_OUT_FALSE:.2f}"
-          f" (max(IRB_simple={IRB_SIMPLE_RW_EQUITY_OTHER:.2f}, transitional={TRANSITIONAL_STANDARD_BAND_2027:.2f}))")
-    print(f"                     ciu_look_through_rw={EXPECTED_CIU_LT_RW_OPT_OUT_FALSE:.2f}"
-          f"  RWA={EXPECTED_RWA_CIU_OPT_OUT_FALSE:,.0f}")
-    print(f"    opted_out=True:  holding_rw={EXPECTED_HOLDING_RW_OPT_OUT_TRUE:.2f}"
-          f" (_DEFAULT_HOLDING_RW=100%, higher-of suppressed)")
-    print(f"                     ciu_look_through_rw={EXPECTED_CIU_LT_RW_OPT_OUT_TRUE:.2f}"
-          f"  RWA={EXPECTED_RWA_CIU_OPT_OUT_TRUE:,.0f}")
+    print(
+        f"    opted_out=False: holding_rw={EXPECTED_HOLDING_RW_OPT_OUT_FALSE:.2f}"
+        f" (max(IRB_simple={IRB_SIMPLE_RW_EQUITY_OTHER:.2f}, transitional={TRANSITIONAL_STANDARD_BAND_2027:.2f}))"
+    )
+    print(
+        f"                     ciu_look_through_rw={EXPECTED_CIU_LT_RW_OPT_OUT_FALSE:.2f}"
+        f"  RWA={EXPECTED_RWA_CIU_OPT_OUT_FALSE:,.0f}"
+    )
+    print(
+        f"    opted_out=True:  holding_rw={EXPECTED_HOLDING_RW_OPT_OUT_TRUE:.2f}"
+        f" (_DEFAULT_HOLDING_RW=100%, higher-of suppressed)"
+    )
+    print(
+        f"                     ciu_look_through_rw={EXPECTED_CIU_LT_RW_OPT_OUT_TRUE:.2f}"
+        f"  RWA={EXPECTED_RWA_CIU_OPT_OUT_TRUE:,.0f}"
+    )
     print()
     print("  EQ-CONTROL-001 (control — direct LISTED equity, both configs):")
     print(f"    B31 Art. 133(3): RW={EXPECTED_RW_CONTROL:.2f} (250%)")
-    print(f"    Transitional floor 2027: {TRANSITIONAL_STANDARD_BAND_2027:.2f} < {EXPECTED_RW_CONTROL:.2f} → floor does not bind")
+    print(
+        f"    Transitional floor 2027: {TRANSITIONAL_STANDARD_BAND_2027:.2f} < {EXPECTED_RW_CONTROL:.2f} → floor does not bind"
+    )
     print(f"    RWA={EXPECTED_RWA_CONTROL:,.0f} (unchanged under both opted_out configs)")
     print()
     print("  Key constants:")
-    print(f"    IRB_SIMPLE_RW_EQUITY_OTHER       = {IRB_SIMPLE_RW_EQUITY_OTHER:.2f} (Art. 155(2) other)")
-    print(f"    TRANSITIONAL_STANDARD_BAND_2027  = {TRANSITIONAL_STANDARD_BAND_2027:.2f} (Rule 4.2 2027)")
+    print(
+        f"    IRB_SIMPLE_RW_EQUITY_OTHER       = {IRB_SIMPLE_RW_EQUITY_OTHER:.2f} (Art. 155(2) other)"
+    )
+    print(
+        f"    TRANSITIONAL_STANDARD_BAND_2027  = {TRANSITIONAL_STANDARD_BAND_2027:.2f} (Rule 4.2 2027)"
+    )
     print(f"    DEFAULT_HOLDING_RW               = {DEFAULT_HOLDING_RW:.2f} (Art. 132a fallback)")
 
 

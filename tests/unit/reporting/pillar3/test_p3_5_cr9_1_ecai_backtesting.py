@@ -147,13 +147,10 @@ class TestP35Cr91FieldExists:
 
         # Act / Assert
         assert EXPECTED_DICT_KEY in cr9_1, (
-            f"Expected key {EXPECTED_DICT_KEY!r} not found in cr9_1 keys: "
-            f"{list(cr9_1.keys())}"
+            f"Expected key {EXPECTED_DICT_KEY!r} not found in cr9_1 keys: {list(cr9_1.keys())}"
         )
 
-    def test_p3_5_cr9_1_output_height(
-        self, b31_cr9_1_bundle: Pillar3TemplateBundle
-    ) -> None:
+    def test_p3_5_cr9_1_output_height(self, b31_cr9_1_bundle: Pillar3TemplateBundle) -> None:
         """CR9.1 DataFrame for 'advanced_irb - corporate' must have height 3.
 
         2 grade rows (A, BBB) + 1 total row.
@@ -197,9 +194,7 @@ class TestP35Cr91EcaiColumn:
         ecai_vals = _get_grade_column_values(df)
 
         # Assert
-        assert "A" in ecai_vals, (
-            f"Grade 'A' must appear in CR9.1 grade column; found: {ecai_vals}"
-        )
+        assert "A" in ecai_vals, f"Grade 'A' must appear in CR9.1 grade column; found: {ecai_vals}"
 
     def test_p3_5_cr9_1_ecai_column_grade_bbb_present(
         self, b31_cr9_1_bundle: Pillar3TemplateBundle
@@ -258,9 +253,7 @@ class TestP35Cr91RowR1GradeA:
             f"R1 col d (defaults): expected {EXPECTED_R1_D}, got {actual}"
         )
 
-    def test_p3_5_cr9_1_r1_col_e_observed_dr(
-        self, b31_cr9_1_bundle: Pillar3TemplateBundle
-    ) -> None:
+    def test_p3_5_cr9_1_r1_col_e_observed_dr(self, b31_cr9_1_bundle: Pillar3TemplateBundle) -> None:
         """R1 col e: observed average DR = 1/3 × 100 ≈ 33.3333%."""
         # Arrange
         row = _get_ecai_row(b31_cr9_1_bundle, "A")
@@ -357,9 +350,7 @@ class TestP35Cr91RowR2GradeBBB:
             f"R2 col d (defaults): expected {EXPECTED_R2_D}, got {actual}"
         )
 
-    def test_p3_5_cr9_1_r2_col_e_observed_dr(
-        self, b31_cr9_1_bundle: Pillar3TemplateBundle
-    ) -> None:
+    def test_p3_5_cr9_1_r2_col_e_observed_dr(self, b31_cr9_1_bundle: Pillar3TemplateBundle) -> None:
         """R2 col e: observed average DR = 0.0%."""
         # Arrange
         row = _get_ecai_row(b31_cr9_1_bundle, "BBB")
@@ -540,8 +531,7 @@ class TestP35Cr91CrrFrameworkGate:
 
         # Assert
         assert not cr9_1, (
-            f"CRR framework must produce empty cr9_1 (CR9.1 is B31-only); "
-            f"got {cr9_1!r}"
+            f"CRR framework must produce empty cr9_1 (CR9.1 is B31-only); got {cr9_1!r}"
         )
 
 
@@ -604,11 +594,7 @@ def _get_grade_column_values(df: pl.DataFrame) -> list[str | None]:
 def _get_ecai_row(bundle: Pillar3TemplateBundle, grade: str) -> pl.DataFrame:
     """Return the single CR9.1 row matching the given ECAI grade label."""
     df = _get_cr9_1_df(bundle)
-    ecai_col = (
-        "external_rating_equivalent"
-        if "external_rating_equivalent" in df.columns
-        else "b"
-    )
+    ecai_col = "external_rating_equivalent" if "external_rating_equivalent" in df.columns else "b"
     row = df.filter(pl.col(ecai_col) == grade)
     assert row.height == 1, (
         f"Expected exactly 1 CR9.1 row for grade {grade!r}, got {row.height}. "

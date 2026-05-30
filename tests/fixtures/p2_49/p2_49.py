@@ -616,9 +616,7 @@ def _verify_lf() -> None:
 
     firb_fin = firb_corp.filter(pl.col("cp_is_financial_sector_entity") == True)  # noqa: E712
     firb_non_fin = firb_corp.filter(pl.col("cp_is_financial_sector_entity") == False)  # noqa: E712
-    assert firb_fin.height == 1, (
-        f"Expected 1 F-IRB corporate financial row, got {firb_fin.height}"
-    )
+    assert firb_fin.height == 1, f"Expected 1 F-IRB corporate financial row, got {firb_fin.height}"
     assert firb_non_fin.height == 1, (
         f"Expected 1 F-IRB corporate non-financial row, got {firb_non_fin.height}"
     )
@@ -665,9 +663,7 @@ def _verify_constants() -> None:
     assert EXPECTED_AIRB_CLASS_COUNT == 10, (
         f"EXPECTED_AIRB_CLASS_COUNT must be 10, got {EXPECTED_AIRB_CLASS_COUNT}"
     )
-    assert len(EXPECTED_KEYS) == 15, (
-        f"EXPECTED_KEYS must have 15 entries, got {len(EXPECTED_KEYS)}"
-    )
+    assert len(EXPECTED_KEYS) == 15, f"EXPECTED_KEYS must have 15 entries, got {len(EXPECTED_KEYS)}"
 
     # Confirm the four discriminator-routing keys exist in the expected set
     for key in [

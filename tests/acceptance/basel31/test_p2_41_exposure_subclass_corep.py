@@ -164,9 +164,7 @@ class TestP241ExposureSubclassCorep:
         # The pipeline joins loan_reference / exposure_reference through as
         # "loan_reference" from the Loader stage.
         ref_col = next(
-            c
-            for c in ("loan_reference", "exposure_reference")
-            if c in results_df.columns
+            c for c in ("loan_reference", "exposure_reference") if c in results_df.columns
         )
         rwa_by_loan: dict[str, float] = {
             row[ref_col]: float(row["rwa_final"])
@@ -264,9 +262,7 @@ class TestP241ExposureSubclassCorep:
     # LOAD-BEARING — row 0295 must contain BOTH FSE and large-corp RWA
     # ------------------------------------------------------------------
 
-    def test_p2_41_row_0295_includes_large_corp_by_revenue(
-        self, per_loan_rwa, corep_c02
-    ) -> None:
+    def test_p2_41_row_0295_includes_large_corp_by_revenue(self, per_loan_rwa, corep_c02) -> None:
         """
         PRIMARY (LOAD-BEARING): row 0295 RWA == rwa_fse + rwa_lrgcorp.
 
@@ -309,9 +305,7 @@ class TestP241ExposureSubclassCorep:
             "CP2 is misrouted to row 0297."
         )
 
-    def test_p2_41_row_0295_strictly_exceeds_fse_alone(
-        self, per_loan_rwa, corep_c02
-    ) -> None:
+    def test_p2_41_row_0295_strictly_exceeds_fse_alone(self, per_loan_rwa, corep_c02) -> None:
         """
         ANTI-DEGENERATE: row 0295 > rwa_fse alone (CP2 must have moved in).
 
@@ -345,9 +339,7 @@ class TestP241ExposureSubclassCorep:
     # A-IRB non-SME other row (0356) and F-IRB non-SME row (0297)
     # ------------------------------------------------------------------
 
-    def test_p2_41_row_0356_contains_corpother_rwa(
-        self, per_loan_rwa, corep_c02
-    ) -> None:
+    def test_p2_41_row_0356_contains_corpother_rwa(self, per_loan_rwa, corep_c02) -> None:
         """
         Row 0356 (A-IRB Other general corporates non-SME) == rwa_corpother.
 
@@ -375,9 +367,7 @@ class TestP241ExposureSubclassCorep:
             "to A-IRB row 0356."
         )
 
-    def test_p2_41_row_0297_contains_zero_post_fix(
-        self, per_loan_rwa, corep_c02
-    ) -> None:
+    def test_p2_41_row_0297_contains_zero_post_fix(self, per_loan_rwa, corep_c02) -> None:
         """
         Row 0297 (F-IRB Other general corporates non-SME) must be 0 post-fix.
 
@@ -403,18 +393,14 @@ class TestP241ExposureSubclassCorep:
             f"but expected ≈ 0.0. "
             "Pre-fix: row 0297 ≈ rwa_lrgcorp ({:,.2f}) because CP2 (LN-P241-LRGCORP) "
             "is misrouted here (FSE=False, large-corp-by-revenue not yet detected). "
-            "Post-fix: CP2 moves to row 0295 and row 0297 = 0.".format(
-                per_loan_rwa[LOAN_LRGCORP]
-            )
+            "Post-fix: CP2 moves to row 0295 and row 0297 = 0.".format(per_loan_rwa[LOAN_LRGCORP])
         )
 
     # ------------------------------------------------------------------
     # CONSERVATION — F-IRB sub-rows must sum to F-IRB corporate total
     # ------------------------------------------------------------------
 
-    def test_p2_41_firb_corporate_conservation(
-        self, per_loan_rwa, corep_c02
-    ) -> None:
+    def test_p2_41_firb_corporate_conservation(self, per_loan_rwa, corep_c02) -> None:
         """
         CONSERVATION: rows 0295+0296+0297 == total F-IRB corporate RWA.
 

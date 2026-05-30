@@ -190,9 +190,7 @@ class TestP246PpuProvenanceCorep:
         """
         results_df = pipeline_result.results.collect()
         ref_col = next(
-            c
-            for c in ("loan_reference", "exposure_reference")
-            if c in results_df.columns
+            c for c in ("loan_reference", "exposure_reference") if c in results_df.columns
         )
         return {
             row[ref_col]: float(row["rwa_final"])
@@ -408,9 +406,7 @@ class TestP246PpuProvenanceCorep:
     # ANTI-DEGENERATE — residual (0010 − 0050 − 0060) > 0
     # ------------------------------------------------------------------
 
-    def test_p2_46_residual_no_permission_is_positive(
-        self, corep_c07_corporate
-    ) -> None:
+    def test_p2_46_residual_no_permission_is_positive(self, corep_c07_corporate) -> None:
         """
         ANTI-DEGENERATE: residual (row 0010 − row 0050 − row 0060) == 1,000,000 > 0.
 

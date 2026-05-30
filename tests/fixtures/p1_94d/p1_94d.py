@@ -408,22 +408,23 @@ def create_p194d_loans() -> pl.DataFrame:
     ]
 
     # Step 1: Strip extra columns before building with the declared schema.
-    _extra_cols = {"is_hedged", "hedge_coverage_ratio", "is_revolving", "facility_limit",
-                   "undrawn_amount"}
+    _extra_cols = {
+        "is_hedged",
+        "hedge_coverage_ratio",
+        "is_revolving",
+        "facility_limit",
+        "undrawn_amount",
+    }
     loan_schema_cols = dtypes_of(LOAN_SCHEMA)
     rows_base = [{k: v for k, v in r.to_dict().items() if k not in _extra_cols} for r in rows]
     df = pl.DataFrame(rows_base, schema=loan_schema_cols)
 
     # Step 2: Overwrite is_hedged (in LOAN_SCHEMA since p1_94a wave) with explicit False.
-    df = df.with_columns(
-        pl.Series("is_hedged", [r.is_hedged for r in rows], dtype=pl.Boolean)
-    )
+    df = df.with_columns(pl.Series("is_hedged", [r.is_hedged for r in rows], dtype=pl.Boolean))
 
     # Step 3: Set hedge_coverage_ratio (in LOAN_SCHEMA since p1_94b wave) with 0.95.
     df = df.with_columns(
-        pl.Series(
-            "hedge_coverage_ratio", [r.hedge_coverage_ratio for r in rows], dtype=pl.Float64
-        )
+        pl.Series("hedge_coverage_ratio", [r.hedge_coverage_ratio for r in rows], dtype=pl.Float64)
     )
 
     # Step 4: Append is_revolving — FACILITY_SCHEMA field; not in LOAN_SCHEMA.

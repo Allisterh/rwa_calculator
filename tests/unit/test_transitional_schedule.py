@@ -203,9 +203,7 @@ class TestTransitionalDatesP623:
         floor_pct = config.get_output_floor_percentage()
 
         # Assert
-        assert floor_pct == Decimal("0.60"), (
-            f"Expected floor 0.60 for 2027-01-01, got {floor_pct}"
-        )
+        assert floor_pct == Decimal("0.60"), f"Expected floor 0.60 for 2027-01-01, got {floor_pct}"
 
 
 # =============================================================================

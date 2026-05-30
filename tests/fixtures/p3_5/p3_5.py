@@ -364,10 +364,16 @@ if __name__ == "__main__":
     _verify_constants()
     print("P3.5 fixture self-check passed.")
     print("  5 obligors: 3 grade-A (1 defaulted), 2 grade-BBB (0 defaulted)")
-    print(f"  Grade A  — c={EXPECTED_R1_C}, d={EXPECTED_R1_D}, "
-          f"e={EXPECTED_R1_E:.4f}%, f={EXPECTED_R1_F}%, g={EXPECTED_R1_G:.5f}%")
-    print(f"  Grade BBB — c={EXPECTED_R2_C}, d={EXPECTED_R2_D}, "
-          f"e={EXPECTED_R2_E}%, f={EXPECTED_R2_F}%, g={EXPECTED_R2_G}%")
-    print(f"  Total    — c={EXPECTED_TOT_C}, d={EXPECTED_TOT_D}, "
-          f"e={EXPECTED_TOT_E}%, f={EXPECTED_TOT_F:.5f}%, g={EXPECTED_TOT_G}%")
+    print(
+        f"  Grade A  — c={EXPECTED_R1_C}, d={EXPECTED_R1_D}, "
+        f"e={EXPECTED_R1_E:.4f}%, f={EXPECTED_R1_F}%, g={EXPECTED_R1_G:.5f}%"
+    )
+    print(
+        f"  Grade BBB — c={EXPECTED_R2_C}, d={EXPECTED_R2_D}, "
+        f"e={EXPECTED_R2_E}%, f={EXPECTED_R2_F}%, g={EXPECTED_R2_G}%"
+    )
+    print(
+        f"  Total    — c={EXPECTED_TOT_C}, d={EXPECTED_TOT_D}, "
+        f"e={EXPECTED_TOT_E}%, f={EXPECTED_TOT_F:.5f}%, g={EXPECTED_TOT_G}%"
+    )
     print(f"  Dict key: {EXPECTED_DICT_KEY!r}, expected height: {EXPECTED_HEIGHT}")

@@ -200,8 +200,7 @@ class TestP215OptOutFalseHigherOfActive:
 
         # Assert
         assert len(row) == 1, (
-            f"Expected exactly 1 row for exposure_reference={EXPOSURE_REF_CIU!r}, "
-            f"got {len(row)}"
+            f"Expected exactly 1 row for exposure_reference={EXPOSURE_REF_CIU!r}, got {len(row)}"
         )
         actual_rw = row["risk_weight"][0]
         assert actual_rw == pytest.approx(EXPECTED_CIU_LT_RW_OPT_OUT_FALSE, abs=1e-4), (
@@ -288,16 +287,13 @@ class TestP215OptOutTrueBothGatesSuppressed:
         # (bundle and config constructed via fixtures)
 
         # Act
-        bundle_result = equity_calculator.get_equity_result_bundle(
-            p215_bundle, config_opt_out_true
-        )
+        bundle_result = equity_calculator.get_equity_result_bundle(p215_bundle, config_opt_out_true)
         result_df = bundle_result.results.collect()
         row = result_df.filter(pl.col("exposure_reference") == EXPOSURE_REF_CIU)
 
         # Assert
         assert len(row) == 1, (
-            f"Expected exactly 1 row for exposure_reference={EXPOSURE_REF_CIU!r}, "
-            f"got {len(row)}"
+            f"Expected exactly 1 row for exposure_reference={EXPOSURE_REF_CIU!r}, got {len(row)}"
         )
         actual_rw = row["risk_weight"][0]
         assert actual_rw == pytest.approx(EXPECTED_CIU_LT_RW_OPT_OUT_TRUE, abs=1e-4), (
@@ -331,9 +327,7 @@ class TestP215OptOutTrueBothGatesSuppressed:
         # (bundle and config constructed via fixtures)
 
         # Act
-        bundle_result = equity_calculator.get_equity_result_bundle(
-            p215_bundle, config_opt_out_true
-        )
+        bundle_result = equity_calculator.get_equity_result_bundle(p215_bundle, config_opt_out_true)
         result_df = bundle_result.results.collect()
         row = result_df.filter(pl.col("exposure_reference") == EXPOSURE_REF_CIU)
 
@@ -391,9 +385,7 @@ class TestP215ControlDirectEquityInvariant:
         config: CalculationConfig = request.getfixturevalue(config_fixture)
 
         # Act
-        bundle_result = equity_calculator.get_equity_result_bundle(
-            p215_bundle, config
-        )
+        bundle_result = equity_calculator.get_equity_result_bundle(p215_bundle, config)
         result_df = bundle_result.results.collect()
         row = result_df.filter(pl.col("exposure_reference") == EXPOSURE_REF_CONTROL)
 
@@ -431,9 +423,7 @@ class TestP215ControlDirectEquityInvariant:
         config: CalculationConfig = request.getfixturevalue(config_fixture)
 
         # Act
-        bundle_result = equity_calculator.get_equity_result_bundle(
-            p215_bundle, config
-        )
+        bundle_result = equity_calculator.get_equity_result_bundle(p215_bundle, config)
         result_df = bundle_result.results.collect()
         row = result_df.filter(pl.col("exposure_reference") == EXPOSURE_REF_CONTROL)
 

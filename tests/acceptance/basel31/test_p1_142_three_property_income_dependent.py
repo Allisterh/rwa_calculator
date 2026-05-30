@@ -247,9 +247,7 @@ class TestB31P1142ThreePropertyIncomeDependentRouting:
         Assert:  risk_weight ≈ 0.50 (abs=1e-6).
         """
         # Arrange — post-fix: single unsplit row; pre-fix: split sub-rows exist
-        rows = p1_142_sa_results.filter(
-            pl.col("exposure_reference") == LOAN_BREACH_REF
-        ).to_dicts()
+        rows = p1_142_sa_results.filter(pl.col("exposure_reference") == LOAN_BREACH_REF).to_dicts()
 
         assert len(rows) == 1, (
             f"P1.142: expected exactly 1 unsplit row for {LOAN_BREACH_REF} "
@@ -275,19 +273,15 @@ class TestB31P1142ThreePropertyIncomeDependentRouting:
         Act:     ead_final from the unsplit BREACH row (post-fix).
         Assert:  ead_final ≈ 200,000 (abs=1e-2).
         """
-        rows = p1_142_sa_results.filter(
-            pl.col("exposure_reference") == LOAN_BREACH_REF
-        ).to_dicts()
+        rows = p1_142_sa_results.filter(pl.col("exposure_reference") == LOAN_BREACH_REF).to_dicts()
 
         assert len(rows) == 1, (
-            f"P1.142: expected exactly 1 unsplit row for {LOAN_BREACH_REF}. "
-            f"Got {len(rows)} rows."
+            f"P1.142: expected exactly 1 unsplit row for {LOAN_BREACH_REF}. Got {len(rows)} rows."
         )
         row = rows[0]
 
         assert row["ead_final"] == pytest.approx(200_000.0, abs=1e-2), (
-            f"P1.142: BREACH ead_final should be 200,000. "
-            f"Got {row['ead_final']:,.2f}."
+            f"P1.142: BREACH ead_final should be 200,000. Got {row['ead_final']:,.2f}."
         )
 
     # -------------------------------------------------------------------------

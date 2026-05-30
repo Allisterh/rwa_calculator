@@ -583,11 +583,15 @@ def _allocation_exprs(
         cre_alloc = ead_expr * cre_share
         # Art. 124(4) all-or-nothing: full pro-rata share when the gate fires
         # (Art. 124J path, no preferential cap); capped pro-rata otherwise.
-        rre_capped = pl.when(force_other_re).then(rre_alloc).otherwise(
-            pl.min_horizontal(rre_alloc, rre_cap_eur)
+        rre_capped = (
+            pl.when(force_other_re)
+            .then(rre_alloc)
+            .otherwise(pl.min_horizontal(rre_alloc, rre_cap_eur))
         )
-        cre_capped = pl.when(force_other_re).then(cre_alloc).otherwise(
-            pl.min_horizontal(cre_alloc, cre_cap_eur)
+        cre_capped = (
+            pl.when(force_other_re)
+            .then(cre_alloc)
+            .otherwise(pl.min_horizontal(cre_alloc, cre_cap_eur))
         )
         rre_secured = pl.when(rre_eligible_expr).then(rre_capped).otherwise(pl.lit(0.0))
         cre_secured = pl.when(cre_eligible_expr).then(cre_capped).otherwise(pl.lit(0.0))

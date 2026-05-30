@@ -113,10 +113,12 @@ SCENARIO_ID: str = "P2.31"
 COUNTERPARTY_REF: str = "CP_P231_CORP"
 
 # Contingent references
-CONT_REF_ACCEPT: str = "CONT_P231_ACCEPT"       # obs_product=ACCEPTANCE -> FR
-CONT_REF_PERFBOND: str = "CONT_P231_PERFBOND"   # obs_product=PERFORMANCE_BOND -> MLR
-CONT_REF_DOCLC: str = "CONT_P231_DOCLC"         # obs_product=DOCUMENTARY_CREDIT -> MLR
-CONT_REF_OVERRIDE: str = "CONT_P231_OVERRIDE"   # explicit risk_type=LR wins over obs_product=ACCEPTANCE
+CONT_REF_ACCEPT: str = "CONT_P231_ACCEPT"  # obs_product=ACCEPTANCE -> FR
+CONT_REF_PERFBOND: str = "CONT_P231_PERFBOND"  # obs_product=PERFORMANCE_BOND -> MLR
+CONT_REF_DOCLC: str = "CONT_P231_DOCLC"  # obs_product=DOCUMENTARY_CREDIT -> MLR
+CONT_REF_OVERRIDE: str = (
+    "CONT_P231_OVERRIDE"  # explicit risk_type=LR wins over obs_product=ACCEPTANCE
+)
 
 # obs_product values (normalised canonical keys)
 OBS_PRODUCT_ACCEPTANCE: str = "ACCEPTANCE"
@@ -124,24 +126,24 @@ OBS_PRODUCT_PERFBOND: str = "PERFORMANCE_BOND"
 OBS_PRODUCT_DOCLC: str = "DOCUMENTARY_CREDIT"
 
 # Expected resolved risk_types (post-fill)
-RESOLVED_RISK_TYPE_ACCEPT: str = "FR"    # Annex I para 1 / Table A1 Row 1
+RESOLVED_RISK_TYPE_ACCEPT: str = "FR"  # Annex I para 1 / Table A1 Row 1
 RESOLVED_RISK_TYPE_PERFBOND: str = "MLR"  # Annex I Row 6(b)
-RESOLVED_RISK_TYPE_DOCLC: str = "MLR"    # Annex I Row 6(a)
+RESOLVED_RISK_TYPE_DOCLC: str = "MLR"  # Annex I Row 6(a)
 RESOLVED_RISK_TYPE_OVERRIDE: str = "LR"  # explicit wins — obs_product ignored
 
 # Expected CCF values (SA, framework-invariant for these products)
-EXPECTED_CCF_ACCEPT: float = 1.00    # FR: direct credit substitute
+EXPECTED_CCF_ACCEPT: float = 1.00  # FR: direct credit substitute
 EXPECTED_CCF_PERFBOND: float = 0.20  # MLR: performance bond
-EXPECTED_CCF_DOCLC: float = 0.20    # MLR: documentary credit
+EXPECTED_CCF_DOCLC: float = 0.20  # MLR: documentary credit
 EXPECTED_CCF_OVERRIDE: float = 0.00  # LR: unconditionally cancellable / 0%
 
 # Shared economics
 NOMINAL_AMOUNT: float = 2_000_000.00
 
 # Expected EAD values
-EXPECTED_EAD_ACCEPT: float = NOMINAL_AMOUNT * EXPECTED_CCF_ACCEPT    # 2_000_000
+EXPECTED_EAD_ACCEPT: float = NOMINAL_AMOUNT * EXPECTED_CCF_ACCEPT  # 2_000_000
 EXPECTED_EAD_PERFBOND: float = NOMINAL_AMOUNT * EXPECTED_CCF_PERFBOND  # 400_000
-EXPECTED_EAD_DOCLC: float = NOMINAL_AMOUNT * EXPECTED_CCF_DOCLC      # 400_000
+EXPECTED_EAD_DOCLC: float = NOMINAL_AMOUNT * EXPECTED_CCF_DOCLC  # 400_000
 EXPECTED_EAD_OVERRIDE: float = NOMINAL_AMOUNT * EXPECTED_CCF_OVERRIDE  # 0
 
 # Dates
@@ -149,9 +151,9 @@ VALUE_DATE: date = date(2027, 1, 1)
 MATURITY_DATE: date = date(2028, 6, 30)
 
 # Regulatory scalar cross-references (data/tables/ccf.py)
-SA_CCF_FR: float = 1.00   # SA_CCF_CRR["FR"] = SA_CCF_B31["FR"] = 1.00
+SA_CCF_FR: float = 1.00  # SA_CCF_CRR["FR"] = SA_CCF_B31["FR"] = 1.00
 SA_CCF_MLR: float = 0.20  # SA_CCF_CRR["MLR"] = SA_CCF_B31["MLR"] = 0.20
-SA_CCF_LR: float = 0.00   # SA_CCF_CRR["LR"] = SA_CCF_B31["LR"] = 0.00 (CRR) / 0.10 (B31)
+SA_CCF_LR: float = 0.00  # SA_CCF_CRR["LR"] = SA_CCF_B31["LR"] = 0.00 (CRR) / 0.10 (B31)
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +212,7 @@ class _Contingent:
     lgd: float
     beel: float
     seniority: str
-    obs_product: str   # NEW — not yet in CONTINGENTS_SCHEMA; serialised separately
+    obs_product: str  # NEW — not yet in CONTINGENTS_SCHEMA; serialised separately
     risk_type: str | None  # None for product-fill rows; explicit for override row
 
     def to_dict_base(self) -> dict:
@@ -347,9 +349,7 @@ def create_p231_contingents() -> pl.DataFrame:
 
     # Build base columns from schema — risk_type is pl.String so None serialises as null.
     schema_cols = {
-        k: v
-        for k, v in dtypes_of(CONTINGENTS_SCHEMA).items()
-        if k in rows[0].to_dict_base()
+        k: v for k, v in dtypes_of(CONTINGENTS_SCHEMA).items() if k in rows[0].to_dict_base()
     }
     base_dicts = [r.to_dict_base() for r in rows]
     df = pl.DataFrame(base_dicts, schema=schema_cols)
@@ -422,17 +422,27 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("-" * 70)
     print(f"Scenario: {SCENARIO_ID} — Annex I obs_product -> risk_type fill (explicit wins)")
     print(f"  {CONT_REF_ACCEPT}: obs_product={OBS_PRODUCT_ACCEPTANCE!r}, risk_type=None")
-    print(f"    Expected: resolved risk_type={RESOLVED_RISK_TYPE_ACCEPT!r}, "
-          f"ccf={EXPECTED_CCF_ACCEPT}, ead={EXPECTED_EAD_ACCEPT:,.0f}")
+    print(
+        f"    Expected: resolved risk_type={RESOLVED_RISK_TYPE_ACCEPT!r}, "
+        f"ccf={EXPECTED_CCF_ACCEPT}, ead={EXPECTED_EAD_ACCEPT:,.0f}"
+    )
     print(f"  {CONT_REF_PERFBOND}: obs_product={OBS_PRODUCT_PERFBOND!r}, risk_type=None")
-    print(f"    Expected: resolved risk_type={RESOLVED_RISK_TYPE_PERFBOND!r}, "
-          f"ccf={EXPECTED_CCF_PERFBOND}, ead={EXPECTED_EAD_PERFBOND:,.0f}")
+    print(
+        f"    Expected: resolved risk_type={RESOLVED_RISK_TYPE_PERFBOND!r}, "
+        f"ccf={EXPECTED_CCF_PERFBOND}, ead={EXPECTED_EAD_PERFBOND:,.0f}"
+    )
     print(f"  {CONT_REF_DOCLC}: obs_product={OBS_PRODUCT_DOCLC!r}, risk_type=None")
-    print(f"    Expected: resolved risk_type={RESOLVED_RISK_TYPE_DOCLC!r}, "
-          f"ccf={EXPECTED_CCF_DOCLC}, ead={EXPECTED_EAD_DOCLC:,.0f}")
-    print(f"  {CONT_REF_OVERRIDE}: obs_product={OBS_PRODUCT_ACCEPTANCE!r}, risk_type='LR' [EXPLICIT WINS]")
-    print(f"    Expected: retained risk_type={RESOLVED_RISK_TYPE_OVERRIDE!r}, "
-          f"ccf={EXPECTED_CCF_OVERRIDE}, ead={EXPECTED_EAD_OVERRIDE:,.0f}")
+    print(
+        f"    Expected: resolved risk_type={RESOLVED_RISK_TYPE_DOCLC!r}, "
+        f"ccf={EXPECTED_CCF_DOCLC}, ead={EXPECTED_EAD_DOCLC:,.0f}"
+    )
+    print(
+        f"  {CONT_REF_OVERRIDE}: obs_product={OBS_PRODUCT_ACCEPTANCE!r}, risk_type='LR' [EXPLICIT WINS]"
+    )
+    print(
+        f"    Expected: retained risk_type={RESOLVED_RISK_TYPE_OVERRIDE!r}, "
+        f"ccf={EXPECTED_CCF_OVERRIDE}, ead={EXPECTED_EAD_OVERRIDE:,.0f}"
+    )
     print()
     print("  Regulatory citations:")
     print("    FR  (1.00) <- CRR Annex I para 1 / PS1/26 Table A1 Row 1")
@@ -450,7 +460,9 @@ def _verify_contingents() -> None:
     assert df.height == 4, f"Expected 4 rows, got {df.height}"
 
     # obs_product column must be present (injected via with_columns)
-    assert "obs_product" in df.columns, "obs_product column must be present in contingents DataFrame"
+    assert "obs_product" in df.columns, (
+        "obs_product column must be present in contingents DataFrame"
+    )
 
     row_accept = df.filter(pl.col("contingent_reference") == CONT_REF_ACCEPT)
     row_perfbond = df.filter(pl.col("contingent_reference") == CONT_REF_PERFBOND)

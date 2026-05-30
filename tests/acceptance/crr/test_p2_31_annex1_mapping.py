@@ -120,8 +120,12 @@ def p2_31_crr_ccf_results() -> pl.DataFrame:
         Collected DataFrame with CCF output columns (ccf, ead_from_ccf, risk_type).
     """
     # Arrange — build contingent LazyFrame from factory (includes obs_product)
-    contingents_lf = create_p231_contingents().lazy().with_columns(
-        pl.lit(0.0).alias("drawn_amount"),
+    contingents_lf = (
+        create_p231_contingents()
+        .lazy()
+        .with_columns(
+            pl.lit(0.0).alias("drawn_amount"),
+        )
     )
 
     config = CalculationConfig.crr(reporting_date=date(2027, 1, 1))

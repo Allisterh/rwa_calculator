@@ -2500,9 +2500,7 @@ def _generate_p249(output_dir: Path) -> list[tuple[str, int]]:
         # Invariant 3: is_sme and cp_is_financial_sector_entity are Boolean
         schema = df.schema
         if schema["is_sme"] != pl.Boolean:
-            raise AssertionError(
-                f"is_sme must be Boolean, got {schema['is_sme']}"
-            )
+            raise AssertionError(f"is_sme must be Boolean, got {schema['is_sme']}")
         if schema["cp_is_financial_sector_entity"] != pl.Boolean:
             raise AssertionError(
                 f"cp_is_financial_sector_entity must be Boolean, "
@@ -2519,9 +2517,7 @@ def _generate_p249(output_dir: Path) -> list[tuple[str, int]]:
                 f"EXPECTED_AIRB_CLASS_COUNT must be 10, got {EXPECTED_AIRB_CLASS_COUNT}"
             )
         if len(EXPECTED_KEYS) != 15:
-            raise AssertionError(
-                f"EXPECTED_KEYS must have 15 entries, got {len(EXPECTED_KEYS)}"
-            )
+            raise AssertionError(f"EXPECTED_KEYS must have 15 entries, got {len(EXPECTED_KEYS)}")
 
         # No parquet files written — report zero files, zero records.
         return [("(python-only builder — no parquet)", 0)]

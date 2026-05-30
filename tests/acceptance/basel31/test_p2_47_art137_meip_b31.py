@@ -135,9 +135,7 @@ def p2_47_b31_sa_result() -> dict:
     df = results.sa_results.collect()
 
     rows = df.filter(pl.col("exposure_reference") == _LOAN_REF).to_dicts()
-    assert len(rows) == 1, (
-        f"P2.47: expected exactly 1 SA row for {_LOAN_REF}, got {len(rows)}"
-    )
+    assert len(rows) == 1, f"P2.47: expected exactly 1 SA row for {_LOAN_REF}, got {len(rows)}"
     return rows[0]
 
 

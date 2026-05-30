@@ -104,8 +104,8 @@ FACILITY_REF: str = "FAC-P1141"
 LOAN_REF: str = "LN-P1141"
 
 # Collateral references
-COLLATERAL_REF_RESI: str = "COL-P1141-R"   # Residential — is_qualifying_re=True
-COLLATERAL_REF_CRE: str = "COL-P1141-C"    # Commercial  — is_qualifying_re=False
+COLLATERAL_REF_RESI: str = "COL-P1141-R"  # Residential — is_qualifying_re=True
+COLLATERAL_REF_CRE: str = "COL-P1141-C"  # Commercial  — is_qualifying_re=False
 
 # Dates — post Basel 3.1 go-live (1 Jan 2027)
 REPORTING_DATE: date = date(2027, 1, 2)
@@ -115,15 +115,15 @@ MATURITY_DATE: date = date(2035, 6, 30)
 DRAWN_AMOUNT: float = 2_000_000.0
 
 # Collateral values
-RESI_MARKET_VALUE: float = 1_500_000.0    # 60% of total
-CRE_MARKET_VALUE: float = 1_000_000.0     # 40% of total
+RESI_MARKET_VALUE: float = 1_500_000.0  # 60% of total
+CRE_MARKET_VALUE: float = 1_000_000.0  # 40% of total
 TOTAL_COLLATERAL_VALUE: float = 2_500_000.0
 
 # EAD split (pro-rata by collateral value per Art. 124(4))
 RESI_SHARE: float = RESI_MARKET_VALUE / TOTAL_COLLATERAL_VALUE  # 0.60
-CRE_SHARE: float = CRE_MARKET_VALUE / TOTAL_COLLATERAL_VALUE    # 0.40
-EAD_RESI: float = DRAWN_AMOUNT * RESI_SHARE    # 1_200_000
-EAD_CRE: float = DRAWN_AMOUNT * CRE_SHARE      # 800_000
+CRE_SHARE: float = CRE_MARKET_VALUE / TOTAL_COLLATERAL_VALUE  # 0.40
+EAD_RESI: float = DRAWN_AMOUNT * RESI_SHARE  # 1_200_000
+EAD_CRE: float = DRAWN_AMOUNT * CRE_SHARE  # 800_000
 
 # ---------------------------------------------------------------------------
 # Expected outputs (post-fix, authoritative — test-writer must assert these)
@@ -139,7 +139,7 @@ EXPECTED_RW_CRE: float = 1.00
 EXPECTED_RWA_RESI: float = EAD_RESI * EXPECTED_RW_RESI  # 1_200_000.0
 
 #: RWA for CRE child row
-EXPECTED_RWA_CRE: float = EAD_CRE * EXPECTED_RW_CRE     # 800_000.0
+EXPECTED_RWA_CRE: float = EAD_CRE * EXPECTED_RW_CRE  # 800_000.0
 
 #: Total RWA (parent) — sum of child RWA + residual (0)
 EXPECTED_RWA_TOTAL: float = EXPECTED_RWA_RESI + EXPECTED_RWA_CRE  # 2_000_000.0
@@ -420,7 +420,7 @@ def create_p1141_collateral() -> pl.DataFrame:
             beneficiary_type="loan",
             beneficiary_reference=LOAN_REF,
             property_type="residential",
-            market_value=RESI_MARKET_VALUE,       # 1,500,000 (60% of total)
+            market_value=RESI_MARKET_VALUE,  # 1,500,000 (60% of total)
             is_qualifying_re=True,
             is_income_producing=False,
             is_adc=False,
@@ -437,7 +437,7 @@ def create_p1141_collateral() -> pl.DataFrame:
             beneficiary_type="loan",
             beneficiary_reference=LOAN_REF,
             property_type="commercial",
-            market_value=CRE_MARKET_VALUE,        # 1,000,000 (40% of total)
+            market_value=CRE_MARKET_VALUE,  # 1,000,000 (40% of total)
             is_qualifying_re=False,
             is_income_producing=False,
             is_adc=False,
@@ -536,24 +536,31 @@ def print_summary(saved: dict[str, Path]) -> None:
     print(f"  Loan:          {LOAN_REF}  drawn GBP {DRAWN_AMOUNT:,.0f}")
     print()
     print("  Collateral:")
-    print(f"    {COLLATERAL_REF_RESI}  residential  MV={RESI_MARKET_VALUE:>12,.0f}"
-          f"  share={RESI_SHARE:.0%}  is_qualifying_re=True")
-    print(f"    {COLLATERAL_REF_CRE }  commercial   MV={CRE_MARKET_VALUE:>12,.0f}"
-          f"  share={CRE_SHARE:.0%}  is_qualifying_re=False  <- gate trigger")
+    print(
+        f"    {COLLATERAL_REF_RESI}  residential  MV={RESI_MARKET_VALUE:>12,.0f}"
+        f"  share={RESI_SHARE:.0%}  is_qualifying_re=True"
+    )
+    print(
+        f"    {COLLATERAL_REF_CRE}  commercial   MV={CRE_MARKET_VALUE:>12,.0f}"
+        f"  share={CRE_SHARE:.0%}  is_qualifying_re=False  <- gate trigger"
+    )
     print()
     print("  Gate: commercial is_qualifying_re=False → Art. 124(4) all-or-nothing")
     print("        BOTH components → Art. 124J (Other RE), not Art. 124F/124H")
     print()
     print("  Expected outputs (post-fix, CalculationConfig.basel_3_1()):")
-    print(f"    EAD_RESI = {EAD_RESI:>12,.0f}  RW = {EXPECTED_RW_RESI:.2f}"
-          f"  RWA_RESI = {EXPECTED_RWA_RESI:>12,.0f}")
-    print(f"    EAD_CRE  = {EAD_CRE:>12,.0f}  RW = {EXPECTED_RW_CRE:.2f}"
-          f"  RWA_CRE  = {EXPECTED_RWA_CRE:>12,.0f}")
+    print(
+        f"    EAD_RESI = {EAD_RESI:>12,.0f}  RW = {EXPECTED_RW_RESI:.2f}"
+        f"  RWA_RESI = {EXPECTED_RWA_RESI:>12,.0f}"
+    )
+    print(
+        f"    EAD_CRE  = {EAD_CRE:>12,.0f}  RW = {EXPECTED_RW_CRE:.2f}"
+        f"  RWA_CRE  = {EXPECTED_RWA_CRE:>12,.0f}"
+    )
     print(f"    RWA_total= {EXPECTED_RWA_TOTAL:>12,.0f}  EAD_total= {EXPECTED_EAD_TOTAL:>12,.0f}")
     print(f"    residual EAD = {EXPECTED_EAD_RESIDUAL:.1f}")
     print()
-    print("  Art. 124J CRE floor (B31_OTHER_RE_CRE_FLOOR_RW) = "
-          f"{ART_124J_CRE_FLOOR_RW:.0%}")
+    print(f"  Art. 124J CRE floor (B31_OTHER_RE_CRE_FLOOR_RW) = {ART_124J_CRE_FLOOR_RW:.0%}")
 
 
 def main() -> None:

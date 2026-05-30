@@ -3537,15 +3537,12 @@ class TestC0200CurrencyMismatchMemoRow:
         gen = COREPGenerator()
 
         # Act
-        bundle = gen.generate_from_lazyframe(
-            _sa_results_with_currency_mismatch(), framework="CRR"
-        )
+        bundle = gen.generate_from_lazyframe(_sa_results_with_currency_mismatch(), framework="CRR")
         assert bundle.c_02_00 is not None
 
         row = bundle.c_02_00.filter(pl.col("row_ref") == "0500")
         assert len(row) == 0, (
-            f"OF 02.00 row 0500 must not appear under CRR (B31-only), "
-            f"but got {len(row)} rows."
+            f"OF 02.00 row 0500 must not appear under CRR (B31-only), but got {len(row)} rows."
         )
 
 
@@ -9258,9 +9255,7 @@ class TestSignConvention:
     def _sa_bundle_crr(self) -> COREPTemplateBundle:
         """Generate the C 07.00 bundle (CRR framework)."""
         gen = COREPGenerator()
-        return gen.generate_from_lazyframe(
-            _sa_results_with_sign_convention_cols(), framework="CRR"
-        )
+        return gen.generate_from_lazyframe(_sa_results_with_sign_convention_cols(), framework="CRR")
 
     def _irb_bundle_b31(self) -> COREPTemplateBundle:
         """Generate the OF 08.01 bundle (Basel 3.1 framework)."""

@@ -193,9 +193,7 @@ class TestP1130SummariesReflectPostFloorRWA:
         """
         assert result.output_floor_summary is not None
 
-        assert result.output_floor_summary.s_trea == pytest.approx(
-            EXPECTED_S_TREA, rel=0.01
-        ), (
+        assert result.output_floor_summary.s_trea == pytest.approx(EXPECTED_S_TREA, rel=0.01), (
             f"P1.130: S-TREA should be {EXPECTED_S_TREA:,.0f} (two 100m unrated corporates × 100% RW). "
             f"Got {result.output_floor_summary.s_trea:,.0f}. "
             "If S-TREA ≠ 200m check that the IRB counterparties have no external CQS "
@@ -260,9 +258,7 @@ class TestP1130SummariesReflectPostFloorRWA:
         """
         # Arrange
         assert result.output_floor_summary is not None
-        assert result.summary_by_class is not None, (
-            "P1.130: summary_by_class must not be None"
-        )
+        assert result.summary_by_class is not None, "P1.130: summary_by_class must not be None"
 
         # Act
         summary_df = result.summary_by_class.collect()
@@ -348,13 +344,11 @@ class TestP1130SummariesReflectPostFloorRWA:
         floor_summary = result.output_floor_summary
 
         floored_modelled = floor_summary.floored_modelled_rwa  # = 145m
-        sa_rwa_total = floor_summary.sa_rwa_total              # = 50m
+        sa_rwa_total = floor_summary.sa_rwa_total  # = 50m
 
         # Assert — UNDERSTATEMENT-CLOSED:
         # summary total should equal floored_modelled + SA = 195m
-        assert summary_total == pytest.approx(
-            floored_modelled + sa_rwa_total, rel=_REL_TOL
-        ), (
+        assert summary_total == pytest.approx(floored_modelled + sa_rwa_total, rel=_REL_TOL), (
             f"P1.130 BUG: summary_by_approach total ({summary_total:,.0f}) should equal "
             f"floored_modelled_rwa ({floored_modelled:,.0f}) + sa_rwa_total ({sa_rwa_total:,.0f}) "
             f"= {floored_modelled + sa_rwa_total:,.0f}. "

@@ -410,12 +410,8 @@ class HierarchyResolver:
                 # PRA PS1/26 Art. 139(2B): provenance of the ECAI assessment so the
                 # SA-SL routing path can disapply inferred / non-issue-specific
                 # ratings. Defaults preserve legacy behaviour.
-                "rating_is_issue_specific": ColumnSpec(
-                    pl.Boolean, default=True, required=False
-                ),
-                "rating_is_inferred": ColumnSpec(
-                    pl.Boolean, default=False, required=False
-                ),
+                "rating_is_issue_specific": ColumnSpec(pl.Boolean, default=True, required=False),
+                "rating_is_inferred": ColumnSpec(pl.Boolean, default=False, required=False),
             },
         )
 
@@ -457,9 +453,7 @@ class HierarchyResolver:
             .sort(sort_cols, descending=[True, True])
             .group_by(["counterparty_reference", "rating_agency"])
             .first()
-            .select(
-                ["counterparty_reference", "cqs", "rating_is_issue_specific"]
-            )
+            .select(["counterparty_reference", "cqs", "rating_is_issue_specific"])
         )
 
         # Rank CQS ascending per counterparty (lowest CQS == best rating == lowest RW).
@@ -2516,32 +2510,38 @@ class HierarchyResolver:
         # raw collateral value (and the 0.55xV cap is also on raw property value),
         # so the per-exposure cap applied below — which exists for the CRR retail
         # threshold — must not distort the split shares.
-        exposures = exposures.with_columns(
-            [
-                pl.col("residential_collateral_value").fill_null(0.0),
-                pl.col("property_collateral_value").fill_null(0.0),
-                pl.col("re_collateral_non_qualifying").fill_null(False),
-            ]
-        ).with_columns(
-            [
-                pl.col("residential_collateral_value").alias("residential_collateral_value_uncapped"),
-                (pl.col("property_collateral_value") - pl.col("residential_collateral_value"))
-                .clip(lower_bound=0.0)
-                .alias("commercial_collateral_value_uncapped"),
-            ]
-        ).with_columns(
-            [
-                pl.min_horizontal("residential_collateral_value", "total_exposure_amount").alias(
-                    "residential_collateral_value"
-                ),
-                pl.min_horizontal("property_collateral_value", "total_exposure_amount").alias(
-                    "property_collateral_value"
-                ),
-                (
-                    pl.col("total_exposure_amount")
-                    - pl.min_horizontal("residential_collateral_value", "total_exposure_amount")
-                ).alias("exposure_for_retail_threshold"),
-            ]
+        exposures = (
+            exposures.with_columns(
+                [
+                    pl.col("residential_collateral_value").fill_null(0.0),
+                    pl.col("property_collateral_value").fill_null(0.0),
+                    pl.col("re_collateral_non_qualifying").fill_null(False),
+                ]
+            )
+            .with_columns(
+                [
+                    pl.col("residential_collateral_value").alias(
+                        "residential_collateral_value_uncapped"
+                    ),
+                    (pl.col("property_collateral_value") - pl.col("residential_collateral_value"))
+                    .clip(lower_bound=0.0)
+                    .alias("commercial_collateral_value_uncapped"),
+                ]
+            )
+            .with_columns(
+                [
+                    pl.min_horizontal(
+                        "residential_collateral_value", "total_exposure_amount"
+                    ).alias("residential_collateral_value"),
+                    pl.min_horizontal("property_collateral_value", "total_exposure_amount").alias(
+                        "property_collateral_value"
+                    ),
+                    (
+                        pl.col("total_exposure_amount")
+                        - pl.min_horizontal("residential_collateral_value", "total_exposure_amount")
+                    ).alias("exposure_for_retail_threshold"),
+                ]
+            )
         )
 
         # Add has_facility_property_collateral for legacy path

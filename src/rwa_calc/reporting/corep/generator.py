@@ -856,9 +856,7 @@ class COREPGenerator:
         # not in CRR_C02_00_ROW_SECTIONS, so the build step never emits it).
         if is_b31 and "currency_mismatch_multiplier_applied" in cols:
             mismatch_rwea = float(
-                results.filter(
-                    pl.col("currency_mismatch_multiplier_applied").fill_null(False)
-                )
+                results.filter(pl.col("currency_mismatch_multiplier_applied").fill_null(False))
                 .select(pl.col(rwa_col).fill_null(0.0).sum().alias("rwea"))
                 .collect()["rwea"][0]
             )
@@ -982,9 +980,7 @@ class COREPGenerator:
         has_subclass = "exposure_subclass" in cols
         has_sme = "is_sme" in cols
         has_fse = (
-            has_subclass
-            or "apply_fi_scalar" in cols
-            or "cp_is_financial_sector_entity" in cols
+            has_subclass or "apply_fi_scalar" in cols or "cp_is_financial_sector_entity" in cols
         )
         has_pt = "property_type" in cols
         if has_sme or has_subclass:
@@ -2877,9 +2873,7 @@ _C07_NEGATIVE_COLS: frozenset[str] = frozenset(
 _C08_NEGATIVE_COLS: frozenset[str] = frozenset({"0290"})
 
 
-def _negate_deduction_cols(
-    values: dict[str, float | None], negative_cols: frozenset[str]
-) -> None:
+def _negate_deduction_cols(values: dict[str, float | None], negative_cols: frozenset[str]) -> None:
     """Apply the COREP Annex II §1.3 "(-)" sign convention in place.
 
     Negates the magnitude of each "(-)"-labelled deduction column so the

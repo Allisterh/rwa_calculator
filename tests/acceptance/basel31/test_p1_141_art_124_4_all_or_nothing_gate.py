@@ -178,32 +178,24 @@ def _get_child_rows(df: pl.DataFrame) -> pl.DataFrame:
     Includes both the original row (if any) and all split sub-rows.
     """
     # Filter by counterparty reference to avoid hard-coding exposure_reference
-    return df.filter(
-        pl.col("counterparty_reference") == COUNTERPARTY_REF
-    )
+    return df.filter(pl.col("counterparty_reference") == COUNTERPARTY_REF)
 
 
 def _get_rre_child(df: pl.DataFrame) -> dict | None:
     """Return the secured_rre child row for the mixed RE split, or None."""
-    rows = _get_child_rows(df).filter(
-        pl.col("re_split_role") == "secured_rre"
-    ).to_dicts()
+    rows = _get_child_rows(df).filter(pl.col("re_split_role") == "secured_rre").to_dicts()
     return rows[0] if rows else None
 
 
 def _get_cre_child(df: pl.DataFrame) -> dict | None:
     """Return the secured_cre child row for the mixed RE split, or None."""
-    rows = _get_child_rows(df).filter(
-        pl.col("re_split_role") == "secured_cre"
-    ).to_dicts()
+    rows = _get_child_rows(df).filter(pl.col("re_split_role") == "secured_cre").to_dicts()
     return rows[0] if rows else None
 
 
 def _get_residual_child(df: pl.DataFrame) -> dict | None:
     """Return the residual child row for the mixed RE split, or None."""
-    rows = _get_child_rows(df).filter(
-        pl.col("re_split_role") == "residual"
-    ).to_dicts()
+    rows = _get_child_rows(df).filter(pl.col("re_split_role") == "residual").to_dicts()
     return rows[0] if rows else None
 
 
@@ -237,9 +229,7 @@ class TestB31P1141Art1244AllOrNothingGate:
     # DISCRIMINATING ASSERTIONS — FAIL pre-fix
     # -------------------------------------------------------------------------
 
-    def test_p1_141_parent_total_rwa_is_2m(
-        self, p1_141_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_141_parent_total_rwa_is_2m(self, p1_141_sa_results: pl.DataFrame) -> None:
         """
         P1.141 DISCRIMINATING: parent total RWA = 2,000,000.
 
@@ -314,9 +304,7 @@ class TestB31P1141Art1244AllOrNothingGate:
     # STRUCTURAL ASSERTIONS — verify the split shape (post-fix required)
     # -------------------------------------------------------------------------
 
-    def test_p1_141_secured_rre_ead_is_1_2m(
-        self, p1_141_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_141_secured_rre_ead_is_1_2m(self, p1_141_sa_results: pl.DataFrame) -> None:
         """
         P1.141: secured_rre EAD = 1,200,000 (60% of 2,000,000).
 
@@ -340,9 +328,7 @@ class TestB31P1141Art1244AllOrNothingGate:
             f"Got {rre_row['ead_final']:,.0f}."
         )
 
-    def test_p1_141_secured_rre_rwa_is_1_2m(
-        self, p1_141_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_141_secured_rre_rwa_is_1_2m(self, p1_141_sa_results: pl.DataFrame) -> None:
         """
         P1.141: secured_rre RWA = 1,200,000 (EAD × RW = 1,200,000 × 1.00).
 
@@ -355,9 +341,7 @@ class TestB31P1141Art1244AllOrNothingGate:
         """
         rre_row = _get_rre_child(p1_141_sa_results)
 
-        assert rre_row is not None, (
-            "P1.141: no secured_rre row found."
-        )
+        assert rre_row is not None, "P1.141: no secured_rre row found."
 
         assert rre_row["rwa_final"] == pytest.approx(EXPECTED_RWA_RESI, abs=1.0), (
             f"P1.141: secured_rre rwa_final should be {EXPECTED_RWA_RESI:,.0f} "
@@ -366,9 +350,7 @@ class TestB31P1141Art1244AllOrNothingGate:
             f"Pre-fix: ≈ 540,000 (Art. 124F 20% band)."
         )
 
-    def test_p1_141_secured_cre_ead_is_800k(
-        self, p1_141_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_141_secured_cre_ead_is_800k(self, p1_141_sa_results: pl.DataFrame) -> None:
         """
         P1.141: secured_cre EAD = 800,000 (40% of 2,000,000).
 
@@ -409,9 +391,7 @@ class TestB31P1141Art1244AllOrNothingGate:
         """
         cre_row = _get_cre_child(p1_141_sa_results)
 
-        assert cre_row is not None, (
-            "P1.141: no secured_cre row found."
-        )
+        assert cre_row is not None, "P1.141: no secured_cre row found."
 
         assert cre_row["risk_weight"] == pytest.approx(EXPECTED_RW_CRE, abs=1e-6), (
             f"P1.141: secured_cre risk_weight should be {EXPECTED_RW_CRE:.2f} "
@@ -419,9 +399,7 @@ class TestB31P1141Art1244AllOrNothingGate:
             f"Got {cre_row['risk_weight']:.6f}."
         )
 
-    def test_p1_141_secured_cre_rwa_is_800k(
-        self, p1_141_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_141_secured_cre_rwa_is_800k(self, p1_141_sa_results: pl.DataFrame) -> None:
         """
         P1.141: secured_cre RWA = 800,000 (EAD × RW = 800,000 × 1.00).
 
@@ -431,9 +409,7 @@ class TestB31P1141Art1244AllOrNothingGate:
         """
         cre_row = _get_cre_child(p1_141_sa_results)
 
-        assert cre_row is not None, (
-            "P1.141: no secured_cre row found."
-        )
+        assert cre_row is not None, "P1.141: no secured_cre row found."
 
         assert cre_row["rwa_final"] == pytest.approx(EXPECTED_RWA_CRE, abs=1.0), (
             f"P1.141: secured_cre rwa_final should be {EXPECTED_RWA_CRE:,.0f} "
@@ -441,9 +417,7 @@ class TestB31P1141Art1244AllOrNothingGate:
             f"Got {cre_row['rwa_final']:,.0f}."
         )
 
-    def test_p1_141_residual_ead_is_zero(
-        self, p1_141_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_141_residual_ead_is_zero(self, p1_141_sa_results: pl.DataFrame) -> None:
         """
         P1.141 DISCRIMINATING: residual EAD = 0.0.
 
@@ -486,9 +460,7 @@ class TestB31P1141Art1244AllOrNothingGate:
             f"Engine-implementer must remove 0.55×V cap on the Art. 124J path."
         )
 
-    def test_p1_141_child_ead_sums_to_parent(
-        self, p1_141_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_141_child_ead_sums_to_parent(self, p1_141_sa_results: pl.DataFrame) -> None:
         """
         P1.141 EAD reconciliation: sum(child EAD) == parent EAD == 2,000,000.
 

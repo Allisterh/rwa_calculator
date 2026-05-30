@@ -119,8 +119,8 @@ MODEL_CORP_ROLLOUT: str = "MODEL-CORP-ROLLOUT-P246"
 
 # ppu_reason values (load-bearing enum strings — must match PpuReason enum
 # members that engine-implementer will add to domain/enums.py)
-PPU_REASON_ART_150_1_C: str = "art_150_1_c"    # Art. 150(1)(c) PPU condition
-PPU_REASON_ART_148: str = "art_148_rollout"      # Art. 148 sequential roll-out
+PPU_REASON_ART_150_1_C: str = "art_150_1_c"  # Art. 150(1)(c) PPU condition
+PPU_REASON_ART_148: str = "art_148_rollout"  # Art. 148 sequential roll-out
 
 # Loan economics (all three identical)
 DRAWN_AMOUNT: float = 1_000_000.0
@@ -128,25 +128,25 @@ PROVISIONS: float = 0.0
 
 # Dates
 VALUE_DATE: date = date(2025, 1, 1)
-MATURITY_DATE: date = date(2026, 6, 30)   # ~18 months — well above 1y floor
+MATURITY_DATE: date = date(2026, 6, 30)  # ~18 months — well above 1y floor
 RATING_DATE: date = date(2025, 1, 2)
 REPORTING_DATE: date = date(2025, 6, 30)  # CRR run (before 2027-01-01)
 
 # Expected outputs (test-writer anchors)
-EXPECTED_SA_RISK_WEIGHT: float = 1.00     # unrated corporate SA = 100%
+EXPECTED_SA_RISK_WEIGHT: float = 1.00  # unrated corporate SA = 100%
 EXPECTED_EAD: float = 1_000_000.0
 EXPECTED_RWA: float = 1_000_000.0
 EXPECTED_APPROACH_APPLIED: str = "standardised"
 
 # COREP C 07.00 / OF 07.00 Section 1 row references
-COREP_ROW_TOTAL_SA: str = "0010"        # Total SA EAD = 3,000,000
-COREP_ROW_PPU: str = "0050"             # PPU of SA = 1,000,000 (art_150_1_c)
-COREP_ROW_ROLLOUT: str = "0060"         # Sequential IRB = 1,000,000 (art_148_rollout)
+COREP_ROW_TOTAL_SA: str = "0010"  # Total SA EAD = 3,000,000
+COREP_ROW_PPU: str = "0050"  # PPU of SA = 1,000,000 (art_150_1_c)
+COREP_ROW_ROLLOUT: str = "0060"  # Sequential IRB = 1,000,000 (art_148_rollout)
 
 # Anti-degenerate invariant values
-EXPECTED_TOTAL_EAD: float = 3_000_000.0     # three exposures × 1m each
-EXPECTED_PPU_EAD: float = 1_000_000.0       # EXP-P246-PPU only
-EXPECTED_ROLLOUT_EAD: float = 1_000_000.0   # EXP-P246-ROLLOUT only
+EXPECTED_TOTAL_EAD: float = 3_000_000.0  # three exposures × 1m each
+EXPECTED_PPU_EAD: float = 1_000_000.0  # EXP-P246-PPU only
+EXPECTED_ROLLOUT_EAD: float = 1_000_000.0  # EXP-P246-ROLLOUT only
 EXPECTED_RESIDUAL_EAD: float = 1_000_000.0  # EXP-P246-NOPERM (0010 - 0050 - 0060)
 
 
@@ -372,7 +372,7 @@ def create_p246_ratings() -> pl.DataFrame:
             "pd": None,
             "rating_date": RATING_DATE,
             "is_solicited": False,
-            "model_id": None,       # no model_id → no permissions match → ppu_reason null
+            "model_id": None,  # no model_id → no permissions match → ppu_reason null
             "is_short_term": False,
             "scope_type": None,
             "scope_id": None,
@@ -433,9 +433,7 @@ def create_p246_model_permissions() -> pl.DataFrame:
     df = pl.DataFrame(base_rows, schema=dtypes_of(MODEL_PERMISSIONS_SCHEMA))
     # Append the new ppu_reason column (not yet in MODEL_PERMISSIONS_SCHEMA).
     # Uses pl.Series directly so each row gets its own string value.
-    return df.with_columns(
-        pl.Series("ppu_reason", [PPU_REASON_ART_150_1_C, PPU_REASON_ART_148])
-    )
+    return df.with_columns(pl.Series("ppu_reason", [PPU_REASON_ART_150_1_C, PPU_REASON_ART_148]))
 
 
 # ---------------------------------------------------------------------------
