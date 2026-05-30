@@ -849,6 +849,21 @@ class COREPGenerator:
         if is_b31:
             _c02_00_apply_b31_cols(row_values, sa_equiv_rwa, floor_rwa)
 
+        # B31 memo row 0500 (PRA PS1/26 Art. 123B): portfolio-total RWEA of all
+        # rows that fired the 1.5x currency-mismatch multiplier. Memo-only — only
+        # col 0010 is populated (0020/0030 stay None via the build .get()), and
+        # the row is excluded from the TREA total. Absent under CRR (the row is
+        # not in CRR_C02_00_ROW_SECTIONS, so the build step never emits it).
+        if is_b31 and "currency_mismatch_multiplier_applied" in cols:
+            mismatch_rwea = float(
+                results.filter(
+                    pl.col("currency_mismatch_multiplier_applied").fill_null(False)
+                )
+                .select(pl.col(rwa_col).fill_null(0.0).sum().alias("rwea"))
+                .collect()["rwea"][0]
+            )
+            row_values["0500"] = {"0010": mismatch_rwea}
+
         # Build DataFrame rows
         rows = _c02_00_build_rows(row_values, row_sections, column_refs)
 

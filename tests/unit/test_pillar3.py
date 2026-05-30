@@ -1721,6 +1721,129 @@ class TestCR9ExcelExport:
         assert result.row_count >= cr9_rows
 
 
+# =============================================================================
+# P1.94g — DELIV1: CR5 buckets mismatch rows on pre-mismatch risk weight
+# =============================================================================
+
+
+def _make_sa_data_with_mismatch(**overrides: object) -> pl.LazyFrame:
+    """Extend _make_sa_data with the two currency-mismatch columns.
+
+    Adds a fourth row (retail_other, EAD=100_000) that has:
+        risk_weight                     = 1.125  (post-1.5x-multiplier)
+        risk_weight_pre_currency_mismatch = 0.75  (pre-multiplier base RW)
+        currency_mismatch_multiplier_applied = True
+
+    Pre-fix: the CR5 generator buckets on risk_weight=1.125 → no B31 band
+    matches (nearest are 1.1=110% and 1.3=130%) → falls to Other/Deducted (ref
+    "ac").  Post-fix: generator buckets on risk_weight_pre_currency_mismatch
+    =0.75 for mismatch rows → lands in the 75% bucket (ref "p").
+    """
+    base: dict[str, object] = {
+        "exposure_reference": ["SA1", "SA2", "SA3", "SA4_MISMATCH"],
+        "approach_applied": [
+            "standardised",
+            "standardised",
+            "standardised",
+            "standardised",
+        ],
+        "exposure_class": ["corporate", "retail_mortgage", "defaulted", "retail_other"],
+        "ead_final": [1000.0, 2000.0, 500.0, 100_000.0],
+        "rwa_final": [1000.0, 700.0, 750.0, 112_500.0],
+        "risk_weight": [1.0, 0.35, 1.5, 1.125],
+        "risk_weight_pre_currency_mismatch": [1.0, 0.35, 1.5, 0.75],
+        "currency_mismatch_multiplier_applied": [False, False, False, True],
+        "drawn_amount": [800.0, 1800.0, 400.0, 100_000.0],
+        "interest": [50.0, 100.0, 30.0, 0.0],
+        "nominal_amount": [200.0, 300.0, 100.0, 0.0],
+        "undrawn_amount": [150.0, 200.0, 70.0, 0.0],
+        "exposure_type": ["loan", "loan", "loan", "loan"],
+    }
+    base.update(overrides)
+    return pl.LazyFrame(base)
+
+
+class TestCR5CurrencyMismatchBucketing:
+    """P1.94g DELIV1: CR5 must bucket mismatch rows on pre-mismatch risk weight.
+
+    Why: A retail_other row with currency mismatch has risk_weight=1.125 (after
+    the 1.5× Art. 123B multiplier) but its pre-multiplier weight is 0.75.  The
+    CR5 disclosure table must show EAD in the 75% bucket (column "p" in B31) to
+    reflect the underlying credit risk weight, not the FX-adjusted weight.
+
+    Pre-fix failure mode: _compute_cr5_values buckets on risk_weight=1.125 →
+    no B31 band matches → EAD lands in Other/Deducted (ref "ac"), and the 75%
+    bucket (ref "p") shows 0.
+    """
+
+    def test_p1_94g_cr5_b31_mismatch_ead_in_75pct_bucket(
+        self, generator: Pillar3Generator
+    ) -> None:
+        """Mismatch row (RW=1.125, pre-mismatch=0.75) must land in the 75% B31 bucket.
+
+        Arrange: retail_other row with currency_mismatch_multiplier_applied=True,
+                 risk_weight=1.125, risk_weight_pre_currency_mismatch=0.75,
+                 ead_final=100_000.
+        Act:     generate CR5 for BASEL_3_1.
+        Assert:  Retail row (row_ref "8") has column "p" (75% band) == 100_000.
+
+        Pre-fix failure: column "p" == 0.0, because the engine buckets on the
+        post-multiplier risk_weight=1.125 which matches no B31 band and falls
+        to Other/Deducted.
+        """
+        # Arrange
+        data = _make_sa_data_with_mismatch()
+
+        # Act
+        bundle = generator.generate_from_lazyframe(data, framework="BASEL_3_1")
+        assert bundle.cr5 is not None
+
+        # Retail row — SA_DISCLOSURE_CLASSES maps ("retail_other",) → row_ref "8"
+        retail_row = bundle.cr5.filter(pl.col("row_ref") == "8")
+        assert len(retail_row) == 1, "Expected one retail row in CR5"
+
+        # Assert: EAD must land in the 75% bucket (column ref "p", index 15 in B31)
+        ead_in_75pct = retail_row["p"][0]
+        assert ead_in_75pct == pytest.approx(100_000.0), (
+            f"Mismatch row EAD (100_000) should be in the 75% bucket (ref 'p'), "
+            f"but got {ead_in_75pct}. "
+            f"Pre-fix: engine buckets on risk_weight=1.125 → no B31 band → falls to "
+            f"Other/Deducted ('ac')."
+        )
+
+    def test_p1_94g_cr5_b31_mismatch_ead_not_in_other_deducted(
+        self, generator: Pillar3Generator
+    ) -> None:
+        """Anti-confound: mismatch EAD must NOT land in Other/Deducted after fix.
+
+        This is the load-bearing anti-confound: pre-fix, the 1.125 RW row falls
+        into Other/Deducted (ref 'ac') because no 112.5% band exists in B31.
+        After the fix, Other/Deducted should NOT carry 100_000 from this row.
+
+        Arrange/Act: same as above.
+        Assert:  Retail row has column 'ac' (Other/Deducted) != 100_000.
+
+        Pre-fix: 'ac' == 100_000 (the full mismatch EAD is residual-bucketed).
+        """
+        # Arrange
+        data = _make_sa_data_with_mismatch()
+
+        # Act
+        bundle = generator.generate_from_lazyframe(data, framework="BASEL_3_1")
+        assert bundle.cr5 is not None
+
+        retail_row = bundle.cr5.filter(pl.col("row_ref") == "8")
+        assert len(retail_row) == 1
+
+        # "ac" is Other/Deducted in B31 (n=28 bands → index 28 → chr('a'+28-26)='ac')
+        ead_in_other = retail_row["ac"][0]
+        assert ead_in_other != pytest.approx(100_000.0), (
+            f"Mismatch row EAD (100_000) must NOT be in Other/Deducted ('ac'), "
+            f"but got {ead_in_other}. "
+            f"Pre-fix: risk_weight=1.125 matches no B31 band → falls to residual."
+        )
+
+
 class TestExcelExport:
     """Tests for Excel export (structural — does not verify file content)."""
 

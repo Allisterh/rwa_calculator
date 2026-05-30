@@ -2095,6 +2095,7 @@ CALCULATION_OUTPUT_SCHEMA = {
     # -------------------------------------------------------------------------
     "borrower_income_currency": pl.String,  # ISO currency of borrower's primary income
     "currency_mismatch_multiplier_applied": pl.Boolean,  # True if 1.5x RW multiplier applied
+    "risk_weight_pre_currency_mismatch": pl.Float64,  # RW snapshot before 1.5x mismatch multiply
     # -------------------------------------------------------------------------
     # POST-MODEL ADJUSTMENTS (Basel 3.1 PRA PS9/24 Art. 153(5A), 154(4A), 158(6A))
     # -------------------------------------------------------------------------

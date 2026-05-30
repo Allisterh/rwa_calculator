@@ -2078,6 +2078,10 @@ class SALazyFrame:
 
         return self._lf.with_columns(
             [
+                # Snapshot pre-multiplier RW for audit/reporting (mirrors the
+                # pre_fcsm_risk_weight pattern). For non-mismatch rows this equals
+                # the unchanged risk_weight; CR5 buckets EAD on this column.
+                pl.col("risk_weight").alias("risk_weight_pre_currency_mismatch"),
                 pl.when(mismatch_applies)
                 .then(
                     (pl.col("risk_weight") * _SA_B31_RW["currency_mismatch_multiplier"]).clip(

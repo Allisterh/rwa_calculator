@@ -3286,7 +3286,17 @@ class TestCreditDerivativeTracking:
 
 
 def _sa_results_with_currency_mismatch() -> pl.LazyFrame:
-    """SA results with currency mismatch multiplier tracking for COREP row 0380."""
+    """SA results with currency mismatch multiplier tracking for COREP row 0380.
+
+    Row order: SA_RET_1 (retail_other, mismatch), SA_RET_2 (retail_other, no mismatch),
+               SA_MORT_1 (retail_mortgage, mismatch), SA_CORP_1 (corporate, no mismatch).
+
+    P1.94g: adds risk_weight_pre_currency_mismatch column.
+        SA_RET_1:  rw_pre=0.75 (base retail RW before 1.5× multiplier)
+        SA_RET_2:  rw_pre=0.75 (no mismatch → pre == post)
+        SA_MORT_1: rw_pre=0.75 (base mortgage RW before 1.5× multiplier)
+        SA_CORP_1: rw_pre=1.0  (no mismatch → pre == post)
+    """
     return pl.LazyFrame(
         {
             "exposure_reference": ["SA_RET_1", "SA_RET_2", "SA_MORT_1", "SA_CORP_1"],
@@ -3297,6 +3307,7 @@ def _sa_results_with_currency_mismatch() -> pl.LazyFrame:
             "ead_final": [100.0, 200.0, 500.0, 3000.0],
             "rwa_final": [112.5, 150.0, 375.0, 3000.0],
             "risk_weight": [1.125, 0.75, 0.75, 1.0],
+            "risk_weight_pre_currency_mismatch": [0.75, 0.75, 0.75, 1.0],
             "sa_cqs": [None, None, None, 3],
             "currency_mismatch_multiplier_applied": [True, False, True, False],
         }
@@ -3368,6 +3379,174 @@ class TestCurrencyMismatchRow:
             row = corp.filter(pl.col("row_ref") == "0380")
             if len(row) > 0:
                 assert row["0200"][0] is None
+
+
+# =============================================================================
+# P1.94g — DELIV2: OF 02.00 memo row 0500 (currency mismatch RWEA)
+# =============================================================================
+
+
+class TestC0200CurrencyMismatchMemoRow:
+    """P1.94g DELIV2: OF 02.00 memo row 0500 for retail/RE currency mismatch RWEA.
+
+    Why: Basel 3.1 requires a memo row in OF 02.00 (Own Funds Requirements)
+    reporting the total RWEA for retail and RE exposures subject to the 1.5×
+    Art. 123B currency mismatch multiplier. Row 0500 is B31-only, memo-only
+    (col 0010 populated; cols 0020/0030 None).
+
+    Expected values from _sa_results_with_currency_mismatch():
+        SA_RET_1:  currency_mismatch_multiplier_applied=True,  rwa_final=112.5
+        SA_RET_2:  currency_mismatch_multiplier_applied=False, rwa_final=150.0
+        SA_MORT_1: currency_mismatch_multiplier_applied=True,  rwa_final=375.0
+        SA_CORP_1: currency_mismatch_multiplier_applied=False, rwa_final=3000.0
+
+    Memo row 0500 = sum rwa_final where mismatch=True = 112.5 + 375.0 = 487.5
+
+    Total (row 0010) = sum all rwa_final = 112.5 + 150.0 + 375.0 + 3000.0 = 3637.5
+    The memo row must NOT change the total.
+
+    Pre-fix failure: row_ref "0500" does not exist in OF 02.00 → empty filter
+    → IndexError or assertion on length.
+    """
+
+    def test_p1_94g_of_0200_row_0500_exists_b31(self) -> None:
+        """Row 0500 must appear in B31 OF 02.00.
+
+        Arrange: SA results with mismatch flag and risk_weight_pre_currency_mismatch.
+        Act:     COREPGenerator.generate_from_lazyframe(..., framework='BASEL_3_1').
+        Assert:  bundle.c_02_00 filtered to row_ref=='0500' has exactly 1 row.
+
+        Pre-fix failure: row 0500 not defined in B31_C02_00_ROW_SECTIONS → 0 rows.
+        """
+        # Arrange
+        gen = COREPGenerator()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(
+            _sa_results_with_currency_mismatch(), framework="BASEL_3_1"
+        )
+        assert bundle.c_02_00 is not None
+
+        # Assert
+        row = bundle.c_02_00.filter(pl.col("row_ref") == "0500")
+        assert len(row) == 1, (
+            f"Expected OF 02.00 row 0500 to exist in B31 framework, "
+            f"but got {len(row)} rows. Row 0500 is not yet defined in "
+            f"B31_C02_00_ROW_SECTIONS (engine-implementer must add it)."
+        )
+
+    def test_p1_94g_of_0200_row_0500_rwea_col_0010(self) -> None:
+        """Row 0500 col 0010 equals total RWEA of mismatch exposures (112.5 + 375.0 = 487.5).
+
+        Arrange/Act: as above.
+        Assert: row_0500["0010"] == pytest.approx(487.5).
+
+        Pre-fix failure: row does not exist (IndexError or empty frame).
+        """
+        # Arrange
+        gen = COREPGenerator()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(
+            _sa_results_with_currency_mismatch(), framework="BASEL_3_1"
+        )
+        assert bundle.c_02_00 is not None
+
+        row = bundle.c_02_00.filter(pl.col("row_ref") == "0500")
+        assert len(row) == 1, "Row 0500 absent — generator has not been updated yet"
+
+        # SA_RET_1 (rwa=112.5, mismatch=True) + SA_MORT_1 (rwa=375.0, mismatch=True)
+        expected_memo_rwa = 112.5 + 375.0  # = 487.5
+        assert row["0010"][0] == pytest.approx(expected_memo_rwa), (
+            f"OF 02.00 row 0500 col 0010 should be {expected_memo_rwa} "
+            f"(sum rwa_final where currency_mismatch_multiplier_applied), "
+            f"got {row['0010'][0]}."
+        )
+
+    def test_p1_94g_of_0200_row_0500_cols_0020_0030_none(self) -> None:
+        """Row 0500 is memo-only: cols 0020 and 0030 must be None (B31-only SA memo).
+
+        Arrange/Act: as above.
+        Assert: row_0500["0020"] is None and row_0500["0030"] is None.
+
+        Pre-fix failure: row does not exist.
+        """
+        # Arrange
+        gen = COREPGenerator()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(
+            _sa_results_with_currency_mismatch(), framework="BASEL_3_1"
+        )
+        assert bundle.c_02_00 is not None
+
+        row = bundle.c_02_00.filter(pl.col("row_ref") == "0500")
+        assert len(row) == 1, "Row 0500 absent — generator has not been updated yet"
+
+        # Memo-only: SA-equivalent (0020) and floor-adjusted (0030) must both be None
+        assert row["0020"][0] is None, (
+            f"OF 02.00 row 0500 col 0020 should be None (memo-only), got {row['0020'][0]}"
+        )
+        assert row["0030"][0] is None, (
+            f"OF 02.00 row 0500 col 0030 should be None (memo-only), got {row['0030'][0]}"
+        )
+
+    def test_p1_94g_of_0200_total_row_unchanged_by_memo(self) -> None:
+        """Adding row 0500 must NOT change the TREA total (row 0010).
+
+        The memo row is purely informational — it must not inflate total RWEA.
+        Total = 112.5 + 150.0 + 375.0 + 3000.0 = 3637.5.
+
+        Arrange/Act: as above.
+        Assert: row_0010["0010"] == pytest.approx(3637.5).
+
+        Pre-fix: the total row already works; this confirms memo-row addition
+        is non-destructive. This assertion passes pre-fix ONLY IF the total
+        already computes correctly — include it to guard against regressions.
+        """
+        # Arrange
+        gen = COREPGenerator()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(
+            _sa_results_with_currency_mismatch(), framework="BASEL_3_1"
+        )
+        assert bundle.c_02_00 is not None
+
+        total_row = bundle.c_02_00.filter(pl.col("row_ref") == "0010")
+        assert len(total_row) == 1
+
+        # TREA = sum of all rwa_final (SA_RET_1 + SA_RET_2 + SA_MORT_1 + SA_CORP_1)
+        expected_total = 112.5 + 150.0 + 375.0 + 3000.0  # = 3637.5
+        assert total_row["0010"][0] == pytest.approx(expected_total), (
+            f"OF 02.00 total TREA (row 0010) should be {expected_total}, "
+            f"got {total_row['0010'][0]}. "
+            f"The memo row 0500 must not be included in the total."
+        )
+
+    def test_p1_94g_of_0200_row_0500_absent_under_crr(self) -> None:
+        """Row 0500 is B31-only — must not appear under CRR framework.
+
+        Arrange/Act: same fixture, framework='CRR'.
+        Assert: c_02_00 filtered to row_ref=='0500' has 0 rows.
+
+        Pre-fix: this assertion already passes (row doesn't exist at all);
+        it ensures row 0500 is not accidentally added to CRR too.
+        """
+        # Arrange
+        gen = COREPGenerator()
+
+        # Act
+        bundle = gen.generate_from_lazyframe(
+            _sa_results_with_currency_mismatch(), framework="CRR"
+        )
+        assert bundle.c_02_00 is not None
+
+        row = bundle.c_02_00.filter(pl.col("row_ref") == "0500")
+        assert len(row) == 0, (
+            f"OF 02.00 row 0500 must not appear under CRR (B31-only), "
+            f"but got {len(row)} rows."
+        )
 
 
 # =============================================================================
@@ -6515,8 +6694,8 @@ class TestC0200TemplateDefinitions:
         assert len(CRR_C02_00_ROW_SECTIONS) == 3
 
     def test_b31_section_count(self) -> None:
-        """Basel 3.1 has 6 sections (SA, F-IRB, A-IRB, slotting, other expanded)."""
-        assert len(B31_C02_00_ROW_SECTIONS) == 6
+        """Basel 3.1 has 7 sections (SA, F-IRB, A-IRB, slotting, other, plus Memorandum Items added in P1.94g for the Art. 123B currency-mismatch RWEA memo row 0500)."""
+        assert len(B31_C02_00_ROW_SECTIONS) == 7
 
     def test_crr_total_row_exists(self) -> None:
         """CRR has a TOTAL RISK EXPOSURE AMOUNT row."""

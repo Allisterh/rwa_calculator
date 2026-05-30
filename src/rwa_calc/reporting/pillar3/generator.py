@@ -1565,11 +1565,28 @@ def _compute_cr5_values(
     allocated = 0.0
     values: dict[str, object] = {}
 
+    # PRA PS1/26 Art. 123B: rows that fired the 1.5x currency-mismatch multiplier
+    # are bucketed on their pre-multiplier risk weight so EAD lands in the
+    # underlying credit-risk band rather than an inflated one. Frames without the
+    # snapshot/flag columns (CRR, or older callers) bucket on rw_col exactly as
+    # before.
+    if (
+        "risk_weight_pre_currency_mismatch" in data.columns
+        and "currency_mismatch_multiplier_applied" in data.columns
+    ):
+        rw_bucket_expr = (
+            pl.when(pl.col("currency_mismatch_multiplier_applied").fill_null(False))
+            .then(pl.col("risk_weight_pre_currency_mismatch"))
+            .otherwise(pl.col(rw_col))
+        )
+    else:
+        rw_bucket_expr = pl.col(rw_col)
+
     for i, (rw_value, _label) in enumerate(rw_bands):
         ref = _letter_ref(i)
         # Filter to ±0.5pp tolerance for risk weight match
         tol = 0.005
-        bucket = data.filter((pl.col(rw_col) >= rw_value - tol) & (pl.col(rw_col) < rw_value + tol))
+        bucket = data.filter((rw_bucket_expr >= rw_value - tol) & (rw_bucket_expr < rw_value + tol))
         bucket_ead = _col_sum(bucket, ead_col) or 0.0
         values[ref] = bucket_ead
         allocated += bucket_ead
