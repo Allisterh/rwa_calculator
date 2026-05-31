@@ -13,7 +13,6 @@ asserts that:
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
 from datetime import date
 
 import pytest
@@ -38,27 +37,6 @@ _NAMESPACE_LOGGER_NAMES: tuple[str, ...] = (
     "rwa_calc.engine.equity.calculator",
     "rwa_calc.engine.aggregator.aggregator",
 )
-
-
-@pytest.fixture(autouse=True)
-def _reset_logging_state() -> Iterator[None]:
-    """Strip handlers/state from the rwa_calc namespace logger between runs."""
-    from rwa_calc.observability import logging_setup
-
-    def _reset() -> None:
-        namespace_logger = logging.getLogger(_NAMESPACE)
-        for handler in namespace_logger.handlers:
-            namespace_logger.removeHandler(handler)
-        namespace_logger.filters.clear()
-        namespace_logger.propagate = True
-        namespace_logger.setLevel(logging.NOTSET)
-        if hasattr(namespace_logger, "_rwa_calc_handler"):
-            delattr(namespace_logger, "_rwa_calc_handler")
-        logging_setup._configured = None
-
-    _reset()
-    yield
-    _reset()
 
 
 @pytest.fixture
@@ -90,6 +68,7 @@ def _run_pipeline_capturing_records(
 class TestPipelineLoggingInstrumentation:
     def test_every_stage_emits_entry_and_exit_records(
         self,
+        reset_logging_state: None,
         minimal_bundle,
         crr_config,
         caplog: pytest.LogCaptureFixture,
@@ -124,6 +103,7 @@ class TestPipelineLoggingInstrumentation:
 
     def test_exit_records_carry_elapsed_ms(
         self,
+        reset_logging_state: None,
         minimal_bundle,
         crr_config,
         caplog: pytest.LogCaptureFixture,
@@ -146,6 +126,7 @@ class TestPipelineLoggingInstrumentation:
 
     def test_single_run_id_shared_across_all_records(
         self,
+        reset_logging_state: None,
         minimal_bundle,
         crr_config,
         caplog: pytest.LogCaptureFixture,
@@ -159,6 +140,7 @@ class TestPipelineLoggingInstrumentation:
 
     def test_back_to_back_runs_have_distinct_run_ids(
         self,
+        reset_logging_state: None,
         minimal_bundle,
         crr_config,
         caplog: pytest.LogCaptureFixture,
@@ -179,6 +161,7 @@ class TestPipelineLoggingInstrumentation:
 
     def test_configure_logging_does_not_stack_handlers_across_runs(
         self,
+        reset_logging_state: None,
         minimal_bundle,
         crr_config,
     ) -> None:
@@ -195,6 +178,7 @@ class TestPipelineLoggingInstrumentation:
 
     def test_log_messages_do_not_duplicate_calculation_errors(
         self,
+        reset_logging_state: None,
         minimal_bundle,
         crr_config,
         caplog: pytest.LogCaptureFixture,

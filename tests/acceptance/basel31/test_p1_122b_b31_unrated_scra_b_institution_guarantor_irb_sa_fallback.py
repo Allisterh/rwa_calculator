@@ -61,6 +61,7 @@ import pytest
 
 from rwa_calc.contracts.config import CalculationConfig, PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.acceptance.conftest import get_guaranteed_row, get_total_rwa
 from tests.fixtures.p1_122b.p1_122b import (
     EXPECTED_GUARANTOR_RW_B31,
     EXPECTED_GUARANTOR_RW_B31_PRE_FIX,
@@ -142,46 +143,6 @@ def _run_pipeline(config: CalculationConfig) -> pl.DataFrame:
         "that model_permissions.parquet contains MODEL_BORROWER_FIRB."
     )
     return cast(pl.DataFrame, results.irb_results.collect())
-
-
-# ---------------------------------------------------------------------------
-# Row selector helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_guaranteed_row(df: pl.DataFrame) -> dict:
-    """
-    Return the guaranteed-portion sub-row for LOAN_P1122B from IRB results.
-
-    The CRM processor splits the guaranteed loan into:
-      - LOAN_P1122B__G_CP_GUARANTOR_P1122B  (the guaranteed portion; __G_ marker)
-      - LOAN_P1122B__REM                     (the remainder, ead_final = 0)
-
-    Both sub-rows inherit approach=FIRB and are placed in the IRB branch.
-    The __G_ row carries the guarantor's SA risk weight (post-fix: 0.75 for B31).
-    """
-    rows = df.filter(
-        (pl.col("parent_exposure_reference") == LOAN_REF)
-        & pl.col("exposure_reference").str.contains("__G_")
-    ).to_dicts()
-    assert len(rows) == 1, (
-        f"Expected exactly 1 guaranteed-portion row for {LOAN_REF!r}, got {len(rows)}. "
-        f"All IRB rows: "
-        f"{df.select(['exposure_reference', 'parent_exposure_reference']).to_dicts()}"
-    )
-    return rows[0]
-
-
-def _get_total_rwa(df: pl.DataFrame) -> float:
-    """Return total rwa_final for LOAN_P1122B (sum across all IRB sub-rows).
-
-    Both __G_ and __REM sub-rows carry parent_exposure_reference = LOAN_P1122B.
-    Summing rwa_final gives the consolidated RWA for the exposure. For a 100%
-    covered loan, the __REM sub-row has ead_final = 0 → rwa_final = 0, so the
-    total equals the guaranteed sub-row's rwa_final.
-    """
-    sub_rows = df.filter(pl.col("parent_exposure_reference") == LOAN_REF)
-    return sub_rows["rwa_final"].sum()
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +239,7 @@ class TestP1122bB31UnratedScraBInstitutionGuarantorIRBSAFallback:
         POST-FIX:        risk_weight = 0.75, rwa_final = 750,000  → test passes.
         """
         # Arrange
-        row = _get_guaranteed_row(b31_irb_results)
+        row = get_guaranteed_row(b31_irb_results, LOAN_REF)
 
         # Assert risk weight — FAILS pre-fix (engine returns 0.40)
         actual_rw = row["risk_weight"]
@@ -341,7 +302,7 @@ class TestP1122bB31UnratedScraBInstitutionGuarantorIRBSAFallback:
                  rwa_final   ≈ 1,000,000 (EAD 1,000,000 × 1.00).
         """
         # Arrange
-        row = _get_guaranteed_row(crr_irb_results)
+        row = get_guaranteed_row(crr_irb_results, LOAN_REF)
 
         # Assert risk weight — CRR regression pin
         actual_rw = row["risk_weight"]
@@ -385,8 +346,8 @@ class TestP1122bB31UnratedScraBInstitutionGuarantorIRBSAFallback:
         Assert:  delta ≈ 250,000 (abs=1.0).
         """
         # Arrange
-        b31_rwa = _get_total_rwa(b31_irb_results)
-        crr_rwa = _get_total_rwa(crr_irb_results)
+        b31_rwa = get_total_rwa(b31_irb_results, LOAN_REF)
+        crr_rwa = get_total_rwa(crr_irb_results, LOAN_REF)
 
         # Assert — FAILS pre-fix (B31 returns 400,000 → delta = 600,000)
         delta = crr_rwa - b31_rwa

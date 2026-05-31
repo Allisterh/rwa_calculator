@@ -27,7 +27,10 @@ from datetime import date
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import ClassifiedExposuresBundle, CounterpartyLookup
+from rwa_calc.contracts.bundles import (
+    ClassifiedExposuresBundle,
+    create_empty_counterparty_lookup,
+)
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import ApproachType, PermissionMode
 from rwa_calc.engine.crm.processor import CRMProcessor
@@ -48,34 +51,6 @@ def crr_config() -> CalculationConfig:
 @pytest.fixture
 def crr_processor() -> CRMProcessor:
     return CRMProcessor(is_basel_3_1=False)
-
-
-def _empty_cp_lookup() -> CounterpartyLookup:
-    return CounterpartyLookup(
-        counterparties=pl.LazyFrame(
-            schema={"counterparty_reference": pl.String, "entity_type": pl.String}
-        ),
-        parent_mappings=pl.LazyFrame(
-            schema={
-                "child_counterparty_reference": pl.String,
-                "parent_counterparty_reference": pl.String,
-            }
-        ),
-        ultimate_parent_mappings=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "ultimate_parent_reference": pl.String,
-                "hierarchy_depth": pl.Int32,
-            }
-        ),
-        rating_inheritance=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "cqs": pl.Int8,
-                "pd": pl.Float64,
-            }
-        ),
-    )
 
 
 def _bundle(rows: dict[str, list]) -> ClassifiedExposuresBundle:
@@ -116,7 +91,7 @@ def _bundle(rows: dict[str, list]) -> ClassifiedExposuresBundle:
         collateral=None,
         guarantees=None,
         provisions=None,
-        counterparty_lookup=_empty_cp_lookup(),
+        counterparty_lookup=create_empty_counterparty_lookup(),
         classification_audit=None,
         classification_errors=[],
     )

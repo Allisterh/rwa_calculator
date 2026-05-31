@@ -12,6 +12,7 @@ from datetime import date
 import polars as pl
 import pytest
 
+from rwa_calc.contracts.bundles import AggregatedResultBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.engine.aggregator import OutputAggregator
 
@@ -29,46 +30,56 @@ def aggregator() -> OutputAggregator:
     return OutputAggregator()
 
 
+@pytest.fixture
+def single_guaranteed_crm_result(
+    aggregator: OutputAggregator,
+    crr_config: CalculationConfig,
+) -> AggregatedResultBundle:
+    """Aggregate a single guaranteed exposure (600k guaranteed / 400k unguaranteed).
+
+    The borrower CP001 (CORPORATE) is partially guaranteed by GUAR001
+    (CENTRAL_GOVT_CENTRAL_BANK) on a 1M EAD at 0.58 risk weight.
+    """
+    sa_results = pl.LazyFrame(
+        {
+            "exposure_reference": ["EXP001"],
+            "counterparty_reference": ["CP001"],
+            "exposure_class": ["CORPORATE"],
+            "approach_applied": ["SA"],
+            "ead_final": [1_000_000.0],
+            "risk_weight": [0.58],
+            "rwa_final": [580_000.0],
+            "pre_crm_counterparty_reference": ["CP001"],
+            "pre_crm_exposure_class": ["CORPORATE"],
+            "post_crm_counterparty_guaranteed": ["GUAR001"],
+            "post_crm_exposure_class_guaranteed": ["CENTRAL_GOVT_CENTRAL_BANK"],
+            "is_guaranteed": [True],
+            "guaranteed_portion": [600_000.0],
+            "unguaranteed_portion": [400_000.0],
+            "guarantor_reference": ["GUAR001"],
+            "pre_crm_risk_weight": [1.0],
+            "guarantor_rw": [0.0],
+        }
+    )
+
+    return aggregator.aggregate(
+        sa_results=sa_results,
+        irb_results=EMPTY,
+        slotting_results=EMPTY,
+        equity_bundle=None,
+        config=crr_config,
+    )
+
+
 class TestPostCRMDetailedView:
     """Tests for post-CRM detailed view with split rows."""
 
     def test_post_crm_detailed_creates_two_rows_for_guaranteed(
         self,
-        aggregator: OutputAggregator,
-        crr_config: CalculationConfig,
+        single_guaranteed_crm_result: AggregatedResultBundle,
     ) -> None:
         """Guaranteed exposure should generate two reporting rows."""
-        sa_results = pl.LazyFrame(
-            {
-                "exposure_reference": ["EXP001"],
-                "counterparty_reference": ["CP001"],
-                "exposure_class": ["CORPORATE"],
-                "approach_applied": ["SA"],
-                "ead_final": [1_000_000.0],
-                "risk_weight": [0.58],
-                "rwa_final": [580_000.0],
-                "pre_crm_counterparty_reference": ["CP001"],
-                "pre_crm_exposure_class": ["CORPORATE"],
-                "post_crm_counterparty_guaranteed": ["GUAR001"],
-                "post_crm_exposure_class_guaranteed": ["CENTRAL_GOVT_CENTRAL_BANK"],
-                "is_guaranteed": [True],
-                "guaranteed_portion": [600_000.0],
-                "unguaranteed_portion": [400_000.0],
-                "guarantor_reference": ["GUAR001"],
-                "pre_crm_risk_weight": [1.0],
-                "guarantor_rw": [0.0],
-            }
-        )
-
-        result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY,
-            slotting_results=EMPTY,
-            equity_bundle=None,
-            config=crr_config,
-        )
-
-        detailed_df = result.post_crm_detailed.collect()
+        detailed_df = single_guaranteed_crm_result.post_crm_detailed.collect()
 
         # Should have 2 rows for the guaranteed exposure
         assert len(detailed_df) == 2
@@ -178,41 +189,10 @@ class TestPostCRMSummary:
 
     def test_post_crm_summary_splits_by_guarantor_class(
         self,
-        aggregator: OutputAggregator,
-        crr_config: CalculationConfig,
+        single_guaranteed_crm_result: AggregatedResultBundle,
     ) -> None:
         """Guaranteed portion should aggregate under guarantor's exposure class."""
-        sa_results = pl.LazyFrame(
-            {
-                "exposure_reference": ["EXP001"],
-                "counterparty_reference": ["CP001"],
-                "exposure_class": ["CORPORATE"],
-                "approach_applied": ["SA"],
-                "ead_final": [1_000_000.0],
-                "risk_weight": [0.58],
-                "rwa_final": [580_000.0],
-                "pre_crm_counterparty_reference": ["CP001"],
-                "pre_crm_exposure_class": ["CORPORATE"],
-                "post_crm_counterparty_guaranteed": ["GUAR001"],
-                "post_crm_exposure_class_guaranteed": ["CENTRAL_GOVT_CENTRAL_BANK"],
-                "is_guaranteed": [True],
-                "guaranteed_portion": [600_000.0],
-                "unguaranteed_portion": [400_000.0],
-                "guarantor_reference": ["GUAR001"],
-                "pre_crm_risk_weight": [1.0],
-                "guarantor_rw": [0.0],
-            }
-        )
-
-        result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY,
-            slotting_results=EMPTY,
-            equity_bundle=None,
-            config=crr_config,
-        )
-
-        summary_df = result.post_crm_summary.collect()
+        summary_df = single_guaranteed_crm_result.post_crm_summary.collect()
         assert len(summary_df) == 2
 
         corp_row = summary_df.filter(pl.col("reporting_exposure_class") == "CORPORATE")

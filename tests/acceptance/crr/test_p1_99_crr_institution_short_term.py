@@ -46,10 +46,10 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.acceptance.sa_bundle import build_sa_loan_bundle
 
 # ---------------------------------------------------------------------------
 # Fixture paths
@@ -91,34 +91,8 @@ def p1_99_sa_results() -> dict[int, dict]:
     when the field is absent from the loan row, so the 90-day loans hit the Art. 120(2)
     short-term gate automatically.
     """
-    # Arrange — load scenario-local parquets
-    counterparties = pl.scan_parquet(_FIXTURES_DIR / "counterparty.parquet")
-    loans = pl.scan_parquet(_FIXTURES_DIR / "loan.parquet")
-    ratings = pl.scan_parquet(_FIXTURES_DIR / "rating.parquet")
-
-    lending_mappings: pl.LazyFrame = pl.LazyFrame(
-        schema={
-            "parent_counterparty_reference": pl.String,
-            "child_counterparty_reference": pl.String,
-        }
-    )
-
-    bundle = RawDataBundle(
-        facilities=pl.LazyFrame(
-            schema={"facility_reference": pl.String, "counterparty_reference": pl.String}
-        ),
-        loans=loans,
-        counterparties=counterparties,
-        facility_mappings=pl.LazyFrame(
-            schema={
-                "parent_facility_reference": pl.String,
-                "child_reference": pl.String,
-                "child_type": pl.String,
-            }
-        ),
-        lending_mappings=lending_mappings,
-        ratings=ratings,
-    )
+    # Arrange — assemble the shared loan-only bundle from scenario-local parquets
+    bundle = build_sa_loan_bundle(_FIXTURES_DIR)
 
     config = CalculationConfig.crr(
         reporting_date=date(2027, 1, 15),

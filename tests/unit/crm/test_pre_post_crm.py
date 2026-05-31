@@ -8,29 +8,14 @@ Tests the implementation of Tasks 1.1-1.4 from the pre-post-crm-counterparty-pla
 - SA and IRB pre-CRM risk weight tracking
 """
 
-from datetime import date
+from __future__ import annotations
 
 import polars as pl
-import pytest
 
-from rwa_calc.contracts.bundles import (
-    ClassifiedExposuresBundle,
-    CounterpartyLookup,
-)
+from conftest import _counterparty_lookup
+from rwa_calc.contracts.bundles import ClassifiedExposuresBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.engine.crm.processor import CRMProcessor
-
-
-@pytest.fixture
-def crr_config() -> CalculationConfig:
-    """Create CRR configuration for tests."""
-    return CalculationConfig.crr(reporting_date=date(2024, 12, 31))
-
-
-@pytest.fixture
-def crm_processor() -> CRMProcessor:
-    """Create CRM processor instance."""
-    return CRMProcessor()
 
 
 class TestPreCRMAttributePreservation:
@@ -71,29 +56,7 @@ class TestPreCRMAttributePreservation:
             all_exposures=exposures,
             sa_exposures=exposures,
             irb_exposures=pl.LazyFrame(),
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=counterparties,
-                parent_mappings=pl.LazyFrame(
-                    schema={
-                        "child_counterparty_reference": pl.String,
-                        "parent_counterparty_reference": pl.String,
-                    }
-                ),
-                ultimate_parent_mappings=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "ultimate_parent_reference": pl.String,
-                        "hierarchy_depth": pl.Int32,
-                    }
-                ),
-                rating_inheritance=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "cqs": pl.Int8,
-                        "pd": pl.Float64,
-                    }
-                ),
-            ),
+            counterparty_lookup=_counterparty_lookup(counterparties),
         )
 
         result = crm_processor.get_crm_adjusted_bundle(classified_bundle, crr_config)
@@ -137,29 +100,7 @@ class TestPreCRMAttributePreservation:
             all_exposures=exposures,
             sa_exposures=exposures,
             irb_exposures=pl.LazyFrame(),
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=counterparties,
-                parent_mappings=pl.LazyFrame(
-                    schema={
-                        "child_counterparty_reference": pl.String,
-                        "parent_counterparty_reference": pl.String,
-                    }
-                ),
-                ultimate_parent_mappings=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "ultimate_parent_reference": pl.String,
-                        "hierarchy_depth": pl.Int32,
-                    }
-                ),
-                rating_inheritance=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "cqs": pl.Int8,
-                        "pd": pl.Float64,
-                    }
-                ),
-            ),
+            counterparty_lookup=_counterparty_lookup(counterparties),
         )
 
         result = crm_processor.get_crm_adjusted_bundle(classified_bundle, crr_config)
@@ -225,23 +166,7 @@ class TestGuarantorExposureClassDerivation:
             sa_exposures=exposures,
             irb_exposures=pl.LazyFrame(),
             guarantees=guarantees,
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=counterparties,
-                parent_mappings=pl.LazyFrame(
-                    schema={
-                        "child_counterparty_reference": pl.String,
-                        "parent_counterparty_reference": pl.String,
-                    }
-                ),
-                ultimate_parent_mappings=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "ultimate_parent_reference": pl.String,
-                        "hierarchy_depth": pl.Int32,
-                    }
-                ),
-                rating_inheritance=rating_inheritance,
-            ),
+            counterparty_lookup=_counterparty_lookup(counterparties, rating_inheritance),
         )
 
         result = crm_processor.get_crm_adjusted_bundle(classified_bundle, crr_config)
@@ -304,23 +229,7 @@ class TestGuarantorExposureClassDerivation:
             sa_exposures=exposures,
             irb_exposures=pl.LazyFrame(),
             guarantees=guarantees,
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=counterparties,
-                parent_mappings=pl.LazyFrame(
-                    schema={
-                        "child_counterparty_reference": pl.String,
-                        "parent_counterparty_reference": pl.String,
-                    }
-                ),
-                ultimate_parent_mappings=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "ultimate_parent_reference": pl.String,
-                        "hierarchy_depth": pl.Int32,
-                    }
-                ),
-                rating_inheritance=rating_inheritance,
-            ),
+            counterparty_lookup=_counterparty_lookup(counterparties, rating_inheritance),
         )
 
         result = crm_processor.get_crm_adjusted_bundle(classified_bundle, crr_config)
@@ -386,23 +295,7 @@ class TestPostCRMCompositeAttributes:
             sa_exposures=exposures,
             irb_exposures=pl.LazyFrame(),
             guarantees=guarantees,
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=counterparties,
-                parent_mappings=pl.LazyFrame(
-                    schema={
-                        "child_counterparty_reference": pl.String,
-                        "parent_counterparty_reference": pl.String,
-                    }
-                ),
-                ultimate_parent_mappings=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "ultimate_parent_reference": pl.String,
-                        "hierarchy_depth": pl.Int32,
-                    }
-                ),
-                rating_inheritance=rating_inheritance,
-            ),
+            counterparty_lookup=_counterparty_lookup(counterparties, rating_inheritance),
         )
 
         result = crm_processor.get_crm_adjusted_bundle(classified_bundle, crr_config)
@@ -447,29 +340,7 @@ class TestPostCRMCompositeAttributes:
             all_exposures=exposures,
             sa_exposures=exposures,
             irb_exposures=pl.LazyFrame(),
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=counterparties,
-                parent_mappings=pl.LazyFrame(
-                    schema={
-                        "child_counterparty_reference": pl.String,
-                        "parent_counterparty_reference": pl.String,
-                    }
-                ),
-                ultimate_parent_mappings=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "ultimate_parent_reference": pl.String,
-                        "hierarchy_depth": pl.Int32,
-                    }
-                ),
-                rating_inheritance=pl.LazyFrame(
-                    schema={
-                        "counterparty_reference": pl.String,
-                        "cqs": pl.Int8,
-                        "pd": pl.Float64,
-                    }
-                ),
-            ),
+            counterparty_lookup=_counterparty_lookup(counterparties),
         )
 
         result = crm_processor.get_crm_adjusted_bundle(classified_bundle, crr_config)

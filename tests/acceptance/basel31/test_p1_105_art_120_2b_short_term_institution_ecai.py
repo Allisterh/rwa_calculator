@@ -43,15 +43,11 @@ References:
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 
-import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import RawDataBundle
-from rwa_calc.contracts.config import CalculationConfig, PermissionMode
-from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.acceptance.basel31.conftest import run_sa_single_loan_result
 from tests.fixtures.p1_105.p1_105 import (
     EXPECTED_RISK_WEIGHT,
     FACILITY_REF,
@@ -86,63 +82,7 @@ def p1_105_sa_result() -> dict:
 
     Returns the single result row for LN_INST_ST_ECAI_01 as a dict.
     """
-    # Arrange — load scenario-local parquets
-    counterparties = pl.scan_parquet(_FIXTURES_DIR / "counterparty.parquet")
-    # Ratings parquet carries is_short_term=True + scope_type='facility' for
-    # the short-term ECAI route; the facility parquet is unchanged.
-    facilities = pl.scan_parquet(_FIXTURES_DIR / "facility.parquet")
-    loans = pl.scan_parquet(_FIXTURES_DIR / "loan.parquet")
-    ratings = pl.scan_parquet(_FIXTURES_DIR / "rating.parquet")
-
-    # Link the loan to the facility so the facility-scoped short-term rating
-    # override propagates onto the loan exposure.
-    facility_mappings = pl.LazyFrame(
-        [
-            {
-                "parent_facility_reference": FACILITY_REF,
-                "child_reference": LOAN_REF,
-                "child_type": "loan",
-            }
-        ],
-        schema={
-            "parent_facility_reference": pl.String,
-            "child_reference": pl.String,
-            "child_type": pl.String,
-        },
-    )
-    lending_mappings = pl.LazyFrame(
-        schema={
-            "parent_counterparty_reference": pl.String,
-            "child_counterparty_reference": pl.String,
-        }
-    )
-
-    bundle = RawDataBundle(
-        facilities=facilities,
-        loans=loans,
-        counterparties=counterparties,
-        facility_mappings=facility_mappings,
-        lending_mappings=lending_mappings,
-        ratings=ratings,
-    )
-
-    config = CalculationConfig.basel_3_1(
-        reporting_date=date(2027, 6, 30),
-        permission_mode=PermissionMode.STANDARDISED,
-    )
-
-    # Act — run full Basel 3.1 SA pipeline
-    results = PipelineOrchestrator().run_with_data(bundle, config)
-
-    assert results.sa_results is not None, "SA results must not be None for SA-only config"
-
-    df = results.sa_results.collect()
-    rows = df.filter(pl.col("exposure_reference") == LOAN_REF).to_dicts()
-    assert len(rows) == 1, (
-        f"Expected exactly 1 row for {LOAN_REF!r}, got {len(rows)}. "
-        f"All exposure_references: {df['exposure_reference'].to_list()}"
-    )
-    return rows[0]
+    return run_sa_single_loan_result(_FIXTURES_DIR, LOAN_REF, facility_link_ref=FACILITY_REF)
 
 
 # ---------------------------------------------------------------------------

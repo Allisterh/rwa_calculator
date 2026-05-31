@@ -64,6 +64,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.acceptance.conftest import find_exposure_rows, total_field
 from tests.fixtures.p1_186.p1_186 import (
     EXPECTED_EAD_SFT,
     EXPECTED_EAD_SL,
@@ -137,22 +138,6 @@ def _run_pipeline_p186() -> object:
     return PipelineOrchestrator().run_with_data(bundle, config)
 
 
-def _find_rows(results: object, loan_ref: str) -> list[dict]:
-    """Return all result rows whose exposure_reference contains *loan_ref*."""
-    rows: list[dict] = []
-    for lf in [results.sa_results, results.irb_results, results.slotting_results]:
-        if lf is None:
-            continue
-        df = lf.filter(pl.col("exposure_reference").str.contains(loan_ref)).collect()
-        rows.extend(df.to_dicts())
-    return rows
-
-
-def _total(rows: list[dict], field: str) -> float:
-    """Sum *field* across all rows (handles guarantee sub-row splits)."""
-    return sum(r.get(field, 0.0) or 0.0 for r in rows)
-
-
 # ---------------------------------------------------------------------------
 # Test class
 # ---------------------------------------------------------------------------
@@ -200,11 +185,11 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Pre-fix (10-day flat): ead_final ≈ 460,000.00.
         """
         # Arrange / Act (pipeline run in fixture)
-        rows = _find_rows(result, LOAN_REF_SL)
+        rows = find_exposure_rows(result, LOAN_REF_SL)
         assert rows, f"{LOAN_REF_SL} not found in any result set"
 
         # Assert
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(EXPECTED_EAD_SL, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {EXPECTED_EAD_SL:,.2f}. "
             f"If ead_final ≈ {PRE_FIX_EAD_SL:,.2f} the engine is applying the flat "
@@ -219,10 +204,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: risk_weight ≈ 1.0 (tolerance 1e-9).
         """
-        rows = _find_rows(result, LOAN_REF_SL)
+        rows = find_exposure_rows(result, LOAN_REF_SL)
         assert rows, f"{LOAN_REF_SL} not found in any result set"
 
-        rw = _total(rows, "risk_weight")
+        rw = total_field(rows, "risk_weight")
         assert rw == pytest.approx(1.0, abs=_RW_TOL), (
             f"risk_weight {rw:.6f} != 1.0. "
             f"Unrated corporate counterparty (CP_P186) must receive 100% RW "
@@ -236,10 +221,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: rwa_final ≈ 484,852.81 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_SL)
+        rows = find_exposure_rows(result, LOAN_REF_SL)
         assert rows, f"{LOAN_REF_SL} not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(EXPECTED_EAD_SL, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {EXPECTED_EAD_SL:,.2f} "
             f"(= ead_final × 1.0 for unrated corporate)."
@@ -261,10 +246,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Act:     full CRR SA pipeline.
         Assert:  ead_final ≈ 442,426.41 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_SFT)
+        rows = find_exposure_rows(result, LOAN_REF_SFT)
         assert rows, f"{LOAN_REF_SFT} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(EXPECTED_EAD_SFT, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {EXPECTED_EAD_SFT:,.2f}. "
             f"is_sft=True must derive T_m=5 (CRR Art. 224(2)(c))."
@@ -277,10 +262,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: risk_weight ≈ 1.0 (tolerance 1e-9).
         """
-        rows = _find_rows(result, LOAN_REF_SFT)
+        rows = find_exposure_rows(result, LOAN_REF_SFT)
         assert rows, f"{LOAN_REF_SFT} not found in any result set"
 
-        rw = _total(rows, "risk_weight")
+        rw = total_field(rows, "risk_weight")
         assert rw == pytest.approx(1.0, abs=_RW_TOL), (
             f"risk_weight {rw:.6f} != 1.0. "
             f"Unrated corporate counterparty (CP_P186) must receive 100% RW "
@@ -294,10 +279,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: rwa_final ≈ 442,426.41 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_SFT)
+        rows = find_exposure_rows(result, LOAN_REF_SFT)
         assert rows, f"{LOAN_REF_SFT} not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(EXPECTED_EAD_SFT, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {EXPECTED_EAD_SFT:,.2f} "
             f"(= ead_final × 1.0 for unrated corporate)."
@@ -319,10 +304,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: ead_final ≉ 460,000.00 (abs tolerance ±0.50).
         """
-        rows = _find_rows(result, LOAN_REF_SL)
+        rows = find_exposure_rows(result, LOAN_REF_SL)
         assert rows, f"{LOAN_REF_SL} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead != pytest.approx(PRE_FIX_EAD_SL, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} matches pre-fix 10-day value {PRE_FIX_EAD_SL:,.2f}. "
             f"The engine is still applying fill_null(10) instead of deriving T_m=20 "
@@ -342,10 +327,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: ead_final > 460,001.00.
         """
-        rows = _find_rows(result, LOAN_REF_SL)
+        rows = find_exposure_rows(result, LOAN_REF_SL)
         assert rows, f"{LOAN_REF_SL} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead > PRE_FIX_EAD_SL + 1.0, (
             f"ead_final {ead:,.2f} is not strictly greater than "
             f"PRE_FIX_EAD_SL + 1.0 = {PRE_FIX_EAD_SL + 1.0:,.2f}. "
@@ -366,10 +351,10 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: ead_final < 1,000,000.
         """
-        rows = _find_rows(result, LOAN_REF_SL)
+        rows = find_exposure_rows(result, LOAN_REF_SL)
         assert rows, f"{LOAN_REF_SL} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead < 1_000_000.0, (
             f"ead_final {ead:,.2f} is not less than unprotected 1M. "
             f"Collateral appears to be providing no EAD reduction."
@@ -387,13 +372,13 @@ class TestP1186Art2242FxHaircutSecuredLendingDefault:
         Arrange/Act: as above.
         Assert: sl_ead > sft_ead.
         """
-        sl_rows = _find_rows(result, LOAN_REF_SL)
-        sft_rows = _find_rows(result, LOAN_REF_SFT)
+        sl_rows = find_exposure_rows(result, LOAN_REF_SL)
+        sft_rows = find_exposure_rows(result, LOAN_REF_SFT)
         assert sl_rows, f"{LOAN_REF_SL} not found in any result set"
         assert sft_rows, f"{LOAN_REF_SFT} not found in any result set"
 
-        sl_ead = _total(sl_rows, "ead_final")
-        sft_ead = _total(sft_rows, "ead_final")
+        sl_ead = total_field(sl_rows, "ead_final")
+        sft_ead = total_field(sft_rows, "ead_final")
         assert sl_ead > sft_ead, (
             f"LOAN_P186_SL.ead_final {sl_ead:,.2f} is not greater than "
             f"LOAN_P186_SFT.ead_final {sft_ead:,.2f}. "

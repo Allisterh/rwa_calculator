@@ -29,6 +29,13 @@ import pytest
 
 from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig, PermissionMode
+from rwa_calc.data.column_spec import dtypes_of
+from rwa_calc.data.schemas import (
+    COLLATERAL_SCHEMA,
+    COUNTERPARTY_SCHEMA,
+    FACILITY_SCHEMA,
+    LOAN_SCHEMA,
+)
 from rwa_calc.engine.pipeline import PipelineOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -37,79 +44,9 @@ from rwa_calc.engine.pipeline import PipelineOrchestrator
 
 _REPORTING_DATE = date(2025, 12, 31)
 
-_COUNTERPARTY_SCHEMA: dict[str, pl.DataType] = {
-    "counterparty_reference": pl.String,
-    "counterparty_name": pl.String,
-    "entity_type": pl.String,
-    "country_code": pl.String,
-    "annual_revenue": pl.Float64,
-    "total_assets": pl.Float64,
-    "default_status": pl.Boolean,
-    "sector_code": pl.String,
-    "apply_fi_scalar": pl.Boolean,
-    "is_managed_as_retail": pl.Boolean,
-    "is_natural_person": pl.Boolean,
-    "is_social_housing": pl.Boolean,
-    "is_financial_sector_entity": pl.Boolean,
-    "scra_grade": pl.String,
-    "is_investment_grade": pl.Boolean,
-    "is_ccp_client_cleared": pl.Boolean,
-    "borrower_income_currency": pl.String,
-    "sovereign_cqs": pl.Int32,
-    "local_currency": pl.String,
-    "institution_cqs": pl.Int8,
-}
-
-_FACILITY_SCHEMA: dict[str, pl.DataType] = {
-    "facility_reference": pl.String,
-    "product_type": pl.String,
-    "book_code": pl.String,
-    "counterparty_reference": pl.String,
-    "value_date": pl.Date,
-    "maturity_date": pl.Date,
-    "currency": pl.String,
-    "limit": pl.Float64,
-    "committed": pl.Boolean,
-    "lgd": pl.Float64,
-    "lgd_unsecured": pl.Float64,
-    "has_sufficient_collateral_data": pl.Boolean,
-    "beel": pl.Float64,
-    "is_revolving": pl.Boolean,
-    "is_qrre_transactor": pl.Boolean,
-    "seniority": pl.String,
-    "risk_type": pl.String,
-    "underlying_risk_type": pl.String,
-    "ccf_modelled": pl.Float64,
-    "ead_modelled": pl.Float64,
-    "is_short_term_trade_lc": pl.Boolean,
-    "is_payroll_loan": pl.Boolean,
-    "is_buy_to_let": pl.Boolean,
-    "has_one_day_maturity_floor": pl.Boolean,
-    "facility_termination_date": pl.Date,
-}
-
-_LOAN_SCHEMA: dict[str, pl.DataType] = {
-    "loan_reference": pl.String,
-    "product_type": pl.String,
-    "book_code": pl.String,
-    "counterparty_reference": pl.String,
-    "value_date": pl.Date,
-    "maturity_date": pl.Date,
-    "currency": pl.String,
-    "drawn_amount": pl.Float64,
-    "interest": pl.Float64,
-    "lgd": pl.Float64,
-    "lgd_unsecured": pl.Float64,
-    "has_sufficient_collateral_data": pl.Boolean,
-    "beel": pl.Float64,
-    "seniority": pl.String,
-    "is_payroll_loan": pl.Boolean,
-    "is_buy_to_let": pl.Boolean,
-    "has_one_day_maturity_floor": pl.Boolean,
-    "netting_agreement_reference": pl.String,
-    "due_diligence_performed": pl.Boolean,
-    "due_diligence_override_rw": pl.Float64,
-}
+_COUNTERPARTY_SCHEMA: dict[str, pl.DataType] = dtypes_of(COUNTERPARTY_SCHEMA)
+_FACILITY_SCHEMA: dict[str, pl.DataType] = dtypes_of(FACILITY_SCHEMA)
+_LOAN_SCHEMA: dict[str, pl.DataType] = dtypes_of(LOAN_SCHEMA)
 
 _RATING_SCHEMA: dict[str, pl.DataType] = {
     "rating_reference": pl.String,
@@ -138,36 +75,7 @@ _GUARANTEE_SCHEMA: dict[str, pl.DataType] = {
     "includes_restructuring": pl.Boolean,
 }
 
-_COLLATERAL_SCHEMA: dict[str, pl.DataType] = {
-    "collateral_reference": pl.String,
-    "collateral_type": pl.String,
-    "currency": pl.String,
-    "maturity_date": pl.Date,
-    "market_value": pl.Float64,
-    "nominal_value": pl.Float64,
-    "pledge_percentage": pl.Float64,
-    "beneficiary_type": pl.String,
-    "beneficiary_reference": pl.String,
-    "issuer_cqs": pl.Int8,
-    "issuer_type": pl.String,
-    "residual_maturity_years": pl.Float64,
-    "original_maturity_years": pl.Float64,
-    "is_eligible_financial_collateral": pl.Boolean,
-    "is_eligible_irb_collateral": pl.Boolean,
-    "valuation_date": pl.Date,
-    "valuation_type": pl.String,
-    "property_type": pl.String,
-    "property_ltv": pl.Float64,
-    "is_income_producing": pl.Boolean,
-    "is_adc": pl.Boolean,
-    "is_presold": pl.Boolean,
-    "is_qualifying_re": pl.Boolean,
-    "prior_charge_ltv": pl.Float64,
-    "liquidation_period_days": pl.Int32,
-    "qualifies_for_zero_haircut": pl.Boolean,
-    "insurer_risk_weight": pl.Float64,
-    "credit_event_reduction": pl.Float64,
-}
+_COLLATERAL_SCHEMA: dict[str, pl.DataType] = dtypes_of(COLLATERAL_SCHEMA)
 
 _PROVISION_SCHEMA: dict[str, pl.DataType] = {
     "provision_reference": pl.String,

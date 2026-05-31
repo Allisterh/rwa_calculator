@@ -62,6 +62,26 @@ def crm_processor() -> CRMProcessor:
     return CRMProcessor()
 
 
+@pytest.fixture
+def guaranteed_audit_bundle() -> ClassifiedExposuresBundle:
+    """Fully-populated guaranteed bundle shared by the CRM audit-trail tests."""
+    return ClassifiedExposuresBundle(
+        all_exposures=_base_exposure(),
+        sa_exposures=_base_exposure(),
+        irb_exposures=pl.LazyFrame(),
+        counterparty_lookup=CounterpartyLookup(
+            counterparties=_counterparty_lookup(),
+            parent_mappings=pl.LazyFrame({"child": [], "parent": []}),
+            ultimate_parent_mappings=pl.LazyFrame({"ref": [], "ult": []}),
+            rating_inheritance=_rating_inheritance(cqs=2, internal_pd=None),
+        ),
+        classification_errors=[],
+        guarantees=_guarantee(),
+        collateral=None,
+        provisions=None,
+    )
+
+
 def _base_exposure(
     *,
     approach: str = "SA",
@@ -271,23 +291,10 @@ class TestGuarantorRatingTypeInAudit:
         self,
         crm_processor: CRMProcessor,
         crr_config: CalculationConfig,
+        guaranteed_audit_bundle: ClassifiedExposuresBundle,
     ) -> None:
         """CRM audit trail must include guarantor_rating_type."""
-        data = ClassifiedExposuresBundle(
-            all_exposures=_base_exposure(),
-            sa_exposures=_base_exposure(),
-            irb_exposures=pl.LazyFrame(),
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=_counterparty_lookup(),
-                parent_mappings=pl.LazyFrame({"child": [], "parent": []}),
-                ultimate_parent_mappings=pl.LazyFrame({"ref": [], "ult": []}),
-                rating_inheritance=_rating_inheritance(cqs=2, internal_pd=None),
-            ),
-            classification_errors=[],
-            guarantees=_guarantee(),
-            collateral=None,
-            provisions=None,
-        )
+        data = guaranteed_audit_bundle
 
         bundle = crm_processor.get_crm_adjusted_bundle(data, crr_config)
         assert bundle.crm_audit is not None
@@ -298,23 +305,10 @@ class TestGuarantorRatingTypeInAudit:
         self,
         crm_processor: CRMProcessor,
         crr_config: CalculationConfig,
+        guaranteed_audit_bundle: ClassifiedExposuresBundle,
     ) -> None:
         """Audit: external-only guarantor -> "external"."""
-        data = ClassifiedExposuresBundle(
-            all_exposures=_base_exposure(),
-            sa_exposures=_base_exposure(),
-            irb_exposures=pl.LazyFrame(),
-            counterparty_lookup=CounterpartyLookup(
-                counterparties=_counterparty_lookup(),
-                parent_mappings=pl.LazyFrame({"child": [], "parent": []}),
-                ultimate_parent_mappings=pl.LazyFrame({"ref": [], "ult": []}),
-                rating_inheritance=_rating_inheritance(cqs=2, internal_pd=None),
-            ),
-            classification_errors=[],
-            guarantees=_guarantee(),
-            collateral=None,
-            provisions=None,
-        )
+        data = guaranteed_audit_bundle
 
         bundle = crm_processor.get_crm_adjusted_bundle(data, crr_config)
         audit = bundle.crm_audit.collect()

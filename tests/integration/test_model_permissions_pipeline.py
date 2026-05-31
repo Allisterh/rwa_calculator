@@ -103,6 +103,37 @@ def _bundle_with_ratings(
     return replace(bundle, ratings=_rows_to_lazyframe(ratings, RATINGS_SCHEMA))
 
 
+def _airb_single_cp_bundle() -> RawDataBundle:
+    """CP001 corporate loan+facility (lgd=0.30) with a MODEL_AIRB advanced_irb
+    permission and a matching internal rating (pd=0.02, model_id=MODEL_AIRB)."""
+    return _bundle_with_ratings(
+        make_raw_data_bundle(
+            counterparties=[
+                make_counterparty(
+                    counterparty_reference="CP001",
+                    entity_type="corporate",
+                )
+            ],
+            loans=[make_loan(lgd=0.30)],
+            facilities=[make_facility(lgd=0.30)],
+            model_permissions=[
+                make_model_permission(
+                    model_id="MODEL_AIRB",
+                    exposure_class="corporate",
+                    approach="advanced_irb",
+                ),
+            ],
+        ),
+        ratings=[
+            _make_internal_rating(
+                counterparty_reference="CP001",
+                pd=0.02,
+                model_id="MODEL_AIRB",
+            )
+        ],
+    )
+
+
 def _run_pipeline(
     resolver: HierarchyResolver,
     classifier: ExposureClassifier,
@@ -144,32 +175,7 @@ class TestBasicModelResolution:
 
         Even with SA-only org config, model-level AIRB permission overrides.
         """
-        bundle = _bundle_with_ratings(
-            make_raw_data_bundle(
-                counterparties=[
-                    make_counterparty(
-                        counterparty_reference="CP001",
-                        entity_type="corporate",
-                    )
-                ],
-                loans=[make_loan(lgd=0.30)],
-                facilities=[make_facility(lgd=0.30)],
-                model_permissions=[
-                    make_model_permission(
-                        model_id="MODEL_AIRB",
-                        exposure_class="corporate",
-                        approach="advanced_irb",
-                    ),
-                ],
-            ),
-            ratings=[
-                _make_internal_rating(
-                    counterparty_reference="CP001",
-                    pd=0.02,
-                    model_id="MODEL_AIRB",
-                )
-            ],
-        )
+        bundle = _airb_single_cp_bundle()
 
         crm_bundle = _run_pipeline(
             hierarchy_resolver, classifier, crm_processor, crr_config, bundle
@@ -257,32 +263,7 @@ class TestBasicModelResolution:
 
         Model-level permissions take precedence over organisation-wide IRB config.
         """
-        bundle = _bundle_with_ratings(
-            make_raw_data_bundle(
-                counterparties=[
-                    make_counterparty(
-                        counterparty_reference="CP001",
-                        entity_type="corporate",
-                    )
-                ],
-                loans=[make_loan(lgd=0.30)],
-                facilities=[make_facility(lgd=0.30)],
-                model_permissions=[
-                    make_model_permission(
-                        model_id="MODEL_AIRB",
-                        exposure_class="corporate",
-                        approach="advanced_irb",
-                    ),
-                ],
-            ),
-            ratings=[
-                _make_internal_rating(
-                    counterparty_reference="CP001",
-                    pd=0.02,
-                    model_id="MODEL_AIRB",
-                )
-            ],
-        )
+        bundle = _airb_single_cp_bundle()
 
         crm_bundle = _run_pipeline(
             hierarchy_resolver, classifier, crm_processor, crr_firb_config, bundle
@@ -602,32 +583,7 @@ class TestEndToEndWithCRM:
         self, hierarchy_resolver, classifier, crm_processor, crr_config
     ):
         """Model permission → AIRB → CRM preserves modelled LGD from input."""
-        bundle = _bundle_with_ratings(
-            make_raw_data_bundle(
-                counterparties=[
-                    make_counterparty(
-                        counterparty_reference="CP001",
-                        entity_type="corporate",
-                    )
-                ],
-                loans=[make_loan(lgd=0.30)],
-                facilities=[make_facility(lgd=0.30)],
-                model_permissions=[
-                    make_model_permission(
-                        model_id="MODEL_AIRB",
-                        exposure_class="corporate",
-                        approach="advanced_irb",
-                    ),
-                ],
-            ),
-            ratings=[
-                _make_internal_rating(
-                    counterparty_reference="CP001",
-                    pd=0.02,
-                    model_id="MODEL_AIRB",
-                )
-            ],
-        )
+        bundle = _airb_single_cp_bundle()
 
         crm_bundle = _run_pipeline(
             hierarchy_resolver, classifier, crm_processor, crr_config, bundle
@@ -987,32 +943,7 @@ class TestModelPermissionsDiagnostics:
         self, hierarchy_resolver, classifier, crr_firb_config
     ):
         """Happy path: exposure routes to IRB → no CLS006 warnings emitted."""
-        bundle = _bundle_with_ratings(
-            make_raw_data_bundle(
-                counterparties=[
-                    make_counterparty(
-                        counterparty_reference="CP001",
-                        entity_type="corporate",
-                    )
-                ],
-                loans=[make_loan(lgd=0.30)],
-                facilities=[make_facility(lgd=0.30)],
-                model_permissions=[
-                    make_model_permission(
-                        model_id="MODEL_AIRB",
-                        exposure_class="corporate",
-                        approach="advanced_irb",
-                    ),
-                ],
-            ),
-            ratings=[
-                _make_internal_rating(
-                    counterparty_reference="CP001",
-                    pd=0.02,
-                    model_id="MODEL_AIRB",
-                )
-            ],
-        )
+        bundle = _airb_single_cp_bundle()
 
         resolved = hierarchy_resolver.resolve(bundle, crr_firb_config)
         classified = classifier.classify(resolved, crr_firb_config)

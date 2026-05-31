@@ -61,6 +61,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.acceptance.conftest import find_exposure_rows, total_field
 from tests.fixtures.p1_123.p1_123 import (
     EXPECTED_EAD_BIND,
     EXPECTED_EAD_CTRL,
@@ -152,22 +153,6 @@ def _run_pipeline_p1123() -> object:
     return PipelineOrchestrator().run_with_data(bundle, config)
 
 
-def _find_rows(results: object, loan_ref: str) -> list[dict]:
-    """Return all result rows whose exposure_reference contains *loan_ref*."""
-    rows: list[dict] = []
-    for lf in [results.sa_results, results.irb_results, results.slotting_results]:
-        if lf is None:
-            continue
-        df = lf.filter(pl.col("exposure_reference").str.contains(loan_ref)).collect()
-        rows.extend(df.to_dicts())
-    return rows
-
-
-def _total(rows: list[dict], field: str) -> float:
-    """Sum *field* across all rows (handles guarantee sub-row splits)."""
-    return sum(r.get(field, 0.0) or 0.0 for r in rows)
-
-
 # ---------------------------------------------------------------------------
 # Test class
 # ---------------------------------------------------------------------------
@@ -223,11 +208,11 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Assert:  ead_final ≈ 76,870 (±£0.50).
         """
         # Arrange / Act (pipeline run in fixture)
-        rows = _find_rows(result, LOAN_REF_CTRL)
+        rows = find_exposure_rows(result, LOAN_REF_CTRL)
         assert rows, f"{LOAN_REF_CTRL} not found in any result set"
 
         # Assert
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(EXPECTED_EAD_CTRL, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {EXPECTED_EAD_CTRL:,.2f}. "
             f"CTRL (is_sft=False) must use T_m=20d (Art. 224(2)(a)) with HE=0 "
@@ -241,10 +226,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: risk_weight ≈ 1.0 (tolerance 1e-9).
         """
-        rows = _find_rows(result, LOAN_REF_CTRL)
+        rows = find_exposure_rows(result, LOAN_REF_CTRL)
         assert rows, f"{LOAN_REF_CTRL} not found in any result set"
 
-        rw = _total(rows, "risk_weight")
+        rw = total_field(rows, "risk_weight")
         assert rw == pytest.approx(1.0, abs=_RW_TOL), (
             f"risk_weight {rw:.6f} != 1.0. "
             f"Unrated corporate counterparty must receive 100% RW "
@@ -258,10 +243,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: rwa_final ≈ 76,870 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_CTRL)
+        rows = find_exposure_rows(result, LOAN_REF_CTRL)
         assert rows, f"{LOAN_REF_CTRL} not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(EXPECTED_RWA_CTRL, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {EXPECTED_RWA_CTRL:,.2f} "
             f"(= ead_final × 1.0 for unrated corporate, no maturity mismatch)."
@@ -292,11 +277,11 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Pre-fix (HE omitted): ead_final ≈ 63,435 (equal to RUNB — indistinguishable).
         """
         # Arrange / Act (pipeline run in fixture)
-        rows = _find_rows(result, LOAN_REF_BIND)
+        rows = find_exposure_rows(result, LOAN_REF_BIND)
         assert rows, f"{LOAN_REF_BIND} not found in any result set"
 
         # Assert — THIS IS THE LOAD-BEARING ASSERTION: must fail pre-fix
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(EXPECTED_EAD_BIND, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {EXPECTED_EAD_BIND:,.2f}. "
             f"If ead_final ≈ {PRE_FIX_EAD_BIND:,.2f} the engine is omitting the "
@@ -311,10 +296,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: risk_weight ≈ 1.0 (tolerance 1e-9).
         """
-        rows = _find_rows(result, LOAN_REF_BIND)
+        rows = find_exposure_rows(result, LOAN_REF_BIND)
         assert rows, f"{LOAN_REF_BIND} not found in any result set"
 
-        rw = _total(rows, "risk_weight")
+        rw = total_field(rows, "risk_weight")
         assert rw == pytest.approx(1.0, abs=_RW_TOL), (
             f"risk_weight {rw:.6f} != 1.0. "
             f"Unrated corporate counterparty must receive 100% RW "
@@ -330,10 +315,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
 
         Pre-fix: rwa_final ≈ 63,435 (engine omits HE gross-up).
         """
-        rows = _find_rows(result, LOAN_REF_BIND)
+        rows = find_exposure_rows(result, LOAN_REF_BIND)
         assert rows, f"{LOAN_REF_BIND} not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(EXPECTED_RWA_BIND, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {EXPECTED_RWA_BIND:,.2f} "
             f"(= ead_final × 1.0 for unrated corporate, Art. 223(5) HE gross-up applied)."
@@ -357,10 +342,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Act:     full CRR SA pipeline.
         Assert:  ead_final ≈ 63,435 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_RUNB)
+        rows = find_exposure_rows(result, LOAN_REF_RUNB)
         assert rows, f"{LOAN_REF_RUNB} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(EXPECTED_EAD_RUNB, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {EXPECTED_EAD_RUNB:,.2f}. "
             f"Cash exposure (RUNB) must have HE=0, T_m=5d (Art. 224(2)(c))."
@@ -373,10 +358,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: risk_weight ≈ 1.0 (tolerance 1e-9).
         """
-        rows = _find_rows(result, LOAN_REF_RUNB)
+        rows = find_exposure_rows(result, LOAN_REF_RUNB)
         assert rows, f"{LOAN_REF_RUNB} not found in any result set"
 
-        rw = _total(rows, "risk_weight")
+        rw = total_field(rows, "risk_weight")
         assert rw == pytest.approx(1.0, abs=_RW_TOL), (
             f"risk_weight {rw:.6f} != 1.0. "
             f"Unrated corporate counterparty must receive 100% RW "
@@ -390,10 +375,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: rwa_final ≈ 63,435 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_RUNB)
+        rows = find_exposure_rows(result, LOAN_REF_RUNB)
         assert rows, f"{LOAN_REF_RUNB} not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(EXPECTED_RWA_RUNB, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {EXPECTED_RWA_RUNB:,.2f} "
             f"(= ead_final × 1.0 for unrated corporate)."
@@ -415,10 +400,10 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: ead_final ≉ 63,434.97 (abs tolerance ±0.50).
         """
-        rows = _find_rows(result, LOAN_REF_BIND)
+        rows = find_exposure_rows(result, LOAN_REF_BIND)
         assert rows, f"{LOAN_REF_BIND} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead != pytest.approx(PRE_FIX_EAD_BIND, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} matches pre-fix no-HE value {PRE_FIX_EAD_BIND:,.2f}. "
             f"The engine is still omitting the (1+HE) gross-up on the exposure side "
@@ -435,13 +420,13 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: |bind_ead − runb_ead − _BIND_HE_INCREMENT| < 1.0 (±£1.00).
         """
-        bind_rows = _find_rows(result, LOAN_REF_BIND)
-        runb_rows = _find_rows(result, LOAN_REF_RUNB)
+        bind_rows = find_exposure_rows(result, LOAN_REF_BIND)
+        runb_rows = find_exposure_rows(result, LOAN_REF_RUNB)
         assert bind_rows, f"{LOAN_REF_BIND} not found in any result set"
         assert runb_rows, f"{LOAN_REF_RUNB} not found in any result set"
 
-        bind_ead = _total(bind_rows, "ead_final")
-        runb_ead = _total(runb_rows, "ead_final")
+        bind_ead = total_field(bind_rows, "ead_final")
+        runb_ead = total_field(runb_rows, "ead_final")
         gap = bind_ead - runb_ead
         assert gap == pytest.approx(_BIND_HE_INCREMENT, abs=1.0), (
             f"BIND.ead_final − RUNB.ead_final = {gap:,.2f}, "
@@ -465,13 +450,13 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Arrange/Act: as above.
         Assert: rwa(BIND) > rwa(RUNB).
         """
-        bind_rows = _find_rows(result, LOAN_REF_BIND)
-        runb_rows = _find_rows(result, LOAN_REF_RUNB)
+        bind_rows = find_exposure_rows(result, LOAN_REF_BIND)
+        runb_rows = find_exposure_rows(result, LOAN_REF_RUNB)
         assert bind_rows, f"{LOAN_REF_BIND} not found in any result set"
         assert runb_rows, f"{LOAN_REF_RUNB} not found in any result set"
 
-        bind_ead = _total(bind_rows, "ead_final")
-        runb_ead = _total(runb_rows, "ead_final")
+        bind_ead = total_field(bind_rows, "ead_final")
+        runb_ead = total_field(runb_rows, "ead_final")
 
         assert bind_ead > runb_ead, (
             f"BIND.ead_final {bind_ead:,.2f} is not greater than "
@@ -495,9 +480,9 @@ class TestP1123Art2235FccmExposureVolatilityHaircut:
         Assert: ead_final < 1,000,000 for BIND and RUNB.
         """
         for loan_ref in (LOAN_REF_BIND, LOAN_REF_RUNB):
-            rows = _find_rows(result, loan_ref)
+            rows = find_exposure_rows(result, loan_ref)
             assert rows, f"{loan_ref} not found in any result set"
-            ead = _total(rows, "ead_final")
+            ead = total_field(rows, "ead_final")
             assert ead < 1_000_000.0, (
                 f"{loan_ref}.ead_final {ead:,.2f} is not less than unprotected 1M. "
                 f"Collateral (govt_bond MV=950k) appears to be providing no EAD reduction."

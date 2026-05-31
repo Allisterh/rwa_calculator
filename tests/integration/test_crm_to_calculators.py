@@ -33,8 +33,8 @@ from rwa_calc.engine.hierarchy import HierarchyResolver
 from .conftest import (
     _rows_to_lazyframe,
     make_counterparty,
-    make_facility,
     make_loan,
+    make_mixed_corp_gov_rows,
     make_model_permission,
     make_raw_data_bundle,
 )
@@ -484,41 +484,7 @@ class TestSplitCorrectness:
     ):
         """No duplicates across SA/IRB/slotting splits."""
         bundle = _make_bundle_with_ratings(
-            counterparties=[
-                make_counterparty(
-                    counterparty_reference="CP_CORP",
-                    entity_type="corporate",
-                ),
-                make_counterparty(
-                    counterparty_reference="CP_GOV",
-                    entity_type="central_government",
-                    annual_revenue=0.0,
-                    total_assets=0.0,
-                ),
-            ],
-            loans=[
-                make_loan(
-                    loan_reference="LN_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_loan(
-                    loan_reference="LN_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            facilities=[
-                make_facility(
-                    facility_reference="FAC_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_facility(
-                    facility_reference="FAC_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            ratings=[
-                _make_internal_rating(counterparty_reference="CP_CORP", pd=0.02),
-            ],
+            **make_mixed_corp_gov_rows(drawn=False, rating_builder=_make_internal_rating)
         )
         crm_bundle = _run_pipeline(
             hierarchy_resolver, classifier, crm_processor, crr_firb_config, bundle
@@ -553,41 +519,7 @@ class TestSplitCorrectness:
     ):
         """SA + IRB + slotting = total exposures."""
         bundle = _make_bundle_with_ratings(
-            counterparties=[
-                make_counterparty(
-                    counterparty_reference="CP_CORP",
-                    entity_type="corporate",
-                ),
-                make_counterparty(
-                    counterparty_reference="CP_GOV",
-                    entity_type="central_government",
-                    annual_revenue=0.0,
-                    total_assets=0.0,
-                ),
-            ],
-            loans=[
-                make_loan(
-                    loan_reference="LN_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_loan(
-                    loan_reference="LN_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            facilities=[
-                make_facility(
-                    facility_reference="FAC_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_facility(
-                    facility_reference="FAC_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            ratings=[
-                _make_internal_rating(counterparty_reference="CP_CORP", pd=0.02),
-            ],
+            **make_mixed_corp_gov_rows(drawn=False, rating_builder=_make_internal_rating)
         )
         crm_bundle = _run_pipeline(
             hierarchy_resolver, classifier, crm_processor, crr_firb_config, bundle
@@ -615,43 +547,7 @@ class TestSplitCorrectness:
     ):
         """Mixed portfolio: corporate (FIRB) + sovereign (SA) → each calculator gets correct set."""
         bundle = _make_bundle_with_ratings(
-            counterparties=[
-                make_counterparty(
-                    counterparty_reference="CP_CORP",
-                    entity_type="corporate",
-                ),
-                make_counterparty(
-                    counterparty_reference="CP_GOV",
-                    entity_type="central_government",
-                    annual_revenue=0.0,
-                    total_assets=0.0,
-                ),
-            ],
-            loans=[
-                make_loan(
-                    loan_reference="LN_CORP",
-                    counterparty_reference="CP_CORP",
-                    drawn_amount=1_000_000.0,
-                ),
-                make_loan(
-                    loan_reference="LN_GOV",
-                    counterparty_reference="CP_GOV",
-                    drawn_amount=500_000.0,
-                ),
-            ],
-            facilities=[
-                make_facility(
-                    facility_reference="FAC_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_facility(
-                    facility_reference="FAC_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            ratings=[
-                _make_internal_rating(counterparty_reference="CP_CORP", pd=0.02),
-            ],
+            **make_mixed_corp_gov_rows(drawn=True, rating_builder=_make_internal_rating)
         )
         crm_bundle = _run_pipeline(
             hierarchy_resolver, classifier, crm_processor, crr_firb_config, bundle

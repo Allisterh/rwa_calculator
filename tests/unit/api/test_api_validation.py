@@ -28,43 +28,6 @@ from rwa_calc.config.data_sources import DataSourceRegistry
 
 
 @pytest.fixture
-def temp_valid_dir(tmp_path: Path) -> Path:
-    """Create a temporary directory with all required parquet files."""
-    # Create directory structure
-    (tmp_path / "counterparty").mkdir()
-    (tmp_path / "exposures").mkdir()
-    (tmp_path / "collateral").mkdir()
-    (tmp_path / "guarantee").mkdir()
-    (tmp_path / "provision").mkdir()
-    (tmp_path / "ratings").mkdir()
-    (tmp_path / "mapping").mkdir()
-
-    # Create minimal files
-    empty_df = pl.DataFrame({"id": []})
-
-    # Counterparty file (mandatory)
-    empty_df.write_parquet(tmp_path / "counterparty" / "counterparties.parquet")
-
-    # Exposure files
-    empty_df.write_parquet(tmp_path / "exposures" / "facilities.parquet")
-    empty_df.write_parquet(tmp_path / "exposures" / "loans.parquet")
-    empty_df.write_parquet(tmp_path / "exposures" / "contingents.parquet")
-    empty_df.write_parquet(tmp_path / "exposures" / "facility_mapping.parquet")
-
-    # CRM files
-    empty_df.write_parquet(tmp_path / "collateral" / "collateral.parquet")
-    empty_df.write_parquet(tmp_path / "guarantee" / "guarantee.parquet")
-    empty_df.write_parquet(tmp_path / "provision" / "provision.parquet")
-
-    # Ratings and mappings
-    empty_df.write_parquet(tmp_path / "ratings" / "ratings.parquet")
-    empty_df.write_parquet(tmp_path / "mapping" / "org_mapping.parquet")
-    empty_df.write_parquet(tmp_path / "mapping" / "lending_mapping.parquet")
-
-    return tmp_path
-
-
-@pytest.fixture
 def temp_partial_dir(tmp_path: Path) -> Path:
     """Create a temporary directory with only some required files."""
     # Create directory structure

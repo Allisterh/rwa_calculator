@@ -14,6 +14,8 @@ the production schemas, then wraps them in a RawDataBundle.
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable, Iterator
 from datetime import date
 from typing import Any
 
@@ -43,6 +45,33 @@ from rwa_calc.engine.hierarchy import HierarchyResolver
 from rwa_calc.engine.irb.calculator import IRBCalculator
 from rwa_calc.engine.sa.calculator import SACalculator
 from rwa_calc.engine.slotting.calculator import SlottingCalculator
+from rwa_calc.observability.logging_setup import _NAMESPACE
+
+# =============================================================================
+# LOGGING STATE RESET
+# =============================================================================
+
+
+@pytest.fixture
+def reset_logging_state() -> Iterator[None]:
+    """Strip handlers/state from the rwa_calc namespace logger between runs."""
+    from rwa_calc.observability import logging_setup
+
+    def _reset() -> None:
+        namespace_logger = logging.getLogger(_NAMESPACE)
+        for handler in namespace_logger.handlers:
+            namespace_logger.removeHandler(handler)
+        namespace_logger.filters.clear()
+        namespace_logger.propagate = True
+        namespace_logger.setLevel(logging.NOTSET)
+        if hasattr(namespace_logger, "_rwa_calc_handler"):
+            delattr(namespace_logger, "_rwa_calc_handler")
+        logging_setup._configured = None
+
+    _reset()
+    yield
+    _reset()
+
 
 # =============================================================================
 # CONFIG FACTORIES
@@ -230,6 +259,66 @@ def make_model_permission(**overrides: Any) -> dict[str, Any]:
 def make_rating(**overrides: Any) -> dict[str, Any]:
     """Single rating row with defaults."""
     return {**_RATING_DEFAULTS, **overrides}
+
+
+def make_mixed_corp_gov_rows(
+    *,
+    drawn: bool = False,
+    rating_builder: Callable[..., dict[str, Any]] = make_rating,
+) -> dict[str, list[dict[str, Any]]]:
+    """Two-counterparty mixed corporate + central-government portfolio rows.
+
+    Returns the counterparties/loans/facilities/ratings row-lists for a portfolio
+    of one corporate counterparty (CP_CORP, IRB-eligible via an internal rating)
+    and one central-government counterparty (CP_GOV, SA via annual_revenue=0 /
+    total_assets=0). Used by the SA/IRB split-correctness and summary-by-approach
+    integration tests.
+
+    When ``drawn`` is True the loans carry drawn_amount=1_000_000.0 (CORP) /
+    500_000.0 (GOV); when False they use the builder defaults.
+
+    ``rating_builder`` builds the single CP_CORP internal rating (pd=0.02). It
+    defaults to ``make_rating`` but each caller passes its own per-file
+    ``_make_internal_rating`` so model_id semantics stay identical to the inline
+    blocks this builder replaces.
+    """
+    loan_corp = {"loan_reference": "LN_CORP", "counterparty_reference": "CP_CORP"}
+    loan_gov = {"loan_reference": "LN_GOV", "counterparty_reference": "CP_GOV"}
+    if drawn:
+        loan_corp["drawn_amount"] = 1_000_000.0
+        loan_gov["drawn_amount"] = 500_000.0
+
+    return {
+        "counterparties": [
+            make_counterparty(
+                counterparty_reference="CP_CORP",
+                entity_type="corporate",
+            ),
+            make_counterparty(
+                counterparty_reference="CP_GOV",
+                entity_type="central_government",
+                annual_revenue=0.0,
+                total_assets=0.0,
+            ),
+        ],
+        "loans": [
+            make_loan(**loan_corp),
+            make_loan(**loan_gov),
+        ],
+        "facilities": [
+            make_facility(
+                facility_reference="FAC_CORP",
+                counterparty_reference="CP_CORP",
+            ),
+            make_facility(
+                facility_reference="FAC_GOV",
+                counterparty_reference="CP_GOV",
+            ),
+        ],
+        "ratings": [
+            rating_builder(counterparty_reference="CP_CORP", pd=0.02),
+        ],
+    }
 
 
 def _rows_to_lazyframe(rows: list[dict[str, Any]], schema: dict[str, Any]) -> pl.LazyFrame:

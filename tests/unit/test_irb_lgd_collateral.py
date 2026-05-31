@@ -14,7 +14,10 @@ from datetime import date
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import ClassifiedExposuresBundle, CounterpartyLookup
+from rwa_calc.contracts.bundles import (
+    ClassifiedExposuresBundle,
+    create_empty_counterparty_lookup,
+)
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import ApproachType, ExposureClass, PermissionMode
 from rwa_calc.engine.crm.processor import CRMProcessor
@@ -105,34 +108,7 @@ def create_classified_bundle(
         collateral = pl.DataFrame(collateral_data).lazy()
 
     # Create empty CounterpartyLookup
-    counterparty_lookup = CounterpartyLookup(
-        counterparties=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "entity_type": pl.String,
-            }
-        ),
-        parent_mappings=pl.LazyFrame(
-            schema={
-                "child_counterparty_reference": pl.String,
-                "parent_counterparty_reference": pl.String,
-            }
-        ),
-        ultimate_parent_mappings=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "ultimate_parent_reference": pl.String,
-                "hierarchy_depth": pl.Int32,
-            }
-        ),
-        rating_inheritance=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "cqs": pl.Int8,
-                "pd": pl.Float64,
-            }
-        ),
-    )
+    counterparty_lookup = create_empty_counterparty_lookup()
 
     return ClassifiedExposuresBundle(
         all_exposures=exposures,

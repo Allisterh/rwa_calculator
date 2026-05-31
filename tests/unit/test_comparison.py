@@ -31,6 +31,7 @@ from rwa_calc.engine.comparison import (
     _compute_summary_by_class,
     _validate_configs,
 )
+from tests.unit._minimal_raw_data import make_minimal_raw_data
 
 # =============================================================================
 # Test Fixtures
@@ -380,7 +381,7 @@ class TestDualFrameworkRunner:
         # Swapped configs should raise
         with pytest.raises(ValueError, match="crr_config must use CRR"):
             runner.compare(
-                data=_make_minimal_raw_data(),
+                data=make_minimal_raw_data(),
                 crr_config=b31_config,
                 b31_config=crr_config,
             )
@@ -389,7 +390,7 @@ class TestDualFrameworkRunner:
         """Runner should return a ComparisonBundle with all fields populated."""
         runner = DualFrameworkRunner()
         result = runner.compare(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(),
             crr_config=crr_config,
             b31_config=b31_config,
         )
@@ -404,7 +405,7 @@ class TestDualFrameworkRunner:
         """Exposure deltas should be a valid LazyFrame that can be collected."""
         runner = DualFrameworkRunner()
         result = runner.compare(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(),
             crr_config=crr_config,
             b31_config=b31_config,
         )
@@ -426,87 +427,10 @@ class TestDualFrameworkRunner:
 
         runner = DualFrameworkRunner()
         result = runner.compare(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(),
             crr_config=crr_config,
             b31_config=b31_config,
         )
         df = result.exposure_deltas.collect()
         assert isinstance(df, pl.DataFrame)
         assert "delta_rwa" in df.columns
-
-
-# =============================================================================
-# Helpers
-# =============================================================================
-
-
-def _make_minimal_raw_data():
-    """Create minimal RawDataBundle for runner integration tests."""
-    from rwa_calc.contracts.bundles import RawDataBundle
-
-    facilities = pl.LazyFrame(
-        {
-            "facility_reference": ["FAC001"],
-            "counterparty_reference": ["CP001"],
-            "product_type": ["TERM_LOAN"],
-            "book_code": ["BANK"],
-            "currency": ["GBP"],
-            "facility_limit": [1_000_000.0],
-        }
-    )
-
-    loans = pl.LazyFrame(
-        {
-            "loan_reference": ["LN001"],
-            "counterparty_reference": ["CP001"],
-            "product_type": ["TERM_LOAN"],
-            "book_code": ["BANK"],
-            "value_date": [date(2023, 1, 1)],
-            "maturity_date": [date(2028, 1, 1)],
-            "currency": ["GBP"],
-            "drawn_amount": [500_000.0],
-            "lgd": [0.45],
-            "seniority": ["senior"],
-            "risk_type": ["FR"],
-            "ccf_modelled": [None],
-            "is_short_term_trade_lc": [None],
-        }
-    )
-
-    counterparties = pl.LazyFrame(
-        {
-            "counterparty_reference": ["CP001"],
-            "counterparty_name": ["Test Corp"],
-            "country_of_incorporation": ["GB"],
-            "sector": ["CORPORATE"],
-            "entity_type": ["corporate"],
-            "is_sme": [False],
-            "apply_fi_scalar": [True],
-            "is_pse": [False],
-            "cqs": [2],
-            "pd": [0.01],
-            "turnover_eur": [100_000_000.0],
-        }
-    )
-
-    facility_mappings = pl.LazyFrame(
-        {
-            "facility_reference": ["FAC001"],
-            "loan_reference": ["LN001"],
-        }
-    )
-
-    lending_mappings = pl.LazyFrame(
-        {
-            "counterparty_reference": ["CP001"],
-            "lending_group_id": ["LG001"],
-        }
-    )
-
-    return RawDataBundle(
-        facilities=facilities,
-        loans=loans,
-        counterparties=counterparties,
-        facility_mappings=facility_mappings,
-        lending_mappings=lending_mappings,
-    )

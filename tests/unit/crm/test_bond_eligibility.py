@@ -31,6 +31,10 @@ from rwa_calc.data.tables.haircuts import (
 )
 from rwa_calc.engine.crm.haircuts import HaircutCalculator
 
+# Sentinel distinguishing "issuer_type not supplied" (infer from collateral_type)
+# from an explicit ``None`` issuer_type (e.g. cash collateral).
+_INFER_ISSUER_TYPE: str = "__infer__"
+
 # =============================================================================
 # ELIGIBILITY FUNCTION TESTS
 # =============================================================================
@@ -324,8 +328,21 @@ class TestPipelineEligibility:
         collateral_type: str,
         issuer_cqs: int | None,
         market_value: float = 500_000.0,
+        issuer_type: str | None = _INFER_ISSUER_TYPE,
+        residual_maturity_years: float | None = 3.0,
     ) -> pl.LazyFrame:
-        """Build a minimal collateral LazyFrame for haircut testing."""
+        """Build a minimal collateral LazyFrame for haircut testing.
+
+        ``issuer_type`` defaults to the ``_INFER_ISSUER_TYPE`` sentinel, which infers
+        "sovereign" for govt bonds and "corporate" otherwise; pass an explicit value
+        (including ``None`` for collateral such as cash) to override. ``residual_maturity_years``
+        defaults to 3.0 and may be set to ``None`` for collateral without a maturity.
+        """
+        resolved_issuer_type = (
+            ("sovereign" if "govt" in collateral_type else "corporate")
+            if issuer_type is _INFER_ISSUER_TYPE
+            else issuer_type
+        )
         return pl.LazyFrame(
             {
                 "collateral_reference": ["COLL1"],
@@ -333,8 +350,8 @@ class TestPipelineEligibility:
                 "currency": ["GBP"],
                 "market_value": [market_value],
                 "issuer_cqs": [issuer_cqs],
-                "issuer_type": ["sovereign" if "govt" in collateral_type else "corporate"],
-                "residual_maturity_years": [3.0],
+                "issuer_type": [resolved_issuer_type],
+                "residual_maturity_years": [residual_maturity_years],
                 "is_eligible_financial_collateral": [True],
                 "exposure_currency": ["GBP"],
                 "exposure_maturity": [5.0],
@@ -415,32 +432,7 @@ class TestPipelineEligibility:
         """Pipeline: Unrated corp bond gets value_after_haircut = 0."""
         calc = HaircutCalculator(is_basel_3_1=False)
         # Null CQS for unrated
-        lf = pl.LazyFrame(
-            {
-                "collateral_reference": ["COLL1"],
-                "collateral_type": ["corp_bond"],
-                "currency": ["GBP"],
-                "market_value": [500_000.0],
-                "issuer_cqs": [None],
-                "issuer_type": ["corporate"],
-                "residual_maturity_years": [3.0],
-                "is_eligible_financial_collateral": [True],
-                "exposure_currency": ["GBP"],
-                "exposure_maturity": [5.0],
-            },
-            schema={
-                "collateral_reference": pl.String,
-                "collateral_type": pl.String,
-                "currency": pl.String,
-                "market_value": pl.Float64,
-                "issuer_cqs": pl.Int8,
-                "issuer_type": pl.String,
-                "residual_maturity_years": pl.Float64,
-                "is_eligible_financial_collateral": pl.Boolean,
-                "exposure_currency": pl.String,
-                "exposure_maturity": pl.Float64,
-            },
-        )
+        lf = self._make_collateral_lf("corp_bond", issuer_cqs=None)
         result = calc.apply_haircuts(lf, crr_config).collect()
         assert result["value_after_haircut"][0] == pytest.approx(0.0)
 
@@ -454,31 +446,12 @@ class TestPipelineEligibility:
     def test_pipeline_cash_unaffected(self, crr_config) -> None:
         """Pipeline: Cash collateral is unaffected by bond eligibility rules."""
         calc = HaircutCalculator(is_basel_3_1=False)
-        lf = pl.LazyFrame(
-            {
-                "collateral_reference": ["COLL1"],
-                "collateral_type": ["cash"],
-                "currency": ["GBP"],
-                "market_value": [100_000.0],
-                "issuer_cqs": [None],
-                "issuer_type": [None],
-                "residual_maturity_years": [None],
-                "is_eligible_financial_collateral": [True],
-                "exposure_currency": ["GBP"],
-                "exposure_maturity": [5.0],
-            },
-            schema={
-                "collateral_reference": pl.String,
-                "collateral_type": pl.String,
-                "currency": pl.String,
-                "market_value": pl.Float64,
-                "issuer_cqs": pl.Int8,
-                "issuer_type": pl.String,
-                "residual_maturity_years": pl.Float64,
-                "is_eligible_financial_collateral": pl.Boolean,
-                "exposure_currency": pl.String,
-                "exposure_maturity": pl.Float64,
-            },
+        lf = self._make_collateral_lf(
+            "cash",
+            issuer_cqs=None,
+            market_value=100_000.0,
+            issuer_type=None,
+            residual_maturity_years=None,
         )
         result = calc.apply_haircuts(lf, crr_config).collect()
         assert result["value_after_haircut"][0] == pytest.approx(100_000.0)

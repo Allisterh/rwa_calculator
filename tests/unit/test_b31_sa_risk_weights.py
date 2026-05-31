@@ -1564,29 +1564,16 @@ class TestCRRRegression:
         crr_config: CalculationConfig,
     ) -> None:
         """CRR commercial RE LTV ≤ 50% with income cover → 50% (unchanged)."""
-        exposures = pl.DataFrame(
-            {
-                "exposure_reference": ["CRE001"],
-                "ead_final": [600000.0],
-                "exposure_class": ["COMMERCIAL_RE"],
-                "cqs": [None],
-                "ltv": [0.40],
-                "is_sme": [False],
-                "is_infrastructure": [False],
-                "has_income_cover": [True],
-            }
-        ).lazy()
-
-        bundle = CRMAdjustedBundle(
-            exposures=exposures,
-            sa_exposures=exposures,
-            irb_exposures=pl.LazyFrame(),
+        result = calculate_single_sa_exposure(
+            sa_calculator,
+            ead=Decimal("600000"),
+            exposure_class="COMMERCIAL_RE",
+            ltv=Decimal("0.40"),
+            has_income_cover=True,
+            config=crr_config,
         )
 
-        result = sa_calculator.calculate(bundle, crr_config)
-        df = result.frame.collect()
-
-        assert df["risk_weight"][0] == pytest.approx(0.50)
+        assert result["risk_weight"] == pytest.approx(0.50)
 
     def test_crr_sovereign_still_works(
         self,

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 
@@ -21,30 +20,8 @@ from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.engine.pipeline import PipelineOrchestrator
 from rwa_calc.observability import RunIdFilter
-from rwa_calc.observability.logging_setup import _NAMESPACE
 
 from .conftest import make_counterparty, make_loan, make_raw_data_bundle
-
-
-@pytest.fixture(autouse=True)
-def _reset_logging_state() -> Iterator[None]:
-    """Strip handlers/state from the rwa_calc namespace logger between runs."""
-    from rwa_calc.observability import logging_setup
-
-    def _reset() -> None:
-        namespace_logger = logging.getLogger(_NAMESPACE)
-        for handler in namespace_logger.handlers:
-            namespace_logger.removeHandler(handler)
-        namespace_logger.filters.clear()
-        namespace_logger.propagate = True
-        namespace_logger.setLevel(logging.NOTSET)
-        if hasattr(namespace_logger, "_rwa_calc_handler"):
-            delattr(namespace_logger, "_rwa_calc_handler")
-        logging_setup._configured = None
-
-    _reset()
-    yield
-    _reset()
 
 
 def _bundle_with_fx_rate(rate: float) -> RawDataBundle:
@@ -81,7 +58,7 @@ def _autosync_warnings(records: list[logging.LogRecord]) -> list[logging.LogReco
 
 class TestEurGbpRateAutoSync:
     def test_warns_and_replaces_rate_when_fx_table_diverges(
-        self, caplog: pytest.LogCaptureFixture
+        self, reset_logging_state: None, caplog: pytest.LogCaptureFixture
     ) -> None:
         bundle = _bundle_with_fx_rate(0.90)
         config = CalculationConfig.crr(
@@ -97,7 +74,9 @@ class TestEurGbpRateAutoSync:
         assert "0.8732" in msg
         assert "0.9" in msg  # Polars surfaces 0.90 as 0.9
 
-    def test_no_warning_when_rates_match(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_no_warning_when_rates_match(
+        self, reset_logging_state: None, caplog: pytest.LogCaptureFixture
+    ) -> None:
         bundle = _bundle_with_fx_rate(0.8732)
         config = CalculationConfig.crr(
             reporting_date=date(2024, 12, 31),
@@ -108,7 +87,9 @@ class TestEurGbpRateAutoSync:
 
         assert _autosync_warnings(records) == []
 
-    def test_opt_out_suppresses_autosync(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_opt_out_suppresses_autosync(
+        self, reset_logging_state: None, caplog: pytest.LogCaptureFixture
+    ) -> None:
         bundle = _bundle_with_fx_rate(0.90)
         config = dataclasses.replace(
             CalculationConfig.crr(
@@ -122,7 +103,9 @@ class TestEurGbpRateAutoSync:
 
         assert _autosync_warnings(records) == []
 
-    def test_basel_3_1_skips_autosync(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_basel_3_1_skips_autosync(
+        self, reset_logging_state: None, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """B3.1 uses GBP-native thresholds; eur_gbp_rate auto-sync is a no-op."""
         bundle = _bundle_with_fx_rate(0.90)
         config = CalculationConfig.basel_3_1(reporting_date=date(2028, 1, 15))

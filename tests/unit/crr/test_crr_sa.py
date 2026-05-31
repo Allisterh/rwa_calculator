@@ -34,6 +34,50 @@ from rwa_calc.engine.supporting_factors import (
 )
 
 # =============================================================================
+# Helpers
+# =============================================================================
+
+
+def _calculate_sa_exposures(
+    calculator: SACalculator,
+    config: CalculationConfig,
+    *,
+    exposure_references: list[str],
+    counterparty_references: list[str | None],
+    ead_finals: list[float],
+    exposure_classes: list[str],
+    cqs: list[int | None],
+    is_sme: list[bool],
+    is_infrastructure: list[bool],
+) -> pl.DataFrame:
+    """Build a multi-row SA bundle and return the collected result frame.
+
+    Sibling of ``calculate_single_sa_exposure`` for the multi-counterparty
+    SME supporting-factor scenarios (CRR Art. 501) that the single-row helper
+    cannot express.
+    """
+    exposures = pl.DataFrame(
+        {
+            "exposure_reference": exposure_references,
+            "counterparty_reference": counterparty_references,
+            "ead_final": ead_finals,
+            "exposure_class": exposure_classes,
+            "cqs": cqs,
+            "is_sme": is_sme,
+            "is_infrastructure": is_infrastructure,
+        }
+    ).lazy()
+
+    bundle = CRMAdjustedBundle(
+        exposures=exposures,
+        sa_exposures=exposures,
+        irb_exposures=pl.LazyFrame(),
+    )
+
+    return calculator.calculate(bundle, config).frame.collect()
+
+
+# =============================================================================
 # Fixtures
 # =============================================================================
 
@@ -522,29 +566,16 @@ class TestCommercialRERiskWeights:
         crr_config: CalculationConfig,
     ) -> None:
         """CRE LTV <= 50% with income cover should get 50% RW."""
-        exposures = pl.DataFrame(
-            {
-                "exposure_reference": ["CRE001"],
-                "ead_final": [600000.0],
-                "exposure_class": ["COMMERCIAL_RE"],
-                "cqs": [None],
-                "ltv": [0.40],
-                "is_sme": [False],
-                "is_infrastructure": [False],
-                "has_income_cover": [True],
-            }
-        ).lazy()
-
-        bundle = CRMAdjustedBundle(
-            exposures=exposures,
-            sa_exposures=exposures,
-            irb_exposures=pl.LazyFrame(),
+        result = calculate_single_sa_exposure(
+            sa_calculator,
+            ead=Decimal("600000"),
+            exposure_class="COMMERCIAL_RE",
+            ltv=Decimal("0.40"),
+            has_income_cover=True,
+            config=crr_config,
         )
 
-        result = sa_calculator.calculate(bundle, crr_config)
-        df = result.frame.collect()
-
-        assert df["risk_weight"][0] == pytest.approx(0.50)
+        assert result["risk_weight"] == pytest.approx(0.50)
 
     def test_low_ltv_without_income_cover_hundred_percent(
         self,
@@ -552,29 +583,16 @@ class TestCommercialRERiskWeights:
         crr_config: CalculationConfig,
     ) -> None:
         """CRE LTV <= 50% without income cover should get 100% RW."""
-        exposures = pl.DataFrame(
-            {
-                "exposure_reference": ["CRE001"],
-                "ead_final": [600000.0],
-                "exposure_class": ["COMMERCIAL_RE"],
-                "cqs": [None],
-                "ltv": [0.40],
-                "is_sme": [False],
-                "is_infrastructure": [False],
-                "has_income_cover": [False],
-            }
-        ).lazy()
-
-        bundle = CRMAdjustedBundle(
-            exposures=exposures,
-            sa_exposures=exposures,
-            irb_exposures=pl.LazyFrame(),
+        result = calculate_single_sa_exposure(
+            sa_calculator,
+            ead=Decimal("600000"),
+            exposure_class="COMMERCIAL_RE",
+            ltv=Decimal("0.40"),
+            has_income_cover=False,
+            config=crr_config,
         )
 
-        result = sa_calculator.calculate(bundle, crr_config)
-        df = result.frame.collect()
-
-        assert df["risk_weight"][0] == pytest.approx(1.00)
+        assert result["risk_weight"] == pytest.approx(1.00)
 
 
 # =============================================================================
@@ -966,26 +984,17 @@ class TestSMESupportingFactorCounterpartyAggregation:
         # Two exposures of £1.5m each to same counterparty = £3m total
         # Threshold is ~£2.183m (EUR 2.5m * 0.8732)
         # Factor should be blended, not pure Tier 1 (0.7619)
-        exposures = pl.DataFrame(
-            {
-                "exposure_reference": ["EXP001", "EXP002"],
-                "counterparty_reference": ["CP001", "CP001"],  # Same counterparty
-                "ead_final": [1500000.0, 1500000.0],  # £1.5m each
-                "exposure_class": ["CORPORATE", "CORPORATE"],
-                "cqs": [None, None],
-                "is_sme": [True, True],
-                "is_infrastructure": [False, False],
-            }
-        ).lazy()
-
-        bundle = CRMAdjustedBundle(
-            exposures=exposures,
-            sa_exposures=exposures,
-            irb_exposures=pl.LazyFrame(),
+        df = _calculate_sa_exposures(
+            sa_calculator,
+            crr_config,
+            exposure_references=["EXP001", "EXP002"],
+            counterparty_references=["CP001", "CP001"],  # Same counterparty
+            ead_finals=[1500000.0, 1500000.0],  # £1.5m each
+            exposure_classes=["CORPORATE", "CORPORATE"],
+            cqs=[None, None],
+            is_sme=[True, True],
+            is_infrastructure=[False, False],
         )
-
-        result = sa_calculator.calculate(bundle, crr_config)
-        df = result.frame.collect()
 
         # Both exposures should have the same blended factor
         # Total = £3m, threshold = £2,183,000
@@ -1009,26 +1018,17 @@ class TestSMESupportingFactorCounterpartyAggregation:
         """Exposures to different counterparties should use their own totals."""
         # CP001: £1m (small, gets pure 0.7619)
         # CP002: £5m (larger, gets blended factor closer to 0.85)
-        exposures = pl.DataFrame(
-            {
-                "exposure_reference": ["EXP001", "EXP002"],
-                "counterparty_reference": ["CP001", "CP002"],  # Different counterparties
-                "ead_final": [1000000.0, 5000000.0],
-                "exposure_class": ["CORPORATE", "CORPORATE"],
-                "cqs": [None, None],
-                "is_sme": [True, True],
-                "is_infrastructure": [False, False],
-            }
-        ).lazy()
-
-        bundle = CRMAdjustedBundle(
-            exposures=exposures,
-            sa_exposures=exposures,
-            irb_exposures=pl.LazyFrame(),
+        df = _calculate_sa_exposures(
+            sa_calculator,
+            crr_config,
+            exposure_references=["EXP001", "EXP002"],
+            counterparty_references=["CP001", "CP002"],  # Different counterparties
+            ead_finals=[1000000.0, 5000000.0],
+            exposure_classes=["CORPORATE", "CORPORATE"],
+            cqs=[None, None],
+            is_sme=[True, True],
+            is_infrastructure=[False, False],
         )
-
-        result = sa_calculator.calculate(bundle, crr_config)
-        df = result.frame.collect()
 
         exp1_factor = df.filter(pl.col("exposure_reference") == "EXP001")["supporting_factor"][0]
         exp2_factor = df.filter(pl.col("exposure_reference") == "EXP002")["supporting_factor"][0]
@@ -1045,26 +1045,17 @@ class TestSMESupportingFactorCounterpartyAggregation:
         crr_config: CalculationConfig,
     ) -> None:
         """Exposures with null counterparty should use individual EAD."""
-        exposures = pl.DataFrame(
-            {
-                "exposure_reference": ["EXP001", "EXP002"],
-                "counterparty_reference": [None, None],  # No counterparty reference
-                "ead_final": [1000000.0, 5000000.0],
-                "exposure_class": ["CORPORATE", "CORPORATE"],
-                "cqs": [None, None],
-                "is_sme": [True, True],
-                "is_infrastructure": [False, False],
-            }
-        ).lazy()
-
-        bundle = CRMAdjustedBundle(
-            exposures=exposures,
-            sa_exposures=exposures,
-            irb_exposures=pl.LazyFrame(),
+        df = _calculate_sa_exposures(
+            sa_calculator,
+            crr_config,
+            exposure_references=["EXP001", "EXP002"],
+            counterparty_references=[None, None],  # No counterparty reference
+            ead_finals=[1000000.0, 5000000.0],
+            exposure_classes=["CORPORATE", "CORPORATE"],
+            cqs=[None, None],
+            is_sme=[True, True],
+            is_infrastructure=[False, False],
         )
-
-        result = sa_calculator.calculate(bundle, crr_config)
-        df = result.frame.collect()
 
         exp1_factor = df.filter(pl.col("exposure_reference") == "EXP001")["supporting_factor"][0]
         exp2_factor = df.filter(pl.col("exposure_reference") == "EXP002")["supporting_factor"][0]

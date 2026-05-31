@@ -38,12 +38,10 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig, PermissionMode
-from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.fixtures.acceptance_pipeline import run_parquet_pipeline
 from tests.fixtures.p1_130.p1_130 import (
     EXPECTED_FLOOR_THRESHOLD,
     EXPECTED_S_TREA,
@@ -81,41 +79,6 @@ def _run_pipeline_p1130():
           through Foundation IRB.
         - OF-ADJ inputs are all zero so floor threshold = 0.725 × S-TREA exactly.
     """
-    # Minimal empty frames for unused input types
-    lending_mappings = pl.LazyFrame(
-        schema={
-            "parent_counterparty_reference": pl.String,
-            "child_counterparty_reference": pl.String,
-        }
-    )
-    facility_mappings = pl.LazyFrame(
-        schema={
-            "parent_facility_reference": pl.String,
-            "child_reference": pl.String,
-            "child_type": pl.String,
-        }
-    )
-    facilities = pl.LazyFrame(
-        schema={
-            "facility_reference": pl.String,
-            "counterparty_reference": pl.String,
-        }
-    )
-
-    counterparties = pl.scan_parquet(_FIXTURES_DIR / "counterparty.parquet")
-    loans = pl.scan_parquet(_FIXTURES_DIR / "loan.parquet")
-    ratings = pl.scan_parquet(_FIXTURES_DIR / "rating.parquet")
-    model_permissions = pl.scan_parquet(_FIXTURES_DIR / "model_permission.parquet")
-
-    bundle = RawDataBundle(
-        facilities=facilities,
-        loans=loans,
-        counterparties=counterparties,
-        facility_mappings=facility_mappings,
-        lending_mappings=lending_mappings,
-        ratings=ratings,
-        model_permissions=model_permissions,
-    )
     config = CalculationConfig.basel_3_1(
         reporting_date=date(2030, 1, 1),
         permission_mode=PermissionMode.IRB,
@@ -123,7 +86,7 @@ def _run_pipeline_p1130():
         sa_t2_credit=0.0,
         art_40_deductions=0.0,
     )
-    return PipelineOrchestrator().run_with_data(bundle, config)
+    return run_parquet_pipeline(_FIXTURES_DIR, config)
 
 
 # ---------------------------------------------------------------------------
