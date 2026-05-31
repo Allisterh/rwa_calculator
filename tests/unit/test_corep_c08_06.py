@@ -537,7 +537,7 @@ class TestC0806B31Features:
     def test_b31_hvcre_ead_correct(self):
         gen = COREPGenerator()
         bundle = gen.generate_from_lazyframe(
-            _b31_slotting_with_hvcre(), framework="BABEL_3_1" if False else "BASEL_3_1"
+            _b31_slotting_with_hvcre(), framework="BASEL_3_1"
         )
         hvcre = bundle.c08_06["hvcre"]
         total_long = hvcre.filter(pl.col("row_ref") == "0120")
