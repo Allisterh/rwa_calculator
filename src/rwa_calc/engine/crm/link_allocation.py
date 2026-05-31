@@ -34,7 +34,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import polars as pl
-
 from watchfire import cites
 
 from rwa_calc.engine.crm.expressions import beneficiary_level_expr
@@ -49,6 +48,7 @@ logger = logging.getLogger(__name__)
 #: (higher = more beneficial to collateralise first). Supplied by the CRM
 #: processor's ranking pre-pass; defaults to 0.0 when absent.
 RANK_METRIC_COLUMN = "_link_rank_metric"
+
 
 @dataclass(frozen=True)
 class CollateralLinkAllocation:
@@ -155,9 +155,7 @@ class CollateralLinkAllocator:
             _opt_ref("counterparty_reference"),
         )
 
-        direct = base.select(
-            pl.col("exposure_reference").alias("_ref"), "_demand", "_metric"
-        )
+        direct = base.select(pl.col("exposure_reference").alias("_ref"), "_demand", "_metric")
         facility = self._pool_lookup(base, "parent_facility_reference")
         counterparty = self._pool_lookup(base, "counterparty_reference")
         return {"direct": direct, "facility": facility, "counterparty": counterparty}

@@ -64,9 +64,7 @@ def _two_loan_bundle(*, collateral, collateral_links):
         make_loan(loan_reference="LN_A", counterparty_reference="CP_A", drawn_amount=1_000_000.0),
         make_loan(loan_reference="LN_B", counterparty_reference="CP_B", drawn_amount=1_000_000.0),
     ]
-    bundle = make_raw_data_bundle(
-        counterparties=counterparties, facilities=facilities, loans=loans
-    )
+    bundle = make_raw_data_bundle(counterparties=counterparties, facilities=facilities, loans=loans)
     return replace(bundle, collateral=collateral, collateral_links=collateral_links)
 
 

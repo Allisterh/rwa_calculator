@@ -71,11 +71,7 @@ def _links(rows: list[dict]) -> pl.LazyFrame:
 
 def _allocated(result_lf: pl.LazyFrame) -> dict[str, float]:
     """Map beneficiary_reference -> total allocated market_value."""
-    df = (
-        result_lf.group_by("beneficiary_reference")
-        .agg(pl.col("market_value").sum())
-        .collect()
-    )
+    df = result_lf.group_by("beneficiary_reference").agg(pl.col("market_value").sum()).collect()
     return {row["beneficiary_reference"]: row["market_value"] for row in df.to_dicts()}
 
 
@@ -86,22 +82,50 @@ class TestFiniteValueSplit:
         # Arrange — equal RWA density, so lexical tie-break fills L1 then L2.
         exposures = _exposures(
             [
-                {"exposure_reference": "L1", "ead_for_crm": 400.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "L2", "ead_for_crm": 400.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
+                {
+                    "exposure_reference": "L1",
+                    "ead_for_crm": 400.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "L2",
+                    "ead_for_crm": 400.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
             ]
         )
         collateral = _collateral(
-            [{"collateral_reference": "C1", "collateral_type": "cash", "market_value": 500.0,
-              "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "L1"}]
+            [
+                {
+                    "collateral_reference": "C1",
+                    "collateral_type": "cash",
+                    "market_value": 500.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                }
+            ]
         )
         links = _links(
             [
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L1", "max_pledge_amount": None, "priority": None},
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L2", "max_pledge_amount": None, "priority": None},
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L2",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
             ]
         )
 
@@ -118,22 +142,50 @@ class TestFiniteValueSplit:
         # Arrange — A is a 150% RW loan, B is 20% RW; collateral covers only one.
         exposures = _exposures(
             [
-                {"exposure_reference": "A", "ead_for_crm": 300.0, "_link_rank_metric": 1.5,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "B", "ead_for_crm": 300.0, "_link_rank_metric": 0.2,
-                 "parent_facility_reference": None, "counterparty_reference": None},
+                {
+                    "exposure_reference": "A",
+                    "ead_for_crm": 300.0,
+                    "_link_rank_metric": 1.5,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "B",
+                    "ead_for_crm": 300.0,
+                    "_link_rank_metric": 0.2,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
             ]
         )
         collateral = _collateral(
-            [{"collateral_reference": "C1", "collateral_type": "cash", "market_value": 300.0,
-              "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "A"}]
+            [
+                {
+                    "collateral_reference": "C1",
+                    "collateral_type": "cash",
+                    "market_value": 300.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "A",
+                }
+            ]
         )
         links = _links(
             [
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "A", "max_pledge_amount": None, "priority": None},
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "B", "max_pledge_amount": None, "priority": None},
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "A",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "B",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
             ]
         )
 
@@ -149,22 +201,50 @@ class TestFiniteValueSplit:
         # Arrange — total demand 1000, value only 400.
         exposures = _exposures(
             [
-                {"exposure_reference": "L1", "ead_for_crm": 500.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "L2", "ead_for_crm": 500.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
+                {
+                    "exposure_reference": "L1",
+                    "ead_for_crm": 500.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "L2",
+                    "ead_for_crm": 500.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
             ]
         )
         collateral = _collateral(
-            [{"collateral_reference": "C1", "collateral_type": "cash", "market_value": 400.0,
-              "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "L1"}]
+            [
+                {
+                    "collateral_reference": "C1",
+                    "collateral_type": "cash",
+                    "market_value": 400.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                }
+            ]
         )
         links = _links(
             [
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L1", "max_pledge_amount": None, "priority": None},
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L2", "max_pledge_amount": None, "priority": None},
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L2",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
             ]
         )
 
@@ -179,22 +259,50 @@ class TestFiniteValueSplit:
         # Arrange — L1 is higher density but capped at 100; remainder flows to L2.
         exposures = _exposures(
             [
-                {"exposure_reference": "L1", "ead_for_crm": 400.0, "_link_rank_metric": 2.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "L2", "ead_for_crm": 400.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
+                {
+                    "exposure_reference": "L1",
+                    "ead_for_crm": 400.0,
+                    "_link_rank_metric": 2.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "L2",
+                    "ead_for_crm": 400.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
             ]
         )
         collateral = _collateral(
-            [{"collateral_reference": "C1", "collateral_type": "cash", "market_value": 500.0,
-              "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "L1"}]
+            [
+                {
+                    "collateral_reference": "C1",
+                    "collateral_type": "cash",
+                    "market_value": 500.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                }
+            ]
         )
         links = _links(
             [
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L1", "max_pledge_amount": 100.0, "priority": None},
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L2", "max_pledge_amount": None, "priority": None},
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                    "max_pledge_amount": 100.0,
+                    "priority": None,
+                },
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L2",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
             ]
         )
 
@@ -210,22 +318,50 @@ class TestFiniteValueSplit:
         # Arrange — L2 has higher density but L1 is given explicit priority 1.
         exposures = _exposures(
             [
-                {"exposure_reference": "L1", "ead_for_crm": 300.0, "_link_rank_metric": 0.2,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "L2", "ead_for_crm": 300.0, "_link_rank_metric": 1.5,
-                 "parent_facility_reference": None, "counterparty_reference": None},
+                {
+                    "exposure_reference": "L1",
+                    "ead_for_crm": 300.0,
+                    "_link_rank_metric": 0.2,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "L2",
+                    "ead_for_crm": 300.0,
+                    "_link_rank_metric": 1.5,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
             ]
         )
         collateral = _collateral(
-            [{"collateral_reference": "C1", "collateral_type": "cash", "market_value": 300.0,
-              "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "L1"}]
+            [
+                {
+                    "collateral_reference": "C1",
+                    "collateral_type": "cash",
+                    "market_value": 300.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                }
+            ]
         )
         links = _links(
             [
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L1", "max_pledge_amount": None, "priority": 1},
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L2", "max_pledge_amount": None, "priority": 2},
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                    "max_pledge_amount": None,
+                    "priority": 1,
+                },
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L2",
+                    "max_pledge_amount": None,
+                    "priority": 2,
+                },
             ]
         )
 
@@ -237,29 +373,56 @@ class TestFiniteValueSplit:
         assert alloc.get("L1") == pytest.approx(300.0)
         assert alloc.get("L2", 0.0) == pytest.approx(0.0)
 
-    def test_unlinked_collateral_passes_through_unchanged(
-        self, config: CalculationConfig
-    ) -> None:
+    def test_unlinked_collateral_passes_through_unchanged(self, config: CalculationConfig) -> None:
         # Arrange — C1 is linked (split), C2 has no links (passthrough).
         exposures = _exposures(
             [
-                {"exposure_reference": "L1", "ead_for_crm": 400.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "L3", "ead_for_crm": 999.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
+                {
+                    "exposure_reference": "L1",
+                    "ead_for_crm": 400.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "L3",
+                    "ead_for_crm": 999.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
             ]
         )
         collateral = _collateral(
             [
-                {"collateral_reference": "C1", "collateral_type": "cash", "market_value": 200.0,
-                 "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "L1"},
-                {"collateral_reference": "C2", "collateral_type": "cash", "market_value": 50.0,
-                 "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "L3"},
+                {
+                    "collateral_reference": "C1",
+                    "collateral_type": "cash",
+                    "market_value": 200.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                },
+                {
+                    "collateral_reference": "C2",
+                    "collateral_type": "cash",
+                    "market_value": 50.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L3",
+                },
             ]
         )
         links = _links(
-            [{"collateral_reference": "C1", "beneficiary_type": "loan",
-              "beneficiary_reference": "L1", "max_pledge_amount": None, "priority": None}]
+            [
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                }
+            ]
         )
 
         # Act
@@ -276,26 +439,64 @@ class TestFiniteValueSplit:
         # Arrange — one item linked to a loan, a contingent, and a facility pool.
         exposures = _exposures(
             [
-                {"exposure_reference": "L1", "ead_for_crm": 100.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "CT1", "ead_for_crm": 100.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": None, "counterparty_reference": None},
-                {"exposure_reference": "FL1", "ead_for_crm": 100.0, "_link_rank_metric": 1.0,
-                 "parent_facility_reference": "F9", "counterparty_reference": None},
+                {
+                    "exposure_reference": "L1",
+                    "ead_for_crm": 100.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "CT1",
+                    "ead_for_crm": 100.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": None,
+                    "counterparty_reference": None,
+                },
+                {
+                    "exposure_reference": "FL1",
+                    "ead_for_crm": 100.0,
+                    "_link_rank_metric": 1.0,
+                    "parent_facility_reference": "F9",
+                    "counterparty_reference": None,
+                },
             ]
         )
         collateral = _collateral(
-            [{"collateral_reference": "C1", "collateral_type": "cash", "market_value": 1000.0,
-              "currency": "GBP", "beneficiary_type": "loan", "beneficiary_reference": "L1"}]
+            [
+                {
+                    "collateral_reference": "C1",
+                    "collateral_type": "cash",
+                    "market_value": 1000.0,
+                    "currency": "GBP",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                }
+            ]
         )
         links = _links(
             [
-                {"collateral_reference": "C1", "beneficiary_type": "loan",
-                 "beneficiary_reference": "L1", "max_pledge_amount": None, "priority": None},
-                {"collateral_reference": "C1", "beneficiary_type": "contingent",
-                 "beneficiary_reference": "CT1", "max_pledge_amount": None, "priority": None},
-                {"collateral_reference": "C1", "beneficiary_type": "facility",
-                 "beneficiary_reference": "F9", "max_pledge_amount": None, "priority": None},
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "loan",
+                    "beneficiary_reference": "L1",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "contingent",
+                    "beneficiary_reference": "CT1",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
+                {
+                    "collateral_reference": "C1",
+                    "beneficiary_type": "facility",
+                    "beneficiary_reference": "F9",
+                    "max_pledge_amount": None,
+                    "priority": None,
+                },
             ]
         )
 

@@ -802,9 +802,11 @@ def validate_collateral_links(bundle: RawDataBundle) -> list[CalculationError]:
         .collect()
     )
     if unknown_benef.height > 0:
-        sample = unknown_benef.head(5).select(
-            pl.concat_str(["_bt", "beneficiary_reference"], separator=":").alias("s")
-        )["s"].to_list()
+        sample = (
+            unknown_benef.head(5)
+            .select(pl.concat_str(["_bt", "beneficiary_reference"], separator=":").alias("s"))["s"]
+            .to_list()
+        )
         errors.append(
             CalculationError(
                 code=ERROR_COLLATERAL_LINK_UNKNOWN_BENEFICIARY,
@@ -828,11 +830,15 @@ def validate_collateral_links(bundle: RawDataBundle) -> list[CalculationError]:
         .collect()
     )
     if dups.height > 0:
-        sample = dups.head(5).select(
-            pl.concat_str(
-                ["collateral_reference", "_bt", "beneficiary_reference"], separator=":"
-            ).alias("s")
-        )["s"].to_list()
+        sample = (
+            dups.head(5)
+            .select(
+                pl.concat_str(
+                    ["collateral_reference", "_bt", "beneficiary_reference"], separator=":"
+                ).alias("s")
+            )["s"]
+            .to_list()
+        )
         errors.append(
             CalculationError(
                 code=ERROR_COLLATERAL_LINK_DUPLICATE,
