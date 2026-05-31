@@ -37,6 +37,7 @@ from rwa_calc.engine.comparison import (
     _build_timeline_lazyframe,
     _extract_floor_metrics,
 )
+from tests.unit._minimal_raw_data import make_minimal_raw_data
 
 # =============================================================================
 # Test Fixtures
@@ -175,7 +176,7 @@ class TestTransitionalDatesP623:
 
         # Act — reporting_dates=None triggers the default constant path
         result = runner.run(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(maturity_date=date(2033, 1, 1)),
             permission_mode=PermissionMode.IRB,
             reporting_dates=None,
         )
@@ -408,7 +409,7 @@ class TestTransitionalScheduleRunner:
         """Runner should return a TransitionalScheduleBundle."""
         runner = TransitionalScheduleRunner()
         result = runner.run(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(maturity_date=date(2033, 1, 1)),
             permission_mode=permission_mode,
             reporting_dates=[date(2027, 6, 30)],  # Single date for speed
         )
@@ -418,7 +419,7 @@ class TestTransitionalScheduleRunner:
         """Timeline should have all expected columns."""
         runner = TransitionalScheduleRunner()
         result = runner.run(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(maturity_date=date(2033, 1, 1)),
             permission_mode=permission_mode,
             reporting_dates=[date(2027, 6, 30)],
         )
@@ -442,7 +443,7 @@ class TestTransitionalScheduleRunner:
         runner = TransitionalScheduleRunner()
         dates = [date(2027, 6, 30), date(2028, 6, 30)]
         result = runner.run(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(maturity_date=date(2033, 1, 1)),
             permission_mode=permission_mode,
             reporting_dates=dates,
         )
@@ -455,7 +456,7 @@ class TestTransitionalScheduleRunner:
         runner = TransitionalScheduleRunner()
         dates = [date(2027, 6, 30), date(2029, 6, 30), date(2030, 6, 30)]
         result = runner.run(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(maturity_date=date(2033, 1, 1)),
             permission_mode=permission_mode,
             reporting_dates=dates,
         )
@@ -470,7 +471,7 @@ class TestTransitionalScheduleRunner:
         runner = TransitionalScheduleRunner()
         custom_dates = [date(2027, 12, 31), date(2029, 12, 31)]
         result = runner.run(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(maturity_date=date(2033, 1, 1)),
             permission_mode=permission_mode,
             reporting_dates=custom_dates,
         )
@@ -482,86 +483,9 @@ class TestTransitionalScheduleRunner:
         """Default dates should produce 4 timeline rows (2027-2030)."""
         runner = TransitionalScheduleRunner()
         result = runner.run(
-            data=_make_minimal_raw_data(),
+            data=make_minimal_raw_data(maturity_date=date(2033, 1, 1)),
             permission_mode=permission_mode,
         )
         df = result.timeline.collect()
         assert df.height == 4
         assert df["year"].to_list() == [2027, 2028, 2029, 2030]
-
-
-# =============================================================================
-# Helpers
-# =============================================================================
-
-
-def _make_minimal_raw_data():
-    """Create minimal RawDataBundle for runner integration tests."""
-    from rwa_calc.contracts.bundles import RawDataBundle
-
-    facilities = pl.LazyFrame(
-        {
-            "facility_reference": ["FAC001"],
-            "counterparty_reference": ["CP001"],
-            "product_type": ["TERM_LOAN"],
-            "book_code": ["BANK"],
-            "currency": ["GBP"],
-            "facility_limit": [1_000_000.0],
-        }
-    )
-
-    loans = pl.LazyFrame(
-        {
-            "loan_reference": ["LN001"],
-            "counterparty_reference": ["CP001"],
-            "product_type": ["TERM_LOAN"],
-            "book_code": ["BANK"],
-            "value_date": [date(2023, 1, 1)],
-            "maturity_date": [date(2033, 1, 1)],
-            "currency": ["GBP"],
-            "drawn_amount": [500_000.0],
-            "lgd": [0.45],
-            "seniority": ["senior"],
-            "risk_type": ["FR"],
-            "ccf_modelled": [None],
-            "is_short_term_trade_lc": [None],
-        }
-    )
-
-    counterparties = pl.LazyFrame(
-        {
-            "counterparty_reference": ["CP001"],
-            "counterparty_name": ["Test Corp"],
-            "country_of_incorporation": ["GB"],
-            "sector": ["CORPORATE"],
-            "entity_type": ["corporate"],
-            "is_sme": [False],
-            "apply_fi_scalar": [True],
-            "is_pse": [False],
-            "cqs": [2],
-            "pd": [0.01],
-            "turnover_eur": [100_000_000.0],
-        }
-    )
-
-    facility_mappings = pl.LazyFrame(
-        {
-            "facility_reference": ["FAC001"],
-            "loan_reference": ["LN001"],
-        }
-    )
-
-    lending_mappings = pl.LazyFrame(
-        {
-            "counterparty_reference": ["CP001"],
-            "lending_group_id": ["LG001"],
-        }
-    )
-
-    return RawDataBundle(
-        facilities=facilities,
-        loans=loans,
-        counterparties=counterparties,
-        facility_mappings=facility_mappings,
-        lending_mappings=lending_mappings,
-    )

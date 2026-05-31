@@ -35,10 +35,8 @@ References:
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import polars as pl
 import pytest
+from tests.acceptance.p1_190_pipeline_helpers import build_p1_190_bundle, find_loan_rows, first
 from tests.fixtures.p1_190.p1_190 import (
     B31_FULL_RE_EXPECTED_LGD_STAR,
     CRR_FULL_RE_CP_REF,
@@ -49,7 +47,6 @@ from tests.fixtures.p1_190.p1_190 import (
     REPORTING_DATE,
 )
 
-from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
@@ -58,7 +55,6 @@ from rwa_calc.engine.pipeline import PipelineOrchestrator
 # Fixture paths
 # ---------------------------------------------------------------------------
 
-_FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures" / "p1_190"
 _SCENARIO = "crr_full_re"
 
 # ---------------------------------------------------------------------------
@@ -68,62 +64,12 @@ _SCENARIO = "crr_full_re"
 
 def _run_pipeline() -> object:
     """Run CRR F-IRB pipeline for the crr_full_re scenario."""
-    empty_mappings_lf = pl.LazyFrame(
-        schema={
-            "parent_counterparty_reference": pl.String,
-            "child_counterparty_reference": pl.String,
-        }
-    )
-    # Link the loan to its facility so facility-level collateral flows through
-    # to the loan exposure via the CRM facility lookup.
-    facility_mappings_lf = pl.LazyFrame(
-        {
-            "parent_facility_reference": [CRR_FULL_RE_FAC_REF],
-            "child_reference": [CRR_FULL_RE_LOAN_REF],
-            "child_type": ["loan"],
-        },
-        schema={
-            "parent_facility_reference": pl.String,
-            "child_reference": pl.String,
-            "child_type": pl.String,
-        },
-    )
-
-    bundle = RawDataBundle(
-        facilities=pl.scan_parquet(_FIXTURES_DIR / f"facility_{_SCENARIO}.parquet"),
-        loans=pl.scan_parquet(_FIXTURES_DIR / f"loan_{_SCENARIO}.parquet"),
-        counterparties=pl.scan_parquet(_FIXTURES_DIR / f"counterparty_{_SCENARIO}.parquet"),
-        collateral=pl.scan_parquet(_FIXTURES_DIR / f"collateral_{_SCENARIO}.parquet"),
-        ratings=pl.scan_parquet(_FIXTURES_DIR / f"rating_{_SCENARIO}.parquet"),
-        model_permissions=pl.scan_parquet(_FIXTURES_DIR / f"model_permission_{_SCENARIO}.parquet"),
-        facility_mappings=facility_mappings_lf,
-        lending_mappings=empty_mappings_lf,
-    )
+    bundle = build_p1_190_bundle(_SCENARIO, CRR_FULL_RE_FAC_REF, CRR_FULL_RE_LOAN_REF)
     config = CalculationConfig.crr(
         reporting_date=REPORTING_DATE,
         permission_mode=PermissionMode.IRB,
     )
     return PipelineOrchestrator().run_with_data(bundle, config)
-
-
-def _find_loan_rows(results: object, loan_ref: str) -> list[dict]:
-    """Return all result rows containing loan_ref in exposure_reference."""
-    rows: list[dict] = []
-    for lf in [results.sa_results, results.irb_results, results.slotting_results]:
-        if lf is None:
-            continue
-        df = lf.filter(pl.col("exposure_reference").str.contains(loan_ref)).collect()
-        rows.extend(df.to_dicts())
-    return rows
-
-
-def _first(rows: list[dict], field: str):
-    """Return the first non-null value of field from the result rows."""
-    for r in rows:
-        v = r.get(field)
-        if v is not None:
-            return v
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +93,7 @@ class TestP1190CrrFullRe:
     @pytest.fixture(scope="class")
     def loan_rows(self, pipeline_result) -> list[dict]:
         """All result rows for the CRR full-RE loan."""
-        rows = _find_loan_rows(pipeline_result, CRR_FULL_RE_LOAN_REF)
+        rows = find_loan_rows(pipeline_result, CRR_FULL_RE_LOAN_REF)
         assert rows, (
             f"P1.190 crr_full_re: no pipeline result rows for "
             f"loan_ref='{CRR_FULL_RE_LOAN_REF}'. "
@@ -164,7 +110,7 @@ class TestP1190CrrFullRe:
         Act:     inspect pipeline result rows for CRR_FULL_RE_LOAN_REF.
         Assert:  pd_floored is not None.
         """
-        pd_floored = _first(loan_rows, "pd_floored")
+        pd_floored = first(loan_rows, "pd_floored")
         assert pd_floored is not None, (
             f"P1.190 crr_full_re: pd_floored not found — loan may have fallen back to SA. "
             f"Check model_permission_{_SCENARIO}.parquet."
@@ -185,7 +131,7 @@ class TestP1190CrrFullRe:
         Act:     full pipeline with CalculationConfig.crr().
         Assert:  lgd_floored == 0.378571 ± 1e-3.
         """
-        lgd_floored = _first(loan_rows, "lgd_floored")
+        lgd_floored = first(loan_rows, "lgd_floored")
 
         assert lgd_floored is not None, (
             f"P1.190 crr_full_re: lgd_floored not in result rows for '{CRR_FULL_RE_LOAN_REF}'."
@@ -211,7 +157,7 @@ class TestP1190CrrFullRe:
         Act:     full pipeline with CRR config.
         Assert:  abs(lgd_floored - 0.2800) > 1e-3.
         """
-        lgd_floored = _first(loan_rows, "lgd_floored")
+        lgd_floored = first(loan_rows, "lgd_floored")
         if lgd_floored is None:
             pytest.skip("lgd_floored unavailable — routing issue")
 

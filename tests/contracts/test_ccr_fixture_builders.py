@@ -23,9 +23,14 @@ References:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import polars as pl
+
+if TYPE_CHECKING:
+    from rwa_calc.engine.loader import DataSourceConfig
 
 # ---------------------------------------------------------------------------
 # Canonical fixture parquet paths (test 8 reads from here — NOT regenerated).
@@ -315,60 +320,9 @@ def test_golden_ccr_a1_trade_row_has_v_equal_zero_mtm_and_unmargined_netting_set
 # ===========================================================================
 
 
-def _write_minimal_crr_dataset(base_dir: Path) -> object:
-    """Write minimum mandatory CRR files; return a DataSourceConfig.
-
-    Mirrors the helper in tests/integration/test_ccr_loader.py so this
-    test is self-contained without importing from that file.
-    """
-    from rwa_calc.engine.loader import DataSourceConfig
-
-    cp_df = pl.DataFrame(
-        {
-            "counterparty_reference": ["CP_001"],
-            "counterparty_name": ["Test Corp"],
-            "entity_type": ["corporate"],
-            "country_code": ["GB"],
-            "annual_revenue": [100_000_000.0],
-            "total_assets": [500_000_000.0],
-            "default_status": [False],
-        }
-    )
-    fac_df = pl.DataFrame({"facility_reference": ["FAC_001"], "counterparty_reference": ["CP_001"]})
-    loan_df = pl.DataFrame(
-        {
-            "loan_reference": ["LN_001"],
-            "counterparty_reference": ["CP_001"],
-            "drawn_amount": [0.0],
-        }
-    )
-    fm_df = pl.DataFrame({"parent_facility_reference": ["FAC_001"], "child_reference": ["LN_001"]})
-    lm_df = pl.DataFrame({"member_counterparty_reference": pl.Series([], dtype=pl.String)})
-
-    base_dir.mkdir(parents=True, exist_ok=True)
-    cp_path = base_dir / "counterparties.parquet"
-    fac_path = base_dir / "facilities.parquet"
-    loan_path = base_dir / "loans.parquet"
-    fm_path = base_dir / "facility_mappings.parquet"
-    lm_path = base_dir / "lending_mappings.parquet"
-
-    cp_df.write_parquet(cp_path)
-    fac_df.write_parquet(fac_path)
-    loan_df.write_parquet(loan_path)
-    fm_df.write_parquet(fm_path)
-    lm_df.write_parquet(lm_path)
-
-    return DataSourceConfig(
-        counterparties_file=cp_path,
-        facilities_file=fac_path,
-        loans_file=loan_path,
-        facility_mappings_file=fm_path,
-        lending_mappings_file=lm_path,
-    )
-
-
 def test_golden_ccr_a1_round_trips_through_raw_ccr_bundle_via_loader(
     tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
 ) -> None:
     """save_golden_fixtures -> ParquetLoader.load() -> bundle.ccr is RawCCRBundle with 1/1/0/0 rows."""
     # Arrange
@@ -384,7 +338,7 @@ def test_golden_ccr_a1_round_trips_through_raw_ccr_bundle_via_loader(
     saved = save_golden_fixtures(ccr_dir)
 
     # Build base CRR dataset config
-    config = _write_minimal_crr_dataset(tmp_path / "crr")
+    config = write_minimal_crr_dataset(tmp_path / "crr")
 
     # Verify DataSourceConfig has the four CCR fields (guard so failure is AssertionError)
     existing_fields = {f.name for f in _dc.fields(config)}  # type: ignore[arg-type]

@@ -30,6 +30,7 @@ from rwa_calc.data.tables.b31_equity_rw import (
 from rwa_calc.domain.enums import EquityType, PermissionMode
 from rwa_calc.engine.equity import EquityCalculator
 from tests.fixtures.single_exposure import calculate_single_equity_exposure
+from tests.unit._equity_test_helpers import apply_b31_equity_weight_sa
 
 # =============================================================================
 # Data Table Tests
@@ -119,53 +120,27 @@ class TestB31EquityCalculatorSAWeights:
     transitional floor.
     """
 
-    @staticmethod
-    def _apply_b31_weight(equity_type: str, **kwargs: bool | str | float | None) -> float:
-        """Apply B31 SA weight to a single exposure and return the risk_weight."""
-        config = CalculationConfig.basel_3_1(
-            reporting_date=date(2031, 6, 30),
-            permission_mode=PermissionMode.STANDARDISED,
-        )
-        calculator = EquityCalculator()
-        df = pl.DataFrame(
-            {
-                "exposure_reference": ["EQ_TEST"],
-                "ead_final": [1_000_000.0],
-                "equity_type": [equity_type],
-                "is_speculative": [kwargs.get("is_speculative", False)],
-                "is_exchange_traded": [kwargs.get("is_exchange_traded", False)],
-                "is_government_supported": [kwargs.get("is_government_supported", False)],
-                "is_diversified_portfolio": [False],
-                "ciu_approach": [kwargs.get("ciu_approach")],
-                "ciu_mandate_rw": [kwargs.get("ciu_mandate_rw")],
-                "ciu_third_party_calc": [kwargs.get("ciu_third_party_calc")],
-                "ciu_look_through_rw": [None],
-            }
-        ).lazy()
-        result = calculator._apply_b31_equity_weights_sa(df, config).collect()
-        return result["risk_weight"][0]
-
     def test_listed_equity_250_percent(self) -> None:
         """B31 Art. 133(3): Listed equity = 250%."""
-        assert self._apply_b31_weight("listed") == pytest.approx(2.50)
+        assert apply_b31_equity_weight_sa("listed") == pytest.approx(2.50)
 
     def test_exchange_traded_250_percent(self) -> None:
         """B31 Art. 133(3): Exchange-traded equity = 250%."""
-        assert self._apply_b31_weight("exchange_traded", is_exchange_traded=True) == pytest.approx(
-            2.50
-        )
+        assert apply_b31_equity_weight_sa(
+            "exchange_traded", is_exchange_traded=True
+        ) == pytest.approx(2.50)
 
     def test_unlisted_equity_250_percent(self) -> None:
         """B31 Art. 133(3): Unlisted equity = 250%."""
-        assert self._apply_b31_weight("unlisted") == pytest.approx(2.50)
+        assert apply_b31_equity_weight_sa("unlisted") == pytest.approx(2.50)
 
     def test_speculative_equity_400_percent(self) -> None:
         """B31 Art. 133(4): Speculative equity = 400%."""
-        assert self._apply_b31_weight("speculative", is_speculative=True) == pytest.approx(4.00)
+        assert apply_b31_equity_weight_sa("speculative", is_speculative=True) == pytest.approx(4.00)
 
     def test_is_speculative_flag_overrides_type(self) -> None:
         """B31: is_speculative=True overrides listed type to 400%."""
-        assert self._apply_b31_weight("listed", is_speculative=True) == pytest.approx(4.00)
+        assert apply_b31_equity_weight_sa("listed", is_speculative=True) == pytest.approx(4.00)
 
     def test_government_supported_250_percent(self) -> None:
         """B31 Art. 133(3): Government-supported equity = 250% (standard equity).
@@ -173,31 +148,31 @@ class TestB31EquityCalculatorSAWeights:
         B31 removed CRR Art. 133(3)(c) legislative 100% carve-out.
         Art. 133(6) is an exclusion clause, not a risk weight.
         """
-        assert self._apply_b31_weight(
+        assert apply_b31_equity_weight_sa(
             "government_supported", is_government_supported=True
         ) == pytest.approx(2.50)
 
     def test_central_bank_zero_percent(self) -> None:
         """B31 Art. 133(6): Central bank equity = 0%."""
-        assert self._apply_b31_weight("central_bank") == pytest.approx(0.00)
+        assert apply_b31_equity_weight_sa("central_bank") == pytest.approx(0.00)
 
     def test_private_equity_400_percent(self) -> None:
         """B31 Art. 133(5): Private equity = 400% (higher risk PE/VC)."""
-        assert self._apply_b31_weight("private_equity") == pytest.approx(4.00)
+        assert apply_b31_equity_weight_sa("private_equity") == pytest.approx(4.00)
 
     def test_ciu_fallback_unlisted_1250_percent(self) -> None:
         """B31: CIU fallback = 1,250% (Art. 132(2))."""
-        assert self._apply_b31_weight("ciu", ciu_approach="fallback") == pytest.approx(12.50)
+        assert apply_b31_equity_weight_sa("ciu", ciu_approach="fallback") == pytest.approx(12.50)
 
     def test_ciu_fallback_listed_1250_percent(self) -> None:
         """B31: Listed CIU fallback = 1,250% (Art. 132(2), same as unlisted)."""
-        assert self._apply_b31_weight(
+        assert apply_b31_equity_weight_sa(
             "ciu", ciu_approach="fallback", is_exchange_traded=True
         ) == pytest.approx(12.50)
 
     def test_other_equity_250_percent(self) -> None:
         """B31 Art. 133(3): Other equity = 250% (standard)."""
-        assert self._apply_b31_weight("other") == pytest.approx(2.50)
+        assert apply_b31_equity_weight_sa("other") == pytest.approx(2.50)
 
 
 class TestB31EquityEndToEnd:

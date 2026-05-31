@@ -28,7 +28,10 @@ from datetime import date
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import ClassifiedExposuresBundle, CounterpartyLookup
+from rwa_calc.contracts.bundles import (
+    ClassifiedExposuresBundle,
+    create_empty_counterparty_lookup,
+)
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import ApproachType, ExposureClass, PermissionMode
 from rwa_calc.engine.crm.processor import CRMProcessor
@@ -121,31 +124,7 @@ def _create_bundle(
             collateral_data[key] = value
     collateral = pl.DataFrame(collateral_data).lazy()
 
-    empty_cp = CounterpartyLookup(
-        counterparties=pl.LazyFrame(
-            schema={"counterparty_reference": pl.String, "entity_type": pl.String}
-        ),
-        parent_mappings=pl.LazyFrame(
-            schema={
-                "child_counterparty_reference": pl.String,
-                "parent_counterparty_reference": pl.String,
-            }
-        ),
-        ultimate_parent_mappings=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "ultimate_parent_reference": pl.String,
-                "hierarchy_depth": pl.Int32,
-            }
-        ),
-        rating_inheritance=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "cqs": pl.Int8,
-                "pd": pl.Float64,
-            }
-        ),
-    )
+    empty_cp = create_empty_counterparty_lookup()
 
     return ClassifiedExposuresBundle(
         all_exposures=exposures,
@@ -546,31 +525,7 @@ class TestSequentialFillEdgeCases:
         if "parent_facility_reference" in exposures.collect_schema().names():
             exposures = exposures.with_columns(pl.col("parent_facility_reference").cast(pl.String))
 
-        empty_cp = CounterpartyLookup(
-            counterparties=pl.LazyFrame(
-                schema={"counterparty_reference": pl.String, "entity_type": pl.String}
-            ),
-            parent_mappings=pl.LazyFrame(
-                schema={
-                    "child_counterparty_reference": pl.String,
-                    "parent_counterparty_reference": pl.String,
-                }
-            ),
-            ultimate_parent_mappings=pl.LazyFrame(
-                schema={
-                    "counterparty_reference": pl.String,
-                    "ultimate_parent_reference": pl.String,
-                    "hierarchy_depth": pl.Int32,
-                }
-            ),
-            rating_inheritance=pl.LazyFrame(
-                schema={
-                    "counterparty_reference": pl.String,
-                    "cqs": pl.Int8,
-                    "pd": pl.Float64,
-                }
-            ),
-        )
+        empty_cp = create_empty_counterparty_lookup()
         bundle = ClassifiedExposuresBundle(
             all_exposures=exposures,
             sa_exposures=exposures.filter(pl.col("approach") == ApproachType.SA.value),

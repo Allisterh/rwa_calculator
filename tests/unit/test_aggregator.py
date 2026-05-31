@@ -90,6 +90,38 @@ def irb_results() -> pl.LazyFrame:
     )
 
 
+@pytest.fixture
+def partially_guaranteed_irb_results() -> pl.LazyFrame:
+    """FIRB corporate exposure (EAD=1M) 60% guaranteed by an SA retail guarantor.
+
+    Splits into 400k unguaranteed -> CORPORATE/FIRB and 600k guaranteed ->
+    RETAIL/standardised (the guarantor's class/approach).
+    """
+    return pl.LazyFrame(
+        {
+            "exposure_reference": ["EXP001"],
+            "exposure_class": ["CORPORATE"],
+            "approach": ["FIRB"],
+            "approach_applied": ["FIRB"],
+            "ead_final": [1000000.0],
+            "risk_weight": [0.5],
+            "rwa": [500000.0],
+            "rwa_final": [500000.0],
+            "guarantor_approach": ["sa"],
+            "guarantee_ratio": [0.6],
+            "is_guaranteed": [True],
+            "guaranteed_portion": [600000.0],
+            "unguaranteed_portion": [400000.0],
+            "counterparty_reference": ["BORROWER01"],
+            "guarantor_reference": ["GUARANTOR01"],
+            "pre_crm_exposure_class": ["CORPORATE"],
+            "post_crm_exposure_class_guaranteed": ["RETAIL"],
+            "pre_crm_risk_weight": [0.5],
+            "guarantor_rw": [0.75],
+        }
+    )
+
+
 # =============================================================================
 # Output Floor Tests (Basel 3.1)
 # =============================================================================
@@ -483,6 +515,7 @@ class TestSummaryPostCRMBasis:
     def test_summary_by_class_splits_guaranteed_exposure(
         self,
         aggregator: OutputAggregator,
+        partially_guaranteed_irb_results: pl.LazyFrame,
         crr_config: CalculationConfig,
     ) -> None:
         """
@@ -492,33 +525,9 @@ class TestSummaryPostCRMBasis:
         - 400k unguaranteed -> CORPORATE
         - 600k guaranteed -> RETAIL (guarantor's class)
         """
-        irb_results = pl.LazyFrame(
-            {
-                "exposure_reference": ["EXP001"],
-                "exposure_class": ["CORPORATE"],
-                "approach": ["FIRB"],
-                "approach_applied": ["FIRB"],
-                "ead_final": [1000000.0],
-                "risk_weight": [0.5],
-                "rwa": [500000.0],
-                "rwa_final": [500000.0],
-                "guarantor_approach": ["sa"],
-                "guarantee_ratio": [0.6],
-                "is_guaranteed": [True],
-                "guaranteed_portion": [600000.0],
-                "unguaranteed_portion": [400000.0],
-                "counterparty_reference": ["BORROWER01"],
-                "guarantor_reference": ["GUARANTOR01"],
-                "pre_crm_exposure_class": ["CORPORATE"],
-                "post_crm_exposure_class_guaranteed": ["RETAIL"],
-                "pre_crm_risk_weight": [0.5],
-                "guarantor_rw": [0.75],
-            }
-        )
-
         result = aggregator.aggregate(
             sa_results=EMPTY,
-            irb_results=irb_results,
+            irb_results=partially_guaranteed_irb_results,
             slotting_results=EMPTY,
             equity_bundle=None,
             config=crr_config,
@@ -539,39 +548,16 @@ class TestSummaryPostCRMBasis:
     def test_summary_by_approach_splits_guaranteed_exposure(
         self,
         aggregator: OutputAggregator,
+        partially_guaranteed_irb_results: pl.LazyFrame,
         crr_config: CalculationConfig,
     ) -> None:
         """
         Partially guaranteed IRB exposure with SA guarantor:
         unguaranteed portion -> FIRB, guaranteed portion -> standardised.
         """
-        irb_results = pl.LazyFrame(
-            {
-                "exposure_reference": ["EXP001"],
-                "exposure_class": ["CORPORATE"],
-                "approach": ["FIRB"],
-                "approach_applied": ["FIRB"],
-                "ead_final": [1000000.0],
-                "risk_weight": [0.5],
-                "rwa": [500000.0],
-                "rwa_final": [500000.0],
-                "guarantor_approach": ["sa"],
-                "guarantee_ratio": [0.6],
-                "is_guaranteed": [True],
-                "guaranteed_portion": [600000.0],
-                "unguaranteed_portion": [400000.0],
-                "counterparty_reference": ["BORROWER01"],
-                "guarantor_reference": ["GUARANTOR01"],
-                "pre_crm_exposure_class": ["CORPORATE"],
-                "post_crm_exposure_class_guaranteed": ["RETAIL"],
-                "pre_crm_risk_weight": [0.5],
-                "guarantor_rw": [0.75],
-            }
-        )
-
         result = aggregator.aggregate(
             sa_results=EMPTY,
-            irb_results=irb_results,
+            irb_results=partially_guaranteed_irb_results,
             slotting_results=EMPTY,
             equity_bundle=None,
             config=crr_config,
@@ -622,34 +608,13 @@ class TestPostCRMDetailedReportingApproach:
     def test_reporting_approach_in_detailed_view(
         self,
         aggregator: OutputAggregator,
+        partially_guaranteed_irb_results: pl.LazyFrame,
         crr_config: CalculationConfig,
     ) -> None:
         """Post-CRM detailed view should include reporting_approach column."""
-        irb_results = pl.LazyFrame(
-            {
-                "exposure_reference": ["EXP001"],
-                "exposure_class": ["CORPORATE"],
-                "approach": ["FIRB"],
-                "approach_applied": ["FIRB"],
-                "ead_final": [1000000.0],
-                "risk_weight": [0.5],
-                "rwa": [500000.0],
-                "rwa_final": [500000.0],
-                "guarantor_approach": ["sa"],
-                "guarantee_ratio": [0.6],
-                "is_guaranteed": [True],
-                "guaranteed_portion": [600000.0],
-                "unguaranteed_portion": [400000.0],
-                "counterparty_reference": ["BORROWER01"],
-                "guarantor_reference": ["GUARANTOR01"],
-                "pre_crm_exposure_class": ["CORPORATE"],
-                "post_crm_exposure_class_guaranteed": ["RETAIL"],
-            }
-        )
-
         result = aggregator.aggregate(
             sa_results=EMPTY,
-            irb_results=irb_results,
+            irb_results=partially_guaranteed_irb_results,
             slotting_results=EMPTY,
             equity_bundle=None,
             config=crr_config,

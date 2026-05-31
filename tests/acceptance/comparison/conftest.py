@@ -24,6 +24,11 @@ project_root = Path(__file__).parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from tests.acceptance.acceptance_helpers import (  # noqa: E402
+    build_raw_bundle,
+    make_irb_bundle,
+)
+
 
 # =============================================================================
 # Configuration Fixtures
@@ -98,24 +103,7 @@ def load_test_fixtures():
 @pytest.fixture(scope="session")
 def raw_data_bundle(load_test_fixtures):
     """Convert test fixtures to RawDataBundle for pipeline processing."""
-    from rwa_calc.contracts.bundles import RawDataBundle
-
-    fixtures = load_test_fixtures
-
-    return RawDataBundle(
-        facilities=fixtures.facilities,
-        loans=fixtures.loans,
-        contingents=fixtures.contingents,
-        counterparties=fixtures.counterparties,
-        collateral=fixtures.collateral,
-        guarantees=fixtures.guarantees,
-        provisions=fixtures.provisions,
-        ratings=fixtures.ratings,
-        facility_mappings=fixtures.facility_mappings,
-        org_mappings=fixtures.org_mappings,
-        lending_mappings=fixtures.lending_mappings,
-        specialised_lending=fixtures.specialised_lending,
-    )
+    return build_raw_bundle(load_test_fixtures)
 
 
 @pytest.fixture(scope="session")
@@ -124,29 +112,7 @@ def irb_raw_data_bundle(load_test_fixtures):
 
     from tests.fixtures.irb_test_helpers import create_firb_only_model_permissions
 
-    return _make_irb_bundle(load_test_fixtures, create_firb_only_model_permissions())
-
-
-def _make_irb_bundle(fixtures, model_permissions):
-    """Build RawDataBundle with enriched ratings and given model_permissions."""
-    from rwa_calc.contracts.bundles import RawDataBundle
-    from tests.fixtures.irb_test_helpers import enrich_ratings_with_model_id
-
-    return RawDataBundle(
-        facilities=fixtures.facilities,
-        loans=fixtures.loans,
-        contingents=fixtures.contingents,
-        counterparties=fixtures.counterparties,
-        collateral=fixtures.collateral,
-        guarantees=fixtures.guarantees,
-        provisions=fixtures.provisions,
-        ratings=enrich_ratings_with_model_id(fixtures.ratings),
-        facility_mappings=fixtures.facility_mappings,
-        org_mappings=fixtures.org_mappings,
-        lending_mappings=fixtures.lending_mappings,
-        specialised_lending=fixtures.specialised_lending,
-        model_permissions=model_permissions,
-    )
+    return make_irb_bundle(load_test_fixtures, create_firb_only_model_permissions())
 
 
 # =============================================================================

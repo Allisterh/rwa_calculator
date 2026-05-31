@@ -12,58 +12,13 @@ References:
 
 from __future__ import annotations
 
-from datetime import date
-
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import (
-    ClassifiedExposuresBundle,
-    CounterpartyLookup,
-)
+from conftest import _counterparty_lookup
+from rwa_calc.contracts.bundles import ClassifiedExposuresBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.engine.crm.processor import CRMProcessor
-
-
-@pytest.fixture
-def crr_config() -> CalculationConfig:
-    return CalculationConfig.crr(reporting_date=date(2024, 12, 31))
-
-
-@pytest.fixture
-def crm_processor() -> CRMProcessor:
-    return CRMProcessor()
-
-
-def _counterparty_lookup(
-    counterparties: pl.LazyFrame,
-    rating_inheritance: pl.LazyFrame | None = None,
-) -> CounterpartyLookup:
-    if rating_inheritance is None:
-        rating_inheritance = pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "cqs": pl.Int8,
-                "pd": pl.Float64,
-            }
-        )
-    return CounterpartyLookup(
-        counterparties=counterparties,
-        parent_mappings=pl.LazyFrame(
-            schema={
-                "child_counterparty_reference": pl.String,
-                "parent_counterparty_reference": pl.String,
-            }
-        ),
-        ultimate_parent_mappings=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "ultimate_parent_reference": pl.String,
-                "hierarchy_depth": pl.Int32,
-            }
-        ),
-        rating_inheritance=rating_inheritance,
-    )
 
 
 def _make_exposure(

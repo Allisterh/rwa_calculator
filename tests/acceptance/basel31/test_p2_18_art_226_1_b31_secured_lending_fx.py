@@ -74,6 +74,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.acceptance.conftest import find_exposure_rows, total_field
 
 from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig, PermissionMode
@@ -161,22 +162,6 @@ def _run_pipeline_b31_reval() -> object:
     return PipelineOrchestrator().run_with_data(bundle, config)
 
 
-def _find_rows(results: object, loan_ref: str) -> list[dict]:
-    """Return all result rows whose exposure_reference contains *loan_ref*."""
-    rows: list[dict] = []
-    for lf in [results.sa_results, results.irb_results, results.slotting_results]:
-        if lf is None:
-            continue
-        df = lf.filter(pl.col("exposure_reference").str.contains(loan_ref)).collect()
-        rows.extend(df.to_dicts())
-    return rows
-
-
-def _total(rows: list[dict], field: str) -> float:
-    """Sum *field* across all rows (handles guarantee sub-row splits)."""
-    return sum(r.get(field, 0.0) or 0.0 for r in rows)
-
-
 # ---------------------------------------------------------------------------
 # Test class
 # ---------------------------------------------------------------------------
@@ -219,11 +204,11 @@ class TestP218Art2261B31SecuredLendingFX:
         Assert:  ead_final ≈ 239,427.40 (Art. 226(1) reval scaling applied to H_c + H_fx).
         """
         # Arrange / Act (pipeline run happens in fixture)
-        rows = _find_rows(result, "LOAN_B31_REVAL20")
+        rows = find_exposure_rows(result, "LOAN_B31_REVAL20")
         assert rows, "LOAN_B31_REVAL20 not found in any result set"
 
         # Assert
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(_EAD_FINAL, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {_EAD_FINAL:,.2f}. "
             f"If ead_final ≈ {_EAD_NO_REVAL_SCALING:,.2f} the engine is ignoring "
@@ -243,11 +228,11 @@ class TestP218Art2261B31SecuredLendingFX:
         Assert:  rwa_final ≈ 239,427.40.
         """
         # Arrange / Act
-        rows = _find_rows(result, "LOAN_B31_REVAL20")
+        rows = find_exposure_rows(result, "LOAN_B31_REVAL20")
         assert rows, "LOAN_B31_REVAL20 not found in any result set"
 
         # Assert
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(_RWA_FINAL, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {_RWA_FINAL:,.2f}. "
             f"Pre-fix (no reval scaling) counterfactual is {_EAD_NO_REVAL_SCALING:,.2f}."
@@ -265,7 +250,7 @@ class TestP218Art2261B31SecuredLendingFX:
         Assert:  risk_weight ≈ 1.00 (B31 Art. 122(2) Table 6).
         """
         # Arrange / Act
-        rows = _find_rows(result, "LOAN_B31_REVAL20")
+        rows = find_exposure_rows(result, "LOAN_B31_REVAL20")
         assert rows, "LOAN_B31_REVAL20 not found in any result set"
 
         # Assert — take the first (and only) row's risk_weight
@@ -296,11 +281,11 @@ class TestP218Art2261B31SecuredLendingFX:
         Assert: ead_final != approx(227,279.22, abs=10.0)
         """
         # Arrange / Act
-        rows = _find_rows(result, "LOAN_B31_REVAL20")
+        rows = find_exposure_rows(result, "LOAN_B31_REVAL20")
         assert rows, "LOAN_B31_REVAL20 not found in any result set"
 
         # Assert
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead != pytest.approx(_EAD_NO_REVAL_SCALING, abs=10.0), (
             f"ead_final {ead:,.2f} equals the counterfactual {_EAD_NO_REVAL_SCALING:,.2f} "
             f"(Art. 226(1) reval scaling not applied in B31 / 20-day / FX mode). "
@@ -330,11 +315,11 @@ class TestP218Art2261B31SecuredLendingFX:
         Assert: ead_final > 235,000
         """
         # Arrange / Act
-        rows = _find_rows(result, "LOAN_B31_REVAL20")
+        rows = find_exposure_rows(result, "LOAN_B31_REVAL20")
         assert rows, "LOAN_B31_REVAL20 not found in any result set"
 
         # Assert
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead > 235_000, (
             f"ead_final {ead:,.2f} <= 235,000. "
             f"Expected > 235,000 confirming BOTH H_c AND H_fx received the Art. 226(1) "
@@ -355,10 +340,10 @@ class TestP218Art2261B31SecuredLendingFX:
 
         Assert: ead_final < 1,000,000.
         """
-        rows = _find_rows(result, "LOAN_B31_REVAL20")
+        rows = find_exposure_rows(result, "LOAN_B31_REVAL20")
         assert rows, "LOAN_B31_REVAL20 not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead < _DRAWN_AMOUNT, (
             f"ead_final {ead:,.2f} is not less than unprotected {_DRAWN_AMOUNT:,.0f}. "
             f"Collateral appears to provide no EAD reduction."
@@ -370,10 +355,10 @@ class TestP218Art2261B31SecuredLendingFX:
 
         Assert: ead_final > 0.
         """
-        rows = _find_rows(result, "LOAN_B31_REVAL20")
+        rows = find_exposure_rows(result, "LOAN_B31_REVAL20")
         assert rows, "LOAN_B31_REVAL20 not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead > 0.0, (
             f"ead_final {ead:,.2f} is not positive. "
             f"Collateral appears to have over-collateralised the exposure."

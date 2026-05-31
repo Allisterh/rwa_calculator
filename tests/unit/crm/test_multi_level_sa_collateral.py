@@ -25,13 +25,12 @@ from datetime import date
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import (
-    ClassifiedExposuresBundle,
-    CounterpartyLookup,
-)
+from rwa_calc.contracts.bundles import ClassifiedExposuresBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import ApproachType, PermissionMode
 from rwa_calc.engine.crm.processor import CRMProcessor
+
+from tests.unit.crm._crm_bundles import empty_counterparty_lookup
 
 # =============================================================================
 # Fixtures
@@ -69,35 +68,13 @@ def _make_bundle(
     collateral: pl.LazyFrame,
 ) -> ClassifiedExposuresBundle:
     """Build a ClassifiedExposuresBundle with collateral only."""
-    empty_cp = pl.LazyFrame(schema={"counterparty_reference": pl.String, "entity_type": pl.String})
-    empty_mappings = pl.LazyFrame(
-        schema={
-            "child_counterparty_reference": pl.String,
-            "parent_counterparty_reference": pl.String,
-        }
-    )
-    empty_ultimate = pl.LazyFrame(
-        schema={
-            "counterparty_reference": pl.String,
-            "ultimate_parent_reference": pl.String,
-            "hierarchy_depth": pl.Int32,
-        }
-    )
-    empty_ri = pl.LazyFrame(
-        schema={"counterparty_reference": pl.String, "cqs": pl.Int8, "rating_type": pl.String}
-    )
     return ClassifiedExposuresBundle(
         all_exposures=exposures,
         sa_exposures=pl.LazyFrame(),
         irb_exposures=pl.LazyFrame(),
         slotting_exposures=pl.LazyFrame(),
         equity_exposures=None,
-        counterparty_lookup=CounterpartyLookup(
-            counterparties=empty_cp,
-            parent_mappings=empty_mappings,
-            ultimate_parent_mappings=empty_ultimate,
-            rating_inheritance=empty_ri,
-        ),
+        counterparty_lookup=empty_counterparty_lookup(),
         collateral=collateral,
         guarantees=None,
         provisions=None,

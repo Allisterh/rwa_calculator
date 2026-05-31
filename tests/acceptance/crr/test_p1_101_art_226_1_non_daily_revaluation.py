@@ -64,6 +64,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.acceptance.conftest import find_exposure_rows, total_field
 
 from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig, PermissionMode
@@ -154,22 +155,6 @@ def _run_pipeline_reval() -> object:
     return PipelineOrchestrator().run_with_data(bundle, config)
 
 
-def _find_rows(results: object, loan_ref: str) -> list[dict]:
-    """Return all result rows whose exposure_reference contains *loan_ref*."""
-    rows: list[dict] = []
-    for lf in [results.sa_results, results.irb_results, results.slotting_results]:
-        if lf is None:
-            continue
-        df = lf.filter(pl.col("exposure_reference").str.contains(loan_ref)).collect()
-        rows.extend(df.to_dicts())
-    return rows
-
-
-def _total(rows: list[dict], field: str) -> float:
-    """Sum *field* across all rows (handles guarantee sub-row splits)."""
-    return sum(r.get(field, 0.0) or 0.0 for r in rows)
-
-
 # ---------------------------------------------------------------------------
 # Test class
 # ---------------------------------------------------------------------------
@@ -220,11 +205,11 @@ class TestP1101Art2261NonDailyRevaluation:
         Pre-fix:   ead_final ≈ 222,627.42  (Art. 226(1) not applied)
         """
         # Arrange / Act (pipeline run happens in fixture)
-        rows = _find_rows(result, "LOAN_CRM_REVAL")
+        rows = find_exposure_rows(result, "LOAN_CRM_REVAL")
         assert rows, "LOAN_CRM_REVAL not found in any result set"
 
         # Assert
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(_EAD_EXPECTED, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {_EAD_EXPECTED:,.2f}. "
             f"If ead_final ≈ {_EAD_PREFIX:,.2f} the engine is ignoring "
@@ -239,11 +224,11 @@ class TestP1101Art2261NonDailyRevaluation:
         Assert:  rwa_final ≈ 230,357.87.
         """
         # Arrange / Act
-        rows = _find_rows(result, "LOAN_CRM_REVAL")
+        rows = find_exposure_rows(result, "LOAN_CRM_REVAL")
         assert rows, "LOAN_CRM_REVAL not found in any result set"
 
         # Assert
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(_RWA_EXPECTED, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {_RWA_EXPECTED:,.2f}. "
             f"Pre-fix counterfactual is {_RWA_PREFIX:,.2f}."
@@ -264,10 +249,10 @@ class TestP1101Art2261NonDailyRevaluation:
         Arrange/Act: as above.
         Assert:  rwa_final ≉ 222,627.42 (within 0.1% relative tolerance).
         """
-        rows = _find_rows(result, "LOAN_CRM_REVAL")
+        rows = find_exposure_rows(result, "LOAN_CRM_REVAL")
         assert rows, "LOAN_CRM_REVAL not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa != pytest.approx(_RWA_PREFIX, rel=1e-3), (
             f"rwa_final {rwa:,.2f} equals the pre-fix counterfactual {_RWA_PREFIX:,.2f}. "
             f"Art. 226(1) revaluation scaling appears to have NOT been applied."
@@ -286,10 +271,10 @@ class TestP1101Art2261NonDailyRevaluation:
 
         Assert: ead_final > 222,627.42.
         """
-        rows = _find_rows(result, "LOAN_CRM_REVAL")
+        rows = find_exposure_rows(result, "LOAN_CRM_REVAL")
         assert rows, "LOAN_CRM_REVAL not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead > _EAD_PREFIX, (
             f"ead_final {ead:,.2f} <= pre-fix value {_EAD_PREFIX:,.2f}. "
             f"Expected post-fix EAD to be higher (Art. 226(1) increases the haircut)."
@@ -303,10 +288,10 @@ class TestP1101Art2261NonDailyRevaluation:
 
         Assert: ead_final < 1,000,000.
         """
-        rows = _find_rows(result, "LOAN_CRM_REVAL")
+        rows = find_exposure_rows(result, "LOAN_CRM_REVAL")
         assert rows, "LOAN_CRM_REVAL not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead < _DRAWN_AMOUNT, (
             f"ead_final {ead:,.2f} is not less than unprotected {_DRAWN_AMOUNT:,.0f}. "
             f"Collateral appears to provide no EAD reduction."
@@ -318,10 +303,10 @@ class TestP1101Art2261NonDailyRevaluation:
 
         Assert: ead_final > 0.
         """
-        rows = _find_rows(result, "LOAN_CRM_REVAL")
+        rows = find_exposure_rows(result, "LOAN_CRM_REVAL")
         assert rows, "LOAN_CRM_REVAL not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead > 0.0, (
             f"ead_final {ead:,.2f} is not positive. "
             f"Collateral appears to have over-collateralised the exposure."

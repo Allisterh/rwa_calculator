@@ -48,6 +48,7 @@ from .conftest import (
     make_counterparty,
     make_facility,
     make_loan,
+    make_mixed_corp_gov_rows,
     make_raw_data_bundle,
 )
 
@@ -308,43 +309,7 @@ class TestSummaries:
     ):
         """Mixed portfolio → summary_by_approach has at least SA row."""
         bundle = _make_bundle_with_ratings(
-            counterparties=[
-                make_counterparty(
-                    counterparty_reference="CP_CORP",
-                    entity_type="corporate",
-                ),
-                make_counterparty(
-                    counterparty_reference="CP_GOV",
-                    entity_type="central_government",
-                    annual_revenue=0.0,
-                    total_assets=0.0,
-                ),
-            ],
-            loans=[
-                make_loan(
-                    loan_reference="LN_CORP",
-                    counterparty_reference="CP_CORP",
-                    drawn_amount=1_000_000.0,
-                ),
-                make_loan(
-                    loan_reference="LN_GOV",
-                    counterparty_reference="CP_GOV",
-                    drawn_amount=500_000.0,
-                ),
-            ],
-            facilities=[
-                make_facility(
-                    facility_reference="FAC_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_facility(
-                    facility_reference="FAC_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            ratings=[
-                _make_internal_rating(counterparty_reference="CP_CORP", pd=0.02),
-            ],
+            **make_mixed_corp_gov_rows(drawn=True, rating_builder=_make_internal_rating),
             model_permissions=create_firb_only_model_permissions(),
         )
 
@@ -375,41 +340,7 @@ class TestSummaries:
     ):
         """SA + IRB combined results contain all exposures."""
         bundle = _make_bundle_with_ratings(
-            counterparties=[
-                make_counterparty(
-                    counterparty_reference="CP_CORP",
-                    entity_type="corporate",
-                ),
-                make_counterparty(
-                    counterparty_reference="CP_GOV",
-                    entity_type="central_government",
-                    annual_revenue=0.0,
-                    total_assets=0.0,
-                ),
-            ],
-            loans=[
-                make_loan(
-                    loan_reference="LN_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_loan(
-                    loan_reference="LN_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            facilities=[
-                make_facility(
-                    facility_reference="FAC_CORP",
-                    counterparty_reference="CP_CORP",
-                ),
-                make_facility(
-                    facility_reference="FAC_GOV",
-                    counterparty_reference="CP_GOV",
-                ),
-            ],
-            ratings=[
-                _make_internal_rating(counterparty_reference="CP_CORP", pd=0.02),
-            ],
+            **make_mixed_corp_gov_rows(drawn=False, rating_builder=_make_internal_rating),
             model_permissions=create_firb_only_model_permissions(),
         )
 

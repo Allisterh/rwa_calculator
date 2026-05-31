@@ -11,7 +11,7 @@ Tests cover:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import polars as pl
 import pytest
@@ -43,17 +43,23 @@ def fixtures_path() -> Path:
     return Path(__file__).parent.parent / "fixtures"
 
 
-@pytest.fixture
-def temp_parquet_dir(tmp_path: Path) -> Path:
-    """Create a temporary directory with minimal parquet test files."""
+def _write_loader_fixtures(
+    base_dir: Path, write: Callable[[pl.DataFrame, Path], object], ext: str
+) -> None:
+    """Build the loader directory tree and write all fixture files.
+
+    Shared by ``temp_parquet_dir`` and ``temp_csv_dir`` — each DataFrame literal
+    is defined once here and serialised via ``write`` (e.g. ``pl.DataFrame.write_parquet``
+    or ``pl.DataFrame.write_csv``) to ``<sub>/<name>.<ext>``.
+    """
     # Create directory structure
-    (tmp_path / "counterparty").mkdir()
-    (tmp_path / "exposures").mkdir()
-    (tmp_path / "collateral").mkdir()
-    (tmp_path / "guarantee").mkdir()
-    (tmp_path / "provision").mkdir()
-    (tmp_path / "ratings").mkdir()
-    (tmp_path / "mapping").mkdir()
+    (base_dir / "counterparty").mkdir()
+    (base_dir / "exposures").mkdir()
+    (base_dir / "collateral").mkdir()
+    (base_dir / "guarantee").mkdir()
+    (base_dir / "provision").mkdir()
+    (base_dir / "ratings").mkdir()
+    (base_dir / "mapping").mkdir()
 
     # Create counterparty file
     counterparties_df = pl.DataFrame(
@@ -63,7 +69,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "name": ["Test Sovereign", "Test Institution", "Test Corporate", "Test Retail"],
         }
     )
-    counterparties_df.write_parquet(tmp_path / "counterparty" / "counterparties.parquet")
+    write(counterparties_df, base_dir / "counterparty" / f"counterparties.{ext}")
 
     # Create exposure files
     facilities_df = pl.DataFrame(
@@ -73,7 +79,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "facility_type": ["TERM_LOAN"],
         }
     )
-    facilities_df.write_parquet(tmp_path / "exposures" / "facilities.parquet")
+    write(facilities_df, base_dir / "exposures" / f"facilities.{ext}")
 
     loans_df = pl.DataFrame(
         {
@@ -82,7 +88,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "outstanding_balance": [1000000.0],
         }
     )
-    loans_df.write_parquet(tmp_path / "exposures" / "loans.parquet")
+    write(loans_df, base_dir / "exposures" / f"loans.{ext}")
 
     contingents_df = pl.DataFrame(
         {
@@ -91,7 +97,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "commitment_amount": [500000.0],
         }
     )
-    contingents_df.write_parquet(tmp_path / "exposures" / "contingents.parquet")
+    write(contingents_df, base_dir / "exposures" / f"contingents.{ext}")
 
     facility_mapping_df = pl.DataFrame(
         {
@@ -99,7 +105,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "facility_id": ["FAC001"],
         }
     )
-    facility_mapping_df.write_parquet(tmp_path / "exposures" / "facility_mapping.parquet")
+    write(facility_mapping_df, base_dir / "exposures" / f"facility_mapping.{ext}")
 
     # Create collateral file
     collateral_df = pl.DataFrame(
@@ -109,7 +115,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "value": [750000.0],
         }
     )
-    collateral_df.write_parquet(tmp_path / "collateral" / "collateral.parquet")
+    write(collateral_df, base_dir / "collateral" / f"collateral.{ext}")
 
     # Create guarantee file
     guarantee_df = pl.DataFrame(
@@ -119,7 +125,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "amount": [200000.0],
         }
     )
-    guarantee_df.write_parquet(tmp_path / "guarantee" / "guarantee.parquet")
+    write(guarantee_df, base_dir / "guarantee" / f"guarantee.{ext}")
 
     # Create provision file
     provision_df = pl.DataFrame(
@@ -128,7 +134,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "provision_amount": [10000.0],
         }
     )
-    provision_df.write_parquet(tmp_path / "provision" / "provision.parquet")
+    write(provision_df, base_dir / "provision" / f"provision.{ext}")
 
     # Create ratings file
     ratings_df = pl.DataFrame(
@@ -138,7 +144,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "rating": ["A2"],
         }
     )
-    ratings_df.write_parquet(tmp_path / "ratings" / "ratings.parquet")
+    write(ratings_df, base_dir / "ratings" / f"ratings.{ext}")
 
     # Create mapping files
     org_mapping_df = pl.DataFrame(
@@ -147,7 +153,7 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "parent_id": [None],
         }
     )
-    org_mapping_df.write_parquet(tmp_path / "mapping" / "org_mapping.parquet")
+    write(org_mapping_df, base_dir / "mapping" / f"org_mapping.{ext}")
 
     lending_mapping_df = pl.DataFrame(
         {
@@ -155,125 +161,20 @@ def temp_parquet_dir(tmp_path: Path) -> Path:
             "lending_group_id": ["LG001"],
         }
     )
-    lending_mapping_df.write_parquet(tmp_path / "mapping" / "lending_mapping.parquet")
+    write(lending_mapping_df, base_dir / "mapping" / f"lending_mapping.{ext}")
 
+
+@pytest.fixture
+def temp_parquet_dir(tmp_path: Path) -> Path:
+    """Create a temporary directory with minimal parquet test files."""
+    _write_loader_fixtures(tmp_path, pl.DataFrame.write_parquet, "parquet")
     return tmp_path
 
 
 @pytest.fixture
 def temp_csv_dir(tmp_path: Path) -> Path:
     """Create a temporary directory with minimal CSV test files."""
-    # Create directory structure
-    (tmp_path / "counterparty").mkdir()
-    (tmp_path / "exposures").mkdir()
-    (tmp_path / "collateral").mkdir()
-    (tmp_path / "guarantee").mkdir()
-    (tmp_path / "provision").mkdir()
-    (tmp_path / "ratings").mkdir()
-    (tmp_path / "mapping").mkdir()
-
-    # Create counterparty file
-    counterparties_df = pl.DataFrame(
-        {
-            "counterparty_id": ["SOV001", "INST001", "CORP001", "RET001"],
-            "counterparty_type": ["SOVEREIGN", "INSTITUTION", "CORPORATE", "RETAIL"],
-            "name": ["Test Sovereign", "Test Institution", "Test Corporate", "Test Retail"],
-        }
-    )
-    counterparties_df.write_csv(tmp_path / "counterparty" / "counterparties.csv")
-
-    # Create exposure files
-    facilities_df = pl.DataFrame(
-        {
-            "facility_id": ["FAC001"],
-            "counterparty_id": ["CORP001"],
-            "facility_type": ["TERM_LOAN"],
-        }
-    )
-    facilities_df.write_csv(tmp_path / "exposures" / "facilities.csv")
-
-    loans_df = pl.DataFrame(
-        {
-            "loan_id": ["LOAN001"],
-            "facility_id": ["FAC001"],
-            "outstanding_balance": [1000000.0],
-        }
-    )
-    loans_df.write_csv(tmp_path / "exposures" / "loans.csv")
-
-    contingents_df = pl.DataFrame(
-        {
-            "contingent_id": ["CONT001"],
-            "facility_id": ["FAC001"],
-            "commitment_amount": [500000.0],
-        }
-    )
-    contingents_df.write_csv(tmp_path / "exposures" / "contingents.csv")
-
-    facility_mapping_df = pl.DataFrame(
-        {
-            "loan_id": ["LOAN001"],
-            "facility_id": ["FAC001"],
-        }
-    )
-    facility_mapping_df.write_csv(tmp_path / "exposures" / "facility_mapping.csv")
-
-    # Create collateral file
-    collateral_df = pl.DataFrame(
-        {
-            "collateral_id": ["COL001"],
-            "collateral_type": ["PROPERTY"],
-            "value": [750000.0],
-        }
-    )
-    collateral_df.write_csv(tmp_path / "collateral" / "collateral.csv")
-
-    # Create guarantee file
-    guarantee_df = pl.DataFrame(
-        {
-            "guarantee_id": ["GUAR001"],
-            "guarantor_id": ["INST001"],
-            "amount": [200000.0],
-        }
-    )
-    guarantee_df.write_csv(tmp_path / "guarantee" / "guarantee.csv")
-
-    # Create provision file
-    provision_df = pl.DataFrame(
-        {
-            "facility_id": ["FAC001"],
-            "provision_amount": [10000.0],
-        }
-    )
-    provision_df.write_csv(tmp_path / "provision" / "provision.csv")
-
-    # Create ratings file
-    ratings_df = pl.DataFrame(
-        {
-            "counterparty_id": ["CORP001"],
-            "rating_agency": ["MOODYS"],
-            "rating": ["A2"],
-        }
-    )
-    ratings_df.write_csv(tmp_path / "ratings" / "ratings.csv")
-
-    # Create mapping files
-    org_mapping_df = pl.DataFrame(
-        {
-            "counterparty_id": ["CORP001"],
-            "parent_id": [None],
-        }
-    )
-    org_mapping_df.write_csv(tmp_path / "mapping" / "org_mapping.csv")
-
-    lending_mapping_df = pl.DataFrame(
-        {
-            "counterparty_id": ["CORP001"],
-            "lending_group_id": ["LG001"],
-        }
-    )
-    lending_mapping_df.write_csv(tmp_path / "mapping" / "lending_mapping.csv")
-
+    _write_loader_fixtures(tmp_path, pl.DataFrame.write_csv, "csv")
     return tmp_path
 
 

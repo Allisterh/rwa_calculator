@@ -156,28 +156,37 @@ def _make_slotting_data(**overrides: object) -> pl.LazyFrame:
     return pl.LazyFrame(defaults)
 
 
-def _make_mixed_data() -> pl.LazyFrame:
-    """Create pipeline data with SA, IRB, and slotting exposures."""
-    sa = _make_sa_data().collect()
-    irb = _make_irb_data().collect()
-    slotting = _make_slotting_data().collect()
-    all_frames = [sa, irb, slotting]
+def _align_and_concat(frames: list[pl.DataFrame]) -> pl.LazyFrame:
+    """Align schemas across frames and concat them into a single LazyFrame.
+
+    Builds a per-column dtype map from the non-Null dtypes, sorts the column
+    names, adds any missing columns as typed nulls, then concats in a stable
+    column order.
+    """
     # Build a type map: for each column, find the non-Null dtype
     col_types: dict[str, pl.DataType] = {}
-    for df in all_frames:
+    for df in frames:
         for col_name in df.columns:
             dtype = df.schema[col_name]
             if dtype != pl.Null:
                 col_types[col_name] = dtype
     all_cols = sorted(col_types.keys())
     # Align schemas — add missing columns with the correct dtype
-    frames = []
-    for df in all_frames:
+    aligned = []
+    for df in frames:
         for col in all_cols:
             if col not in df.columns:
                 df = df.with_columns(pl.lit(None).cast(col_types[col]).alias(col))
-        frames.append(df.select(all_cols))
-    return pl.concat(frames).lazy()
+        aligned.append(df.select(all_cols))
+    return pl.concat(aligned).lazy()
+
+
+def _make_mixed_data() -> pl.LazyFrame:
+    """Create pipeline data with SA, IRB, and slotting exposures."""
+    sa = _make_sa_data().collect()
+    irb = _make_irb_data().collect()
+    slotting = _make_slotting_data().collect()
+    return _align_and_concat([sa, irb, slotting])
 
 
 # ---------------------------------------------------------------------------
@@ -763,21 +772,7 @@ def _make_mixed_data_with_sa_rwa() -> pl.LazyFrame:
     slotting = _make_slotting_data(
         sa_rwa=[800.0, 650.0, 500.0],  # SA equivalent of slotting exposures
     ).collect()
-    all_frames = [sa, irb, slotting]
-    col_types: dict[str, pl.DataType] = {}
-    for df in all_frames:
-        for col_name in df.columns:
-            dtype = df.schema[col_name]
-            if dtype != pl.Null:
-                col_types[col_name] = dtype
-    all_cols = sorted(col_types.keys())
-    frames = []
-    for df in all_frames:
-        for col in all_cols:
-            if col not in df.columns:
-                df = df.with_columns(pl.lit(None).cast(col_types[col]).alias(col))
-        frames.append(df.select(all_cols))
-    return pl.concat(frames).lazy()
+    return _align_and_concat([sa, irb, slotting])
 
 
 # ---------------------------------------------------------------------------

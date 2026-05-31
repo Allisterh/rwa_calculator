@@ -37,6 +37,7 @@ from rwa_calc.data.tables.crr_equity_rw import (
 from rwa_calc.domain.enums import EquityType, PermissionMode
 from rwa_calc.engine.equity import EquityCalculator
 from tests.fixtures.single_exposure import calculate_single_equity_exposure
+from tests.unit._equity_test_helpers import apply_b31_equity_weight_sa
 
 # =============================================================================
 # Data Table Constants
@@ -113,35 +114,9 @@ class TestSubordinatedDebtDataTables:
 class TestB31SubordinatedDebtCalculator:
     """Tests for B31 SA subordinated debt weight in equity calculator."""
 
-    @staticmethod
-    def _apply_b31_weight(equity_type: str, **kwargs: bool | str | float | None) -> float:
-        """Apply B31 SA weight to a single exposure."""
-        config = CalculationConfig.basel_3_1(
-            reporting_date=date(2031, 6, 30),
-            permission_mode=PermissionMode.STANDARDISED,
-        )
-        calculator = EquityCalculator()
-        df = pl.DataFrame(
-            {
-                "exposure_reference": ["EQ_TEST"],
-                "ead_final": [1_000_000.0],
-                "equity_type": [equity_type],
-                "is_speculative": [kwargs.get("is_speculative", False)],
-                "is_exchange_traded": [kwargs.get("is_exchange_traded", False)],
-                "is_government_supported": [kwargs.get("is_government_supported", False)],
-                "is_diversified_portfolio": [False],
-                "ciu_approach": [kwargs.get("ciu_approach")],
-                "ciu_mandate_rw": [kwargs.get("ciu_mandate_rw")],
-                "ciu_third_party_calc": [kwargs.get("ciu_third_party_calc")],
-                "ciu_look_through_rw": [None],
-            }
-        ).lazy()
-        result = calculator._apply_b31_equity_weights_sa(df, config).collect()
-        return result["risk_weight"][0]
-
     def test_subordinated_debt_150_percent(self) -> None:
         """B31 Art. 133(1): subordinated debt equity = 150%."""
-        assert self._apply_b31_weight("subordinated_debt") == pytest.approx(1.50)
+        assert apply_b31_equity_weight_sa("subordinated_debt") == pytest.approx(1.50)
 
     def test_subordinated_debt_rwa_correctness(self) -> None:
         """B31: subordinated debt RWA = EAD x 1.50."""
@@ -162,23 +137,23 @@ class TestB31SubordinatedDebtCalculator:
     def test_subordinated_debt_priority_over_speculative(self) -> None:
         """Subordinated debt type takes priority even if is_speculative flag set."""
         # The equity_type match should fire before is_speculative flag check
-        assert self._apply_b31_weight("subordinated_debt", is_speculative=True) == pytest.approx(
-            1.50
-        )
+        assert apply_b31_equity_weight_sa(
+            "subordinated_debt", is_speculative=True
+        ) == pytest.approx(1.50)
 
     def test_subordinated_debt_not_affected_by_government_supported(self) -> None:
         """Subordinated debt type is not affected by is_government_supported flag."""
-        assert self._apply_b31_weight(
+        assert apply_b31_equity_weight_sa(
             "subordinated_debt", is_government_supported=True
         ) == pytest.approx(1.50)
 
     def test_listed_still_250_percent(self) -> None:
         """Regression: listed equity still 250% after subordinated debt addition."""
-        assert self._apply_b31_weight("listed") == pytest.approx(2.50)
+        assert apply_b31_equity_weight_sa("listed") == pytest.approx(2.50)
 
     def test_speculative_still_400_percent(self) -> None:
         """Regression: speculative equity still 400% after subordinated debt addition."""
-        assert self._apply_b31_weight("speculative", is_speculative=True) == pytest.approx(4.00)
+        assert apply_b31_equity_weight_sa("speculative", is_speculative=True) == pytest.approx(4.00)
 
 
 # =============================================================================

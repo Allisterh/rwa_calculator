@@ -67,6 +67,7 @@ import pytest
 
 import rwa_calc.engine.irb.namespace  # noqa: F401 — registers lf.irb namespace
 from rwa_calc.contracts.config import CalculationConfig
+from tests.acceptance.basel31.conftest import PSM_GUARANTEE_INPUT_SCHEMA
 from tests.fixtures.p1_157.p1_157 import (
     AMOUNT_COVERED,
     EAD_FACILITY,
@@ -177,31 +178,7 @@ def _build_p1157_lf(
             "guarantor_is_financial_sector_entity": [False],
             "original_maturity_years": [ORIGINAL_MATURITY_YEARS],
         },
-        schema={
-            "exposure_reference": pl.String,
-            "exposure_class": pl.String,
-            "pd": pl.Float64,
-            "lgd": pl.Float64,
-            "maturity": pl.Float64,
-            "ead_final": pl.Float64,
-            "turnover_m": pl.Float64,
-            "requires_fi_scalar": pl.Boolean,
-            "has_one_day_maturity_floor": pl.Boolean,
-            "is_qrre_transactor": pl.Boolean,
-            "rwa": pl.Float64,
-            "risk_weight": pl.Float64,
-            "expected_loss": pl.Float64,
-            "guaranteed_portion": pl.Float64,
-            "unguaranteed_portion": pl.Float64,
-            "guarantor_entity_type": pl.String,
-            "guarantor_cqs": pl.Int8,
-            "guarantor_approach": pl.String,
-            "guarantor_pd": pl.Float64,
-            "guarantor_reference": pl.String,
-            "guarantor_seniority": pl.String,
-            "guarantor_is_financial_sector_entity": pl.Boolean,
-            "original_maturity_years": pl.Float64,
-        },
+        schema=PSM_GUARANTEE_INPUT_SCHEMA,
     )
 
 

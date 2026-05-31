@@ -9,7 +9,7 @@ import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 import pytest
@@ -24,6 +24,31 @@ from src.rwa_calc.contracts.config import (  # noqa: E402
     _CRR_SME_TURNOVER_EUR,
     RegulatoryThresholds,
 )
+from tests.acceptance.acceptance_helpers import (  # noqa: E402
+    assert_ead_match,
+    assert_risk_weight_match,
+    assert_rwa_within_tolerance,
+    assert_supporting_factor_match,
+    build_raw_bundle,
+    get_irb_result_for_exposure,
+    get_result_for_exposure,
+    get_sa_result_for_exposure,
+    get_scenarios_by_group,
+    make_irb_bundle,
+)
+
+# Re-exported so explicit-path imports
+# (``from tests.acceptance.crr.conftest import ...``) keep resolving unchanged.
+__all__ = [
+    "assert_ead_match",
+    "assert_risk_weight_match",
+    "assert_rwa_within_tolerance",
+    "assert_supporting_factor_match",
+    "get_irb_result_for_exposure",
+    "get_result_for_exposure",
+    "get_sa_result_for_exposure",
+    "get_scenarios_by_group",
+]
 
 # =============================================================================
 # Expected Outputs Fixtures
@@ -51,14 +76,6 @@ def expected_outputs_df(expected_outputs_path: Path) -> pl.DataFrame:
 def expected_outputs_dict(expected_outputs_df: pl.DataFrame) -> dict[str, dict[str, Any]]:
     """Convert expected outputs to dictionary keyed by scenario_id."""
     return {row["scenario_id"]: row for row in expected_outputs_df.to_dicts()}
-
-
-def get_scenarios_by_group(
-    expected_outputs_df: pl.DataFrame,
-    group: str,
-) -> list[dict[str, Any]]:
-    """Filter scenarios by group prefix."""
-    return expected_outputs_df.filter(pl.col("scenario_group") == group).to_dicts()
 
 
 @pytest.fixture(scope="session")
@@ -258,100 +275,6 @@ def load_test_fixtures():
 
 
 # =============================================================================
-# Assertion Helpers
-# =============================================================================
-
-
-def assert_rwa_within_tolerance(
-    actual: float,
-    expected: float,
-    tolerance: float = 0.01,
-    scenario_id: str = "",
-) -> None:
-    """
-    Assert RWA values are within acceptable tolerance.
-
-    Args:
-        actual: The calculated RWA value
-        expected: The expected RWA value
-        tolerance: Relative tolerance (default 1%)
-        scenario_id: Scenario ID for error messages
-    """
-    if expected == 0:
-        assert actual == 0, f"{scenario_id}: Expected 0, got {actual}"
-    else:
-        relative_diff = abs(actual - expected) / abs(expected)
-        assert relative_diff <= tolerance, (
-            f"{scenario_id}: RWA difference {relative_diff * 100:.2f}% exceeds "
-            f"tolerance {tolerance * 100:.0f}%: actual={actual:,.2f}, expected={expected:,.2f}"
-        )
-
-
-def assert_risk_weight_match(
-    actual: float,
-    expected: float,
-    tolerance: float = 0.0001,
-    scenario_id: str = "",
-) -> None:
-    """
-    Assert risk weight values match exactly (or within very small tolerance).
-
-    Args:
-        actual: The calculated risk weight
-        expected: The expected risk weight
-        tolerance: Absolute tolerance (default 0.01%)
-        scenario_id: Scenario ID for error messages
-    """
-    diff = abs(actual - expected)
-    assert diff <= tolerance, (
-        f"{scenario_id}: Risk weight mismatch: actual={actual:.4f}, expected={expected:.4f}"
-    )
-
-
-def assert_ead_match(
-    actual: float,
-    expected: float,
-    tolerance: float = 0.01,
-    scenario_id: str = "",
-) -> None:
-    """
-    Assert EAD values match within tolerance.
-
-    Args:
-        actual: The calculated EAD value
-        expected: The expected EAD value
-        tolerance: Relative tolerance (default 1%)
-        scenario_id: Scenario ID for error messages
-    """
-    if expected == 0:
-        assert actual == 0, f"{scenario_id}: Expected EAD 0, got {actual}"
-    else:
-        relative_diff = abs(actual - expected) / abs(expected)
-        assert relative_diff <= tolerance, (
-            f"{scenario_id}: EAD difference {relative_diff * 100:.2f}% exceeds "
-            f"tolerance {tolerance * 100:.0f}%: actual={actual:,.2f}, expected={expected:,.2f}"
-        )
-
-
-def assert_supporting_factor_match(
-    actual: float,
-    expected: float,
-    scenario_id: str = "",
-) -> None:
-    """
-    Assert supporting factor matches exactly.
-
-    Args:
-        actual: The calculated supporting factor
-        expected: The expected supporting factor
-        scenario_id: Scenario ID for error messages
-    """
-    assert actual == pytest.approx(expected, rel=0.0001), (
-        f"{scenario_id}: Supporting factor mismatch: actual={actual}, expected={expected}"
-    )
-
-
-# =============================================================================
 # Pipeline-Based Testing Fixtures
 # =============================================================================
 
@@ -415,24 +338,7 @@ def raw_data_bundle(load_test_fixtures):
     This assembles all fixture LazyFrames into the format expected
     by the production pipeline.
     """
-    from rwa_calc.contracts.bundles import RawDataBundle
-
-    fixtures = load_test_fixtures
-
-    return RawDataBundle(
-        facilities=fixtures.facilities,
-        loans=fixtures.loans,
-        contingents=fixtures.contingents,
-        counterparties=fixtures.counterparties,
-        collateral=fixtures.collateral,
-        guarantees=fixtures.guarantees,
-        provisions=fixtures.provisions,
-        ratings=fixtures.ratings,
-        facility_mappings=fixtures.facility_mappings,
-        org_mappings=fixtures.org_mappings,
-        lending_mappings=fixtures.lending_mappings,
-        specialised_lending=fixtures.specialised_lending,
-    )
+    return build_raw_bundle(load_test_fixtures)
 
 
 @pytest.fixture(scope="session")
@@ -443,7 +349,7 @@ def irb_raw_data_bundle(load_test_fixtures):
 
     from tests.fixtures.irb_test_helpers import create_full_irb_model_permissions
 
-    return _make_irb_bundle(load_test_fixtures, create_full_irb_model_permissions())
+    return make_irb_bundle(load_test_fixtures, create_full_irb_model_permissions())
 
 
 @pytest.fixture(scope="session")
@@ -451,30 +357,7 @@ def slotting_raw_data_bundle(load_test_fixtures):
     """RawDataBundle with slotting-only model permissions."""
     from tests.fixtures.irb_test_helpers import create_slotting_only_model_permissions
 
-    return _make_irb_bundle(load_test_fixtures, create_slotting_only_model_permissions())
-
-
-def _make_irb_bundle(fixtures, model_permissions):
-    """Build RawDataBundle with enriched ratings and given model_permissions."""
-    from tests.fixtures.irb_test_helpers import enrich_ratings_with_model_id
-
-    from rwa_calc.contracts.bundles import RawDataBundle
-
-    return RawDataBundle(
-        facilities=fixtures.facilities,
-        loans=fixtures.loans,
-        contingents=fixtures.contingents,
-        counterparties=fixtures.counterparties,
-        collateral=fixtures.collateral,
-        guarantees=fixtures.guarantees,
-        provisions=fixtures.provisions,
-        ratings=enrich_ratings_with_model_id(fixtures.ratings),
-        facility_mappings=fixtures.facility_mappings,
-        org_mappings=fixtures.org_mappings,
-        lending_mappings=fixtures.lending_mappings,
-        specialised_lending=fixtures.specialised_lending,
-        model_permissions=model_permissions,
-    )
+    return make_irb_bundle(load_test_fixtures, create_slotting_only_model_permissions())
 
 
 @pytest.fixture(scope="session")
@@ -588,82 +471,105 @@ def irb_only_results_df(irb_pipeline_results) -> pl.DataFrame:
     return irb_pipeline_results.irb_results.collect()
 
 
-def get_result_for_exposure(
-    results_df: pl.DataFrame,
-    exposure_reference: str,
-) -> dict | None:
-    """
-    Look up calculation result for a specific exposure.
-
-    Tries exact match on exposure_reference first. If not found, falls back to
-    matching via parent_exposure_reference and aggregates numeric fields across
-    guarantee sub-rows (guaranteed + remainder).
-
-    Args:
-        results_df: DataFrame of pipeline results
-        exposure_reference: The exposure reference to find
-
-    Returns:
-        dict of result values, or None if not found
-    """
-    filtered = results_df.filter(pl.col("exposure_reference") == exposure_reference)
-
-    if filtered.height > 0:
-        return filtered.row(0, named=True)
-
-    # Fall back to parent_exposure_reference for guarantee sub-rows
-    if "parent_exposure_reference" in results_df.columns:
-        filtered = results_df.filter(pl.col("parent_exposure_reference") == exposure_reference)
-    if filtered.height == 0:
-        return None
-
-    # Aggregate across sub-rows: sum additive fields, take first for others
-    _additive = {
-        "ead_final",
-        "ead_pre_crm",
-        "ead_after_collateral",
-        "rwa_final",
-        "rwa_pre_crm",
-        "rwa_post_factor",
-        "rwa_pre_factor",
-        "guaranteed_portion",
-        "unguaranteed_portion",
-        "drawn_amount",
-        "undrawn_amount",
-        "nominal_amount",
-        "provision_deducted",
-        "provision_on_drawn",
-        "provision_on_nominal",
-        "expected_loss",
-    }
-    result: dict = {}
-    for col_name in filtered.columns:
-        if col_name in _additive:
-            result[col_name] = filtered[col_name].sum()
-        else:
-            result[col_name] = filtered[col_name][0]
-    return result
-
-
-def get_sa_result_for_exposure(
-    sa_results_df: pl.DataFrame,
-    exposure_reference: str,
-) -> dict | None:
-    """Look up SA result for a specific exposure."""
-    return get_result_for_exposure(sa_results_df, exposure_reference)
-
-
-def get_irb_result_for_exposure(
-    irb_results_df: pl.DataFrame,
-    exposure_reference: str,
-) -> dict | None:
-    """Look up IRB result for a specific exposure."""
-    return get_result_for_exposure(irb_results_df, exposure_reference)
-
-
 def get_slotting_result_for_exposure(
     slotting_results_df: pl.DataFrame,
     exposure_reference: str,
 ) -> dict | None:
     """Look up Slotting result for a specific exposure."""
     return get_result_for_exposure(slotting_results_df, exposure_reference)
+
+
+# =============================================================================
+# Single-Guarantee SA Pipeline Helpers (shared by P1.109 / P1.124)
+# =============================================================================
+
+
+def run_single_guarantee_sa_pipeline(
+    fixtures_dir: Path,
+    reporting_date: date,
+    guarantee_ref: str,
+) -> pl.DataFrame:
+    """
+    Run the full CRR SA pipeline for a single-guarantee scenario.
+
+    Builds a RawDataBundle with empty facilities/facility_mappings/lending_mappings
+    schemas, scans the loan/counterparty/rating parquet files under ``fixtures_dir``,
+    and filters the guarantee parquet to exactly the ``guarantee_ref`` row. Runs an
+    SA-only ``CalculationConfig.crr`` through the pipeline orchestrator.
+
+    Args:
+        fixtures_dir: Directory holding loan/counterparty/rating/guarantee parquet files.
+        reporting_date: Reporting date passed to ``CalculationConfig.crr``.
+        guarantee_ref: The single ``guarantee_reference`` value to retain.
+
+    Returns:
+        The SA results DataFrame (all rows, including guarantee sub-rows).
+    """
+    from rwa_calc.contracts.bundles import RawDataBundle
+    from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.domain.enums import PermissionMode
+    from rwa_calc.engine.pipeline import PipelineOrchestrator
+
+    single_guar = pl.scan_parquet(fixtures_dir / "guarantee.parquet").filter(
+        pl.col("guarantee_reference") == guarantee_ref
+    )
+    bundle = RawDataBundle(
+        facilities=pl.LazyFrame(
+            schema={
+                "facility_reference": pl.String,
+                "counterparty_reference": pl.String,
+            }
+        ),
+        loans=pl.scan_parquet(fixtures_dir / "loan.parquet"),
+        counterparties=pl.scan_parquet(fixtures_dir / "counterparty.parquet"),
+        facility_mappings=pl.LazyFrame(
+            schema={
+                "parent_facility_reference": pl.String,
+                "child_reference": pl.String,
+                "child_type": pl.String,
+            }
+        ),
+        lending_mappings=pl.LazyFrame(
+            schema={
+                "parent_counterparty_reference": pl.String,
+                "child_counterparty_reference": pl.String,
+            }
+        ),
+        ratings=pl.scan_parquet(fixtures_dir / "rating.parquet"),
+        guarantees=single_guar,
+    )
+    config = CalculationConfig.crr(
+        reporting_date=reporting_date,
+        permission_mode=PermissionMode.STANDARDISED,
+    )
+    results = PipelineOrchestrator().run_with_data(bundle, config)
+    assert results.sa_results is not None, "SA results must not be None for SA-only config"
+    return cast(pl.DataFrame, results.sa_results.collect())
+
+
+def aggregate_sa_rows_by_parent(df: pl.DataFrame, parent_ref: str) -> dict:
+    """
+    Aggregate all sub-rows (guarantee split rows + remainder) for a parent exposure.
+
+    Additive fields (rwa_final, guaranteed_portion, unguaranteed_portion, ead_final)
+    are summed. The first value is used for non-additive fields.
+
+    Args:
+        df: SA results DataFrame.
+        parent_ref: The ``parent_exposure_reference`` whose sub-rows are aggregated.
+
+    Returns:
+        dict of aggregated result values.
+    """
+    sub_rows = df.filter(pl.col("parent_exposure_reference") == parent_ref)
+    assert sub_rows.height > 0, (
+        f"No SA result rows found with parent_exposure_reference='{parent_ref}'"
+    )
+    _additive = {"rwa_final", "guaranteed_portion", "unguaranteed_portion", "ead_final"}
+    result: dict = {}
+    for col_name in sub_rows.columns:
+        if col_name in _additive:
+            result[col_name] = sub_rows[col_name].sum()
+        else:
+            result[col_name] = sub_rows[col_name][0]
+    return result

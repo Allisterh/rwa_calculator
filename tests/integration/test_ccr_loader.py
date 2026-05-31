@@ -25,9 +25,8 @@ References:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-
-import polars as pl
 
 from rwa_calc.config.data_sources import DATA_SOURCES
 from rwa_calc.contracts.bundles import RawDataBundle
@@ -52,71 +51,6 @@ _CCR_COLLATERAL_PARQUET = _FIXTURE_DIR / "ccr_collateral.parquet"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _write_minimal_crr_dataset(base_dir: Path) -> DataSourceConfig:
-    """Write the minimum mandatory CRR files so ParquetLoader does not fail
-    on missing required files (facilities, loans, counterparties, etc.).
-
-    Returns a DataSourceConfig pointing at the written files.
-    """
-    # Minimal counterparties
-    cp_df = pl.DataFrame(
-        {
-            "counterparty_reference": ["CP_001"],
-            "counterparty_name": ["Test Corp"],
-            "entity_type": ["corporate"],
-            "country_code": ["GB"],
-            "annual_revenue": [100_000_000.0],
-            "total_assets": [500_000_000.0],
-            "default_status": [False],
-        }
-    )
-    # Minimal facilities
-    fac_df = pl.DataFrame(
-        {
-            "facility_reference": ["FAC_001"],
-            "counterparty_reference": ["CP_001"],
-        }
-    )
-    # Minimal loans
-    loan_df = pl.DataFrame(
-        {
-            "loan_reference": ["LN_001"],
-            "counterparty_reference": ["CP_001"],
-            "drawn_amount": [0.0],
-        }
-    )
-    # Minimal facility_mappings
-    fm_df = pl.DataFrame(
-        {
-            "parent_facility_reference": ["FAC_001"],
-            "child_reference": ["LN_001"],
-        }
-    )
-    # Minimal lending_mappings (empty)
-    lm_df = pl.DataFrame({"member_counterparty_reference": pl.Series([], dtype=pl.String)})
-
-    base_dir.mkdir(parents=True, exist_ok=True)
-    cp_path = base_dir / "counterparties.parquet"
-    fac_path = base_dir / "facilities.parquet"
-    loan_path = base_dir / "loans.parquet"
-    fm_path = base_dir / "facility_mappings.parquet"
-    lm_path = base_dir / "lending_mappings.parquet"
-
-    cp_df.write_parquet(cp_path)
-    fac_df.write_parquet(fac_path)
-    loan_df.write_parquet(loan_path)
-    fm_df.write_parquet(fm_path)
-    lm_df.write_parquet(lm_path)
-
-    return DataSourceConfig(
-        counterparties_file=cp_path,
-        facilities_file=fac_path,
-        loans_file=loan_path,
-        facility_mappings_file=fm_path,
-        lending_mappings_file=lm_path,
-    )
 
 
 def _add_ccr_files_to_config(
@@ -221,14 +155,17 @@ def test_data_source_registry_has_ccr_collateral_entry() -> None:
 # ===========================================================================
 
 
-def _load_bundle_with_all_four_ccr_files(tmp_path: Path) -> RawDataBundle:
+def _load_bundle_with_all_four_ccr_files(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> RawDataBundle:
     """Build and load a bundle with all four CCR files wired in.
 
     Inline helper (not a fixture) so AssertionError from missing
     DataSourceConfig fields fires inside the test body — counted as FAILED,
     not ERROR.
     """
-    config = _write_minimal_crr_dataset(tmp_path)
+    config = write_minimal_crr_dataset(tmp_path)
     config = _add_ccr_files_to_config(
         config,
         trades_file=_TRADES_PARQUET,
@@ -240,10 +177,13 @@ def _load_bundle_with_all_four_ccr_files(tmp_path: Path) -> RawDataBundle:
     return loader.load()
 
 
-def test_loader_with_all_four_ccr_files_produces_raw_ccr_bundle(tmp_path: Path) -> None:
+def test_loader_with_all_four_ccr_files_produces_raw_ccr_bundle(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> None:
     """bundle.ccr must be a RawCCRBundle with all four leaf LazyFrames not None."""
     # Arrange + Act
-    bundle = _load_bundle_with_all_four_ccr_files(tmp_path)
+    bundle = _load_bundle_with_all_four_ccr_files(tmp_path, write_minimal_crr_dataset)
     ccr = bundle.ccr
 
     # Assert — ccr is not None
@@ -264,10 +204,13 @@ def test_loader_with_all_four_ccr_files_produces_raw_ccr_bundle(tmp_path: Path) 
     assert ccr.ccr_collateral is not None, "RawCCRBundle.ccr_collateral must not be None"
 
 
-def test_loader_with_all_four_ccr_files_trade_count_is_one(tmp_path: Path) -> None:
+def test_loader_with_all_four_ccr_files_trade_count_is_one(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> None:
     """trades LazyFrame must contain exactly 1 row (T_001)."""
     # Arrange + Act
-    bundle = _load_bundle_with_all_four_ccr_files(tmp_path)
+    bundle = _load_bundle_with_all_four_ccr_files(tmp_path, write_minimal_crr_dataset)
     ccr = bundle.ccr
     assert ccr is not None, "bundle.ccr is None — ccr_* fields not yet added to DataSourceConfig"
 
@@ -278,10 +221,13 @@ def test_loader_with_all_four_ccr_files_trade_count_is_one(tmp_path: Path) -> No
     assert count == 1, f"trades LazyFrame must contain 1 row (T_001 from fixture), got {count}"
 
 
-def test_loader_with_all_four_ccr_files_netting_set_count_is_one(tmp_path: Path) -> None:
+def test_loader_with_all_four_ccr_files_netting_set_count_is_one(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> None:
     """netting_sets LazyFrame must contain exactly 1 row (NS_001)."""
     # Arrange + Act
-    bundle = _load_bundle_with_all_four_ccr_files(tmp_path)
+    bundle = _load_bundle_with_all_four_ccr_files(tmp_path, write_minimal_crr_dataset)
     ccr = bundle.ccr
     assert ccr is not None, "bundle.ccr is None — ccr_* fields not yet added to DataSourceConfig"
 
@@ -294,10 +240,13 @@ def test_loader_with_all_four_ccr_files_netting_set_count_is_one(tmp_path: Path)
     )
 
 
-def test_loader_with_all_four_ccr_files_margin_agreement_count_is_zero(tmp_path: Path) -> None:
+def test_loader_with_all_four_ccr_files_margin_agreement_count_is_zero(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> None:
     """margin_agreements LazyFrame must contain 0 rows (CCR-A1: no CSA)."""
     # Arrange + Act
-    bundle = _load_bundle_with_all_four_ccr_files(tmp_path)
+    bundle = _load_bundle_with_all_four_ccr_files(tmp_path, write_minimal_crr_dataset)
     ccr = bundle.ccr
     assert ccr is not None, "bundle.ccr is None — ccr_* fields not yet added to DataSourceConfig"
 
@@ -310,10 +259,13 @@ def test_loader_with_all_four_ccr_files_margin_agreement_count_is_zero(tmp_path:
     )
 
 
-def test_loader_with_all_four_ccr_files_ccr_collateral_count_is_zero(tmp_path: Path) -> None:
+def test_loader_with_all_four_ccr_files_ccr_collateral_count_is_zero(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> None:
     """ccr_collateral LazyFrame must contain 0 rows (CCR-A1: no collateral)."""
     # Arrange + Act
-    bundle = _load_bundle_with_all_four_ccr_files(tmp_path)
+    bundle = _load_bundle_with_all_four_ccr_files(tmp_path, write_minimal_crr_dataset)
     ccr = bundle.ccr
     assert ccr is not None, "bundle.ccr is None — ccr_* fields not yet added to DataSourceConfig"
 
@@ -331,14 +283,17 @@ def test_loader_with_all_four_ccr_files_ccr_collateral_count_is_zero(tmp_path: P
 # ===========================================================================
 
 
-def test_loader_with_no_ccr_files_leaves_bundle_ccr_none(tmp_path: Path) -> None:
+def test_loader_with_no_ccr_files_leaves_bundle_ccr_none(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> None:
     """When none of the four CCR files are configured, bundle.ccr must be None.
 
     Firms without derivative or SFT books must not be required to provide CCR
     files.  The CCR stage (P8.20) no-ops when ``raw.ccr is None``.
     """
     # Arrange — minimal CRR dataset only, no CCR paths set
-    config = _write_minimal_crr_dataset(tmp_path)
+    config = write_minimal_crr_dataset(tmp_path)
     # Do NOT set any ccr_* fields — leaving them at default (None or absent)
     loader = ParquetLoader(tmp_path, config=config)
 
@@ -357,7 +312,10 @@ def test_loader_with_no_ccr_files_leaves_bundle_ccr_none(tmp_path: Path) -> None
 # ===========================================================================
 
 
-def test_loader_with_partial_ccr_files_accumulates_dq007_errors(tmp_path: Path) -> None:
+def test_loader_with_partial_ccr_files_accumulates_dq007_errors(
+    tmp_path: Path,
+    write_minimal_crr_dataset: Callable[[Path], DataSourceConfig],
+) -> None:
     """When 2 of 4 CCR files exist, the bundle loads but accumulates DQ007 errors.
 
     Per the architect's P8.5 spec: missing CCR files are treated the same as
@@ -367,7 +325,7 @@ def test_loader_with_partial_ccr_files_accumulates_dq007_errors(tmp_path: Path) 
     produce DQ007 errors.
     """
     # Arrange — provide only trades + netting_sets; omit margin_agreements and ccr_collateral
-    config = _write_minimal_crr_dataset(tmp_path)
+    config = write_minimal_crr_dataset(tmp_path)
     config = _add_ccr_files_to_config(
         config,
         trades_file=_TRADES_PARQUET,

@@ -22,7 +22,7 @@ import pytest
 
 from rwa_calc.contracts.bundles import (
     ClassifiedExposuresBundle,
-    CounterpartyLookup,
+    create_empty_counterparty_lookup,
 )
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import ApproachType, PermissionMode
@@ -60,34 +60,6 @@ def firb_config() -> CalculationConfig:
 # =============================================================================
 
 
-def _empty_counterparty_lookup() -> CounterpartyLookup:
-    return CounterpartyLookup(
-        counterparties=pl.LazyFrame(
-            schema={"counterparty_reference": pl.String, "entity_type": pl.String}
-        ),
-        parent_mappings=pl.LazyFrame(
-            schema={
-                "child_counterparty_reference": pl.String,
-                "parent_counterparty_reference": pl.String,
-            }
-        ),
-        ultimate_parent_mappings=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "ultimate_parent_reference": pl.String,
-                "hierarchy_depth": pl.Int32,
-            }
-        ),
-        rating_inheritance=pl.LazyFrame(
-            schema={
-                "counterparty_reference": pl.String,
-                "cqs": pl.Int8,
-                "rating_type": pl.String,
-            }
-        ),
-    )
-
-
 def _make_bundle(
     exposures: pl.LazyFrame,
     collateral: pl.LazyFrame | None = None,
@@ -98,7 +70,7 @@ def _make_bundle(
         irb_exposures=pl.LazyFrame(),
         slotting_exposures=pl.LazyFrame(),
         equity_exposures=None,
-        counterparty_lookup=_empty_counterparty_lookup(),
+        counterparty_lookup=create_empty_counterparty_lookup(),
         collateral=collateral,
         guarantees=None,
         provisions=None,

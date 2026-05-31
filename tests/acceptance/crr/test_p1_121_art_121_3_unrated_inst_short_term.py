@@ -47,10 +47,10 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.acceptance.sa_bundle import build_sa_loan_bundle
 
 # ---------------------------------------------------------------------------
 # Fixture paths
@@ -92,34 +92,8 @@ def p1_121_sa_result() -> dict:
     The pipeline derives original_maturity_years = (maturity_date - value_date) / 365
     when absent from the loan row; 85 / 365 ≈ 0.2329y ≤ 0.25y triggers Art. 121(3).
     """
-    # Arrange — load scenario-local parquets
-    counterparties = pl.scan_parquet(_FIXTURES_DIR / "counterparty.parquet")
-    loans = pl.scan_parquet(_FIXTURES_DIR / "loan.parquet")
-    ratings = pl.scan_parquet(_FIXTURES_DIR / "rating.parquet")
-
-    lending_mappings: pl.LazyFrame = pl.LazyFrame(
-        schema={
-            "parent_counterparty_reference": pl.String,
-            "child_counterparty_reference": pl.String,
-        }
-    )
-
-    bundle = RawDataBundle(
-        facilities=pl.LazyFrame(
-            schema={"facility_reference": pl.String, "counterparty_reference": pl.String}
-        ),
-        loans=loans,
-        counterparties=counterparties,
-        facility_mappings=pl.LazyFrame(
-            schema={
-                "parent_facility_reference": pl.String,
-                "child_reference": pl.String,
-                "child_type": pl.String,
-            }
-        ),
-        lending_mappings=lending_mappings,
-        ratings=ratings,
-    )
+    # Arrange — assemble the shared loan-only bundle from scenario-local parquets
+    bundle = build_sa_loan_bundle(_FIXTURES_DIR)
 
     config = CalculationConfig.crr(
         reporting_date=date(2026, 1, 15),

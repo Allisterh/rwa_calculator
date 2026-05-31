@@ -76,6 +76,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.acceptance.conftest import find_exposure_rows, total_field
 from tests.fixtures.p1_96.p1_96 import (
     LOAN_REF_A,
     LOAN_REF_B,
@@ -169,22 +170,6 @@ def _run_pipeline_p196() -> object:
     return PipelineOrchestrator().run_with_data(bundle, config)
 
 
-def _find_rows(results: object, loan_ref: str) -> list[dict]:
-    """Return all result rows whose exposure_reference contains *loan_ref*."""
-    rows: list[dict] = []
-    for lf in [results.sa_results, results.irb_results, results.slotting_results]:
-        if lf is None:
-            continue
-        df = lf.filter(pl.col("exposure_reference").str.contains(loan_ref)).collect()
-        rows.extend(df.to_dicts())
-    return rows
-
-
-def _total(rows: list[dict], field: str) -> float:
-    """Sum *field* across all rows (handles guarantee sub-row splits)."""
-    return sum(r.get(field, 0.0) or 0.0 for r in rows)
-
-
 # ---------------------------------------------------------------------------
 # Test class
 # ---------------------------------------------------------------------------
@@ -235,11 +220,11 @@ class TestP196Art197CoveredBondEligibility:
         Pre-fix (Art. 197 not enforced): ead_final ≈ 433,942.86.
         """
         # Arrange / Act (pipeline run in fixture)
-        rows = _find_rows(result, LOAN_REF_A)
+        rows = find_exposure_rows(result, LOAN_REF_A)
         assert rows, f"{LOAN_REF_A} not found in any result set"
 
         # Assert
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(_EAD_EXPECTED_A, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {_EAD_EXPECTED_A:,.2f}. "
             f"If ead_final ≈ {_EAD_PRE_FIX_A:,.2f} the engine is applying FCSM "
@@ -256,10 +241,10 @@ class TestP196Art197CoveredBondEligibility:
         Arrange/Act: as above.
         Assert: risk_weight == 1.0 (tolerance 1e-9).
         """
-        rows = _find_rows(result, LOAN_REF_A)
+        rows = find_exposure_rows(result, LOAN_REF_A)
         assert rows, f"{LOAN_REF_A} not found in any result set"
 
-        rw = _total(rows, "risk_weight")
+        rw = total_field(rows, "risk_weight")
         assert rw == pytest.approx(_RW_EXPECTED_A, abs=_RW_TOL), (
             f"risk_weight {rw:.6f} != 1.0. "
             f"Unrated corporate counterparty (CP_P196) must receive 100% RW "
@@ -273,10 +258,10 @@ class TestP196Art197CoveredBondEligibility:
         Arrange/Act: as above.
         Assert: rwa_final == 1,000,000.00 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_A)
+        rows = find_exposure_rows(result, LOAN_REF_A)
         assert rows, f"{LOAN_REF_A} not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(_RWA_EXPECTED_A, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {_RWA_EXPECTED_A:,.2f} "
             f"(= ead_final × 1.0 for unrated corporate with no FCSM)."
@@ -296,10 +281,10 @@ class TestP196Art197CoveredBondEligibility:
         Arrange/Act: as above.
         Assert: ead_final ≉ 433,942.86 (abs tolerance ±0.50).
         """
-        rows = _find_rows(result, LOAN_REF_A)
+        rows = find_exposure_rows(result, LOAN_REF_A)
         assert rows, f"{LOAN_REF_A} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead != pytest.approx(_EAD_PRE_FIX_A, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} matches pre-fix FCSM value {_EAD_PRE_FIX_A:,.2f}. "
             f"The engine is still applying FCSM to covered_bond on a non-SFT path, "
@@ -326,10 +311,10 @@ class TestP196Art197CoveredBondEligibility:
         Act:     full CRR SA pipeline.
         Assert:  ead_final ≈ 416,970.56 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_B)
+        rows = find_exposure_rows(result, LOAN_REF_B)
         assert rows, f"{LOAN_REF_B} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead == pytest.approx(_EAD_EXPECTED_B, abs=_ABS_TOL), (
             f"ead_final {ead:,.2f} != expected {_EAD_EXPECTED_B:,.2f}. "
             f"Repo exposure (is_sft=True) with covered_bond collateral should use "
@@ -343,10 +328,10 @@ class TestP196Art197CoveredBondEligibility:
         Arrange/Act: as above.
         Assert: risk_weight == 1.0 (tolerance 1e-9).
         """
-        rows = _find_rows(result, LOAN_REF_B)
+        rows = find_exposure_rows(result, LOAN_REF_B)
         assert rows, f"{LOAN_REF_B} not found in any result set"
 
-        rw = _total(rows, "risk_weight")
+        rw = total_field(rows, "risk_weight")
         assert rw == pytest.approx(_RW_EXPECTED_B, abs=_RW_TOL), (
             f"risk_weight {rw:.6f} != 1.0. "
             f"Unrated corporate counterparty (CP_P196) must receive 100% RW "
@@ -360,10 +345,10 @@ class TestP196Art197CoveredBondEligibility:
         Arrange/Act: as above.
         Assert: rwa_final ≈ 416,970.56 (±£0.50).
         """
-        rows = _find_rows(result, LOAN_REF_B)
+        rows = find_exposure_rows(result, LOAN_REF_B)
         assert rows, f"{LOAN_REF_B} not found in any result set"
 
-        rwa = _total(rows, "rwa_final")
+        rwa = total_field(rows, "rwa_final")
         assert rwa == pytest.approx(_RWA_EXPECTED_B, abs=_ABS_TOL), (
             f"rwa_final {rwa:,.2f} != expected {_RWA_EXPECTED_B:,.2f} "
             f"(= ead_final × 1.0 for unrated corporate)."
@@ -379,10 +364,10 @@ class TestP196Art197CoveredBondEligibility:
         Arrange/Act: as above.
         Assert: ead_final < 1,000,000.
         """
-        rows = _find_rows(result, LOAN_REF_B)
+        rows = find_exposure_rows(result, LOAN_REF_B)
         assert rows, f"{LOAN_REF_B} not found in any result set"
 
-        ead = _total(rows, "ead_final")
+        ead = total_field(rows, "ead_final")
         assert ead < 1_000_000.0, (
             f"ead_final {ead:,.2f} is not less than unprotected 1M. "
             f"Covered bond collateral (MV 600k) is providing no EAD reduction "
@@ -408,13 +393,13 @@ class TestP196Art197CoveredBondEligibility:
         Arrange/Act: as above.
         Assert: run_a_ead > run_b_ead.
         """
-        rows_a = _find_rows(result, LOAN_REF_A)
-        rows_b = _find_rows(result, LOAN_REF_B)
+        rows_a = find_exposure_rows(result, LOAN_REF_A)
+        rows_b = find_exposure_rows(result, LOAN_REF_B)
         assert rows_a, f"{LOAN_REF_A} not found in any result set"
         assert rows_b, f"{LOAN_REF_B} not found in any result set"
 
-        ead_a = _total(rows_a, "ead_final")
-        ead_b = _total(rows_b, "ead_final")
+        ead_a = total_field(rows_a, "ead_final")
+        ead_b = total_field(rows_b, "ead_final")
         assert ead_a > ead_b, (
             f"Run A ead_final {ead_a:,.2f} is not greater than Run B ead_final "
             f"{ead_b:,.2f}. "

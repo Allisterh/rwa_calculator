@@ -15,9 +15,13 @@ References:
 from __future__ import annotations
 
 from datetime import date
+from typing import TYPE_CHECKING
 
 import polars as pl
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
@@ -36,6 +40,34 @@ def b31_config() -> CalculationConfig:
 @pytest.fixture
 def crr_config() -> CalculationConfig:
     return CalculationConfig.crr(reporting_date=date(2024, 12, 31))
+
+
+@pytest.fixture
+def bundle_with_loans() -> Callable[[pl.LazyFrame], RawDataBundle]:
+    def _make(loans: pl.LazyFrame) -> RawDataBundle:
+        return RawDataBundle(
+            facilities=pl.LazyFrame(),
+            loans=loans,
+            contingents=pl.LazyFrame(),
+            counterparties=pl.LazyFrame(
+                {"counterparty_reference": ["C1"], "entity_type": ["corporate"]}
+            ),
+            facility_mappings=pl.LazyFrame(
+                schema={
+                    "parent_facility_reference": pl.String,
+                    "child_reference": pl.String,
+                    "child_type": pl.String,
+                }
+            ),
+            lending_mappings=pl.LazyFrame(
+                schema={
+                    "parent_counterparty_reference": pl.String,
+                    "child_counterparty_reference": pl.String,
+                }
+            ),
+        )
+
+    return _make
 
 
 class TestEffectiveMaturityOverride:
@@ -229,7 +261,9 @@ class TestSchemaAndPropagation:
 class TestValidation:
     """validate_bundle_values flags out-of-range overrides without blocking the pipeline."""
 
-    def test_out_of_range_emits_warning(self) -> None:
+    def test_out_of_range_emits_warning(
+        self, bundle_with_loans: Callable[[pl.LazyFrame], RawDataBundle]
+    ) -> None:
         loans = pl.LazyFrame(
             {
                 "loan_reference": ["L1", "L2"],
@@ -238,27 +272,7 @@ class TestValidation:
                 "effective_maturity": [0.25, 12.0],  # second row out of range
             }
         )
-        bundle = RawDataBundle(
-            facilities=pl.LazyFrame(),
-            loans=loans,
-            contingents=pl.LazyFrame(),
-            counterparties=pl.LazyFrame(
-                {"counterparty_reference": ["C1"], "entity_type": ["corporate"]}
-            ),
-            facility_mappings=pl.LazyFrame(
-                schema={
-                    "parent_facility_reference": pl.String,
-                    "child_reference": pl.String,
-                    "child_type": pl.String,
-                }
-            ),
-            lending_mappings=pl.LazyFrame(
-                schema={
-                    "parent_counterparty_reference": pl.String,
-                    "child_counterparty_reference": pl.String,
-                }
-            ),
-        )
+        bundle = bundle_with_loans(loans)
 
         errors = validate_bundle_values(bundle)
 
@@ -266,7 +280,9 @@ class TestValidation:
         assert len(maturity_errors) == 1
         assert maturity_errors[0].code == "IRB003"
 
-    def test_in_range_no_error(self) -> None:
+    def test_in_range_no_error(
+        self, bundle_with_loans: Callable[[pl.LazyFrame], RawDataBundle]
+    ) -> None:
         loans = pl.LazyFrame(
             {
                 "loan_reference": ["L1"],
@@ -275,27 +291,7 @@ class TestValidation:
                 "effective_maturity": [0.25],
             }
         )
-        bundle = RawDataBundle(
-            facilities=pl.LazyFrame(),
-            loans=loans,
-            contingents=pl.LazyFrame(),
-            counterparties=pl.LazyFrame(
-                {"counterparty_reference": ["C1"], "entity_type": ["corporate"]}
-            ),
-            facility_mappings=pl.LazyFrame(
-                schema={
-                    "parent_facility_reference": pl.String,
-                    "child_reference": pl.String,
-                    "child_type": pl.String,
-                }
-            ),
-            lending_mappings=pl.LazyFrame(
-                schema={
-                    "parent_counterparty_reference": pl.String,
-                    "child_counterparty_reference": pl.String,
-                }
-            ),
-        )
+        bundle = bundle_with_loans(loans)
 
         errors = validate_bundle_values(bundle)
 

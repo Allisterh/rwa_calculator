@@ -40,15 +40,14 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import cast
 
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import RawDataBundle
-from rwa_calc.contracts.config import CalculationConfig
-from rwa_calc.domain.enums import PermissionMode
-from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.acceptance.crr.conftest import (
+    aggregate_sa_rows_by_parent,
+    run_single_guarantee_sa_pipeline,
+)
 
 # ---------------------------------------------------------------------------
 # Fixture paths
@@ -93,88 +92,6 @@ _EXPECTED_B_EFFECTIVE_RW = _EXPECTED_B_RWA / _EXPECTED_B_EAD  # ≈ 0.6210526315
 
 
 # ---------------------------------------------------------------------------
-# Helper — build a RawDataBundle for a single guarantee reference
-# ---------------------------------------------------------------------------
-
-
-def _make_bundle(guarantee_ref: str) -> RawDataBundle:
-    """
-    Construct a RawDataBundle for LOAN_001_P1109 with exactly one guarantee row.
-
-    Args:
-        guarantee_ref: Either GUAR_FULL_REF or GUAR_MM_REF.
-
-    Returns:
-        RawDataBundle ready for pipeline execution.
-    """
-    single_guar = pl.scan_parquet(_FIXTURES_DIR / "guarantee.parquet").filter(
-        pl.col("guarantee_reference") == guarantee_ref
-    )
-    return RawDataBundle(
-        facilities=pl.LazyFrame(
-            schema={
-                "facility_reference": pl.String,
-                "counterparty_reference": pl.String,
-            }
-        ),
-        loans=pl.scan_parquet(_FIXTURES_DIR / "loan.parquet"),
-        counterparties=pl.scan_parquet(_FIXTURES_DIR / "counterparty.parquet"),
-        facility_mappings=pl.LazyFrame(
-            schema={
-                "parent_facility_reference": pl.String,
-                "child_reference": pl.String,
-                "child_type": pl.String,
-            }
-        ),
-        lending_mappings=pl.LazyFrame(
-            schema={
-                "parent_counterparty_reference": pl.String,
-                "child_counterparty_reference": pl.String,
-            }
-        ),
-        ratings=pl.scan_parquet(_FIXTURES_DIR / "rating.parquet"),
-        guarantees=single_guar,
-    )
-
-
-def _run_pipeline(guarantee_ref: str) -> pl.DataFrame:
-    """
-    Run the full CRR SA pipeline for the given guarantee scenario.
-
-    Returns the SA results DataFrame (all rows, including guarantee sub-rows).
-    """
-    bundle = _make_bundle(guarantee_ref)
-    config = CalculationConfig.crr(
-        reporting_date=_REPORTING_DATE,
-        permission_mode=PermissionMode.STANDARDISED,
-    )
-    results = PipelineOrchestrator().run_with_data(bundle, config)
-    assert results.sa_results is not None, "SA results must not be None for SA-only config"
-    return cast(pl.DataFrame, results.sa_results.collect())
-
-
-def _aggregate_by_parent(df: pl.DataFrame, parent_ref: str) -> dict:
-    """
-    Aggregate all sub-rows (guarantee split rows + remainder) for a parent exposure.
-
-    Additive fields (rwa_final, guaranteed_portion, unguaranteed_portion, ead_final)
-    are summed. The first value is used for non-additive fields.
-    """
-    sub_rows = df.filter(pl.col("parent_exposure_reference") == parent_ref)
-    assert sub_rows.height > 0, (
-        f"No SA result rows found with parent_exposure_reference='{parent_ref}'"
-    )
-    _additive = {"rwa_final", "guaranteed_portion", "unguaranteed_portion", "ead_final"}
-    result: dict = {}
-    for col_name in sub_rows.columns:
-        if col_name in _additive:
-            result[col_name] = sub_rows[col_name].sum()
-        else:
-            result[col_name] = sub_rows[col_name][0]
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Acceptance tests — P1.109 CRR Art. 239(3) maturity mismatch adjustment
 # ---------------------------------------------------------------------------
 
@@ -200,8 +117,8 @@ class TestP1109Art237MaturityMismatchGuarantees:
 
         Aggregates all guarantee sub-rows by parent ref.
         """
-        df = _run_pipeline(GUAR_FULL_REF)
-        return _aggregate_by_parent(df, LOAN_REF)
+        df = run_single_guarantee_sa_pipeline(_FIXTURES_DIR, _REPORTING_DATE, GUAR_FULL_REF)
+        return aggregate_sa_rows_by_parent(df, LOAN_REF)
 
     @pytest.fixture(scope="class")
     def guar_mm_results(self) -> dict:
@@ -210,8 +127,8 @@ class TestP1109Art237MaturityMismatchGuarantees:
 
         Aggregates all guarantee sub-rows by parent ref.
         """
-        df = _run_pipeline(GUAR_MM_REF)
-        return _aggregate_by_parent(df, LOAN_REF)
+        df = run_single_guarantee_sa_pipeline(_FIXTURES_DIR, _REPORTING_DATE, GUAR_MM_REF)
+        return aggregate_sa_rows_by_parent(df, LOAN_REF)
 
     # -----------------------------------------------------------------------
     # Scenario A — GUAR_FULL (no mismatch) — should PASS today (regression pin)
@@ -313,7 +230,7 @@ class TestP1109Art237MaturityMismatchGuarantees:
         This test should PASS today — retained as regression pin.
         """
         # Arrange / Act (fixture provides aggregated first-row values for non-additive fields)
-        df = _run_pipeline(GUAR_FULL_REF)
+        df = run_single_guarantee_sa_pipeline(_FIXTURES_DIR, _REPORTING_DATE, GUAR_FULL_REF)
         guaranteed_sub_rows = df.filter(
             (pl.col("parent_exposure_reference") == LOAN_REF) & (pl.col("is_guaranteed") == True)  # noqa: E712
         )
@@ -458,7 +375,7 @@ class TestP1109Art237MaturityMismatchGuarantees:
         This sub-assertion should pass even before the mismatch fix is applied.
         """
         # Arrange / Act
-        df = _run_pipeline(GUAR_MM_REF)
+        df = run_single_guarantee_sa_pipeline(_FIXTURES_DIR, _REPORTING_DATE, GUAR_MM_REF)
         guaranteed_sub_rows = df.filter(
             (pl.col("parent_exposure_reference") == LOAN_REF) & (pl.col("is_guaranteed") == True)  # noqa: E712
         )

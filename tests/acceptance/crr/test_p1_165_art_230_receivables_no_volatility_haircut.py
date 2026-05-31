@@ -55,6 +55,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.acceptance.p1_190_pipeline_helpers import find_loan_rows, first
 from tests.fixtures.p1_165.p1_165 import (
     COUNTERPARTY_REF,
     EXPECTED_LGD_STAR,
@@ -124,34 +125,9 @@ def _run_pipeline_p165() -> object:
     return PipelineOrchestrator().run_with_data(bundle, config)
 
 
-def _find_loan_rows(results: object, loan_ref: str) -> list[dict]:
-    """
-    Return all result rows containing *loan_ref* in exposure_reference.
-
-    Searches sa_results, irb_results, and slotting_results (whichever are
-    non-None) to be agnostic about the routing branch.
-    """
-    rows: list[dict] = []
-    for lf in [results.sa_results, results.irb_results, results.slotting_results]:
-        if lf is None:
-            continue
-        df = lf.filter(pl.col("exposure_reference").str.contains(loan_ref)).collect()
-        rows.extend(df.to_dicts())
-    return rows
-
-
 def _sum_field(rows: list[dict], field: str) -> float:
     """Sum *field* across all result rows (handles guarantee sub-row splits)."""
     return sum(r.get(field) or 0.0 for r in rows)
-
-
-def _first(rows: list[dict], field: str):
-    """Return the first non-null value of *field* from the result rows."""
-    for r in rows:
-        v = r.get(field)
-        if v is not None:
-            return v
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +272,7 @@ class TestP1165ReceivablesPipelineNoHaircut:
 
         Looks in sa_results, irb_results, and slotting_results to be routing-agnostic.
         """
-        rows = _find_loan_rows(pipeline_result, LOAN_REF)
+        rows = find_loan_rows(pipeline_result, LOAN_REF)
         assert rows, (
             f"P1.165: no pipeline result rows found for loan_reference='{LOAN_REF}'. "
             f"Check fixture routing — counterparty {COUNTERPARTY_REF} must be steered "
@@ -359,7 +335,7 @@ class TestP1165ReceivablesPipelineNoHaircut:
         Assert:  pd_floored ≈ 0.02 (within 1e-6).
         """
         # Arrange
-        pd_floored = _first(loan_rows, "pd_floored")
+        pd_floored = first(loan_rows, "pd_floored")
 
         # Assert
         assert pd_floored is not None, (
@@ -406,7 +382,7 @@ class TestP1165ReceivablesPipelineNoHaircut:
         Pre-fix engine produces ≈ 0.4041 → assertion fails with AssertionError.
         """
         # Arrange
-        lgd_floored = _first(loan_rows, "lgd_floored")
+        lgd_floored = first(loan_rows, "lgd_floored")
 
         # Assert
         assert lgd_floored is not None, (
@@ -443,7 +419,7 @@ class TestP1165ReceivablesPipelineNoHaircut:
         Assert:  lgd_floored != 0.4041 (tolerance ±1e-3).
         """
         # Arrange
-        lgd_floored = _first(loan_rows, "lgd_floored")
+        lgd_floored = first(loan_rows, "lgd_floored")
         if lgd_floored is None:
             pytest.skip("lgd_floored not available — routing issue")
 
