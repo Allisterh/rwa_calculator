@@ -493,6 +493,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_191",
             _generate_p1191,
         ),
+        (
+            "P1.193 (B31 Art. 122(2) Table 6 rated corporate-SME — CQS gate on 85% override)",
+            "p1_193",
+            _generate_p1193,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2690,6 +2695,19 @@ def _generate_p420(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p4_20", None)
+
+
+def _generate_p1193(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.193 fixtures (B31 Art. 122(2) Table 6 rated corporate-SME CQS gate)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_193 import save_p1193_fixtures
+
+        saved = save_p1193_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_193", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
