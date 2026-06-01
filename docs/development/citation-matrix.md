@@ -12,7 +12,7 @@ Regenerate after annotation changes:
 uv run python scripts/generate_citation_matrix.py
 ```
 
-Last generated: 2026-05-31.
+Last generated: 2026-06-01.
 
 ## CRR (Capital Requirements Regulation)
 
@@ -412,9 +412,9 @@ Last generated: 2026-05-31.
 
 ### CRR Art. 109 — Treatment of securitisation positions
 
-??? quote "`allocate` — src/rwa_calc/engine/securitisation/allocator.py:112"
+??? quote "`allocate` — src/rwa_calc/engine/securitisation/allocator.py:114"
     ```python
-    --8<-- "src/rwa_calc/engine/securitisation/allocator.py:112:344"
+    --8<-- "src/rwa_calc/engine/securitisation/allocator.py:114:346"
     ```
 
 
@@ -806,14 +806,6 @@ Last generated: 2026-05-31.
     ```
 
 
-### CRR Art. 244 — Traditional securitisation
-
-??? quote "`allocate` — src/rwa_calc/engine/securitisation/allocator.py:113"
-    ```python
-    --8<-- "src/rwa_calc/engine/securitisation/allocator.py:112:344"
-    ```
-
-
 ### CRR Art. 271 — Determination of the exposure value
 
 ??? quote "`sft_rows_to_exposures` — src/rwa_calc/engine/ccr/sft_fccm.py:75"
@@ -1143,9 +1135,9 @@ Last generated: 2026-05-31.
 
 ### PS1/26, paragraph 147A — PRA Rulebook: CRR Firms: (CRR) Instrument 2026
 
-??? quote "`allocate` — src/rwa_calc/engine/securitisation/allocator.py:114"
+??? quote "`allocate` — src/rwa_calc/engine/securitisation/allocator.py:116"
     ```python
-    --8<-- "src/rwa_calc/engine/securitisation/allocator.py:112:344"
+    --8<-- "src/rwa_calc/engine/securitisation/allocator.py:114:346"
     ```
 
 
