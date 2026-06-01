@@ -498,6 +498,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p1_193",
             _generate_p1193,
         ),
+        (
+            "P1.197 (CRR-E.CCF1 slotting OBS EAD — Art. 166(8)(d) F-IRB CCF 75% vs SA CCF 50%)",
+            "p1_197",
+            _generate_p1197,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2708,6 +2713,19 @@ def _generate_p1193(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_193", None)
+
+
+def _generate_p1197(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.197 fixtures (CRR-E.CCF1 slotting OBS EAD Art. 166(8)(d) F-IRB CCF 75%)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_197 import save_p1197_fixtures
+
+        saved = save_p1197_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_197", None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
