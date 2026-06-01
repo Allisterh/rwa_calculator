@@ -488,6 +488,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "p4_20",
             _generate_p420,
         ),
+        (
+            "P1.191 (QRRE per-individual aggregate nominal qualification — CRR Art. 154(4)(c) / B31 Art. 147(5A)(c))",
+            "p1_191",
+            _generate_p1191,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2642,6 +2647,19 @@ def _generate_p248(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p2_48", None)
+
+
+def _generate_p1191(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.191 fixtures (QRRE per-individual aggregate nominal test)."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_191 import save_p1191_fixtures
+
+        saved = save_p1191_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_191", None)
 
 
 def _generate_p420(output_dir: Path) -> list[tuple[str, int]]:

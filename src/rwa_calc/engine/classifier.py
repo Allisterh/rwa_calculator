@@ -863,18 +863,39 @@ class ExposureClassifier:
             pl.col("exposure_class") == ExposureClass.SPECIALISED_LENDING.value
         ) & is_sme_by_size
 
-        # QRRE qualification: revolving, retail, under QRRE limit (CRR Art. 147(5))
+        # QRRE qualification: revolving, retail, under QRRE limit (CRR Art. 147(5)).
+        # CRR Art. 154(4)(c) / PS1/26 Art. 147(5A)(c) cap the *aggregate* nominal
+        # exposure to any single individual across the QRRE sub-portfolio at the
+        # limit (EUR 100k / GBP 90k), not each facility individually. Aggregate
+        # ``facility_limit`` (the committed/nominal basis) per
+        # ``counterparty_reference`` before comparing.
         has_revolving = "is_revolving" in schema_names
         has_facility_limit = "facility_limit" in schema_names
 
         is_qrre = pl.lit(False)
         if has_revolving and has_facility_limit:
-            is_qrre = (
+            # The QRRE sub-portfolio is the qualifying revolving retail population.
+            # Only those rows contribute to the per-individual aggregate; non-QRRE
+            # facilities (e.g. a term loan to the same obligor) are masked to 0.
+            is_qrre_candidate = (
                 (pl.col("exposure_class") == ExposureClass.RETAIL_OTHER.value)
                 & (pl.col("qualifies_as_retail") == True)  # noqa: E712
                 & (pl.col("is_revolving") == True)  # noqa: E712
-                & (pl.col("facility_limit").fill_null(float("inf")) <= qrre_max_limit)
             )
+            facility_limit = pl.col("facility_limit").fill_null(float("inf"))
+            candidate_limit = (
+                pl.when(is_qrre_candidate).then(facility_limit).otherwise(pl.lit(0.0))
+            )
+            # Guard the nullable ``counterparty_reference`` partition: a null key
+            # would otherwise pool all unmapped rows into a single bucket (see
+            # ``partition_by_nullable`` / ``NULLABLE_PARTITION_KEYS``). Null-keyed
+            # rows fall back to their own per-row candidate limit.
+            obligor_aggregate_limit = partition_by_nullable(
+                candidate_limit.sum().over("counterparty_reference"),
+                "counterparty_reference",
+                candidate_limit,
+            )
+            is_qrre = is_qrre_candidate & (obligor_aggregate_limit <= qrre_max_limit)
 
         return exposures.with_columns(
             [
