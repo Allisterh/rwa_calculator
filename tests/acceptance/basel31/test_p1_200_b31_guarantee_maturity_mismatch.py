@@ -55,6 +55,7 @@ from rwa_calc.contracts.config import CalculationConfig, PermissionMode
 from rwa_calc.data.column_spec import dtypes_of
 from rwa_calc.data.schemas import FACILITY_MAPPING_SCHEMA, FACILITY_SCHEMA, LENDING_MAPPING_SCHEMA
 from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.acceptance.conftest import get_guaranteed_row, get_total_rwa
 from tests.fixtures.p1_200.p1_200 import (
     BUGGED_TOTAL_RWA,
     EXPECTED_GUARANTEED_PORTION,
@@ -144,48 +145,10 @@ def _run_pipeline(config: CalculationConfig) -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Row selector helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_total_rwa(df: pl.DataFrame) -> float:
-    """
-    Return total rwa_final for EXP-200 (sum across all CRM split rows).
-
-    The parent exposure is split into sub-rows by the CRM processor.
-    Summing rwa_final across all rows with parent_exposure_reference == EXP-200
-    gives the consolidated exposure RWA.
-    """
-    sub_rows = df.filter(pl.col("parent_exposure_reference") == LOAN_REF)
-    assert sub_rows.height > 0, (
-        f"No SA result rows found with parent_exposure_reference='{LOAN_REF}'. "
-        f"All parent refs: {df['parent_exposure_reference'].to_list()}"
-    )
-    return sub_rows["rwa_final"].sum()
-
-
-def _get_guaranteed_row(df: pl.DataFrame) -> dict:
-    """
-    Return the guaranteed-portion sub-row for EXP-200.
-
-    The CRM processor splits a guaranteed loan into a ``__G_<guarantor>`` row
-    (the guaranteed portion) and a ``__REM`` row (the unguaranteed remainder).
-    For the P1.200 scenario the ``__G_`` row carries the substituted guarantor
-    risk weight.
-    """
-    rows = df.filter(
-        (pl.col("parent_exposure_reference") == LOAN_REF)
-        & pl.col("exposure_reference").str.contains("__G_")
-    ).to_dicts()
-    assert len(rows) == 1, (
-        f"Expected exactly 1 guaranteed-portion row for {LOAN_REF!r}, got {len(rows)}. "
-        f"All rows: {df.select(['exposure_reference', 'parent_exposure_reference']).to_dicts()}"
-    )
-    return rows[0]
-
-
-# ---------------------------------------------------------------------------
 # Acceptance tests — P1.200 B31 Art. 239(3) maturity mismatch guard defect
+#
+# Result-row readers (get_total_rwa / get_guaranteed_row) are imported from
+# tests.acceptance.conftest — both take the parent loan reference (LOAN_REF).
 # ---------------------------------------------------------------------------
 
 
@@ -258,7 +221,7 @@ class TestP1200B31GuaranteeMaturityMismatch:
         Assert:  total rwa_final ≈ 626,666.6666666666 (abs=0.01).
         """
         # Arrange
-        total_rwa = _get_total_rwa(b31_sa_results)
+        total_rwa = get_total_rwa(b31_sa_results, LOAN_REF)
 
         # Assert — FAILS pre-fix (engine returns 200,000.0)
         assert total_rwa == pytest.approx(EXPECTED_TOTAL_RWA_B31, abs=0.01), (
@@ -312,7 +275,7 @@ class TestP1200B31GuaranteeMaturityMismatch:
         Assert:  risk_weight ≈ 0.20 (abs=1e-6).
         """
         # Arrange
-        row = _get_guaranteed_row(b31_sa_results)
+        row = get_guaranteed_row(b31_sa_results, LOAN_REF)
 
         # Assert
         actual_rw = row["risk_weight"]
@@ -342,7 +305,7 @@ class TestP1200B31GuaranteeMaturityMismatch:
         Assert:  total rwa_final ≈ 626,666.6666666666 (abs=0.01).
         """
         # Arrange
-        total_rwa = _get_total_rwa(crr_sa_results)
+        total_rwa = get_total_rwa(crr_sa_results, LOAN_REF)
 
         # Assert — regression pin (CRR already correct)
         assert total_rwa == pytest.approx(EXPECTED_TOTAL_RWA_B31, abs=0.01), (

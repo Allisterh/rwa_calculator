@@ -51,6 +51,9 @@ from typing import cast
 import polars as pl
 import pytest
 
+from tests.acceptance.acceptance_helpers import get_sa_result_for_exposure
+from tests.acceptance.sa_bundle import build_sa_loan_bundle
+
 # ---------------------------------------------------------------------------
 # Fixture paths
 # ---------------------------------------------------------------------------
@@ -80,45 +83,6 @@ _BUGGY_RW = 0.85  # unconditional SME override — the pre-fix value for all row
 # ---------------------------------------------------------------------------
 
 
-def _build_bundle() -> object:
-    """
-    Assemble RawDataBundle from P1.193 scenario-local parquets.
-
-    No facility parquet exists for this scenario (no collateral, no guarantee,
-    no facility-level rating override). facilities, facility_mappings, and
-    lending_mappings are empty LazyFrames with the correct schemas.
-    """
-    from rwa_calc.contracts.bundles import RawDataBundle
-    from rwa_calc.data.column_spec import dtypes_of
-    from rwa_calc.data.schemas import FACILITY_SCHEMA
-
-    counterparties = pl.scan_parquet(_FIXTURES_DIR / "counterparty.parquet")
-    loans = pl.scan_parquet(_FIXTURES_DIR / "loan.parquet")
-    ratings = pl.scan_parquet(_FIXTURES_DIR / "rating.parquet")
-
-    # facilities is required by RawDataBundle but P1.193 has no facility rows.
-    facilities = pl.LazyFrame(schema=dtypes_of(FACILITY_SCHEMA))
-
-    facility_mapping_schema = {
-        "parent_facility_reference": pl.String,
-        "child_reference": pl.String,
-        "child_type": pl.String,
-    }
-    lending_mapping_schema = {
-        "parent_counterparty_reference": pl.String,
-        "child_counterparty_reference": pl.String,
-    }
-
-    return RawDataBundle(
-        facilities=facilities,
-        counterparties=counterparties,
-        loans=loans,
-        ratings=ratings,
-        facility_mappings=pl.LazyFrame(schema=facility_mapping_schema),
-        lending_mappings=pl.LazyFrame(schema=lending_mapping_schema),
-    )
-
-
 @pytest.fixture(scope="module")
 def p1_193_sa_results() -> pl.DataFrame:
     """
@@ -132,7 +96,7 @@ def p1_193_sa_results() -> pl.DataFrame:
     from rwa_calc.engine.pipeline import PipelineOrchestrator
 
     # Arrange
-    bundle = _build_bundle()
+    bundle = build_sa_loan_bundle(_FIXTURES_DIR)
     config = CalculationConfig.basel_3_1(
         reporting_date=date(2027, 6, 30),
         permission_mode=PermissionMode.STANDARDISED,
@@ -148,14 +112,14 @@ def p1_193_sa_results() -> pl.DataFrame:
 
 
 def _get_row(sa_results: pl.DataFrame, loan_ref: str) -> dict:
-    """Return the single SA result row for the given loan reference."""
-    rows = sa_results.filter(pl.col("exposure_reference") == loan_ref).to_dicts()
-    assert len(rows) == 1, (
-        f"Expected exactly 1 SA result row for {loan_ref!r}, got {len(rows)}. "
+    """Return the single SA result row for *loan_ref* via the shared result reader."""
+    row = get_sa_result_for_exposure(sa_results, loan_ref)
+    assert row is not None, (
+        f"Expected an SA result row for {loan_ref!r}, found none. "
         f"All exposure_references in SA results: "
         f"{sa_results['exposure_reference'].to_list()}"
     )
-    return rows[0]
+    return row
 
 
 # ---------------------------------------------------------------------------
