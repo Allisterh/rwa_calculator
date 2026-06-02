@@ -65,39 +65,39 @@ _UNDRAWN_EXPOSURE_REF = "SL-FAC-001_UNDRAWN"
 _SCENARIO_ID = "CRR-E.CCF1 (P1.197)"
 
 # Expected post-fix values for the UNDRAWN OBS row (CRR Art. 166(8)(d))
-_EXPECTED_CCF = 0.75                   # F-IRB credit-line CCF (Art. 166(8)(d))
-_EXPECTED_UNDRAWN_AMOUNT = 2_000_000.0 # facility_limit - drawn = 6m - 4m
+_EXPECTED_CCF = 0.75  # F-IRB credit-line CCF (Art. 166(8)(d))
+_EXPECTED_UNDRAWN_AMOUNT = 2_000_000.0  # facility_limit - drawn = 6m - 4m
 _EXPECTED_EAD_FROM_CCF = 1_500_000.0  # undrawn × CCF = 2m × 0.75
 _EXPECTED_UNDRAWN_EAD_FINAL = 1_500_000.0  # OBS row EAD (no CRM)
 
 # For reference: on-BS loan row
-_EXPECTED_ON_BS_EAD_FINAL = 4_000_000.0   # drawn=4m, interest=0
+_EXPECTED_ON_BS_EAD_FINAL = 4_000_000.0  # drawn=4m, interest=0
 
 # Portfolio-level totals (both rows combined)
-_EXPECTED_TOTAL_EAD = 5_500_000.0         # 4m on-BS + 1.5m OBS
+_EXPECTED_TOTAL_EAD = 5_500_000.0  # 4m on-BS + 1.5m OBS
 
 # Risk weight on OBS row: CRR Art. 153(5) Table 1: PF Strong >=2.5yr = 70%
 _EXPECTED_RISK_WEIGHT = 0.70
 
 # RWA for OBS UNDRAWN row only (pre-1.06x scaling)
-_EXPECTED_UNDRAWN_RWA = 1_050_000.0       # 1,500,000 × 0.70
+_EXPECTED_UNDRAWN_RWA = 1_050_000.0  # 1,500,000 × 0.70
 
 # Portfolio RWA (both rows): 4,000,000 × 0.70 + 1,500,000 × 0.70 = 3,850,000
 _EXPECTED_TOTAL_RWA = 3_850_000.0
 
 # Regression sentinels — pre-fix (buggy) values for the UNDRAWN row
-_BUGGY_CCF = 0.50                      # SA CCF for MR — what the pre-fix engine returns
-_BUGGY_EAD_FROM_CCF = 1_000_000.0     # 2,000,000 × 0.50
+_BUGGY_CCF = 0.50  # SA CCF for MR — what the pre-fix engine returns
+_BUGGY_EAD_FROM_CCF = 1_000_000.0  # 2,000,000 × 0.50
 _BUGGY_UNDRAWN_EAD_FINAL = 1_000_000.0
-_BUGGY_UNDRAWN_RWA = 700_000.0        # 1,000,000 × 0.70
-_BUGGY_TOTAL_EAD = 5_000_000.0        # 4m + 1m
-_BUGGY_TOTAL_RWA = 3_500_000.0        # (4m + 1m) × 0.70
+_BUGGY_UNDRAWN_RWA = 700_000.0  # 1,000,000 × 0.70
+_BUGGY_TOTAL_EAD = 5_000_000.0  # 4m + 1m
+_BUGGY_TOTAL_RWA = 3_500_000.0  # (4m + 1m) × 0.70
 
 # Tolerances
-_CCF_TOL = 1e-6      # exact (CCF is a discrete lookup)
-_EAD_TOL = 1.0       # absolute 1 GBP — purely floating-point accumulation
-_RWA_TOL = 1.0       # absolute 1 GBP
-_RW_TOL = 1e-6       # risk weight is a discrete lookup
+_CCF_TOL = 1e-6  # exact (CCF is a discrete lookup)
+_EAD_TOL = 1.0  # absolute 1 GBP — purely floating-point accumulation
+_RWA_TOL = 1.0  # absolute 1 GBP
+_RW_TOL = 1e-6  # risk weight is a discrete lookup
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +179,7 @@ def p1_197_slotting_results() -> dict[str, dict]:
     undrawn_rows = slotting_df.filter(
         pl.col("exposure_reference") == _UNDRAWN_EXPOSURE_REF
     ).to_dicts()
-    loan_rows = slotting_df.filter(
-        pl.col("exposure_reference") == _LOAN_REF
-    ).to_dicts()
+    loan_rows = slotting_df.filter(pl.col("exposure_reference") == _LOAN_REF).to_dicts()
 
     assert len(undrawn_rows) == 1, (
         f"{_SCENARIO_ID}: expected exactly 1 slotting row for '{_UNDRAWN_EXPOSURE_REF}', "
@@ -275,9 +273,7 @@ class TestP1197CRRSlottingOBSEADFIRBCCF:
     # OBS EAD derivation (on the UNDRAWN row)
     # ------------------------------------------------------------------
 
-    def test_p1197_slotting_ead_from_ccf(
-        self, p1_197_slotting_results: dict[str, dict]
-    ) -> None:
+    def test_p1197_slotting_ead_from_ccf(self, p1_197_slotting_results: dict[str, dict]) -> None:
         """
         P1.197: OBS EAD = undrawn_amount × CCF = 2,000,000 × 0.75 = 1,500,000.
 
@@ -334,9 +330,7 @@ class TestP1197CRRSlottingOBSEADFIRBCCF:
     # Portfolio total EAD (both rows summed)
     # ------------------------------------------------------------------
 
-    def test_p1197_slotting_total_ead(
-        self, p1_197_slotting_results: dict[str, dict]
-    ) -> None:
+    def test_p1197_slotting_total_ead(self, p1_197_slotting_results: dict[str, dict]) -> None:
         """
         P1.197: Portfolio EAD = on_bs_ead + ead_from_ccf = 4,000,000 + 1,500,000 = 5,500,000.
 
@@ -367,9 +361,7 @@ class TestP1197CRRSlottingOBSEADFIRBCCF:
     # Risk weight — CRR Art. 153(5) Table 1: PF Strong >=2.5yr = 70%
     # ------------------------------------------------------------------
 
-    def test_p1197_slotting_risk_weight(
-        self, p1_197_slotting_results: dict[str, dict]
-    ) -> None:
+    def test_p1197_slotting_risk_weight(self, p1_197_slotting_results: dict[str, dict]) -> None:
         """
         P1.197: Risk weight for PF Strong >=2.5yr must be 70% (CRR Art. 153(5) Table 1).
 

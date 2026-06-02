@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import polars as pl
 import pytest
@@ -38,7 +39,6 @@ from rwa_calc.engine.hierarchy import HierarchyResolver
 # =============================================================================
 # Constants imported from the fixture builder (single source of truth)
 # =============================================================================
-
 from tests.fixtures.p1_191.p1_191 import (
     FAC_A,
     FAC_B,
@@ -105,9 +105,9 @@ def _classify(config: CalculationConfig) -> pl.DataFrame:
     raw = _build_raw_bundle()
     resolved = HierarchyResolver().resolve(raw, config)
     result = ExposureClassifier().classify(resolved, config)
-    return (
-        result.all_exposures.select("exposure_reference", "exposure_class")
-        .collect()
+    return cast(
+        pl.DataFrame,
+        result.all_exposures.select("exposure_reference", "exposure_class").collect(),
     )
 
 
@@ -276,9 +276,7 @@ class TestNoQRREColumnWarningFires:
         cls004_errors = [e for e in result.classification_errors if e.code == "CLS004"]
 
         # Assert
-        assert cls004_errors == [], (
-            f"Unexpected CLS004 errors under CRR: {cls004_errors}"
-        )
+        assert cls004_errors == [], f"Unexpected CLS004 errors under CRR: {cls004_errors}"
 
     def test_no_cls004_under_b31(self, b31_config: CalculationConfig) -> None:
         """Both QRRE columns present → no CLS004 warning under Basel 3.1."""
@@ -291,6 +289,4 @@ class TestNoQRREColumnWarningFires:
         cls004_errors = [e for e in result.classification_errors if e.code == "CLS004"]
 
         # Assert
-        assert cls004_errors == [], (
-            f"Unexpected CLS004 errors under B31: {cls004_errors}"
-        )
+        assert cls004_errors == [], f"Unexpected CLS004 errors under B31: {cls004_errors}"

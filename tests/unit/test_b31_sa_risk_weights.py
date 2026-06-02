@@ -368,8 +368,10 @@ class TestB31CommercialREGeneral:
 
         # secured_share = 0.55/0.75, cp_rw = 0.75 (Art. 124L(1)(a) natural person)
         secured_share = 0.55 / 0.75
-        expected = 0.60 * secured_share + 0.75 * (1.0 - secured_share)   # Art. 124L(1)(a) natural person; was 1.00
-        assert df["risk_weight"][0] == pytest.approx(expected)   # 0.64
+        expected = 0.60 * secured_share + 0.75 * (
+            1.0 - secured_share
+        )  # Art. 124L(1)(a) natural person; was 1.00
+        assert df["risk_weight"][0] == pytest.approx(expected)  # 0.64
 
     def test_boundary_ltv_55pct_fully_secured(
         self,
@@ -821,7 +823,9 @@ class TestB31CommercialREOtherCounterparties:
         # Max/min for 100% cp: max(60%, min(100%, 100%)) = 100%
         assert np_rw < oc_rw
         secured_share = 0.55 / 0.75
-        assert np_rw == pytest.approx(0.60 * secured_share + 0.75 * (1 - secured_share))  # Art. 124L(1)(a) natural person = 0.75
+        assert np_rw == pytest.approx(
+            0.60 * secured_share + 0.75 * (1 - secured_share)
+        )  # Art. 124L(1)(a) natural person = 0.75
         assert oc_rw == pytest.approx(1.00)
 
 

@@ -69,10 +69,10 @@ from tests.fixtures.p1_196.p1_196 import (  # noqa: E402
 )
 
 # Tolerances
-_RW_TOL = 1e-6       # risk weight is a discrete lookup
-_EAD_TOL = 1.0       # absolute GBP 1 — floating-point accumulation
-_FACTOR_TOL = 1e-4   # supporting factor tolerance
-_RWA_TOL = 1.0       # absolute GBP 1 for final RWA
+_RW_TOL = 1e-6  # risk weight is a discrete lookup
+_EAD_TOL = 1.0  # absolute GBP 1 — floating-point accumulation
+_FACTOR_TOL = 1e-4  # supporting factor tolerance
+_RWA_TOL = 1.0  # absolute GBP 1 for final RWA
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +136,7 @@ class TestP1196CRRRatedSMECorporateCQSWeight:
     under the unmodified engine.
     """
 
-    def test_crr_sa_sme_cqs1_exposure_class_is_corporate_sme(
-        self, p1_196_sa_result: dict
-    ) -> None:
+    def test_crr_sa_sme_cqs1_exposure_class_is_corporate_sme(self, p1_196_sa_result: dict) -> None:
         """
         Pre-condition: entity_type=corporate + annual_revenue=GBP 10m → corporate_sme.
 
@@ -160,9 +158,7 @@ class TestP1196CRRRatedSMECorporateCQSWeight:
             f"fixture sets annual_revenue=GBP 10m (below ~GBP 43.66m threshold)."
         )
 
-    def test_crr_sa_sme_cqs1_risk_weight_is_20pct(
-        self, p1_196_sa_result: dict
-    ) -> None:
+    def test_crr_sa_sme_cqs1_risk_weight_is_20pct(self, p1_196_sa_result: dict) -> None:
         """
         CRR Art. 122 Table 5 CQS 1: risk_weight = 0.20 — primary load-bearing assertion.
 
@@ -188,9 +184,7 @@ class TestP1196CRRRatedSMECorporateCQSWeight:
             f"namespace.py:1383-1384 (no CQS gate on the corporate-SME override)."
         )
 
-    def test_crr_sa_sme_cqs1_risk_weight_is_not_buggy_100pct(
-        self, p1_196_sa_result: dict
-    ) -> None:
+    def test_crr_sa_sme_cqs1_risk_weight_is_not_buggy_100pct(self, p1_196_sa_result: dict) -> None:
         """
         Anti-confound regression sentinel: risk_weight must NOT be 1.00 (buggy value).
 
@@ -209,9 +203,7 @@ class TestP1196CRRRatedSMECorporateCQSWeight:
             f"Got {row['risk_weight']:.4f}."
         )
 
-    def test_crr_sa_sme_cqs1_ead_final_is_1m(
-        self, p1_196_sa_result: dict
-    ) -> None:
+    def test_crr_sa_sme_cqs1_ead_final_is_1m(self, p1_196_sa_result: dict) -> None:
         """
         EAD = drawn_amount = GBP 1,000,000 (no CCF, no CRM, no FX haircut).
 
@@ -228,9 +220,7 @@ class TestP1196CRRRatedSMECorporateCQSWeight:
             f"got {row['ead_final']:,.2f}"
         )
 
-    def test_crr_sa_sme_cqs1_rwa_pre_factor_is_200k(
-        self, p1_196_sa_result: dict
-    ) -> None:
+    def test_crr_sa_sme_cqs1_rwa_pre_factor_is_200k(self, p1_196_sa_result: dict) -> None:
         """
         RWA before Art. 501 SF = EAD × risk_weight = 1,000,000 × 0.20 = 200,000.
 
@@ -251,9 +241,7 @@ class TestP1196CRRRatedSMECorporateCQSWeight:
             f"Pre-fix: {EAD * BUGGY_RW_BEFORE_FIX:,.0f} (EAD × 1.00)."
         )
 
-    def test_crr_sa_sme_cqs1_supporting_factor_is_tier1(
-        self, p1_196_sa_result: dict
-    ) -> None:
+    def test_crr_sa_sme_cqs1_supporting_factor_is_tier1(self, p1_196_sa_result: dict) -> None:
         """
         Art. 501 tier-1 supporting factor = 0.7619 (E* = 1,000,000 < GBP 2.2m).
 
@@ -278,9 +266,7 @@ class TestP1196CRRRatedSMECorporateCQSWeight:
             f"got {row['supporting_factor_applied']}"
         )
 
-    def test_crr_sa_sme_cqs1_rwa_final_is_152380(
-        self, p1_196_sa_result: dict
-    ) -> None:
+    def test_crr_sa_sme_cqs1_rwa_final_is_152380(self, p1_196_sa_result: dict) -> None:
         """
         Final RWA = rwa_pre_factor × supporting_factor = 200,000 × 0.7619 ≈ 152,380.
 

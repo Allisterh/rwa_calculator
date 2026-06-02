@@ -99,13 +99,21 @@ RATING_AGENCY = "S&P"
 #  expected_rw, expected_rwa)
 _SCENARIOS: list[tuple[str, str, str | None, int | None, str | None, float, float]] = [
     # counterparty_ref           loan_ref                rating_ref               cqs  rating    rw    rwa
-    ("CP_SME_CQS1_P1193", "LOAN_SME_RATED_CQS1", "RTG_SME_CQS1_P1193",    1, "AA-",   0.20, 400_000.0),
-    ("CP_SME_CQS2_P1193", "LOAN_SME_RATED_CQS2", "RTG_SME_CQS2_P1193",    2, "A+",    0.50, 1_000_000.0),
-    ("CP_SME_CQS3_P1193", "LOAN_SME_RATED_CQS3", "RTG_SME_CQS3_P1193",    3, "BBB+",  0.75, 1_500_000.0),
-    ("CP_SME_CQS4_P1193", "LOAN_SME_RATED_CQS4", "RTG_SME_CQS4_P1193",    4, "BB+",   1.00, 2_000_000.0),
-    ("CP_SME_CQS5_P1193", "LOAN_SME_RATED_CQS5", "RTG_SME_CQS5_P1193",    5, "B+",    1.50, 3_000_000.0),
-    ("CP_SME_CQS6_P1193", "LOAN_SME_RATED_CQS6", "RTG_SME_CQS6_P1193",    6, "CCC",   1.50, 3_000_000.0),
-    ("CP_SME_UR_P1193",   "LOAN_SME_UNRATED",    None,                   None, None,   0.85, 1_700_000.0),
+    ("CP_SME_CQS1_P1193", "LOAN_SME_RATED_CQS1", "RTG_SME_CQS1_P1193", 1, "AA-", 0.20, 400_000.0),
+    ("CP_SME_CQS2_P1193", "LOAN_SME_RATED_CQS2", "RTG_SME_CQS2_P1193", 2, "A+", 0.50, 1_000_000.0),
+    (
+        "CP_SME_CQS3_P1193",
+        "LOAN_SME_RATED_CQS3",
+        "RTG_SME_CQS3_P1193",
+        3,
+        "BBB+",
+        0.75,
+        1_500_000.0,
+    ),
+    ("CP_SME_CQS4_P1193", "LOAN_SME_RATED_CQS4", "RTG_SME_CQS4_P1193", 4, "BB+", 1.00, 2_000_000.0),
+    ("CP_SME_CQS5_P1193", "LOAN_SME_RATED_CQS5", "RTG_SME_CQS5_P1193", 5, "B+", 1.50, 3_000_000.0),
+    ("CP_SME_CQS6_P1193", "LOAN_SME_RATED_CQS6", "RTG_SME_CQS6_P1193", 6, "CCC", 1.50, 3_000_000.0),
+    ("CP_SME_UR_P1193", "LOAN_SME_UNRATED", None, None, None, 0.85, 1_700_000.0),
 ]
 
 # Primary assertion (CQS 2 — proposal §2 primary assert)
@@ -127,8 +135,7 @@ BUGGY_RW_BEFORE_FIX: float = 0.85
 
 #: Full expected-output mapping keyed by loan_reference.
 EXPECTED_OUTPUTS: dict[str, dict[str, float]] = {
-    loan_ref: {"risk_weight": rw, "rwa": rwa}
-    for _, loan_ref, _, _, _, rw, rwa in _SCENARIOS
+    loan_ref: {"risk_weight": rw, "rwa": rwa} for _, loan_ref, _, _, _, rw, rwa in _SCENARIOS
 }
 
 
@@ -413,7 +420,9 @@ def print_summary(saved: dict[str, Path]) -> None:
     print()
     print(f"  Primary assert: {PRIMARY_LOAN_REF}")
     print(f"    sa_final_risk_weight == {PRIMARY_EXPECTED_RW}  (Table 6 CQS 2)")
-    print(f"    sa_final_risk_weight != {BUGGY_RW_BEFORE_FIX}  (anti-confound: pre-fix buggy value)")
+    print(
+        f"    sa_final_risk_weight != {BUGGY_RW_BEFORE_FIX}  (anti-confound: pre-fix buggy value)"
+    )
     print(f"    rwa_post_factor      == {PRIMARY_EXPECTED_RWA:,.0f}")
     print()
     print(f"  Regression guard: {UNRATED_LOAN_REF}")

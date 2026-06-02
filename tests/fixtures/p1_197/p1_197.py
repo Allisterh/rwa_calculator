@@ -118,13 +118,13 @@ MATURITY_DATE: date = date(2030, 12, 31)  # 6yr residual; ensures Strong >=2.5yr
 
 # Facility economics (CCF applies to the undrawn commitment headroom)
 DRAWN_AMOUNT: float = 4_000_000.0  # On-balance-sheet drawn portion (loan row)
-INTEREST: float = 0.0              # No accrued interest
+INTEREST: float = 0.0  # No accrued interest
 UNDRAWN_AMOUNT: float = 2_000_000.0  # OBS commitment headroom = limit - drawn
 FACILITY_LIMIT: float = DRAWN_AMOUNT + UNDRAWN_AMOUNT  # 6,000,000
 
 # CCF inputs (for test-writer reference)
-RISK_TYPE: str = "MR"      # Medium-risk commitment >1yr (CRR Annex I Row 3)
-IS_OBS_COMMITMENT: bool = True    # Credit line -> Art. 166(8)(d) 75% F-IRB CCF
+RISK_TYPE: str = "MR"  # Medium-risk commitment >1yr (CRR Annex I Row 3)
+IS_OBS_COMMITMENT: bool = True  # Credit line -> Art. 166(8)(d) 75% F-IRB CCF
 IS_SHORT_TERM_TRADE_LC: bool = False  # Not a trade LC (Art. 166(9) exception inapplicable)
 
 # ---------------------------------------------------------------------------
@@ -132,8 +132,8 @@ IS_SHORT_TERM_TRADE_LC: bool = False  # Not a trade LC (Art. 166(9) exception in
 # ---------------------------------------------------------------------------
 
 # Art. 166(8)(d): credit-line CCF for slotting (CRR-only; B31 uses SA CCF via Art. 166C)
-EXPECTED_CCF: float = 0.75           # F-IRB credit-line CCF (Art. 166(8)(d))
-BUGGY_CCF: float = 0.50             # SA CCF for MR (pre-fix bug)
+EXPECTED_CCF: float = 0.75  # F-IRB credit-line CCF (Art. 166(8)(d))
+BUGGY_CCF: float = 0.50  # SA CCF for MR (pre-fix bug)
 
 EXPECTED_ON_BS_FOR_EAD: float = DRAWN_AMOUNT + INTEREST  # 4,000,000
 EXPECTED_EAD_FROM_CCF: float = UNDRAWN_AMOUNT * EXPECTED_CCF  # 1,500,000
@@ -147,7 +147,7 @@ EXPECTED_RISK_WEIGHT: float = 0.70
 EXPECTED_RWA_PRE_SCALING: float = EXPECTED_EAD_FINAL * EXPECTED_RISK_WEIGHT  # 3,850,000
 
 # Regression sentinels (pre-fix, buggy values)
-BUGGY_EAD_FROM_CCF: float = UNDRAWN_AMOUNT * BUGGY_CCF   # 1,000,000
+BUGGY_EAD_FROM_CCF: float = UNDRAWN_AMOUNT * BUGGY_CCF  # 1,000,000
 BUGGY_EAD_PRE_CRM: float = EXPECTED_ON_BS_FOR_EAD + BUGGY_EAD_FROM_CCF  # 5,000,000
 BUGGY_RWA_PRE_SCALING: float = BUGGY_EAD_PRE_CRM * EXPECTED_RISK_WEIGHT  # 3,500,000
 
@@ -501,7 +501,9 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("Scenario: CRR-E.CCF1 — Slotting OBS EAD must use Art. 166(8)(d) F-IRB CCF 75%")
     print(f"  Counterparty  : {COUNTERPARTY_REF} (specialised_lending, project_finance, Strong)")
     print(f"  Facility      : {FACILITY_REF}, limit=GBP {FACILITY_LIMIT:,.0f}")
-    print(f"  Loan          : {LOAN_REF}, drawn=GBP {DRAWN_AMOUNT:,.0f}, interest=GBP {INTEREST:,.0f}")
+    print(
+        f"  Loan          : {LOAN_REF}, drawn=GBP {DRAWN_AMOUNT:,.0f}, interest=GBP {INTEREST:,.0f}"
+    )
     print(f"  Undrawn (OBS) : GBP {UNDRAWN_AMOUNT:,.0f} (= limit - drawn)")
     print(f"  risk_type     : {RISK_TYPE}, is_obs_commitment={IS_OBS_COMMITMENT}")
     print(f"  maturity_date : {MATURITY_DATE} (>= 2.5yr from reporting_date={REPORTING_DATE})")
@@ -509,10 +511,18 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("  Expected outputs (post-fix, pre 1.06x IRB scaling):")
     print(f"    ccf            = {EXPECTED_CCF:.2f} (Art. 166(8)(d); buggy: {BUGGY_CCF:.2f} SA)")
     print(f"    on_bs_for_ead  = GBP {EXPECTED_ON_BS_FOR_EAD:,.0f}")
-    print(f"    ead_from_ccf   = GBP {EXPECTED_EAD_FROM_CCF:,.0f} (buggy: GBP {BUGGY_EAD_FROM_CCF:,.0f})")
-    print(f"    ead_pre_crm    = GBP {EXPECTED_EAD_PRE_CRM:,.0f} (buggy: GBP {BUGGY_EAD_PRE_CRM:,.0f})")
-    print(f"    risk_weight    = {EXPECTED_RISK_WEIGHT:.2f} (CRR Art. 153(5) Table 1 PF Strong >=2.5yr)")
-    print(f"    rwa            = GBP {EXPECTED_RWA_PRE_SCALING:,.0f} (buggy: GBP {BUGGY_RWA_PRE_SCALING:,.0f})")
+    print(
+        f"    ead_from_ccf   = GBP {EXPECTED_EAD_FROM_CCF:,.0f} (buggy: GBP {BUGGY_EAD_FROM_CCF:,.0f})"
+    )
+    print(
+        f"    ead_pre_crm    = GBP {EXPECTED_EAD_PRE_CRM:,.0f} (buggy: GBP {BUGGY_EAD_PRE_CRM:,.0f})"
+    )
+    print(
+        f"    risk_weight    = {EXPECTED_RISK_WEIGHT:.2f} (CRR Art. 153(5) Table 1 PF Strong >=2.5yr)"
+    )
+    print(
+        f"    rwa            = GBP {EXPECTED_RWA_PRE_SCALING:,.0f} (buggy: GBP {BUGGY_RWA_PRE_SCALING:,.0f})"
+    )
 
 
 def main() -> None:

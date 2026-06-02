@@ -109,7 +109,9 @@ EXPECTED_RWA_PRE_FACTOR: float = EAD * EXPECTED_RISK_WEIGHT  # 200,000.00
 EXPECTED_SUPPORTING_FACTOR: float = 0.7619
 
 #: Final RWA post supporting factor.
-EXPECTED_RWA_POST_FACTOR: float = round(EXPECTED_RWA_PRE_FACTOR * EXPECTED_SUPPORTING_FACTOR, 2)  # 152,380.00
+EXPECTED_RWA_POST_FACTOR: float = round(
+    EXPECTED_RWA_PRE_FACTOR * EXPECTED_SUPPORTING_FACTOR, 2
+)  # 152,380.00
 
 #: Pre-fix buggy risk weight (unconditional 100% override, for anti-confound assertion).
 BUGGY_RW_BEFORE_FIX: float = 1.00

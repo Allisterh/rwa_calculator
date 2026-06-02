@@ -883,9 +883,7 @@ class ExposureClassifier:
                 & (pl.col("is_revolving") == True)  # noqa: E712
             )
             facility_limit = pl.col("facility_limit").fill_null(float("inf"))
-            candidate_limit = (
-                pl.when(is_qrre_candidate).then(facility_limit).otherwise(pl.lit(0.0))
-            )
+            candidate_limit = pl.when(is_qrre_candidate).then(facility_limit).otherwise(pl.lit(0.0))
             # Guard the nullable ``counterparty_reference`` partition: a null key
             # would otherwise pool all unmapped rows into a single bucket (see
             # ``partition_by_nullable`` / ``NULLABLE_PARTITION_KEYS``). Null-keyed

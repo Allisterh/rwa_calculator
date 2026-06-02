@@ -44,7 +44,6 @@ References:
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from typing import cast
 
@@ -285,12 +284,8 @@ class TestP1200B31GuaranteeMaturityMismatch:
         Assert:  guaranteed_portion ≈ 466,666.6666666667 (abs=0.01).
         """
         # Arrange
-        sub_rows = b31_sa_results.filter(
-            pl.col("parent_exposure_reference") == LOAN_REF
-        )
-        assert sub_rows.height > 0, (
-            f"No SA sub-rows for parent_exposure_reference='{LOAN_REF}'"
-        )
+        sub_rows = b31_sa_results.filter(pl.col("parent_exposure_reference") == LOAN_REF)
+        assert sub_rows.height > 0, f"No SA sub-rows for parent_exposure_reference='{LOAN_REF}'"
         guaranteed_portion = sub_rows["guaranteed_portion"].sum()
 
         # Assert — FAILS pre-fix (engine returns 1,000,000)
@@ -331,9 +326,7 @@ class TestP1200B31GuaranteeMaturityMismatch:
     # CRR REGRESSION PIN — must PASS both before and after the fix
     # -------------------------------------------------------------------------
 
-    def test_p1_200_crr_total_rwa_equals_b31_value(
-        self, crr_sa_results: pl.DataFrame
-    ) -> None:
+    def test_p1_200_crr_total_rwa_equals_b31_value(self, crr_sa_results: pl.DataFrame) -> None:
         """
         P1.200 CRR regression: CRR total RWA == 626,666.67 (same as B31 post-fix).
 
@@ -372,9 +365,7 @@ class TestP1200B31GuaranteeMaturityMismatch:
         Assert:  total ead_final ≈ 1,000,000 (abs=1.0).
         """
         # Arrange
-        sub_rows = b31_sa_results.filter(
-            pl.col("parent_exposure_reference") == LOAN_REF
-        )
+        sub_rows = b31_sa_results.filter(pl.col("parent_exposure_reference") == LOAN_REF)
         total_ead = sub_rows["ead_final"].sum()
 
         # Assert

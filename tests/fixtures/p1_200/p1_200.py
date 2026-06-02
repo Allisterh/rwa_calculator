@@ -64,7 +64,7 @@ from pathlib import Path
 import polars as pl
 
 from rwa_calc.data.column_spec import dtypes_of
-from rwa_calc.data.schemas import COUNTERPARTY_SCHEMA, GUARANTEE_SCHEMA, LOAN_SCHEMA, RATINGS_SCHEMA
+from rwa_calc.data.schemas import COUNTERPARTY_SCHEMA, LOAN_SCHEMA, RATINGS_SCHEMA
 
 # ---------------------------------------------------------------------------
 # Scenario constants — exported for test assertions
@@ -92,12 +92,12 @@ LOAN_MATURITY_DATE = date(2030, 6, 1)
 
 # Guarantee maturity parameters
 GUARANTEE_ORIGINAL_MATURITY_YEARS: float = 2.0  # t = 2.0y  (>= 1.0 → eligible)
-GUARANTEE_MATURITY_DATE = date(2028, 6, 1)       # approx 2y from value date
+GUARANTEE_MATURITY_DATE = date(2028, 6, 1)  # approx 2y from value date
 
 # Art. 239(3) scalars
-_T_EFF: float = 4.0    # max(min(4.0, 5.0), 0.25)
+_T_EFF: float = 4.0  # max(min(4.0, 5.0), 0.25)
 _T_EFF_FLOOR: float = 0.25
-_t_EFF: float = 2.0    # max(2.0, 0.25)
+_t_EFF: float = 2.0  # max(2.0, 0.25)
 
 # Derived: maturity multiplier m = (t−0.25)/(T−0.25) = 1.75/3.75
 EXPECTED_MATURITY_MULTIPLIER: float = (_t_EFF - _T_EFF_FLOOR) / (_T_EFF - _T_EFF_FLOOR)
@@ -106,8 +106,8 @@ EXPECTED_MATURITY_MULTIPLIER: float = (_t_EFF - _T_EFF_FLOOR) / (_T_EFF - _T_EFF
 EXPECTED_GUARANTEED_PORTION: float = LOAN_EAD * EXPECTED_MATURITY_MULTIPLIER
 
 # Risk weights
-EXPECTED_GUARANTOR_RW: float = 0.20   # institution CQS 1, Art. 120 Table 3
-_BORROWER_RW: float = 1.00            # unrated corporate, Art. 122
+EXPECTED_GUARANTOR_RW: float = 0.20  # institution CQS 1, Art. 120 Table 3
+_BORROWER_RW: float = 1.00  # unrated corporate, Art. 122
 
 # Correct B31 total RWA (post-fix)
 EXPECTED_TOTAL_RWA_B31: float = (
@@ -120,7 +120,7 @@ BUGGED_TOTAL_RWA: float = LOAN_EAD * EXPECTED_GUARANTOR_RW  # = 200,000.0
 
 # Guarantor rating
 GUARANTOR_CQS = 1
-_GUARANTOR_RATING_VALUE = "AA"   # CQS 1: AAA–AA-
+_GUARANTOR_RATING_VALUE = "AA"  # CQS 1: AAA–AA-
 RATING_AGENCY = "S&P"
 RATING_DATE = date(2026, 6, 1)
 

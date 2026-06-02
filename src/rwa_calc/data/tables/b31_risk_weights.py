@@ -687,7 +687,9 @@ def b31_other_re_rw_expr(counterparty_rw_col: str = "_cqs_risk_weight") -> pl.Ex
     ).fill_null(False)
     cp_rw_for_re = (
         pl.when(is_natural | is_retail_sme)
-        .then(pl.lit(float(B31_RRE_RESIDUAL_RW_NATURAL_PERSON)))  # Art. 124L(a): natural / retail SME
+        .then(
+            pl.lit(float(B31_RRE_RESIDUAL_RW_NATURAL_PERSON))
+        )  # Art. 124L(a): natural / retail SME
         .when(is_sme)
         .then(pl.lit(float(B31_RRE_RESIDUAL_RW_OTHER_SME)))  # Art. 124L(b): other SME (non-retail)
         .when(is_social)

@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import polars as pl
 import pytest
@@ -143,7 +144,7 @@ def p1_193_sa_results() -> pl.DataFrame:
     assert results.sa_results is not None, (
         "SA results must not be None for SA-only (PermissionMode.STANDARDISED) config"
     )
-    return results.sa_results.collect()
+    return cast(pl.DataFrame, results.sa_results.collect())
 
 
 def _get_row(sa_results: pl.DataFrame, loan_ref: str) -> dict:
@@ -170,9 +171,7 @@ class TestP1193ClassificationPreCondition:
     is in classification/fixture data, not in the SA risk-weight logic under test.
     """
 
-    def test_all_rows_classified_as_corporate_sme(
-        self, p1_193_sa_results: pl.DataFrame
-    ) -> None:
+    def test_all_rows_classified_as_corporate_sme(self, p1_193_sa_results: pl.DataFrame) -> None:
         """
         All seven exposures must have exposure_class == 'corporate_sme'.
 
@@ -269,9 +268,7 @@ class TestP1193RatedSMECorporateCQSWeights:
             f"not CQS 2 rated SME). Got {row['risk_weight']:.4f}."
         )
 
-    def test_b31_a11_rated_sme_cqs2_rwa_is_1m(
-        self, p1_193_sa_results: pl.DataFrame
-    ) -> None:
+    def test_b31_a11_rated_sme_cqs2_rwa_is_1m(self, p1_193_sa_results: pl.DataFrame) -> None:
         """
         RWA = EAD × RW = 2,000,000 × 0.50 = 1,000,000 for CQS 2.
 
@@ -432,9 +429,7 @@ class TestP1193UnratedSMECorporateRegressionGuard:
             f"The 85% branch must still fire when cqs is null."
         )
 
-    def test_b31_a11_unrated_sme_rwa_is_1_7m(
-        self, p1_193_sa_results: pl.DataFrame
-    ) -> None:
+    def test_b31_a11_unrated_sme_rwa_is_1_7m(self, p1_193_sa_results: pl.DataFrame) -> None:
         """
         RWA = 2,000,000 × 0.85 = 1,700,000 for unrated SME corporate.
 

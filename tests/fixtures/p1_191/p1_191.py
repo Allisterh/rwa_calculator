@@ -105,7 +105,7 @@ AGG_OK_NOMINAL: float = FACILITY_LIMIT  # 50,000.0
 # Common dates
 # ---------------------------------------------------------------------------
 
-VALUE_DATE: date = date(2027, 1, 4)   # Basel 3.1 era
+VALUE_DATE: date = date(2027, 1, 4)  # Basel 3.1 era
 MATURITY_DATE: date = date(2030, 1, 4)
 
 
@@ -346,11 +346,17 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("-" * 80)
     print("Scenario: QRRE per-individual aggregate nominal qualification test")
     print()
-    print(f"  CRR  QRRE limit:  {CRR_QRRE_LIMIT_GBP:>10,.2f} GBP  (EUR {CRR_EUR_LIMIT:,.0f} × {CRR_EUR_GBP_RATE})")
+    print(
+        f"  CRR  QRRE limit:  {CRR_QRRE_LIMIT_GBP:>10,.2f} GBP  (EUR {CRR_EUR_LIMIT:,.0f} × {CRR_EUR_GBP_RATE})"
+    )
     print(f"  B31  QRRE limit:  {B31_QRRE_LIMIT_GBP:>10,.2f} GBP")
     print()
-    print(f"  QRRE_AGG  aggregate nominal = {AGG_BREACH_NOMINAL:>10,.0f}  > both limits  → NOT QRRE (post-fix)")
-    print(f"  QRRE_OK   aggregate nominal = {AGG_OK_NOMINAL:>10,.0f}  ≤ both limits  → QRRE (both engines)")
+    print(
+        f"  QRRE_AGG  aggregate nominal = {AGG_BREACH_NOMINAL:>10,.0f}  > both limits  → NOT QRRE (post-fix)"
+    )
+    print(
+        f"  QRRE_OK   aggregate nominal = {AGG_OK_NOMINAL:>10,.0f}  ≤ both limits  → QRRE (both engines)"
+    )
     print()
     print("  Expected exposure-class output (post-fix):")
     print("    EXP_A  RETAIL_OTHER   (QRRE_AGG aggregate breach)")
