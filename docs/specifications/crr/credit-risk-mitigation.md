@@ -505,6 +505,13 @@ The cascade is pool-aware (see below) and **reduces exactly to single-level
 allocation** when no facility hierarchy is present (`ancestor_facilities` =
 `[parent]`).
 
+The **same ancestor cascade applies to facility-level provisions and
+guarantees** (`engine/crm/provisions.py`, `engine/crm/guarantees.py`): a
+provision (CRR Art. 111(2)) or guarantee (CRR Art. 213-217) pledged at any
+ancestor facility is allocated pro-rata across the whole descendant subtree
+(by EAD-equivalent weight / `ead_after_collateral` respectively), so all three
+credit-protection types behave consistently across nested facilities.
+
 ### Pool-Aware Pro-Rata for AIRB Mixes (CRR Art. 181)
 
 Under A-IRB, the firm's own modelled LGD already reflects the credit-risk-mitigating effect of any collateral incorporated in the model. To prevent double-counting when a counterparty has both A-IRB and non-A-IRB exposures, the pipeline splits the pro-rata base by pool:
