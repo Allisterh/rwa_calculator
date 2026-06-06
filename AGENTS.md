@@ -34,7 +34,7 @@ Run these after implementing to get immediate feedback:
 - Source code: `src/rwa_calc/`
 - Tests: `tests/` (unit/, acceptance/, benchmarks/, fixtures/)
 - Docs: `docs/` (Zensical), serve with `uv run zensical serve`
-- Config: `pyproject.toml` (ruff, mypy, pytest settings)
+- Config: `pyproject.toml` (ruff, ty, pytest settings)
 - Line length: 100 chars (ruff enforced)
 - Every module starts with `from __future__ import annotations`
 
