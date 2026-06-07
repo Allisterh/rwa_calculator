@@ -11,13 +11,13 @@ A high-performance Risk-Weighted Assets (RWA) calculator for UK CR & CCR, suppor
 
 ## Installation
 
-*Install using pip*
-```bash
-pip install rwa-calc
-```
-**Or with uv**
+**Install with uv** (recommended)
 ```bash
 uv add rwa-calc
+```
+*Or with pip*
+```bash
+pip install rwa-calc
 ```
 
 The web UI and REST API ship with the base package — no extra required.
@@ -58,7 +58,7 @@ for the model permissions schema.
 Basel 3.1 comparison) plus a REST API and an editable Marimo workbench:
 
 ```bash
-pip install rwa-calc
+uv add rwa-calc
 rwa-ui
 # Open http://localhost:8000 in your browser (REST API + OpenAPI at /docs)
 ```
