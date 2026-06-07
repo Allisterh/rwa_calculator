@@ -12,31 +12,21 @@ This guide covers how to install the UK Credit Risk RWA Calculator and its depen
 
 The simplest way to install the calculator:
 
-=== "pip"
-
-    ```bash
-    pip install rwa-calc
-    ```
-
 === "uv"
 
     ```bash
     uv add rwa-calc
     ```
 
-### Optional Dependencies
-
-The calculator provides several optional dependency groups:
-
 === "pip"
 
     ```bash
-    # UI support (Marimo web interface)
-    pip install rwa-calc[ui]
-
-    # Everything (ui and dev dependencies)
-    pip install rwa-calc[all]
+    pip install rwa-calc
     ```
+
+### Optional Dependencies
+
+The calculator provides several optional dependency groups:
 
 === "uv"
 
@@ -48,6 +38,16 @@ The calculator provides several optional dependency groups:
     uv add rwa-calc[all]
     ```
 
+=== "pip"
+
+    ```bash
+    # UI support (Marimo web interface)
+    pip install rwa-calc[ui]
+
+    # Everything (ui and dev dependencies)
+    pip install rwa-calc[all]
+    ```
+
 | Extra | Description |
 |-------|-------------|
 | `ui` | Interactive web UI via Marimo for exploration and testing |
@@ -57,7 +57,7 @@ The calculator provides several optional dependency groups:
 !!! tip "Recommended Installation"
     For most users, we recommend installing with `ui` for the interactive web interface:
     ```bash
-    pip install rwa-calc[ui]
+    uv add rwa-calc[ui]
     ```
 
 ---

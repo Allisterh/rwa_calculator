@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (Next release changes will go here)
 
 ### Changed
-- (Next release changes will go here)
+- **Docs now show `uv add rwa-calc` as the primary install command, fixing a wrong PyPI package name.** The docs landing hero (`docs/overrides/main.html`) advertised `pip install rwa-calculator` — the wrong package name (the project publishes as `rwa-calc`, not `rwa-calculator`) — so the copy-to-clipboard command would have failed. It now reads `uv add rwa-calc`. The getting-started, quickstart and interactive-UI guides are realigned to lead with `uv add rwa-calc` (pip shown as the secondary option), reflecting uv as the recommended package manager. Docs only — no calculation impact.
+- **Removed the `pip install rwa-calculator` box from the app landing page (`src/rwa_calc/ui/app/templates/landing.html`).** Anyone viewing the app's landing page is already running the app locally and has therefore already installed it, so the install command was redundant. The box remains on the *docs* landing page (`docs/overrides/main.html`), where visitors may not yet have installed the package. UI presentation only — no calculation impact.
 
 ---
 

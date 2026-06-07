@@ -20,9 +20,9 @@ The fastest way to get started is the web-based interface.
 ### Step 1: Install
 
 ```bash
-pip install rwa-calc
-# Or with uv
 uv add rwa-calc
+# Or with pip
+pip install rwa-calc
 ```
 
 The UI dependencies ship with the base package — no extra is required.

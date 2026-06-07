@@ -9,7 +9,7 @@ step is required and it bundles cleanly for local distribution.
 ## Prerequisites
 
 ```bash
-pip install rwa-calc      # or: uv add rwa-calc
+uv add rwa-calc      # or: pip install rwa-calc
 ```
 
 The UI dependencies (FastAPI, Uvicorn, Jinja, Marimo) ship with the base
