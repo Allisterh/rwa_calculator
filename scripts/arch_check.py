@@ -71,6 +71,10 @@ REGULATORY_SCALAR_ALLOWLIST: dict[str, set[str]] = {
     "engine/irb/formulas.py": {"G_999"},
     # CRR Art. 153(5) short-maturity threshold — candidate for relocation
     "engine/slotting/namespace.py": {"_SHORT_MATURITY_THRESHOLD_YEARS"},
+    # Numerical epsilons for parallel-run reconciliation — mathematical
+    # tolerances (float exactness / zero-division guards), not regulatory values.
+    "engine/aggregator/_collapse.py": {"_EAD_ZERO_GUARD"},
+    "engine/reconciliation.py": {"_EXACT_EPSILON", "_ZERO_GUARD"},
 }
 
 # Existing engine-side string collections that are internal approach/column/driver
@@ -140,6 +144,9 @@ LOGGER_REQUIRED_EXEMPT: set[str] = {
     "engine/aggregator/_summaries.py",
     "engine/aggregator/_supporting_factors.py",
     "engine/aggregator/_utils.py",
+    # Pure reshape helper: collapses guarantee/RE sub-rows to a key grain for
+    # parallel-run reconciliation. No pipeline-stage telemetry.
+    "engine/aggregator/_collapse.py",
 }
 
 # Modules exempt from the check-10 "must declare a References: block" rule.
@@ -151,6 +158,7 @@ LOGGER_REQUIRED_EXEMPT: set[str] = {
 REFERENCES_REQUIRED_EXEMPT: set[str] = {
     "engine/aggregator/_summaries.py",
     "engine/aggregator/_utils.py",
+    "engine/aggregator/_collapse.py",  # pure sub-row collapse helper, no citations
     "engine/aggregator/_equity_prep.py",
     _PATH_AGGREGATOR_SCHEMAS,
     _PATH_UTILS,
