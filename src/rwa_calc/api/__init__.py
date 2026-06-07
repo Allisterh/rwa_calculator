@@ -32,9 +32,17 @@ from rwa_calc.api.models import (
     APIError,
     CalculationResponse,
     PerformanceMetrics,
+    ReconciliationResponse,
     SummaryStatistics,
     ValidationRequest,
     ValidationResponse,
+)
+from rwa_calc.api.reconciliation import (
+    LegacyOutputLoader,
+    ReconciliationSettings,
+    dump_reconciliation_config,
+    load_reconciliation_config,
+    loads_reconciliation_config,
 )
 from rwa_calc.api.rest import (
     create_api_app,
@@ -56,6 +64,10 @@ from rwa_calc.api.validation import (
     get_required_files,
     validate_data_path,
 )
+from rwa_calc.contracts.config import (
+    ComponentMapping,
+    LegacyColumnMapping,
+)
 
 __all__ = [
     # Service
@@ -74,6 +86,15 @@ __all__ = [
     # REST API
     "create_api_app",
     "api_router",
+    # Reconciliation
+    "ReconciliationResponse",
+    "ReconciliationSettings",
+    "LegacyOutputLoader",
+    "LegacyColumnMapping",
+    "ComponentMapping",
+    "load_reconciliation_config",
+    "loads_reconciliation_config",
+    "dump_reconciliation_config",
     # Export
     "ResultExporter",
     "ExportResult",
