@@ -224,9 +224,7 @@ def _resolve_provisions_multi_level(
             pl.col("_exp_weight").sum().alias("_fac_total_weight")
         )
         fac_alloc = (
-            edges.join(
-                fac_provs, left_on="_anc_fac", right_on="beneficiary_reference", how="inner"
-            )
+            edges.join(fac_provs, left_on="_anc_fac", right_on="beneficiary_reference", how="inner")
             .join(subtree_totals, on="_anc_fac", how="left")
             .with_columns(
                 pl.when(pl.col("_fac_total_weight") > 0)

@@ -1966,7 +1966,9 @@ CALCULATION_OUTPUT_SCHEMA = {
     "root_facility_reference": pl.String,  # Top-level facility in hierarchy
     "facility_hierarchy_depth": pl.Int8,  # Levels from root facility (0=top)
     "facility_hierarchy_path": pl.List(pl.String),  # Full path from root to this exposure
-    "ancestor_facilities": pl.List(pl.String),  # Parent + all ancestors (incl. self) for CRM cascade
+    "ancestor_facilities": pl.List(
+        pl.String
+    ),  # Parent + all ancestors (incl. self) for CRM cascade
     # -------------------------------------------------------------------------
     # CRM INHERITANCE (From Hierarchy)
     # -------------------------------------------------------------------------
