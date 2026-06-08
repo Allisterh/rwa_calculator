@@ -310,11 +310,22 @@ def _derivative_rows_to_exposures(
 
     # 3) Per-NS v_net (sum of mtm_value over trades) and trade-level metadata
     #    needed for synthetic-exposure rows (currency, max maturity).
+    #    The trade-level ``is_client_cleared`` flag (CRR Art. 305(2)) is
+    #    collapsed to netting-set grain via ``any()`` so the synthetic row can
+    #    surface ``cp_is_ccp_client_cleared`` for the Art. 306(1)(c) 4% pin in
+    #    the SA calculator. Absent column -> all-False aggregate.
+    trade_cols = trades_lf.collect_schema().names()
+    client_cleared_agg = (
+        pl.col("is_client_cleared").fill_null(False).any().alias("_ns_is_client_cleared")
+        if "is_client_cleared" in trade_cols
+        else pl.lit(False).alias("_ns_is_client_cleared")
+    )
     ns_trade_aggregates = trades_lf.group_by("netting_set_id").agg(
         [
             pl.col("mtm_value").fill_null(0.0).sum().alias("v_net"),
             pl.col("currency").first().alias("_trade_currency"),
             pl.col("maturity_date").max().alias("_trade_max_maturity"),
+            client_cleared_agg,
         ]
     )
 
@@ -395,6 +406,13 @@ def _derivative_rows_to_exposures(
             pl.lit("CCR_DERIVATIVE").alias("risk_type"),
             pl.col("netting_set_id").alias("source_netting_set_id"),
             pl.lit("sa_ccr").alias("ccr_method"),
+            # CRR Art. 306(1)(c): client-clearing flag for the QCCP 4% trade
+            # exposure pin, collapsed to NS grain from the trade-level
+            # is_client_cleared (Art. 305(2)). Surfaced as the classifier-aliased
+            # ``cp_is_ccp_client_cleared`` so the SA calculator's QCCP branch
+            # reads it directly (the CCR counterparty frame carries no
+            # is_ccp_client_cleared column to join, so there is no collision).
+            pl.col("_ns_is_client_cleared").alias("cp_is_ccp_client_cleared"),
             # Surface the Art. 291(5)(c) WWR LGD override onto the exposure
             # row: 1.0 for a specific-WWR synthetic NS, null otherwise. The
             # downstream IRB consumer (deferred P8.31) reads this to apply

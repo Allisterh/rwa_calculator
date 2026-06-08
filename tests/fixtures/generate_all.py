@@ -389,7 +389,7 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p824,
         ),
         (
-            "P8.25 (QCCP trade exposure RW — CCR-B1a 2%, CCR-B1b 4%, CCR-B1c 20% SA fallback)",
+            "P8.25 (QCCP trade exposure RW — CCR-B1a 2%, CCR-B1b 4%, CCR-B1c 50% SA fallback CQS-2)",
             "ccr",
             _generate_p825,
         ),
@@ -517,6 +517,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "P1.200 (B31 Art. 239(3) guarantee/CDS maturity-mismatch scaling wrongly gated on is_crr)",
             "p1_200",
             _generate_p1200,
+        ),
+        (
+            "P8.39 (CCR-CCP-1/CCP-2 orchestrator QCCP wiring — 2%/4% vs 50% anti-degenerate baseline)",
+            "ccr",
+            _generate_p839_ccp,
         ),
     ]
 
@@ -2799,6 +2804,34 @@ def _generate_p1200(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_200", None)
+
+
+def _generate_p839_ccp(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.39 CCP-wiring bundles (Python-only — no persistent parquet output).
+
+    P8.39 / CCR-CCP-1 and CCR-CCP-2 provide orchestrator-ready RawDataBundles
+    proving that apply_ccp_risk_weight, once wired into _run_ccr_stage, produces
+    2% / 4% RWs instead of the CQS-2 SA-Institution fallback of 50%.
+    The supplementary 2-counterparty book regression-guards the keyed-join in
+    apply_ccp_risk_weight against cross-join fan-out.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p839_ccp_builder import save_p839_fixtures
+
+        return save_p839_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.p839_ccp_builder",
+            "ccr.qccp_builder",
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
 
 
 def print_master_report(results: list[FixtureGroupResult], fixtures_dir: Path) -> None:
