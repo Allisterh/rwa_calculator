@@ -588,6 +588,10 @@ class PipelineOrchestrator:
                     config.reporting_date,
                     base_currency=config.base_currency,
                     fx_rates=data.fx_rates,
+                    # CRR Art. 274(2): the counterparty frame carries the
+                    # ``counterparty_type`` discriminator that selects the
+                    # per-NS supervisory alpha (1.0 carve-out vs 1.4 default).
+                    counterparties=data.counterparties,
                 )
                 # Inherit the resolved counterparty rating columns onto each
                 # CCR synthetic row so the downstream SA Institution lookup

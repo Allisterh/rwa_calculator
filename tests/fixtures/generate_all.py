@@ -523,6 +523,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_p839_ccp,
         ),
+        (
+            "P8.28 (CCR-ALPHA-1/2/3 per-counterparty α=1.0 carve-out — non_financial/pension_scheme/financial)",
+            "ccr",
+            _generate_p828_alpha,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2804,6 +2809,34 @@ def _generate_p1200(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_200", None)
+
+
+def _generate_p828_alpha(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.28 α=1.0 carve-out bundles (Python-only — no persistent parquet output).
+
+    P8.28 / CCR-ALPHA-1, CCR-ALPHA-2, CCR-ALPHA-3 provide orchestrator-ready
+    RawDataBundles proving that applying per-counterparty α (1.0 for
+    non_financial/pension_scheme, 1.4 for financial) produces the correct EAD.
+    The supplementary 2-counterparty book regression-guards the keyed-join
+    in the counterparty→NS alpha lookup against cross-join fan-out.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p828_alpha_builder import save_p828_fixtures
+
+        return save_p828_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.p828_alpha_builder",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
 
 
 def _generate_p839_ccp(output_dir: Path) -> list[tuple[str, int]]:

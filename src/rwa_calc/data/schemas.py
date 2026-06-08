@@ -408,6 +408,13 @@ COUNTERPARTY_SCHEMA: dict[str, ColumnSpec] = {
     # trade-exposure RW (and the Art. 307 4% client-cleared route). Defaults
     # to False so pre-existing fixtures route to the non-QCCP / SA fallback.
     "is_qccp": ColumnSpec(pl.Boolean, default=False, required=False),
+    # CRR Art. 274(2) second sub-paragraph: SA-CCR supervisory-alpha discriminator.
+    # "financial" (default) → alpha = 1.4; "non_financial" (EMIR Art. 2(9)),
+    # "pension_scheme" (EMIR Art. 2(10)) and "pension_default_comp" → alpha = 1.0
+    # carve-out. Read by engine/ccr/pipeline_adapter.py to compute the per-row
+    # ``alpha_applied`` scalar. Defaults to "financial" so pre-existing CCR
+    # fixtures (which never set this column) keep the standard alpha = 1.4.
+    "counterparty_type": ColumnSpec(pl.String, default="financial", required=False),
 }
 
 COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
@@ -1329,6 +1336,32 @@ VALID_PROTECTION_TYPES = {"guarantee", "credit_derivative"}
 
 VALID_SCRA_GRADES = {"A", "A_ENHANCED", "B", "C"}
 
+# CRR Art. 274(2) second sub-paragraph: the supervisory alpha carve-out
+# (alpha = 1.0 instead of the 1.4 default) applies to derivative netting sets
+# whose counterparty is a non-financial counterparty (EMIR Art. 2(9)), a
+# pension scheme arrangement (EMIR Art. 2(10)), or a pension-scheme
+# default-fund-contribution position. "financial" is the default — standard
+# alpha = 1.4. Consumed by engine/ccr/pipeline_adapter.py to select the per-row
+# ``alpha_applied`` scalar (see SA_CCR_ALPHA / SA_CCR_ALPHA_CARVE_OUT in
+# data/tables/sa_ccr_factors.py).
+VALID_CCR_COUNTERPARTY_TYPES = {
+    "financial",
+    "non_financial",
+    "pension_scheme",
+    "pension_default_comp",
+}
+
+# The subset of VALID_CCR_COUNTERPARTY_TYPES that qualifies for the CRR
+# Art. 274(2) alpha = 1.0 carve-out (non-financial / pension-scheme / pension
+# default-fund-contribution). "financial" is excluded — it keeps alpha = 1.4.
+# engine/ccr/pipeline_adapter.py membership-tests ``counterparty_type`` against
+# this set so the category strings are not inlined in engine scope.
+CCR_ALPHA_CARVE_OUT_COUNTERPARTY_TYPES = {
+    "non_financial",
+    "pension_scheme",
+    "pension_default_comp",
+}
+
 # P8.5 extension: "CCR_DERIVATIVE" / "CCR_SFT" tag exposures originated by
 # the SA-CCR pipeline (CRR Art. 271). They flow through the same exposure
 # row model as on-balance-sheet items but are routed into the dedicated CCR
@@ -1478,6 +1511,8 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
     "counterparties": {
         "entity_type": VALID_ENTITY_TYPES,
         "scra_grade": VALID_SCRA_GRADES,
+        # CRR Art. 274(2) second sub-paragraph — SA-CCR alpha carve-out discriminator.
+        "counterparty_type": VALID_CCR_COUNTERPARTY_TYPES,
     },
     "collateral": {
         "collateral_type": VALID_COLLATERAL_TYPES,

@@ -44,7 +44,8 @@ from rwa_calc.contracts.bundles import (
 )
 from rwa_calc.contracts.config import CCRConfig
 from rwa_calc.data.column_spec import ensure_columns
-from rwa_calc.data.schemas import NETTING_SET_SCHEMA
+from rwa_calc.data.schemas import CCR_ALPHA_CARVE_OUT_COUNTERPARTY_TYPES, NETTING_SET_SCHEMA
+from rwa_calc.data.tables.sa_ccr_factors import SA_CCR_ALPHA, SA_CCR_ALPHA_CARVE_OUT
 from rwa_calc.engine.ccr.adjusted_notional import (
     compute_adjusted_notional_commodity,
     compute_adjusted_notional_credit,
@@ -74,6 +75,7 @@ def ccr_rows_to_exposures(
     *,
     base_currency: str = "GBP",
     fx_rates: pl.LazyFrame | None = None,
+    counterparties: pl.LazyFrame | None = None,
 ) -> pl.LazyFrame:
     """Shape SA-CCR netting-set EADs into synthetic exposure rows.
 
@@ -128,6 +130,13 @@ def ccr_rows_to_exposures(
             adjusted-notional branch is skipped — FX trades will have null
             ``adjusted_notional`` and therefore no PFE contribution, matching
             the pre-P8.9 behaviour for firms with no derivatives FX book.
+        counterparties: Optional counterparty LazyFrame carrying
+            ``counterparty_reference`` and ``counterparty_type`` (COUNTERPARTY_SCHEMA).
+            Joined onto the netting-set frame to select the per-row supervisory
+            alpha (CRR Art. 274(2) second sub-paragraph): 1.0 for non-financial /
+            pension-scheme counterparties, 1.4 otherwise. When None — or when the
+            ``counterparty_type`` column is absent — every netting set keeps the
+            default alpha = 1.4, preserving pre-P8.28 behaviour.
 
     Returns:
         LazyFrame at netting-set grain with one synthetic exposure row per
@@ -150,6 +159,7 @@ def ccr_rows_to_exposures(
         reporting_date,
         base_currency=base_currency,
         fx_rates=fx_rates,
+        counterparties=counterparties,
     )
     if config_ccr.sft_method == "fccm":
         sft_rows = sft_rows_to_exposures(sft_bundle, reporting_date)
@@ -228,12 +238,20 @@ def _derivative_rows_to_exposures(
     *,
     base_currency: str,
     fx_rates: pl.LazyFrame | None,
+    counterparties: pl.LazyFrame | None = None,
 ) -> pl.LazyFrame:
     """Drive the SA-CCR chain over derivative trades only.
 
     Identical to the original :func:`ccr_rows_to_exposures` body; extracted
     so the public entry point can apply the Art. 271(2) SFT / derivative
     routing without touching the derivative chain.
+
+    The optional ``counterparties`` frame supplies the per-netting-set
+    supervisory-alpha discriminator: its ``counterparty_type`` column is joined
+    onto the netting-set frame (keyed on ``counterparty_reference``) and reduced
+    to an ``alpha_applied`` scalar per CRR Art. 274(2) second sub-paragraph
+    before :func:`compute_pfe` consumes it. Absent / null ``counterparty_type``
+    defaults to alpha = 1.4 (financial).
 
     References:
         CRR Art. 274; CRR Art. 277-279c; CRR Art. 278.
@@ -384,6 +402,13 @@ def _derivative_rows_to_exposures(
         pl.coalesce(pl.col("rc_margined"), pl.col("rc_unmargined")).alias("rc")
     )
 
+    # CRR Art. 274(2) second sub-paragraph: join the counterparty_type
+    # discriminator (keyed on counterparty_reference, NOT cross-joined — the NS
+    # frame is already at counterparty grain via NETTING_SET_SCHEMA) and reduce
+    # it to a per-NS ``alpha_applied`` scalar. compute_pfe reads this column
+    # when present (else falls back to config_ccr.alpha / 1.4).
+    ns_frame = _attach_alpha_applied(ns_frame, counterparties)
+
     ns_with_ead = compute_pfe(ns_frame, config_ccr)
 
     # 6) Shape into synthetic exposure rows. drawn_amount = ead_ccr so that
@@ -428,6 +453,65 @@ def _derivative_rows_to_exposures(
             pl.col("rc_unmargined"),
             pl.col("rc_margined"),
             pl.col("rc"),
+            # CRR Art. 274(2): the per-NS supervisory alpha actually applied
+            # (1.0 carve-out for non-financial / pension-scheme counterparties,
+            # 1.4 otherwise). Surfaced as an audit column so downstream tests /
+            # COREP exports can reconcile ead_ccr = alpha_applied * (rc + pfe).
+            pl.col("alpha_applied"),
             pl.col("ead_ccr"),
         ]
+    )
+
+
+def _attach_alpha_applied(
+    ns_frame: pl.LazyFrame,
+    counterparties: pl.LazyFrame | None,
+) -> pl.LazyFrame:
+    """Attach the per-NS supervisory-alpha column ``alpha_applied``.
+
+    CRR Art. 274(2) second sub-paragraph: the default supervisory alpha is 1.4
+    (``SA_CCR_ALPHA``); netting sets whose counterparty is a non-financial
+    counterparty (EMIR Art. 2(9)), a pension-scheme arrangement (EMIR Art. 2(10))
+    or a pension-scheme default-fund-contribution position receive the
+    ``SA_CCR_ALPHA_CARVE_OUT`` (1.0). The discriminator is the COUNTERPARTY_SCHEMA
+    ``counterparty_type`` column, joined onto ``ns_frame`` keyed on
+    ``counterparty_reference`` (one NS row in, one NS row out — no fan-out).
+
+    Backward-compatible defaults: when ``counterparties`` is None, lacks a
+    ``counterparty_type`` column (Python-bundle path that skips ``enforce_schema``),
+    or a row's ``counterparty_type`` is null, the netting set keeps alpha = 1.4.
+
+    Args:
+        ns_frame: Netting-set-grain LazyFrame carrying ``counterparty_reference``.
+        counterparties: Optional counterparty LazyFrame (COUNTERPARTY_SCHEMA).
+
+    Returns:
+        ``ns_frame`` with a new ``alpha_applied: Float64`` column.
+
+    References:
+        CRR Art. 274(2) second sub-paragraph; EMIR Art. 2(9) / 2(10);
+        BCBS CRE52.1.
+    """
+    carve_out = float(SA_CCR_ALPHA_CARVE_OUT)
+    standard = float(SA_CCR_ALPHA)
+
+    has_type = (
+        counterparties is not None
+        and "counterparty_type" in counterparties.collect_schema().names()
+    )
+    if not has_type or counterparties is None:
+        # No discriminator available — every NS keeps the standard alpha = 1.4.
+        return ns_frame.with_columns(pl.lit(standard).alias("alpha_applied"))
+
+    cp_type = counterparties.select(
+        pl.col("counterparty_reference"),
+        pl.col("counterparty_type"),
+    ).unique(subset=["counterparty_reference"])
+
+    # Keyed left join (NOT a cross-join): preserves one row per netting set.
+    return ns_frame.join(cp_type, on="counterparty_reference", how="left").with_columns(
+        pl.when(pl.col("counterparty_type").is_in(CCR_ALPHA_CARVE_OUT_COUNTERPARTY_TYPES))
+        .then(pl.lit(carve_out))
+        .otherwise(pl.lit(standard))
+        .alias("alpha_applied")
     )
