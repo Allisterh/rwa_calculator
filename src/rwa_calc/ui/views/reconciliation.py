@@ -51,6 +51,10 @@ legacy_keys   = ["exposure_reference"]
 our_keys      = ["exposure_reference"]
 top_n         = 50
 
+# A legacy file may split one exposure across several lines (a collateralised
+# portion in one risk class, the residual in another). Those lines are SUMMED to
+# the key grain, never dropped, so the totals tie out.
+
 [components.rwa]
 legacy_column = "RWA"
 # scale = 1_000_000   # if legacy RWA is in millions
@@ -58,13 +62,20 @@ legacy_column = "RWA"
 [components.ead]
 legacy_column = "EAD"
 
+# Map your asset-class column to power the asset-class allocation view (ours vs
+# legacy EAD/RWA per risk class). value_map translates your labels to ours.
+[components.exposure_class]
+legacy_column = "Asset_Class"
+value_map = { CORP = "corporate", RETAIL = "retail", RRE = "residential_mortgage" }
+
 # [components.risk_weight]
 # legacy_column = "RW_pct"
 # unit = "percent"
 
-# [components.exposure_class]
-# legacy_column = "Asset_Class"
-# value_map = { CORP = "corporate", RETAIL = "retail" }
+# To reconcile each class portion line-by-line (not just per exposure), add the
+# class to BOTH keys — a portion in a class on only one side then shows as missing:
+# legacy_keys = ["exposure_reference", "Asset_Class"]
+# our_keys    = ["exposure_reference", "exposure_class"]
 """
 
 # The pseudo-bucket "(all)" plus the engine's five row-level buckets, in the
@@ -114,6 +125,24 @@ def segment_tables(response: ReconciliationResponse) -> dict[str, pl.DataFrame]:
         "by_class": by_class,
         "by_approach": by_approach,
     }
+
+
+def class_allocation_table(response: ReconciliationResponse) -> pl.DataFrame:
+    """Tier 2 — asset-class allocation: ours vs legacy EAD/RWA per risk class."""
+    return response.collect_class_allocation()
+
+
+def class_allocation_chart_items(
+    response: ReconciliationResponse,
+) -> list[tuple[str, float, float]]:
+    """Grouped-bar items (class, legacy_rwa, our_rwa) for the allocation chart."""
+    alloc = response.collect_class_allocation()
+    if "our_rwa" not in alloc.columns:
+        return []
+    return [
+        (str(row["exposure_class"]).upper(), _f(row.get("legacy_rwa")), _f(row.get("our_rwa")))
+        for row in alloc.iter_rows(named=True)
+    ]
 
 
 def breaks_table(response: ReconciliationResponse) -> pl.DataFrame:

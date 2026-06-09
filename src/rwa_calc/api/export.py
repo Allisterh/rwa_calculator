@@ -323,8 +323,8 @@ class ResultExporter:
     ) -> ExportResult:
         """Export the reconciliation to a multi-sheet Excel workbook.
 
-        Sheets: By Component, Reconciliation, Breaks, By Class, By Approach,
-        Totals Tie-Out, Errors. Requires xlsxwriter.
+        Sheets: By Component, Totals Tie-Out, Class Allocation, Reconciliation,
+        Breaks, By Class, By Approach, Errors. Requires xlsxwriter.
 
         Raises:
             ModuleNotFoundError: If xlsxwriter is not installed.
@@ -342,6 +342,7 @@ class ResultExporter:
         sheet_titles = {
             "summary_by_component": "By Component",
             "totals_tie_out": "Totals Tie-Out",
+            "class_allocation": "Class Allocation",
             "summary_by_bucket": "By Bucket",
             "summary_by_exposure_class": "By Class",
             "summary_by_approach": "By Approach",
@@ -381,6 +382,7 @@ def _reconciliation_frames(
     ordered = [
         ("summary_by_component", bundle.summary_by_component),
         ("totals_tie_out", bundle.totals_tie_out),
+        ("class_allocation", bundle.class_allocation),
         ("summary_by_bucket", bundle.summary_by_bucket),
         ("summary_by_exposure_class", bundle.summary_by_exposure_class),
         ("summary_by_approach", bundle.summary_by_approach),

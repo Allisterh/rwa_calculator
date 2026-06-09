@@ -461,6 +461,10 @@ def _reconciliation_result(recon_id: str, response: ReconciliationResponse, buck
         "component_table": _table(reconciliation_view.summary_by_component_table(response)),
         # Tier 2 — segment
         "bucket_table": _table(segments["by_bucket"]),
+        "allocation_table": _table(reconciliation_view.class_allocation_table(response)),
+        "chart_allocation": charts.grouped_bar_svg(
+            reconciliation_view.class_allocation_chart_items(response), series=("Legacy", "Ours")
+        ),
         "class_table": _table(segments["by_class"]),
         "approach_table": _table(segments["by_approach"]),
         # Tier 3 — worklist

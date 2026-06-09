@@ -418,6 +418,15 @@ class ReconciliationResponse:
         df: pl.DataFrame = self.bundle.summary_by_component.collect()
         return df
 
+    def scan_class_allocation(self) -> pl.LazyFrame:
+        """Lazy by-risk-class allocation tie-out (ours vs legacy EAD/RWA)."""
+        return self.bundle.class_allocation
+
+    def collect_class_allocation(self) -> pl.DataFrame:
+        """Collect the by-risk-class allocation tie-out (ours vs legacy EAD/RWA)."""
+        df: pl.DataFrame = self.bundle.class_allocation.collect()
+        return df
+
     def collect_summary_by_bucket(self) -> pl.DataFrame:
         """Collect the row-level bucket counts."""
         df: pl.DataFrame = self.bundle.summary_by_bucket.collect()
