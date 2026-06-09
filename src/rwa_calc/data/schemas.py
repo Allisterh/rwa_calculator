@@ -937,6 +937,16 @@ TRADE_SCHEMA: dict[str, ColumnSpec] = {
     # null for non-credit rows (IR / FX / equity / commodity). Keyed by
     # COLUMN_VALUE_CONSTRAINTS["trades"]["credit_quality"] for input validation.
     "credit_quality": ColumnSpec(pl.String, required=False),
+    # PRA PS1/26 Art. 274(2A): firm-supplied legacy CVA-exemption flag. True
+    # when the trade was entered into prior to 1 Jan 2027 AND the counterparty
+    # is one of those listed in the CVA Risk Part 7.1(1)(a)/(b) (the
+    # non-financial / pension-scheme / intragroup CVA-exempt cohort). When True
+    # the netting set qualifies for the transitional alpha add-on (phased
+    # 60%/40%/20% of the (α=1.4 − α=1.0) × (RC+PFE) uplift across 2027-2029).
+    # Conservative default False — pre-2027 fixtures and the Python-bundle path
+    # see no transitional add-on. See SA_CCR_TRANSITIONAL_ADDON_PHASE in
+    # data/tables/sa_ccr_factors.py.
+    "is_legacy_cva_exempt": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 #: Netting-set-level input for SA-CCR. One row per netting set keyed by

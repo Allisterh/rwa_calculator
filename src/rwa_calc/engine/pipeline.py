@@ -592,6 +592,10 @@ class PipelineOrchestrator:
                     # ``counterparty_type`` discriminator that selects the
                     # per-NS supervisory alpha (1.0 carve-out vs 1.4 default).
                     counterparties=data.counterparties,
+                    # PRA PS1/26 Art. 274(2A): the transitional alpha add-on is
+                    # Basel 3.1 only — gate it on the framework so it never
+                    # fires under CRR.
+                    is_basel_3_1=config.is_basel_3_1,
                 )
                 # Inherit the resolved counterparty rating columns onto each
                 # CCR synthetic row so the downstream SA Institution lookup

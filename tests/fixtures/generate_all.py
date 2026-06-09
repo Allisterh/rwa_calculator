@@ -529,6 +529,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p828_alpha,
         ),
         (
+            "P8.29 (CCR-ALPHA-ADDON-1..4 transitional alpha add-on — PS1/26 Art. 274(2A) phasing)",
+            "ccr",
+            _generate_p829_addon,
+        ),
+        (
             "P8.23 (CCR-LS-1/LS-1-CTRL long-settlement no-op regression pin — EAD invariant)",
             "ccr",
             _generate_p823_ls,
@@ -2836,6 +2841,35 @@ def _generate_p828_alpha(output_dir: Path) -> list[tuple[str, int]]:
         sys.path.remove(fixtures_root)
         for mod in (
             "ccr.p828_alpha_builder",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p829_addon(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.29 transitional alpha add-on bundles (Python-only — no persistent parquet output).
+
+    P8.29 / CCR-ALPHA-ADDON-1..4 provide orchestrator-ready RawDataBundles proving
+    that the transitional alpha add-on (PRA PS1/26 Art. 274(2A)) fires correctly for
+    legacy CVA-exempt non-financial counterparties under Basel 3.1, phases over
+    2027/28/29, and is suppressed for non-legacy, financial, or CRR-framework scenarios.
+    The supplementary 2-NS book regression-guards the per-trade→per-NS
+    any(is_legacy_cva_exempt) collapse against cross-join fan-out.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p829_addon_builder import save_p829_fixtures
+
+        return save_p829_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.p829_addon_builder",
             CCR_GOLDEN_A1_MODULE,
             CCR_TRADE_BUILDER_MODULE,
             CCR_NETTING_SET_BUILDER_MODULE,

@@ -45,7 +45,11 @@ from rwa_calc.contracts.bundles import (
 from rwa_calc.contracts.config import CCRConfig
 from rwa_calc.data.column_spec import ensure_columns
 from rwa_calc.data.schemas import CCR_ALPHA_CARVE_OUT_COUNTERPARTY_TYPES, NETTING_SET_SCHEMA
-from rwa_calc.data.tables.sa_ccr_factors import SA_CCR_ALPHA, SA_CCR_ALPHA_CARVE_OUT
+from rwa_calc.data.tables.sa_ccr_factors import (
+    SA_CCR_ALPHA,
+    SA_CCR_ALPHA_CARVE_OUT,
+    SA_CCR_TRANSITIONAL_ADDON_PHASE,
+)
 from rwa_calc.engine.ccr.adjusted_notional import (
     compute_adjusted_notional_commodity,
     compute_adjusted_notional_credit,
@@ -76,6 +80,7 @@ def ccr_rows_to_exposures(
     base_currency: str = "GBP",
     fx_rates: pl.LazyFrame | None = None,
     counterparties: pl.LazyFrame | None = None,
+    is_basel_3_1: bool = False,
 ) -> pl.LazyFrame:
     """Shape SA-CCR netting-set EADs into synthetic exposure rows.
 
@@ -137,6 +142,10 @@ def ccr_rows_to_exposures(
             pension-scheme counterparties, 1.4 otherwise. When None — or when the
             ``counterparty_type`` column is absent — every netting set keeps the
             default alpha = 1.4, preserving pre-P8.28 behaviour.
+        is_basel_3_1: Framework flag gating the PRA PS1/26 Art. 274(2A)
+            transitional alpha add-on. The add-on is Basel 3.1 only — under CRR
+            (the default ``False``) it never fires regardless of the reporting
+            date or the ``is_legacy_cva_exempt`` trade flag.
 
     Returns:
         LazyFrame at netting-set grain with one synthetic exposure row per
@@ -144,7 +153,8 @@ def ccr_rows_to_exposures(
         bundle is empty.
 
     References:
-        CRR Art. 271; CRR Art. 274; CRR Art. 277-279c; CRR Art. 278.
+        CRR Art. 271; CRR Art. 274; CRR Art. 277-279c; CRR Art. 278;
+        PRA PS1/26 Art. 274(2A).
     """
     # SFT vs derivative split (CRR Art. 271(2)). Trades flagged as ``"sft"``
     # exit the SA-CCR Art. 274 chain and are routed through the FCCM SFT
@@ -160,6 +170,7 @@ def ccr_rows_to_exposures(
         base_currency=base_currency,
         fx_rates=fx_rates,
         counterparties=counterparties,
+        is_basel_3_1=is_basel_3_1,
     )
     if config_ccr.sft_method == "fccm":
         sft_rows = sft_rows_to_exposures(sft_bundle, reporting_date)
@@ -239,6 +250,7 @@ def _derivative_rows_to_exposures(
     base_currency: str,
     fx_rates: pl.LazyFrame | None,
     counterparties: pl.LazyFrame | None = None,
+    is_basel_3_1: bool = False,
 ) -> pl.LazyFrame:
     """Drive the SA-CCR chain over derivative trades only.
 
@@ -253,8 +265,14 @@ def _derivative_rows_to_exposures(
     before :func:`compute_pfe` consumes it. Absent / null ``counterparty_type``
     defaults to alpha = 1.4 (financial).
 
+    When ``is_basel_3_1`` is True the trade-level ``is_legacy_cva_exempt`` flag
+    (TRADE_SCHEMA) is collapsed to netting-set grain via ``any()`` and — for
+    netting sets that also carry the α=1.0 carve-out and a non-zero phase
+    fraction for ``reporting_date.year`` — a PRA PS1/26 Art. 274(2A)
+    transitional add-on is computed and folded into ``ead_ccr``.
+
     References:
-        CRR Art. 274; CRR Art. 277-279c; CRR Art. 278.
+        CRR Art. 274; CRR Art. 277-279c; CRR Art. 278; PRA PS1/26 Art. 274(2A).
     """
     trades_lf = raw_ccr.trades.trades
     netting_sets_lf = raw_ccr.netting_sets.netting_sets
@@ -338,12 +356,23 @@ def _derivative_rows_to_exposures(
         if "is_client_cleared" in trade_cols
         else pl.lit(False).alias("_ns_is_client_cleared")
     )
+    # PRA PS1/26 Art. 274(2A): collapse the trade-level legacy CVA-exemption
+    # flag to netting-set grain via ``any()`` (a netting set qualifies if ANY
+    # of its trades is legacy CVA-exempt), exactly as ``is_client_cleared`` is
+    # collapsed above. Absent column (Python-bundle path / older fixtures) ->
+    # all-False aggregate so the add-on never fires.
+    legacy_cva_exempt_agg = (
+        pl.col("is_legacy_cva_exempt").fill_null(False).any().alias("_ns_is_legacy_cva_exempt")
+        if "is_legacy_cva_exempt" in trade_cols
+        else pl.lit(False).alias("_ns_is_legacy_cva_exempt")
+    )
     ns_trade_aggregates = trades_lf.group_by("netting_set_id").agg(
         [
             pl.col("mtm_value").fill_null(0.0).sum().alias("v_net"),
             pl.col("currency").first().alias("_trade_currency"),
             pl.col("maturity_date").max().alias("_trade_max_maturity"),
             client_cleared_agg,
+            legacy_cva_exempt_agg,
         ]
     )
 
@@ -411,6 +440,13 @@ def _derivative_rows_to_exposures(
 
     ns_with_ead = compute_pfe(ns_frame, config_ccr)
 
+    # PRA PS1/26 Art. 274(2A): transitional alpha add-on. For legacy
+    # CVA-exempt netting sets on the α=1.0 carve-out, phase a fraction of the
+    # full alpha add-on (= (α=1.4 − α=1.0) × (RC + PFE) = 0.4 × (RC + PFE))
+    # into ``ead_ccr`` across 2027-2029, zero from 2030. Basel 3.1 only — never
+    # under CRR (the framework gate resolves the phase factor to 0).
+    ns_with_ead = _attach_transitional_add_on(ns_with_ead, reporting_date, is_basel_3_1)
+
     # 6) Shape into synthetic exposure rows. drawn_amount = ead_ccr so that
     #    the CRM `_initialize_ead` produces ead_pre_crm = ead_ccr (no CCF /
     #    no collateral / no guarantee match) and the SA calculator then
@@ -458,6 +494,12 @@ def _derivative_rows_to_exposures(
             # 1.4 otherwise). Surfaced as an audit column so downstream tests /
             # COREP exports can reconcile ead_ccr = alpha_applied * (rc + pfe).
             pl.col("alpha_applied"),
+            # PRA PS1/26 Art. 274(2A): the phased transitional alpha add-on
+            # folded into ead_ccr (0.0 unless the NS is legacy CVA-exempt, on
+            # the α=1.0 carve-out, under Basel 3.1, at a 2027-2029 reporting
+            # date). Surfaced so downstream tests / COREP exports can reconcile
+            # the uplift back out of ead_ccr.
+            pl.col("transitional_add_on"),
             pl.col("ead_ccr"),
         ]
     )
@@ -514,4 +556,77 @@ def _attach_alpha_applied(
         .then(pl.lit(carve_out))
         .otherwise(pl.lit(standard))
         .alias("alpha_applied")
+    )
+
+
+def _attach_transitional_add_on(
+    ns_with_ead: pl.LazyFrame,
+    reporting_date: date,
+    is_basel_3_1: bool,
+) -> pl.LazyFrame:
+    """Attach the PRA PS1/26 Art. 274(2A) transitional alpha add-on.
+
+    Computes a ``transitional_add_on`` column and folds it into ``ead_ccr``.
+    The add-on is the phased fraction of the full alpha add-on, where the full
+    add-on equals the difference between EAD at α=1.4 and EAD at α=1.0::
+
+        add_on = phase × (SA_CCR_ALPHA − SA_CCR_ALPHA_CARVE_OUT) × (rc + pfe_addon)
+               = phase × 0.4 × (rc + pfe_addon)
+
+    Folding ``add_on`` into the base ``ead_ccr`` (which for an in-scope NFC is
+    ``1.0 × (rc + pfe_addon)``) yields ``(rc + pfe_addon) × (1 + 0.4 × phase)``.
+
+    Gate (all must hold, else ``transitional_add_on = 0.0``):
+        1. ``is_basel_3_1`` — Basel 3.1 only (CRR has no Art. 274(2A)).
+        2. ``phase_factor > 0`` — reporting year in {2027, 2028, 2029}.
+        3. ``_ns_is_legacy_cva_exempt == True`` — legacy CVA-exempt netting set.
+        4. ``alpha_applied == SA_CCR_ALPHA_CARVE_OUT`` (1.0) — coherence: an
+           α=1.4 financial counterparty receives nothing.
+
+    Conditions (1) and (2) are scalar / Python-resolved at build time, so under
+    CRR or at a 2030+ reporting date the phase factor is 0 and the add-on is a
+    constant 0.0 for every netting set — preserving pre-P8.29 ``ead_ccr``.
+
+    Art. 274(2B) (leverage-ratio exclusion) is moot: this engine exposes no
+    leverage-ratio EAD path, so there is no bifurcation to build.
+
+    Args:
+        ns_with_ead: Netting-set-grain LazyFrame carrying ``rc``, ``pfe_addon``,
+            ``alpha_applied``, ``ead_ccr`` and ``_ns_is_legacy_cva_exempt``.
+        reporting_date: As-of date; ``reporting_date.year`` selects the phase.
+        is_basel_3_1: Framework flag; the add-on is Basel 3.1 only.
+
+    Returns:
+        ``ns_with_ead`` with a new ``transitional_add_on: Float64`` column and
+        an ``ead_ccr`` updated to include the (possibly zero) add-on.
+
+    References:
+        PRA PS1/26 Art. 274(2A)-(2B); CRR Art. 274(2).
+    """
+    # Phase factor is resolved at build time: 0 under CRR or for years not in
+    # the Art. 274(2A) schedule (e.g. 2030+).
+    phase_factor = (
+        float(SA_CCR_TRANSITIONAL_ADDON_PHASE.get(reporting_date.year, 0))
+        if is_basel_3_1
+        else 0.0
+    )
+    alpha_uplift = float(SA_CCR_ALPHA) - float(SA_CCR_ALPHA_CARVE_OUT)
+    carve_out = float(SA_CCR_ALPHA_CARVE_OUT)
+
+    if phase_factor <= 0.0:
+        # Framework / year gate closed — add-on is a constant 0.0 and ead_ccr
+        # is unchanged. No row qualifies, so no fold is applied.
+        return ns_with_ead.with_columns(pl.lit(0.0).alias("transitional_add_on"))
+
+    in_scope = pl.col("_ns_is_legacy_cva_exempt").fill_null(False) & (
+        pl.col("alpha_applied") == carve_out
+    )
+    add_on_expr = (
+        pl.when(in_scope)
+        .then(phase_factor * alpha_uplift * (pl.col("rc") + pl.col("pfe_addon")))
+        .otherwise(0.0)
+        .alias("transitional_add_on")
+    )
+    return ns_with_ead.with_columns(add_on_expr).with_columns(
+        (pl.col("ead_ccr") + pl.col("transitional_add_on")).alias("ead_ccr")
     )
