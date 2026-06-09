@@ -87,6 +87,9 @@ h3 { font-size: 16px; margin: 0 0 8px; }
 .field-row { display: flex; gap: 16px; flex-wrap: wrap; }
 .field-row .field { flex: 1; min-width: 180px; }
 
+/* Primary action + optional "reset to defaults" link, side by side. */
+.form-actions { display: flex; align-items: center; gap: 12px; }
+
 /* Forensic-tier bucket filter — links styled as ghost buttons. */
 .bucket-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .bucket-filter .btn { padding: 7px 14px; font-size: 13px; }

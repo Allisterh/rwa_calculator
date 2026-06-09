@@ -27,8 +27,19 @@ from fastapi.testclient import TestClient
 
 from rwa_calc.api.service import CreditRiskCalc
 from rwa_calc.ui.app.main import create_app
+from rwa_calc.ui.app.recon_state import STATE_DIR_ENV_VAR
 from rwa_calc.ui.views.reconciliation import DEFAULT_MAPPING_TOML
 from tests.fixtures.api_validation.build_mandatory_only import write_mandatory_minimum
+
+
+@pytest.fixture(autouse=True)
+def _isolated_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redirect the last-run state file into tmp so the real ~/.rwa_calc is untouched.
+
+    Without this, the form-prefill feature could read a developer's real saved run
+    and flake the default-mapping assertion below.
+    """
+    monkeypatch.setenv(STATE_DIR_ENV_VAR, str(tmp_path / "state"))
 
 
 @pytest.fixture
@@ -119,3 +130,69 @@ def test_reconciliation_bad_mapping_rerenders_with_error(
 
 def test_reconciliation_unknown_id_is_404(client: TestClient) -> None:
     assert client.get("/reconciliation/does-not-exist").status_code == 404
+
+
+def test_reconciliation_prefills_from_last_run(client: TestClient, recon_dir: str) -> None:
+    # Arrange — a non-default combo so the prefilled values are unambiguous.
+    marked_toml = DEFAULT_MAPPING_TOML + "\n# MY-CUSTOM-MARKER\n"
+    submitted = {
+        "data_path": recon_dir,
+        "reporting_date": "2026-06-30",
+        "framework": "BASEL_3_1",
+        "permission_mode": "irb",
+        "data_format": "parquet",
+        "mapping_toml": marked_toml,
+    }
+
+    # Act — run it (saves on success), then re-open the blank form.
+    posted = client.post("/reconciliation", data=submitted)
+    assert posted.status_code == 200
+    form = client.get("/reconciliation")
+
+    # Assert — every field comes back from the saved run.
+    assert form.status_code == 200
+    assert recon_dir in form.text
+    assert "2026-06-30" in form.text
+    assert "# MY-CUSTOM-MARKER" in form.text
+    assert 'value="BASEL_3_1" selected' in form.text
+    assert 'value="irb" selected' in form.text
+
+
+def _non_default_form(data_path: str) -> dict:
+    return {
+        "data_path": data_path,
+        "reporting_date": "2026-06-30",
+        "framework": "BASEL_3_1",
+        "permission_mode": "irb",
+        "data_format": "parquet",
+        "mapping_toml": DEFAULT_MAPPING_TOML + "\n# MY-CUSTOM-MARKER\n",
+    }
+
+
+def test_reset_button_hidden_until_a_run_is_saved(client: TestClient, recon_dir: str) -> None:
+    # Arrange — a fresh form has nothing to reset.
+    fresh = client.get("/reconciliation")
+    assert "/reconciliation/reset" not in fresh.text
+
+    # Act — a completed run saves state.
+    client.post("/reconciliation", data=_non_default_form(recon_dir))
+
+    # Assert — the reset control now appears.
+    assert "/reconciliation/reset" in client.get("/reconciliation").text
+
+
+def test_reset_restores_defaults_and_clears_saved_run(client: TestClient, recon_dir: str) -> None:
+    # Arrange — save a non-default run, confirm it is pre-filled.
+    client.post("/reconciliation", data=_non_default_form(recon_dir))
+    assert "# MY-CUSTOM-MARKER" in client.get("/reconciliation").text
+
+    # Act — reset (303 -> /reconciliation).
+    reset = client.get("/reconciliation/reset", follow_redirects=False)
+    assert reset.status_code == 303
+    assert reset.headers["location"] == "/reconciliation"
+
+    # Assert — the form is back to defaults and the saved run is gone.
+    form = client.get("/reconciliation")
+    assert "# MY-CUSTOM-MARKER" not in form.text
+    assert "./legacy_output.csv" in form.text  # the default mapping TOML
+    assert "/reconciliation/reset" not in form.text  # nothing left to reset
