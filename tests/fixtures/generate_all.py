@@ -528,6 +528,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_p828_alpha,
         ),
+        (
+            "P8.23 (CCR-LS-1/LS-1-CTRL long-settlement no-op regression pin — EAD invariant)",
+            "ccr",
+            _generate_p823_ls,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -2831,6 +2836,38 @@ def _generate_p828_alpha(output_dir: Path) -> list[tuple[str, int]]:
         sys.path.remove(fixtures_root)
         for mod in (
             "ccr.p828_alpha_builder",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p823_ls(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.23 long-settlement no-op regression-pin bundles (Python-only).
+
+    P8.23 / CCR-LS-1 and CCR-LS-1-CTRL provide two orchestrator-ready
+    RawDataBundles that are economically identical except for the
+    ``is_long_settlement`` flag.  The smoke-check verifies structural
+    invariants and the parity property (all trade fields identical except
+    trade_id, netting_set_id, is_long_settlement) so that the acceptance
+    test can rely on EAD(LS=True) == EAD(LS=False) by construction.
+
+    Regulatory basis: CRR Art. 271 / 272(2) / 279c(1) / 285 — the flag
+    is inert under SA-CCR (no bespoke MPOR floor for long-settlement).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p823_ls_builder import save_p823_fixtures
+
+        return save_p823_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.p823_ls_builder",
             CCR_GOLDEN_A1_MODULE,
             CCR_TRADE_BUILDER_MODULE,
             CCR_NETTING_SET_BUILDER_MODULE,
