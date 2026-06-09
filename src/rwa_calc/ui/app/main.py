@@ -37,6 +37,12 @@ from rwa_calc.api.rest import get_reconciliation, get_run, register_reconciliati
 from rwa_calc.api.rest import router as api_router
 from rwa_calc.api.service import CreditRiskCalc, get_supported_frameworks
 from rwa_calc.api.validation import validate_data_path
+from rwa_calc.ui.app.recon_state import (
+    ReconciliationFormState,
+    clear_last_run,
+    load_last_run,
+    save_last_run,
+)
 from rwa_calc.ui.views import charts
 from rwa_calc.ui.views import comparison as comparison_view
 from rwa_calc.ui.views import reconciliation as reconciliation_view
@@ -264,14 +270,35 @@ def _register_pages(app: FastAPI) -> None:
         except Exception as exc:  # noqa: BLE001 - surface any parse/run failure to the page
             logger.warning("reconciliation failed: %s", exc)
             context = _reconciliation_form_context(
-                default_path=data_path, default_date=reporting_date, mapping_toml=mapping_toml
+                default_path=data_path,
+                default_date=reporting_date,
+                mapping_toml=mapping_toml,
+                selected_framework=framework,
+                selected_permission=permission_mode,
+                selected_format=data_format,
             )
             context["error"] = str(exc)
             return templates.TemplateResponse(
                 request=request, name="reconciliation.html", context=_nav(context), status_code=400
             )
         recon_id = register_reconciliation(response)
+        save_last_run(
+            ReconciliationFormState(
+                data_path=data_path,
+                reporting_date=reporting_date,
+                framework=framework,
+                permission_mode=permission_mode,
+                data_format=data_format,
+                mapping_toml=mapping_toml,
+            )
+        )
         return RedirectResponse(url=f"/reconciliation/{recon_id}", status_code=303)
+
+    @app.get("/reconciliation/reset")
+    def reconciliation_reset() -> Response:
+        # Registered before "/reconciliation/{recon_id}" so the literal path wins.
+        clear_last_run()
+        return RedirectResponse(url="/reconciliation", status_code=303)
 
     @app.get("/reconciliation/{recon_id}", response_class=HTMLResponse)
     def reconciliation_result(
@@ -364,17 +391,44 @@ def _compute_comparison(
 def _reconciliation_form_context(
     *,
     default_path: str | None = None,
-    default_date: str = "2025-01-01",
+    default_date: str | None = None,
     mapping_toml: str | None = None,
+    selected_framework: str | None = None,
+    selected_permission: str | None = None,
+    selected_format: str | None = None,
 ) -> dict:
-    """Base template context for the reconciliation page (form fields + no result)."""
+    """Base template context for the reconciliation page (form fields + no result).
+
+    Each field resolves with the precedence: explicit override (a failure
+    re-render) > the last completed run > the built-in default. The three
+    ``selected_*`` keys drive the ``<select>`` pre-selection in the template.
+    """
+    saved = load_last_run()
+
+    def _pick(override: str | None, saved_value: str | None, fallback: str) -> str:
+        if override is not None:
+            return override
+        if saved_value is not None:
+            return saved_value
+        return fallback
+
     return {
         "frameworks": get_supported_frameworks(),
-        "default_path": default_path if default_path is not None else _default_data_path(),
-        "default_date": default_date,
-        "mapping_toml": mapping_toml
-        if mapping_toml is not None
-        else reconciliation_view.DEFAULT_MAPPING_TOML,
+        "default_path": _pick(
+            default_path, saved.data_path if saved else None, _default_data_path()
+        ),
+        "default_date": _pick(default_date, saved.reporting_date if saved else None, "2025-01-01"),
+        "mapping_toml": _pick(
+            mapping_toml,
+            saved.mapping_toml if saved else None,
+            reconciliation_view.DEFAULT_MAPPING_TOML,
+        ),
+        "selected_framework": _pick(selected_framework, saved.framework if saved else None, "CRR"),
+        "selected_permission": _pick(
+            selected_permission, saved.permission_mode if saved else None, "standardised"
+        ),
+        "selected_format": _pick(selected_format, saved.data_format if saved else None, "parquet"),
+        "has_saved_run": saved is not None,
         "error": None,
         "result": None,
     }

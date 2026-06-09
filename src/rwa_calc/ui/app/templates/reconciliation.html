@@ -38,21 +38,21 @@ engine fix.</p>
     <div class="field">
       <label for="framework">Framework</label>
       <select id="framework" name="framework">
-        {% for fw in frameworks %}<option value="{{ fw.id }}">{{ fw.name }}</option>{% endfor %}
+        {% for fw in frameworks %}<option value="{{ fw.id }}"{% if fw.id == selected_framework %} selected{% endif %}>{{ fw.name }}</option>{% endfor %}
       </select>
     </div>
     <div class="field">
       <label for="permission_mode">Permission mode</label>
       <select id="permission_mode" name="permission_mode">
-        <option value="standardised">Standardised (all SA)</option>
-        <option value="irb">IRB (model permissions)</option>
+        <option value="standardised"{% if selected_permission == "standardised" %} selected{% endif %}>Standardised (all SA)</option>
+        <option value="irb"{% if selected_permission == "irb" %} selected{% endif %}>IRB (model permissions)</option>
       </select>
     </div>
     <div class="field">
       <label for="data_format">Data format</label>
       <select id="data_format" name="data_format">
-        <option value="parquet">parquet</option>
-        <option value="csv">csv</option>
+        <option value="parquet"{% if selected_format == "parquet" %} selected{% endif %}>parquet</option>
+        <option value="csv"{% if selected_format == "csv" %} selected{% endif %}>csv</option>
       </select>
     </div>
     <div class="field">
@@ -68,7 +68,10 @@ engine fix.</p>
     components accept <code>scale</code> and <code>unit = "percent"</code>, categoricals a
     <code>value_map</code> of synonyms.</p>
   </div>
-  <button class="btn btn-primary" type="submit">Run reconciliation</button>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Run reconciliation</button>
+    {% if has_saved_run %}<a class="btn btn-ghost" href="/reconciliation/reset">Reset to defaults</a>{% endif %}
+  </div>
 </form>
 
 {% if result %}
