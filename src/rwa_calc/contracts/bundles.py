@@ -828,6 +828,8 @@ class ReconciliationBundle:
 
     The frames are layered high-level → forensic:
     - ``totals_tie_out`` / ``summary_by_component``: headline agreement.
+    - ``class_allocation``: portfolio EAD/RWA by risk class, ours vs legacy — the
+      asset-class allocation comfort view (independent of the per-key join).
     - ``summary_by_bucket`` / ``summary_by_exposure_class`` / ``summary_by_approach``:
       where breaks concentrate.
     - ``breaks_detail``: long-format worklist of every break, ranked by materiality.
@@ -839,6 +841,9 @@ class ReconciliationBundle:
             for each mapped component, plus our explain/input columns and row_bucket.
         summary_by_component: Per component — counts per bucket, summed absolute
             delta, and break rate (the headline "which components agree").
+        class_allocation: Per risk class — sum(ours) vs sum(legacy) EAD/RWA and
+            deltas, so a class our engine allocates differently to the legacy one
+            shows as offsetting deltas. Empty when class/EAD/RWA are unmapped.
         summary_by_bucket: Row-level bucket counts.
         summary_by_exposure_class: Break counts/sums grouped by our exposure class.
         summary_by_approach: Break counts/sums grouped by our approach.
@@ -850,6 +855,7 @@ class ReconciliationBundle:
 
     component_reconciliation: pl.LazyFrame
     summary_by_component: pl.LazyFrame
+    class_allocation: pl.LazyFrame
     summary_by_bucket: pl.LazyFrame
     summary_by_exposure_class: pl.LazyFrame
     summary_by_approach: pl.LazyFrame
@@ -965,6 +971,7 @@ def create_empty_reconciliation_bundle() -> ReconciliationBundle:
     return ReconciliationBundle(
         component_reconciliation=pl.LazyFrame(),
         summary_by_component=pl.LazyFrame(),
+        class_allocation=pl.LazyFrame(),
         summary_by_bucket=pl.LazyFrame(),
         summary_by_exposure_class=pl.LazyFrame(),
         summary_by_approach=pl.LazyFrame(),

@@ -53,7 +53,10 @@ flowchart LR
 You supply our results (produced by the calculator) and your legacy output file, plus a
 small TOML mapping that says which legacy column is which component and how the two are
 keyed. The engine collapses our guarantee / real-estate sub-rows back to your reporting
-grain, joins the two sides, and buckets every mapped component.
+grain — **and aggregates the legacy side the same way**, so a legacy exposure split across
+several lines (a collateralised portion in one risk class, the residual in another) sums to
+the key grain instead of having all-but-the-first line dropped — joins the two sides, and
+buckets every mapped component.
 
 ## What it compares
 
@@ -108,7 +111,10 @@ The result is layered from a one-number verdict down to a single exposure's driv
 
 === "2 · Segment"
 
-    **Where do breaks concentrate?** `summary_by_bucket`, `summary_by_exposure_class`, and
+    **Where do breaks concentrate, and is the allocation right?** `class_allocation` totals
+    EAD/RWA **by risk class** on each side (a split exposure's portions each counted in their
+    own class) and shows the delta — so a class our engine allocates differently to the legacy
+    one stands out as offsetting deltas. `summary_by_bucket`, `summary_by_exposure_class`, and
     `summary_by_approach` show whether breaks cluster in a particular bucket, class, or
     approach.
 
@@ -163,8 +169,23 @@ value_map     = { CORP = "corporate", RETAIL = "retail" }
 !!! tip "The join key can be composite"
     `legacy_keys` and `our_keys` are positionally aligned, so you can reconcile at whatever
     grain both systems share — a single `exposure_reference`, or a composite such as
-    `counterparty + facility`. When you key coarser than one row per exposure, our results
-    are aggregated up to that grain first.
+    `counterparty + facility`. When you key coarser than one row per exposure, **both** sides
+    are aggregated up to that grain first (additive components summed, ratios recomputed).
+
+!!! tip "Reconcile the class allocation line-by-line"
+    To verify a split exposure portion-by-portion rather than just per exposure, add the class
+    column to **both** keys:
+
+    ```toml
+    legacy_keys = ["exposure_reference", "Asset_Class"]
+    our_keys    = ["exposure_reference", "exposure_class"]
+    ```
+
+    The class key is normalised and `value_map`-translated on the way into the join (so legacy
+    `RRE` matches our `residential_mortgage`). A portion that lands in a class on only one side
+    then shows as `missing_left` / `missing_right` — the precise "this exposure moved to a
+    different risk class" signal. (Declare `[components.exposure_class]` with the `value_map`
+    so the key can be translated.)
 
 ### 2. Run it from Python
 
@@ -232,6 +253,7 @@ The same flow is available over HTTP for programmatic callers via `POST /api/rec
 | `errors` | `list[APIError]` | Non-fatal reconciliation warnings (see below). |
 | `collect_totals_tie_out()` | `pl.DataFrame` | Per additive component: `legacy_total`, `our_total`, `delta`, `delta_pct`. |
 | `collect_summary_by_component()` | `pl.DataFrame` | Per component: bucket counts, `sum_abs_delta`, `break_rate`. |
+| `collect_class_allocation()` | `pl.DataFrame` | Per risk class: `our_ead`/`legacy_ead`/`delta_ead`, `our_rwa`/`legacy_rwa`/`delta_rwa`/`delta_rwa_pct`. |
 | `collect_summary_by_bucket()` | `pl.DataFrame` | Row-level `row_bucket` counts. |
 | `collect_breaks_detail()` | `pl.DataFrame` | Long-format break worklist, ranked by `abs_delta`. |
 | `collect_component_reconciliation()` | `pl.DataFrame` | Per-key forensic frame (legacy vs ours + explain/input). |
@@ -247,6 +269,7 @@ The underlying engine bundle (available as `response.bundle`). All frames are
 |-------|-------------|
 | `component_reconciliation` | Per-key: `legacy_<c>` / `our_<c>` / `<c>_bucket` per component, explain + input columns, `row_bucket`, `worst_component`. |
 | `summary_by_component` | Headline per-component bucket counts and break rate. |
+| `class_allocation` | Per risk class: sum(ours) vs sum(legacy) EAD/RWA and deltas — the asset-class allocation tie-out. Empty when class/EAD/RWA are unmapped. |
 | `summary_by_bucket` | Row-level bucket counts. |
 | `summary_by_exposure_class` | Break counts / sums by our exposure class. |
 | `summary_by_approach` | Break counts / sums by our approach. |
@@ -267,9 +290,9 @@ Reconciliation never aborts on a data problem — issues are recorded as non-fat
 | Code | Meaning |
 |------|---------|
 | `REC001` | A mapped column was missing (legacy or ours); that component is skipped. |
-| `REC002` | Duplicate legacy key(s); the first row of each is kept on join. |
+| `REC002` | Legacy key(s) had multiple rows; the lines are **aggregated** to the key grain (additive components summed, ratios recomputed) — symmetric with our side, never dropped. |
 | `REC003` | A declared join key column was not found; reconciliation cannot proceed. |
-| `REC004` | A coarse key aggregated rows of differing class/approach (categoricals shown are the first in the group). |
+| `REC004` | A key aggregated rows of differing class/approach — on **our** side (a coarse key) or the **legacy** side (an exposure split across classes). The categorical shown is the first in the group; reconcile at the `(exposure × class)` grain to separate them. |
 
 ## Related
 

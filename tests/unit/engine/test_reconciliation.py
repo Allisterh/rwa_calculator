@@ -14,6 +14,7 @@ import pytest
 from rwa_calc.contracts.config import ComponentMapping, LegacyColumnMapping
 from rwa_calc.contracts.errors import (
     ERROR_RECON_DUPLICATE_LEGACY_KEY,
+    ERROR_RECON_GRAIN_HETEROGENEOUS,
     ERROR_RECON_KEY_COLUMN_MISSING,
     ERROR_RECON_LEGACY_COLUMN_MISSING,
 )
@@ -198,6 +199,78 @@ class TestSummaries:
         assert corp["n_break"] == 1
 
 
+class TestClassAllocation:
+    def _legacy_with_class(self) -> pl.LazyFrame:
+        # Legacy reports a class + EAD/RWA per line; CORP/RETAIL synonyms. Columns
+        # already carry the loader's canonical ``legacy_<component>`` names.
+        return pl.LazyFrame(
+            {
+                "loan_id": ["L1", "L2", "L3"],
+                "legacy_ead": [100.0, 200.0, 480.0],
+                "legacy_rwa": [50.0, 150.0, 240.0],
+                "legacy_exposure_class": ["CORP", "RETAIL", "CORP"],
+            }
+        )
+
+    def _alloc_mapping(self) -> LegacyColumnMapping:
+        return LegacyColumnMapping(
+            legacy_keys=("loan_id",),
+            our_keys=("exposure_reference",),
+            components={
+                "ead": ComponentMapping("legacy_ead"),
+                "rwa": ComponentMapping("legacy_rwa"),
+                "exposure_class": ComponentMapping(
+                    "legacy_exposure_class", value_map={"CORP": "corporate", "RETAIL": "retail"}
+                ),
+            },
+        )
+
+    def test_class_allocation_sums_per_class_with_value_map(self) -> None:
+        # Act
+        alloc = _recon(_ours(), self._legacy_with_class(), self._alloc_mapping()).class_allocation
+        df = alloc.collect()
+
+        # Assert: corporate = L1 + L3 on each side; value_map applied to legacy.
+        corp = df.filter(pl.col("exposure_class") == "corporate").row(0, named=True)
+        assert corp["our_ead"] == pytest.approx(600.0)  # 100 + 500
+        assert corp["our_rwa"] == pytest.approx(300.0)  # 50 + 250
+        assert corp["legacy_ead"] == pytest.approx(580.0)  # 100 + 480
+        assert corp["legacy_rwa"] == pytest.approx(290.0)  # 50 + 240
+        assert corp["delta_ead"] == pytest.approx(20.0)
+        assert corp["delta_rwa"] == pytest.approx(10.0)
+
+    def test_class_allocation_flags_class_present_one_side_only(self) -> None:
+        # Arrange: ours classifies L3 as residential_mortgage; legacy still corporate.
+        ours = pl.LazyFrame(
+            {
+                "exposure_reference": ["L1", "L2", "L3"],
+                "exposure_class": ["corporate", "retail", "residential_mortgage"],
+                "approach_applied": ["SA", "SA", "SA"],
+                "ead_final": [100.0, 200.0, 500.0],
+                "rwa_final": [50.0, 150.0, 175.0],
+                "risk_weight": [0.50, 0.75, 0.35],
+            }
+        )
+
+        # Act
+        df = _recon(
+            ours, self._legacy_with_class(), self._alloc_mapping()
+        ).class_allocation.collect()
+
+        # Assert: residential_mortgage is ours-only -> legacy side 0, full delta.
+        rre = df.filter(pl.col("exposure_class") == "residential_mortgage").row(0, named=True)
+        assert rre["our_ead"] == pytest.approx(500.0)
+        assert rre["legacy_ead"] == pytest.approx(0.0)
+        assert rre["delta_ead"] == pytest.approx(500.0)
+
+    def test_class_allocation_empty_when_class_unmapped(self) -> None:
+        # No exposure_class component mapped -> stable empty allocation frame.
+        df = _recon(_ours(), _legacy(), _mapping()).class_allocation.collect()
+        assert df.height == 0
+        assert "exposure_class" in df.columns
+        assert "delta_rwa" in df.columns
+
+
 class TestCompositeKey:
     def test_reconciles_on_composite_key(self) -> None:
         # Arrange: join on counterparty + book.
@@ -234,9 +307,86 @@ class TestCompositeKey:
         assert set(df["row_bucket"]) == {BUCKET_EXACT}
 
 
+class TestExposureClassGrain:
+    """Per-(exposure x class) reconciliation: a value-mapped class join key so a
+    split exposure matches line-for-line and a moved class shows as missing."""
+
+    def _mapping(self) -> LegacyColumnMapping:
+        return LegacyColumnMapping(
+            legacy_keys=("obligor_id", "legacy_exposure_class"),
+            our_keys=("exposure_reference", "exposure_class"),
+            components={
+                "ead": ComponentMapping("legacy_ead"),
+                "rwa": ComponentMapping("legacy_rwa"),
+                "exposure_class": ComponentMapping(
+                    "legacy_exposure_class",
+                    value_map={"RRE": "residential_mortgage", "CORP": "corporate"},
+                ),
+            },
+        )
+
+    def test_reconciles_split_exposure_per_class(self) -> None:
+        # Arrange: L1 is split across two classes (collateralised RRE + residual
+        # corporate); both sides agree line-for-line (legacy uses RRE/CORP synonyms).
+        ours = pl.LazyFrame(
+            {
+                "exposure_reference": ["L1", "L1", "L2"],
+                "exposure_class": ["residential_mortgage", "corporate", "corporate"],
+                "approach_applied": ["SA", "SA", "SA"],
+                "ead_final": [300.0, 700.0, 200.0],
+                "rwa_final": [105.0, 560.0, 150.0],
+                "risk_weight": [0.35, 0.80, 0.75],
+            }
+        )
+        legacy = pl.LazyFrame(
+            {
+                "obligor_id": ["L1", "L1", "L2"],
+                "legacy_exposure_class": ["RRE", "CORP", "CORP"],
+                "legacy_ead": [300.0, 700.0, 200.0],
+                "legacy_rwa": [105.0, 560.0, 150.0],
+            }
+        )
+
+        # Act
+        df = _recon(ours, legacy, self._mapping()).component_reconciliation.collect()
+
+        # Assert: each (exposure, class) line matches via the value-mapped class key.
+        assert df.height == 3
+        assert set(df["row_bucket"]) == {BUCKET_EXACT}
+
+    def test_moved_class_shows_as_missing_on_each_side(self) -> None:
+        # Arrange: ours keeps L1 entirely corporate; legacy moved it to RRE.
+        ours = pl.LazyFrame(
+            {
+                "exposure_reference": ["L1"],
+                "exposure_class": ["corporate"],
+                "approach_applied": ["SA"],
+                "ead_final": [1000.0],
+                "rwa_final": [800.0],
+                "risk_weight": [0.80],
+            }
+        )
+        legacy = pl.LazyFrame(
+            {
+                "obligor_id": ["L1"],
+                "legacy_exposure_class": ["RRE"],
+                "legacy_ead": [1000.0],
+                "legacy_rwa": [350.0],
+            }
+        )
+
+        # Act
+        df = _recon(ours, legacy, self._mapping()).component_reconciliation.collect()
+
+        # Assert: L1||corporate is ours-only; L1||residential_mortgage is legacy-only.
+        assert df.height == 2
+        assert set(df["row_bucket"]) == {BUCKET_MISSING_LEFT, BUCKET_MISSING_RIGHT}
+
+
 class TestDataQualityWarnings:
-    def test_duplicate_legacy_key_warns_and_no_fanout(self) -> None:
-        # Arrange: L1 appears twice in the legacy file.
+    def test_duplicate_legacy_key_aggregates_not_drops(self) -> None:
+        # Arrange: L1 appears twice in the legacy file (e.g. one exposure split
+        # across two lines — a collateralised portion and the residual).
         legacy = pl.LazyFrame(
             {"loan_id": ["L1", "L1", "L2", "L3"], "legacy_rwa": [50.0, 51.0, 150.0, 250.0]}
         )
@@ -245,9 +395,48 @@ class TestDataQualityWarnings:
         bundle = _recon(_ours(), legacy, _mapping())
         df = bundle.component_reconciliation.collect()
 
-        # Assert: REC002 raised; join stays 1:1 (no row multiplication).
+        # Assert: REC002 raised (informational); the duplicate legacy rows are
+        # SUMMED to the key grain, not dropped — symmetric with our side.
         assert any(e.code == ERROR_RECON_DUPLICATE_LEGACY_KEY for e in bundle.errors)
-        assert df.height == 3
+        assert df.height == 3  # one row per key (L1 aggregated, L2, L3)
+        l1 = df.filter(pl.col("_recon_key") == "L1").row(0, named=True)
+        assert l1["legacy_rwa"] == pytest.approx(101.0)  # 50 + 51, not first-row 50
+
+    def test_duplicate_legacy_key_ties_out_on_summed_total(self) -> None:
+        # Arrange: L1 split across two lines summing to 101.
+        legacy = pl.LazyFrame(
+            {"loan_id": ["L1", "L1", "L2", "L3"], "legacy_rwa": [50.0, 51.0, 150.0, 250.0]}
+        )
+
+        # Act
+        tie = _recon(_ours(), legacy, _mapping()).totals_tie_out.collect()
+
+        # Assert: legacy total includes both L1 lines (101 + 150 + 250 = 501).
+        rwa = tie.filter(pl.col("component") == "rwa").row(0, named=True)
+        assert rwa["legacy_total"] == pytest.approx(501.0)
+
+    def test_duplicate_legacy_rows_disagree_on_class_warns_rec004(self) -> None:
+        # Arrange: L1 is split across two risk classes in the legacy file — the
+        # collateralised portion landed in a different class to the residual.
+        legacy = pl.LazyFrame(
+            {
+                "loan_id": ["L1", "L1", "L2", "L3"],
+                "legacy_rwa": [20.0, 30.0, 150.0, 250.0],
+                "legacy_exposure_class": [
+                    "corporate",
+                    "residential_mortgage",
+                    "retail",
+                    "corporate",
+                ],
+            }
+        )
+        mapping = _mapping(exposure_class=ComponentMapping("legacy_exposure_class"))
+
+        # Act
+        bundle = _recon(_ours(), legacy, mapping)
+
+        # Assert: REC004 surfaces that a legacy key aggregated mixed classes.
+        assert any(e.code == ERROR_RECON_GRAIN_HETEROGENEOUS for e in bundle.errors)
 
     def test_missing_legacy_column_skips_component(self) -> None:
         # Arrange: map ead but the legacy frame has no legacy_ead column.
