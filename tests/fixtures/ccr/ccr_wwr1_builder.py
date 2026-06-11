@@ -115,25 +115,58 @@ from rwa_calc.data.schemas import (
 
 # Re-import the P8.27 LazyFrame factories and scenario constants so test-writers
 # can import everything from one module.  These are intentionally *not* shadowed
-# here — they remain the single source of truth in wwr_builder.py.
+# here — they remain the single source of truth in wwr_builder.py.  The
+# redundant `X as X` aliases mark each name as a deliberate re-export (F401).
 from .wwr_builder import (
-    EXPECTED_CCR010_COUNT,
-    EXPECTED_CCR011_COUNT,
-    NS_WWR_01_ID,
-    SYNTHETIC_NS_ID,
-    T_NORMAL_01_ID,
-    T_WWR_01_ID,
-    WWR_LGD_OVERRIDE_VALUE,
-    CCR010_ERROR_CODE,
-    CCR010_REGULATORY_REF,
-    CCR011_ERROR_CODE,
-    CCR011_REGULATORY_REF,
-    CCR_WWR_SEVERITY,
-    CP_WWR_01_REF,
-    make_p827_collateral,
-    make_p827_margin_agreements,
-    make_p827_netting_sets,
-    make_p827_trades,
+    CCR010_ERROR_CODE as CCR010_ERROR_CODE,
+)
+from .wwr_builder import (
+    CCR010_REGULATORY_REF as CCR010_REGULATORY_REF,
+)
+from .wwr_builder import (
+    CCR011_ERROR_CODE as CCR011_ERROR_CODE,
+)
+from .wwr_builder import (
+    CCR011_REGULATORY_REF as CCR011_REGULATORY_REF,
+)
+from .wwr_builder import (
+    CCR_WWR_SEVERITY as CCR_WWR_SEVERITY,
+)
+from .wwr_builder import (
+    CP_WWR_01_REF as CP_WWR_01_REF,
+)
+from .wwr_builder import (
+    EXPECTED_CCR010_COUNT as EXPECTED_CCR010_COUNT,
+)
+from .wwr_builder import (
+    EXPECTED_CCR011_COUNT as EXPECTED_CCR011_COUNT,
+)
+from .wwr_builder import (
+    NS_WWR_01_ID as NS_WWR_01_ID,
+)
+from .wwr_builder import (
+    SYNTHETIC_NS_ID as SYNTHETIC_NS_ID,
+)
+from .wwr_builder import (
+    T_NORMAL_01_ID as T_NORMAL_01_ID,
+)
+from .wwr_builder import (
+    T_WWR_01_ID as T_WWR_01_ID,
+)
+from .wwr_builder import (
+    WWR_LGD_OVERRIDE_VALUE as WWR_LGD_OVERRIDE_VALUE,
+)
+from .wwr_builder import (
+    make_p827_collateral as make_p827_collateral,
+)
+from .wwr_builder import (
+    make_p827_margin_agreements as make_p827_margin_agreements,
+)
+from .wwr_builder import (
+    make_p827_netting_sets as make_p827_netting_sets,
+)
+from .wwr_builder import (
+    make_p827_trades as make_p827_trades,
 )
 
 # ---------------------------------------------------------------------------
@@ -265,12 +298,8 @@ def _build_raw_ccr_bundle() -> RawCCRBundle:
     return RawCCRBundle(
         trades=TradeBundle(trades=make_p827_trades()),
         netting_sets=NettingSetBundle(netting_sets=make_p827_netting_sets()),
-        margin_agreements=MarginAgreementBundle(
-            margin_agreements=make_p827_margin_agreements()
-        ),
-        ccr_collateral=CCRCollateralBundle(
-            ccr_collateral=make_p827_collateral()
-        ),
+        margin_agreements=MarginAgreementBundle(margin_agreements=make_p827_margin_agreements()),
+        ccr_collateral=CCRCollateralBundle(ccr_collateral=make_p827_collateral()),
     )
 
 
@@ -388,18 +417,14 @@ def save_ccr_wwr1_fixtures() -> list[tuple[str, int]]:
             f"(got {wwr_row['asset_class'][0]!r})"
         )
     if wwr_row["is_specific_wwr"][0] is not True:
-        raise AssertionError(
-            f"CCR-WWR-1: {T_WWR_01_ID} is_specific_wwr must be True"
-        )
+        raise AssertionError(f"CCR-WWR-1: {T_WWR_01_ID} is_specific_wwr must be True")
     if wwr_row["underlying_reference"][0] != "CP_WWR_01_EQUITY":
         raise AssertionError(
             f"CCR-WWR-1: {T_WWR_01_ID} underlying_reference must be 'CP_WWR_01_EQUITY' "
             f"(got {wwr_row['underlying_reference'][0]!r})"
         )
     if wwr_row["netting_set_id"][0] != NS_WWR_01_ID:
-        raise AssertionError(
-            f"CCR-WWR-1: {T_WWR_01_ID} netting_set_id must be {NS_WWR_01_ID!r}"
-        )
+        raise AssertionError(f"CCR-WWR-1: {T_WWR_01_ID} netting_set_id must be {NS_WWR_01_ID!r}")
 
     # --- Invariant 4: T_NORMAL_01 checks ---
     normal_row = trades_df.filter(pl.col("trade_id") == T_NORMAL_01_ID)
@@ -411,9 +436,7 @@ def save_ccr_wwr1_fixtures() -> list[tuple[str, int]]:
             f"(got {normal_row['asset_class'][0]!r})"
         )
     if normal_row["is_specific_wwr"][0] is not False:
-        raise AssertionError(
-            f"CCR-WWR-1: {T_NORMAL_01_ID} is_specific_wwr must be False"
-        )
+        raise AssertionError(f"CCR-WWR-1: {T_NORMAL_01_ID} is_specific_wwr must be False")
 
     # --- Invariant 5: 1 netting-set row ---
     if ns_df.height != 1:
@@ -468,8 +491,7 @@ def save_ccr_wwr1_fixtures() -> list[tuple[str, int]]:
         raise AssertionError("CCR-WWR-1: rating counterparty_reference mismatch")
     if rating_df["cqs"][0] != CCR_WWR1_RATING_CQS:
         raise AssertionError(
-            f"CCR-WWR-1: rating cqs must be {CCR_WWR1_RATING_CQS} "
-            f"(got {rating_df['cqs'][0]!r})"
+            f"CCR-WWR-1: rating cqs must be {CCR_WWR1_RATING_CQS} (got {rating_df['cqs'][0]!r})"
         )
 
     # --- Invariant 12: zero margin-agreements rows ---
