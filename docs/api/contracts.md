@@ -90,17 +90,14 @@ class ResolvedHierarchyBundle:
 
 #### `ClassifiedExposuresBundle`
 
-Output from the classifier. Contains exposures classified by exposure class
-(`ExposureClass`) and calculation approach (`ApproachType`), split into SA-applicable
-and IRB-applicable sets for downstream calculators.
+Output from the classifier. Contains all exposures classified by exposure class
+(`ExposureClass`) and calculation approach (`ApproachType`) on a single unified
+frame — downstream consumers filter on the `approach` column.
 
 ```python
 @dataclass(frozen=True)
 class ClassifiedExposuresBundle:
     all_exposures: pl.LazyFrame                        # All exposures with classification metadata
-    sa_exposures: pl.LazyFrame                         # Exposures for Standardised Approach
-    irb_exposures: pl.LazyFrame                        # Exposures for IRB (F-IRB or A-IRB)
-    slotting_exposures: pl.LazyFrame | None = None     # Specialised lending for slotting approach
     equity_exposures: pl.LazyFrame | None = None       # Equity exposures (SA only under Basel 3.1)
     collateral: pl.LazyFrame | None = None             # Collateral data for CRM processing
     guarantees: pl.LazyFrame | None = None             # Guarantee data for CRM processing
@@ -119,43 +116,22 @@ effects (SCRA/GCRA). EAD and LGD values are adjusted based on CRM.
 ```python
 @dataclass(frozen=True)
 class CRMAdjustedBundle:
-    exposures: pl.LazyFrame                            # Exposures with CRM-adjusted EAD and LGD
-    sa_exposures: pl.LazyFrame                         # SA exposures after CRM
-    irb_exposures: pl.LazyFrame                        # IRB exposures after CRM
-    slotting_exposures: pl.LazyFrame | None = None     # Specialised lending exposures for slotting
+    exposures: pl.LazyFrame                            # Unified frame with CRM-adjusted EAD and LGD
     equity_exposures: pl.LazyFrame | None = None       # Equity exposures (passed through, no CRM)
-    crm_audit: pl.LazyFrame | None = None              # Detailed audit trail of CRM application
     collateral_allocation: pl.LazyFrame | None = None  # How collateral was allocated to exposures
     crm_errors: list = field(default_factory=list)     # Errors during CRM processing
 ```
 
+The per-exposure CRM audit projection is sunk to the opt-in audit cache
+(`crm_audit.parquet`), not carried as a bundle field.
+
 #### Result Bundles
 
-Each calculator produces its own result bundle:
+The SA / IRB / slotting calculators return plain `pl.LazyFrame`s from
+`calculate_branch()` (the aggregator consumes the collected branch frames
+directly). Equity — the separate path — keeps a result bundle:
 
 ```python
-@dataclass(frozen=True)
-class SAResultBundle:
-    """Standardised Approach calculation results."""
-    results: pl.LazyFrame                          # SA results with risk weights and RWA
-    calculation_audit: pl.LazyFrame | None = None  # Detailed calculation breakdown
-    errors: list = field(default_factory=list)
-
-@dataclass(frozen=True)
-class IRBResultBundle:
-    """IRB calculation results (F-IRB and A-IRB)."""
-    results: pl.LazyFrame                          # IRB results with K, RW, RWA
-    expected_loss: pl.LazyFrame | None = None      # Expected loss calculations (PD × LGD × EAD)
-    calculation_audit: pl.LazyFrame | None = None  # Detailed breakdown (PD, LGD, M, R, K)
-    errors: list = field(default_factory=list)
-
-@dataclass(frozen=True)
-class SlottingResultBundle:
-    """Slotting approach results for specialised lending."""
-    results: pl.LazyFrame                          # Slotting results with risk weights and RWA
-    calculation_audit: pl.LazyFrame | None = None  # Detailed calculation breakdown
-    errors: list = field(default_factory=list)
-
 @dataclass(frozen=True)
 class EquityResultBundle:
     """Equity exposure results under Article 133 (SA) or Article 155 (IRB Simple)."""
@@ -257,8 +233,8 @@ Factory functions for creating empty bundles, primarily used in testing:
 | `create_empty_raw_data_bundle()` | `RawDataBundle` | Empty bundle with empty LazyFrames for required fields |
 | `create_empty_counterparty_lookup()` | `CounterpartyLookup` | Empty lookup with correct schemas for all 4 fields |
 | `create_empty_resolved_hierarchy_bundle()` | `ResolvedHierarchyBundle` | Empty bundle using `create_empty_counterparty_lookup()` |
-| `create_empty_classified_bundle()` | `ClassifiedExposuresBundle` | Empty bundle with empty LazyFrames for `all_exposures`, `sa_exposures`, `irb_exposures` |
-| `create_empty_crm_adjusted_bundle()` | `CRMAdjustedBundle` | Empty bundle with empty LazyFrames for `exposures`, `sa_exposures`, `irb_exposures` |
+| `create_empty_classified_bundle()` | `ClassifiedExposuresBundle` | Empty bundle with an empty `all_exposures` LazyFrame |
+| `create_empty_crm_adjusted_bundle()` | `CRMAdjustedBundle` | Empty bundle with an empty `exposures` LazyFrame |
 
 ---
 
@@ -302,50 +278,6 @@ Methods:
 !!! note
     There is no separate `CalculationWarning` class. Warnings are `CalculationError`
     instances with `severity=ErrorSeverity.WARNING`.
-
-#### `LazyFrameResult`
-
-Result container combining a LazyFrame with accumulated errors. Implements the Result
-pattern for LazyFrame operations, allowing errors to be collected without throwing
-exceptions.
-
-```python
-@dataclass
-class LazyFrameResult:
-    frame: pl.LazyFrame                                 # The resulting LazyFrame
-    errors: list[CalculationError] = field(default_factory=list)  # Accumulated errors/warnings
-```
-
-Properties:
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `has_errors` | `bool` | `True` if any errors with severity `ERROR` or `CRITICAL` |
-| `has_critical_errors` | `bool` | `True` if any errors with severity `CRITICAL` |
-| `warnings` | `list[CalculationError]` | Only `WARNING`-severity items |
-| `critical_errors` | `list[CalculationError]` | Only `CRITICAL`-severity items |
-
-Methods:
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `errors_by_category()` | `(category: ErrorCategory) → list[CalculationError]` | Filter errors by category |
-| `errors_by_exposure()` | `(exposure_reference: str) → list[CalculationError]` | Get all errors for a specific exposure |
-| `add_error()` | `(error: CalculationError) → None` | Append a single error |
-| `add_errors()` | `(errors: list[CalculationError]) → None` | Append multiple errors |
-| `merge()` | `(other: LazyFrameResult) → LazyFrameResult` | Merge another result's errors (returns new result; caller handles frame combination) |
-
-Usage:
-
-```python
-result = processor.apply_crm(data, config)
-if result.has_critical_errors:
-    log.error("Critical CRM failures", errors=result.critical_errors)
-else:
-    for w in result.warnings:
-        log.warning(w)
-    # Continue with result.frame
-```
 
 #### Error Code Constants
 
@@ -487,34 +419,25 @@ class ClassifierProtocol(Protocol):
 
 #### `CRMProcessorProtocol`
 
-Provides two interfaces: `apply_crm()` returns a `LazyFrameResult` (for error inspection),
-while `get_crm_adjusted_bundle()` wraps the result into a `CRMAdjustedBundle`.
-
 ```python
 class CRMProcessorProtocol(Protocol):
-    def apply_crm(
-        self,
-        data: ClassifiedExposuresBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Apply credit risk mitigation. Returns LazyFrameResult with CRM-adjusted
-        exposures and any errors."""
-        ...
-
-    def get_crm_adjusted_bundle(
+    def get_crm_unified_bundle(
         self,
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
     ) -> CRMAdjustedBundle:
-        """Apply CRM and return as a bundle (alternative interface)."""
+        """Apply CRM and return the unified bundle (no approach split).
+        Errors accumulate on CRMAdjustedBundle.crm_errors."""
         ...
 ```
 
 ### Calculator Protocols
 
-Calculator protocols provide `calculate_branch()` for pre-filtered rows and `calculate()` for
-bundle-based entry. SA additionally provides `calculate_unified()` for the Basel 3.1 output floor
-(which needs SA-equivalent risk weights on all rows in a single pass).
+Calculator protocols provide `calculate_branch()` for pre-filtered rows, with an
+optional `errors=` accumulator (the branch-path error channel — the pipeline merges
+accumulated warnings into the result bundle with their original codes). SA additionally
+provides `calculate_unified()` for the Basel 3.1 output floor (which needs SA-equivalent
+risk weights on all rows in a single pass).
 
 #### `SACalculatorProtocol`
 
@@ -524,6 +447,8 @@ class SACalculatorProtocol(Protocol):
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
         """Apply SA risk weights on unified frame (single-pass pipeline)."""
         ...
@@ -532,22 +457,14 @@ class SACalculatorProtocol(Protocol):
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
         """Calculate SA RWA on pre-filtered SA-only rows."""
-        ...
-
-    def calculate(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Calculate RWA using Standardised Approach."""
         ...
 ```
 
 #### `IRBCalculatorProtocol`
-
-Adds `calculate_expected_loss()` for EL calculation:
 
 ```python
 class IRBCalculatorProtocol(Protocol):
@@ -555,24 +472,11 @@ class IRBCalculatorProtocol(Protocol):
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
-        """Calculate IRB RWA on pre-filtered IRB-only rows."""
-        ...
-
-    def calculate(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Calculate RWA using IRB approach."""
-        ...
-
-    def calculate_expected_loss(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Calculate expected loss for IRB exposures (EL = PD × LGD × EAD)."""
+        """Calculate IRB RWA on pre-filtered IRB-only rows
+        (expected loss columns included in the output)."""
         ...
 ```
 
@@ -584,6 +488,8 @@ class SlottingCalculatorProtocol(Protocol):
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
         """Calculate slotting RWA on pre-filtered slotting-only rows."""
         ...
@@ -593,14 +499,6 @@ class SlottingCalculatorProtocol(Protocol):
 
 ```python
 class EquityCalculatorProtocol(Protocol):
-    def calculate(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Calculate RWA for equity exposures."""
-        ...
-
     def get_equity_result_bundle(
         self,
         data: CRMAdjustedBundle,
@@ -618,30 +516,13 @@ class OutputAggregatorProtocol(Protocol):
         self,
         sa_results: pl.LazyFrame,
         irb_results: pl.LazyFrame,
+        slotting_results: pl.LazyFrame,
+        equity_bundle: EquityResultBundle | None,
         config: CalculationConfig,
-    ) -> pl.LazyFrame:
-        """Aggregate SA and IRB results into final output."""
-        ...
-
-    def aggregate_with_audit(
-        self,
-        sa_bundle: SAResultBundle | None,
-        irb_bundle: IRBResultBundle | None,
-        slotting_bundle: SlottingResultBundle | None,
-        config: CalculationConfig,
-        equity_bundle: EquityResultBundle | None = None,
+        securitisation_audit: pl.LazyFrame | None = None,
     ) -> AggregatedResultBundle:
-        """Aggregate with full audit trail from all calculator bundles."""
-        ...
-
-    def apply_output_floor(
-        self,
-        irb_rwa: pl.LazyFrame,
-        sa_equivalent_rwa: pl.LazyFrame,
-        config: CalculationConfig,
-    ) -> pl.LazyFrame:
-        """Apply output floor to IRB RWA (Basel 3.1 only).
-        Final RWA = max(IRB RWA, SA RWA × floor_percentage)."""
+        """Aggregate calculator outputs into the final result bundle
+        (output floor, supporting-factor impact, summaries)."""
         ...
 ```
 

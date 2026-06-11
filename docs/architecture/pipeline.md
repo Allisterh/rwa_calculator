@@ -314,14 +314,15 @@ Provisions are resolved **before** CCF application so that the nominal amount is
 
 ```python
 class CRMProcessor:
-    def get_crm_adjusted_bundle(
+    def get_crm_unified_bundle(
         self,
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
     ) -> CRMAdjustedBundle:
         """Apply CRM in correct order (Art. 111(1)(a)-(b) compliant).
 
-        Returns CRMAdjustedBundle with exposures split by approach."""
+        The single CRM entry point: returns the unified frame; the pipeline
+        splits by approach once, just before the calculators."""
 
         # Step 1: Resolve provisions (before CCF)
         #   SA: drawn-first deduction, remainder reduces nominal
@@ -345,15 +346,6 @@ class CRMProcessor:
 
         # Step 6: Finalize (no provision subtraction — already in ead_pre_crm)
         return self._finalize_ead(after_guarantees)
-
-    def get_crm_unified_bundle(
-        self,
-        data: ClassifiedExposuresBundle,
-        config: CalculationConfig,
-    ) -> CRMAdjustedBundle:
-        """Unified CRM — does not split by approach.
-
-        Used for Basel 3.1 output floor: SA-equivalent RW needed on all rows."""
 ```
 
 ## Stage 5: RWA Calculation
@@ -366,41 +358,37 @@ Calculate RWA using appropriate approach for each exposure.
 
 ```python
 class SACalculator:
-    def calculate(
+    def calculate_branch(
         self,
-        exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> SAResultBundle:
-        """Calculate SA RWA."""
-        result = (
-            exposures
-            .with_columns(
-                risk_weight=self._lookup_risk_weight(
-                    pl.col("exposure_class"),
-                    pl.col("cqs")
-                )
-            )
-            .with_columns(
-                rwa=pl.col("ead") * pl.col("risk_weight")
-            )
-        )
-
-        # Apply supporting factors (CRR only)
-        if config.framework == RegulatoryFramework.CRR:
-            result = self._apply_supporting_factors(result, config)
-
-        return SAResultBundle(data=result)
+        exposures: pl.LazyFrame,        # pre-filtered SA-only rows
+        config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
+    ) -> pl.LazyFrame:
+        """Calculate SA RWA on the SA branch."""
+        return (
+            exposures.sa.apply_risk_weights(config)
+            .sa.apply_fcsm_rw_substitution(config)
+            .sa.apply_life_insurance_rw_mapping()
+            .sa.apply_guarantee_substitution(config)
+            .sa.apply_currency_mismatch_multiplier(config)
+            .sa.apply_due_diligence_override(config, errors=errors)
+            .sa.calculate_rwa()
+            .sa.apply_supporting_factors(config, errors=errors)  # CRR only
+        )  # + approach_applied / rwa_final for the aggregator
 ```
 
 ### IRB Calculator
 
 ```python
 class IRBCalculator:
-    def calculate(
+    def calculate_branch(
         self,
-        exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> IRBResultBundle:
+        exposures: pl.LazyFrame,        # pre-filtered IRB-only rows
+        config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
+    ) -> pl.LazyFrame:
         """Calculate IRB RWA."""
         result = (
             exposures
@@ -439,34 +427,28 @@ class IRBCalculator:
             )
         )
 
-        return IRBResultBundle(data=result)
+        return result  # + approach_applied / rwa_final for the aggregator
 ```
 
 ### Slotting Calculator
 
 ```python
 class SlottingCalculator:
-    def calculate(
+    def calculate_branch(
         self,
-        exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> SlottingResultBundle:
+        exposures: pl.LazyFrame,        # pre-filtered slotting-only rows
+        config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
+    ) -> pl.LazyFrame:
         """Calculate Slotting RWA."""
-        result = (
-            exposures
-            .with_columns(
-                risk_weight=self._lookup_slotting_weight(
-                    pl.col("lending_type"),
-                    pl.col("slotting_category"),
-                    config.framework
-                )
-            )
-            .with_columns(
-                rwa=pl.col("ead") * pl.col("risk_weight")
-            )
-        )
-
-        return SlottingResultBundle(data=result)
+        return (
+            exposures.slotting.prepare_columns(config)
+            .slotting.apply_slotting_weights(config)   # Art. 153(5) tables
+            .slotting.calculate_rwa()
+            .slotting.apply_el_rates(config)
+            .slotting.compute_el_shortfall_excess(errors=errors)
+        )  # + supporting factors (CRR) and aggregator columns
 ```
 
 ## Stage 6: Aggregation
@@ -477,7 +459,8 @@ Combine results, apply output floor, produce final output.
 
 ### Input
 
-Result bundles from all calculators
+The three collected branch frames (SA / IRB / slotting) plus the equity
+result bundle
 
 ### Output
 

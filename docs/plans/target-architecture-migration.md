@@ -300,7 +300,7 @@ baselines; pre-commit fires.
 Supersedes the single-lazy-plan refactor; its `crm_pre_guarantee` irreducibility
 finding is preserved as the pinned checkpoint + ceiling test.
 
-### Phase 2 — Dead-path deletion and protocol diet
+### Phase 2 — Dead-path deletion and protocol diet *(DONE 2026-06-12)*
 
 - Delete the legacy dual CRM orchestration (`get_crm_adjusted_bundle`/`apply_crm`),
   triple calculator entry points, orphaned result bundles, duplicate error dataclasses,
@@ -315,6 +315,24 @@ finding is preserved as the pinned checkpoint + ceiling test.
 
 Validation: before/after parity on the 10k stress set — byte-identical RWA (error
 lists may grow; asserted explicitly).
+
+**As delivered (2026-06-12, branch `feat/phase2`):** all five bullets landed.
+The deletion inventory: `apply_crm`/`get_crm_adjusted_bundle` (+`crm_post_audit_fanout`
+edge and legacy-only collateral step), `SACalculator.calculate`/`get_sa_result_bundle`,
+`IRBCalculator.calculate`/`get_irb_result_bundle`/`calculate_expected_loss`,
+`SlottingCalculator.get_slotting_result_bundle`, `EquityCalculator.calculate`,
+`LazyFrameResult`, `SAResultBundle`/`IRBResultBundle`/`SlottingResultBundle`,
+`SACalculationError`, the approach-split fields (`sa/irb/slotting_exposures`,
+`crm_audit`) on `ClassifiedExposuresBundle`/`CRMAdjustedBundle`, the uncalled
+`validate_classified_bundle`/`validate_crm_adjusted_bundle`, and the three
+zero-implementation protocols. Error channel: `calculate_branch(…, errors=)` on all
+three branch calculators (+ SA `calculate_unified`), merged into the result bundle
+with original codes (not `PIPELINE_*`); the misdirected-AIRB CRM006 diagnostic moved
+from the dead path into `get_crm_unified_bundle`. Sentinels: `RawDataBundle.
+lending_mappings` and `CollateralLinkAllocation.collateral` are `| None`; arch_check
+check 13 (+ contracts mirror) bans bare `pl.LazyFrame()` in `engine/**`. Parity gate
+shipped as `scripts/phase2_parity.py` (capture/compare). ~40 test files migrated;
+conformance rewritten to real-implementation isinstance + typed assignment.
 
 ### Phase 3 — Producer-sealed edge contracts and defensive-guard retirement
 
@@ -456,5 +474,10 @@ annotations.
 | 2026-06-11 | Phase 1 **deviation**: CRM keeps **two** intra-stage checkpoints, not one — `crm_post_ead` restored alongside `crm_pre_guarantee_unified` | Controlled single-variable A/B (quiet machine, Polars 1.37): removing `crm_post_ead` costs **35–52%** on every full-pipeline benchmark at 10k and 100k rows — the collateral step's lookup collects re-execute the provisions→CCF→EAD chain without it. Re-validate per Polars upgrade via the plan-node ceiling tests |
 | 2026-06-11 | Plan-node ceilings pinned (Polars 1.37): hierarchy_exit 3200, classifier_exit 400, crm_post_ead 2400, crm_pre_guarantee 4000, crm_exit 4000, re_split_exit 500, branches 300–500 | Measured: hierarchy 1,586; crm_pre_guarantee 1,021; crm_exit 1,025–1,225; rest ≤100. SIGSEGV threshold ~25,000. Recalibrate via `RWA_PRINT_EDGE_NODES=1` on every Polars upgrade (test pins the Polars minor version) |
 | 2026-06-11 | Spill-edge default at scale: **OPEN** — decision deferred to a 1M+ profile run | First measurement (5k rows, `scripts/profile_memory.py`): spill mode is strictly worse at small scale (+146% peak RSS, 20× wall, dominated by the pre-guarantee sink). Run the gate at 1M+ before choosing the 10M default; do not enable `spill_edges` below the measured crossover |
+| 2026-06-12 | Phase 2: misdirected-AIRB diagnostic (CRM006) **migrated** into `get_crm_unified_bundle`, not deleted with the legacy path | The diagnostic only ever fired on the dead `get_crm_adjusted_bundle` path — production never emitted it. The finder early-returns unless collateral carries `is_airb_model_collateral`, so the production cost is zero for typical data; deleting it would have silently lost a CRR Art. 181 / B3.1 Art. 169A data-quality signal |
+| 2026-06-12 | Phase 2: `IRBCalculator.calculate_expected_loss` deleted **with** its P1.88/P1.144 tests | The method was a bundle-based twin never invoked by the orchestrator; production EL flows through the `lf.irb` namespace whose `ead_final` basis and formula are pinned by `test_irb_namespace.py::TestCalculateExpectedLoss`. The IRB004/IRB005 missing-PD/LGD warnings existed only on the dead twin (production `prepare_columns` supplies the columns before EL) |
+| 2026-06-12 | Phase 2 parity gate: per-row frames compared **byte-exact**; group-by sum aggregates compared to float-reassociation tolerance (rtol 1e-9) | Verified on identical code: Polars' multi-threaded group-by Float64 summation is NOT deterministic across processes — two fresh runs differ in the last 1–2 ulps of 41k-row sums (`pre_crm_summary`, `summary_by_class/approach`). A byte-exact gate on those frames would flake; the per-exposure frames are the real invariant and stayed byte-identical |
+| 2026-06-12 | Phase 2 parity result: per-exposure RWA byte-identical across all four configs; error growth = exactly **one SA004 per B31 run** | The restored branch error channel surfaces the Art. 110A due-diligence warning the production path was silently discarding (the stress portfolio's unified frame carries no `due_diligence_performed` column). Asserted explicitly via `scripts/phase2_parity.py compare` |
+| 2026-06-12 | Ratchet baseline re-banked: presence guards 552→549, collect_schema 192→191, `max_engine_module_loc` 3750→**3760** | The +10 LOC is `hierarchy.py`'s None-handling for the now-optional `lending_mappings` — a deliberate contract improvement (sentinel elimination), reviewed here rather than squeezed out; hierarchy.py splits in Phase 4 regardless |
 
 *(Append further preserve-or-fix decisions here as phases land.)*

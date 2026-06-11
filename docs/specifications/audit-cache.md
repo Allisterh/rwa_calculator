@@ -95,7 +95,7 @@ continues to completion.
 |---|---|---|---|
 | `collateral_haircuts.parquet` | (not on a bundle — only via this cache) | per collateral pledge | **Primary diagnostic.** Confirm whether `H_fx`, `H_c`, or the maturity-mismatch adjustment is firing on a row. |
 | `collateral_allocation.parquet` | `CRMAdjustedBundle.collateral_allocation` | per exposure | See how much EAD each collateral category absorbed and the resulting LGD. |
-| `crm_audit.parquet` | `CRMAdjustedBundle.crm_audit` | per exposure | Exposure-level CRM waterfall (`ead_gross → ead_after_collateral → ead_after_guarantee → ead_final`). |
+| `crm_audit.parquet` | CRM audit projection (`CRMProcessor._build_crm_audit`) | per exposure | Exposure-level CRM waterfall (`ead_gross → ead_after_collateral → ead_after_guarantee → ead_final`). |
 
 ### Early pipeline stages
 

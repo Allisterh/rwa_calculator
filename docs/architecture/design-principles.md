@@ -114,26 +114,20 @@ class RawDataBundle:
 - Allows partial results
 - Better user experience
 
-**Implementation:**
+**Implementation:** every stage either carries an errors list on its output
+bundle (`crm_errors`, `classification_errors`, …) or accepts a caller-supplied
+accumulator (the calculators' `errors=` keyword); the pipeline merges all of
+them into `AggregatedResultBundle.errors` with their original codes.
+
 ```python
-@dataclass
-class LazyFrameResult:
-    frame: pl.LazyFrame
-    errors: list[CalculationError] = field(default_factory=list)
+# Stage bundle channel
+bundle = processor.get_crm_unified_bundle(data, config)
+for error in bundle.crm_errors:
+    logger.warning("%s: %s", error.exposure_reference, error.message)
 
-    @property
-    def has_errors(self) -> bool:
-        return any(e.severity != ErrorSeverity.WARNING for e in self.errors)
-
-    @property
-    def warnings(self) -> list[CalculationError]:
-        return [e for e in self.errors if e.severity == ErrorSeverity.WARNING]
-
-# Usage
-result = processor.apply_crm(data, config)
-if result.has_errors:
-    for error in result.errors:
-        logger.error(f"{error.exposure_reference}: {error.message}")
+# Branch-path accumulator channel
+errors: list[CalculationError] = []
+result = sa_calculator.calculate_branch(sa_rows, config, errors=errors)
 ```
 
 ### 6. Factory Methods for Configuration

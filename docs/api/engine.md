@@ -309,54 +309,16 @@ class CRMProcessor:
             is_basel_3_1: True for Basel 3.1 framework.
         """
 
-    def apply_crm(
-        self,
-        data: ClassifiedExposuresBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """
-        Apply credit risk mitigation to exposures.
-
-        Returns LazyFrameResult with CRM-adjusted exposures and any errors.
-
-        Args:
-            data: Classified exposures bundle.
-            config: Calculation configuration.
-
-        Returns:
-            LazyFrameResult with CRM-adjusted exposures.
-        """
-
-    def get_crm_adjusted_bundle(
-        self,
-        data: ClassifiedExposuresBundle,
-        config: CalculationConfig,
-    ) -> CRMAdjustedBundle:
-        """
-        Apply CRM and return as a bundle.
-
-        Includes mid-pipeline collect and approach split
-        (separates SA, IRB, and slotting exposures into distinct LazyFrames).
-
-        Args:
-            data: Classified exposures bundle.
-            config: Calculation configuration.
-
-        Returns:
-            CRMAdjustedBundle with sa_exposures, irb_exposures,
-            slotting_exposures, equity_exposures, and errors.
-        """
-
     def get_crm_unified_bundle(
         self,
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
     ) -> CRMAdjustedBundle:
         """
-        Apply CRM without fan-out split.
+        Apply CRM on the unified exposure frame (the single entry point).
 
-        No mid-pipeline collect for the approach split. Returns a unified
-        LazyFrame for single-pass calculator processing.
+        Returns the unified LazyFrame for single-pass calculator
+        processing; errors accumulate on ``crm_errors``.
 
         Args:
             data: Classified exposures bundle.
@@ -450,41 +412,12 @@ class SACalculator:
     - Supporting factor application (CRR only)
     """
 
-    def calculate(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """
-        Calculate SA RWA for all SA exposures.
-
-        Args:
-            data: CRM-adjusted bundle (uses sa_exposures field).
-            config: Calculation configuration.
-
-        Returns:
-            LazyFrameResult with SA RWA calculations.
-        """
-
-    def get_sa_result_bundle(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> SAResultBundle:
-        """
-        Calculate SA RWA and return as a bundle.
-
-        Steps: risk weights → guarantee substitution → RWA
-        → supporting factors → audit trail.
-
-        Returns:
-            SAResultBundle with results, calculation_audit, and errors.
-        """
-
     def calculate_unified(
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
         """
         Apply SA risk weights to SA rows on a unified frame.
@@ -497,11 +430,14 @@ class SACalculator:
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
         """
         Calculate SA RWA on pre-filtered SA-only rows.
 
-        Expects only SA rows — no approach guards needed.
+        Expects only SA rows — no approach guards needed. The optional
+        ``errors`` accumulator receives SA004/SA005/SF001 warnings.
         """
 
 ```
@@ -550,56 +486,22 @@ class IRBCalculator:
     - Basel 3.1: Differentiated PD floors, LGD floors for A-IRB, no scaling
     """
 
-    def calculate(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """
-        Calculate IRB RWA for all IRB exposures.
-
-        Args:
-            data: CRM-adjusted bundle (uses irb_exposures field).
-            config: Calculation configuration.
-
-        Returns:
-            LazyFrameResult with IRB RWA calculations.
-        """
-
-    def get_irb_result_bundle(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> IRBResultBundle:
-        """
-        Calculate IRB RWA and return as a bundle.
-
-        Steps: classify approach → apply F-IRB LGD → prepare columns
-        → apply all formulas → compute EL shortfall/excess
-        → apply guarantee substitution.
-
-        Returns:
-            IRBResultBundle with results, expected_loss,
-            calculation_audit, and errors.
-        """
-
     def calculate_branch(
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
         """
         Calculate IRB RWA on pre-filtered IRB-only rows.
 
-        Runs the namespace chain directly — expects only IRB rows.
+        Steps: classify approach → apply F-IRB LGD → prepare columns
+        → apply all formulas → compute EL shortfall/excess
+        → apply guarantee substitution → supporting factors (CRR).
+        Expected-loss columns are included in the output; the optional
+        ``errors`` accumulator receives SF001 and EL diagnostics.
         """
-
-    def calculate_expected_loss(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Calculate expected loss for IRB exposures. EL = PD x LGD x EAD."""
 
 ```
 
@@ -736,29 +638,18 @@ class SlottingCalculator:
     Basel 3.1 (BCBS CRE33): Revised operational, PF pre-op, and HVCRE weights.
     """
 
-    def get_slotting_result_bundle(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> SlottingResultBundle:
-        """
-        Calculate slotting RWA and return as a bundle.
-
-        Handles None slotting exposures by returning empty frame.
-
-        Returns:
-            SlottingResultBundle with results, calculation_audit, and errors.
-        """
-
     def calculate_branch(
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
     ) -> pl.LazyFrame:
         """
         Calculate Slotting RWA on pre-filtered slotting-only rows.
 
-        Uses: prepare_columns → apply_slotting_weights → calculate_rwa.
+        Uses: prepare_columns → apply_slotting_weights → calculate_rwa
+        → supporting factors (CRR) → EL rates + shortfall/excess.
         """
 
 ```
@@ -844,22 +735,6 @@ class EquityCalculator:
     Article 155 (IRB Simple): 0%/190%/290%/370% RW.
     Basel 3.1: IRB equity removed — all uses SA.
     """
-
-    def calculate(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """
-        Calculate RWA for equity exposures.
-
-        Args:
-            data: CRM-adjusted bundle (uses equity_exposures field).
-            config: Calculation configuration.
-
-        Returns:
-            LazyFrameResult with equity RWA calculations.
-        """
 
     def get_equity_result_bundle(
         self,
@@ -991,9 +866,9 @@ class OutputAggregator:
 
     def aggregate_with_audit(
         self,
-        sa_bundle: SAResultBundle | None,
-        irb_bundle: IRBResultBundle | None,
-        slotting_bundle: SlottingResultBundle | None,
+        sa_results: pl.LazyFrame,
+        irb_results: pl.LazyFrame,
+        slotting_results: pl.LazyFrame,
         config: CalculationConfig,
         equity_bundle: EquityResultBundle | None = None,
     ) -> AggregatedResultBundle:

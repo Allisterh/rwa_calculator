@@ -89,40 +89,46 @@ itself rather than in `pipeline.py`.
 |---|---|---|---|
 | `hierarchy_exit` | `engine/pipeline.py:526` (`_run_hierarchy_resolver`) | Every run, after the securitisation lookup is attached | The hierarchy unify/enrich plan (measured ≈1,586 nodes at 10k) crossing to the CCR stage / Classifier |
 | `ccr_exit` | `engine/pipeline.py:634` (`_run_ccr_stage`) | Only when `data.ccr` is present (stage no-ops at `pipeline.py:580` otherwise) | The `diagonal_relaxed` concat of synthetic SA-CCR exposure rows onto the hierarchy output |
-| `classifier_exit` | `engine/classifier.py:187` (producer-side, in `classify`) | Every run | The classification flag/subtype/approach chain; the diagnostic emits below it read in-memory data, and CRM receives an eager-backed frame |
-| `crm_pre_guarantee_unified` | `engine/crm/processor.py:725` (`get_crm_unified_bundle`) | Only when valid guarantee inputs **and** a counterparty lookup are present (guard at `processor.py:721-724`) | **The single sanctioned intra-stage checkpoint** — the provisions → CCF → init-EAD → collateral plan, before the guarantee module's 3-path concat (see next section) |
-| `crm_exit` | `engine/crm/processor.py:736` (producer-side) | Every run | The full CRM plan (guarantees + `_finalize_ead` + audit columns); the collateral-allocation / CRM-audit projections below it read in-memory data instead of re-executing the guarantee plan |
+| `classifier_exit` | `engine/classifier.py` (producer-side, in `classify`) | Every run | The classification flag/subtype/approach chain; the diagnostic emits below it read in-memory data, and CRM receives an eager-backed frame |
+| `crm_post_ead` | `engine/crm/processor.py` (`_run_ead_pipeline`) | Every run | **First sanctioned intra-stage checkpoint** — the provisions → CCF → init-EAD chain; the collateral step builds several small lookups from this frame, and without the checkpoint each lookup collect re-executes that chain (A/B-measured 35–52% full-pipeline cost; see next section) |
+| `crm_pre_guarantee_unified` | `engine/crm/processor.py` (`get_crm_unified_bundle`) | Only when valid guarantee inputs **and** a counterparty lookup are present | **Second sanctioned intra-stage checkpoint** — the collateral plan, before the guarantee module's 3-path concat (see next section) |
+| `crm_exit` | `engine/crm/processor.py` (producer-side) | Every run | The full CRM plan (guarantees + `_finalize_ead` + audit columns); the collateral-allocation / CRM-audit projections below it read in-memory data instead of re-executing the guarantee plan |
 | `re_split_exit` | `engine/pipeline.py:798` (`_run_re_splitter`) | Every run (the splitter itself is a no-op when no rows carry `re_split_mode`) | The RE loan-splitter output before the calculators fork the plan three ways — this edge replaces the old `pipeline_pre_branch` barrier one stage later |
 | `sa_branch` / `irb_branch` / `slotting_branch` | `engine/pipeline.py:895` via `materialise_branches` | Every run | The three per-approach calculator chains; cpu mode collects all three in one `pl.collect_all` (CSE computes the shared upstream once), spill mode sinks each branch sequentially |
 
-**Legacy-path edge (not in the orchestrated inventory):** `crm_post_audit_fanout`
-(`engine/crm/processor.py:606`) fires only on the legacy split path
-`get_crm_adjusted_bundle`, which the orchestrator does not use (it calls
-`get_crm_unified_bundle`, `pipeline.py:761`). The legacy path is scheduled for deletion in
-migration Phase 2.
+**Removed at Phase 1:** the `classifier_output`, `crm_post_ead_fanout`,
+`crm_no_guarantee`, and `pipeline_pre_branch` barriers. Their plan-flattening work is now
+done by the formal stage edges above (a stage input is always eager-backed, so an extra
+intra-stage barrier at the same point was redundant). `crm_post_ead` was also removed in
+the first Phase 1 landing and then **restored** as a sanctioned checkpoint after a
+controlled A/B showed its removal costs 35–52% on every full-pipeline benchmark
+(decision log, migration plan §6).
 
-**Removed at Phase 1:** the `classifier_output`, `crm_post_ead_unified`,
-`crm_post_ead_fanout`, `crm_no_guarantee`, and `pipeline_pre_branch` barriers. Their
-plan-flattening work is now done by the formal stage edges above (a stage input is always
-eager-backed, so an extra intra-stage barrier at the same point was redundant).
+**Removed at Phase 2:** the `crm_post_audit_fanout` edge, deleted together with the
+legacy split path `get_crm_adjusted_bundle`/`apply_crm` it served.
+`get_crm_unified_bundle` is the CRM stage's only entry point.
 
 ---
 
-## The Single Intra-Stage Checkpoint: `crm_pre_guarantee_unified`
+## The Two Intra-Stage Checkpoints
 
-Exactly one materialisation is sanctioned *inside* a stage, at
-`engine/crm/processor.py:725`. It is empirically irreducible on Polars 1.37:
+Exactly two materialisations are sanctioned *inside* a stage — both in the CRM
+processor, both empirically justified on Polars 1.37, both pinned by the plan-node
+ceiling tests (re-validate per Polars upgrade before attempting removal; Do-not-do
+register, migration plan §5):
 
-- The guarantee module's 3-path concat (no-guarantee / single-guarantor /
-  multi-guarantor split) re-evaluates the full collateral plan per branch without it
-  (~4x slowdown at 100K scale).
-- Removing it **alone** reproduces the deep-plan SIGSEGV — this was the
-  single-lazy-plan investigation's hardest finding.
-
-It only fires when guarantee inputs are present and valid; on guarantee-free runs the CRM
-stage runs as one unbroken lazy plan from the classifier edge to `crm_exit`. The
-checkpoint is pinned by the plan-node ceiling tests; re-validate per Polars upgrade before
-attempting removal (Do-not-do register, migration plan §5).
+- **`crm_post_ead`** (`_run_ead_pipeline`): the collateral step that follows builds
+  several small lookup frames from the post-EAD frame; without the checkpoint each
+  lookup collect re-executes the provisions → CCF → init-EAD chain. Controlled
+  single-variable A/B (2026-06-11, quiet machine): removing it costs **35–52%** on the
+  full-pipeline benchmarks at 10k and 100k rows (e.g. crr_100k 7.2s → 15.2s).
+- **`crm_pre_guarantee_unified`** (`get_crm_unified_bundle`): the guarantee module's
+  3-path concat (no-guarantee / single-guarantor / multi-guarantor split) re-evaluates
+  the full collateral plan per branch without it (~4x slowdown at 100K scale), and
+  removing it **alone** reproduces the deep-plan SIGSEGV — the single-lazy-plan
+  investigation's hardest finding. It only fires when guarantee inputs are present and
+  valid; on guarantee-free runs the CRM stage runs as one unbroken lazy plan from
+  `crm_post_ead` to `crm_exit`.
 
 ---
 
@@ -193,7 +199,7 @@ pipeline:
 
 1. **Edge inventory** — a plain run emits exactly the documented edge sequence, in
    pipeline order; a guaranteed run adds `crm_pre_guarantee_unified` between
-   `classifier_exit` and `crm_exit` and nothing else. A missing edge means a stage
+   `crm_post_ead` and `crm_exit` and nothing else. A missing edge means a stage
    started exchanging lazy plans across its boundary again; an unexpected edge means a
    new materialisation was added without updating this page.
 2. **Plan-node ceilings** — the unoptimised plan arriving at each edge stays under a
@@ -204,10 +210,11 @@ The metric is `plan_node_count()` (`engine/materialise.py:143`): non-blank lines
 `lf.explain(optimized=False)` — a *consistent proxy* for native plan-tree size, not an
 exact node census.
 
-Measured 2026-06-11 on Polars 1.37 (10k-row fixture): `hierarchy_exit` 1,586,
-`classifier_exit` 88, `crm_pre_guarantee_unified` 1,840, `crm_exit` 1,844 (1,225 when the
-checkpoint absorbed the collateral plan), `re_split_exit` 100, branches 28–85. Ceilings
-are pinned at roughly 2x measured; the SIGSEGV threshold is ≈25,000.
+Measured 2026-06-11 on Polars 1.37 (10k-row fixture, both CRM checkpoints in place):
+`hierarchy_exit` 1,586, `classifier_exit` 88, `crm_post_ead` 22,
+`crm_pre_guarantee_unified` 1,021, `crm_exit` 1,025 (1,225 with guarantees),
+`re_split_exit` 100, branches 28–85. Ceilings are pinned at roughly 2–4x measured; the
+SIGSEGV threshold is ≈25,000.
 
 **Recalibration procedure (required on every Polars upgrade):**
 

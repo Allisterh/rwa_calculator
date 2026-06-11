@@ -178,7 +178,7 @@ After CRM processing, exposures include the full EAD waterfall: provisions → C
 collateral → guarantees → final EAD. The CRM processor also determines LGD values
 (supervisory for F-IRB, modelled for A-IRB with optional floors).
 
-**Source**: `CRM_ADJUSTED_SCHEMA` in `data/schemas.py`, `CRMProcessor.apply_crm()` in `engine/crm/processor.py`
+**Source**: `CRM_ADJUSTED_SCHEMA` in `data/schemas.py`, `CRMProcessor.get_crm_unified_bundle()` in `engine/crm/processor.py`
 
 ### EAD calculation columns
 
