@@ -3,7 +3,9 @@ Stage-edge materialisation for the RWA pipeline.
 
 Pipeline position:
     Called by PipelineOrchestrator at every stage exit, and by CRMProcessor at
-    the single sanctioned intra-stage checkpoint (``crm_pre_guarantee``).
+    the two sanctioned intra-stage checkpoints (``crm_post_ead`` and
+    ``crm_pre_guarantee_unified`` — both benchmark-justified; see
+    docs/architecture/pipeline-collect-barriers.md).
 
 Key responsibilities:
 - ``materialise_edge``: eager-collect a stage's output plan once at its exit

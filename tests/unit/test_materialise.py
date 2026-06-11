@@ -7,6 +7,7 @@ fallback); every edge records an EdgeEvent into the run capture.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -127,23 +128,41 @@ class TestMaterialiseEdgeSpill:
         with pytest.raises(SpillError, match="spill-to-parquet failed for edge 'spill_fail'"):
             materialise_edge(failing, spill_config, "spill_fail")
 
-    def test_streaming_collect_engine_is_deprecated_alias(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """collect_engine='streaming' still spills, with a deprecation warning."""
+    def test_streaming_collect_engine_is_deprecated_alias(self, tmp_path: Path) -> None:
+        """collect_engine='streaming' still spills, with one warning per run.
+
+        Captures via a handler attached directly to the module logger —
+        caplog relies on propagation to root, which configure_logging
+        disables for the rwa_calc namespace when other tests on the same
+        xdist worker have run the pipeline.
+        """
         config = CalculationConfig.crr(
             reporting_date=date(2024, 12, 31),
             collect_engine="streaming",
             spill_dir=tmp_path,
         )
-        token = begin_edge_capture()
-        with caplog.at_level("WARNING", logger="rwa_calc.engine.materialise"):
+        records: list[logging.LogRecord] = []
+
+        class _ListHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        module_logger = logging.getLogger("rwa_calc.engine.materialise")
+        handler = _ListHandler(level=logging.WARNING)
+        module_logger.addHandler(handler)
+        old_level = module_logger.level
+        module_logger.setLevel(logging.WARNING)
+        try:
+            token = begin_edge_capture()
             materialise_edge(_sample_lf(), config, "deprecated_streaming")
             materialise_edge(_sample_lf(), config, "deprecated_streaming_2")
-        events = end_edge_capture(token)
+            events = end_edge_capture(token)
+        finally:
+            module_logger.removeHandler(handler)
+            module_logger.setLevel(old_level)
 
         assert all(e.spilled for e in events)
-        deprecations = [r for r in caplog.records if "deprecated" in r.message]
+        deprecations = [r for r in records if "deprecated" in r.getMessage()]
         assert len(deprecations) == 1, "deprecation warning must fire once per run"
 
 

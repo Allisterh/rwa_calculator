@@ -271,7 +271,7 @@ Validation: full suite green; arch_check green incl. new checks; master CI green
 FCSM acceptance scenario passes through the orchestrator; benchmark job produces
 baselines; pre-commit fires.
 
-### Phase 1 — Eager stage edges, plan-node budgets, one execution semantics
+### Phase 1 — Eager stage edges, plan-node budgets, one execution semantics *(DONE 2026-06-11, except the 1M+/10M measured-memory gate run — tooling shipped as `scripts/profile_memory.py`)*
 
 - `materialise_edge(lf, config, label)` called at **every** stage exit (formalising
   the existing 5 hot-path materialisations). Bundle fields stay `pl.LazyFrame`-typed
@@ -453,5 +453,8 @@ annotations.
 | 2026-06-11 | Target architecture = Design B (rulepack) + 28 grafts; phases 0–8 as above | Judge panel 3/3 lenses; see provenance header |
 | 2026-06-11 | FCSM divergence: **FIX** (port to unified path), not preserve | Simple Method election must have effect in production; CRR Art. 222 |
 | 2026-06-11 | `_filter_on_bs` missing-column drift: unify on **return empty** | A missing balance-sheet indicator must not silently pass all rows (double-counts across on/off-BS cells); detectable failure preferred; absence becomes a contract violation in Phase 3 |
+| 2026-06-11 | Phase 1 **deviation**: CRM keeps **two** intra-stage checkpoints, not one — `crm_post_ead` restored alongside `crm_pre_guarantee_unified` | Controlled single-variable A/B (quiet machine, Polars 1.37): removing `crm_post_ead` costs **35–52%** on every full-pipeline benchmark at 10k and 100k rows — the collateral step's lookup collects re-execute the provisions→CCF→EAD chain without it. Re-validate per Polars upgrade via the plan-node ceiling tests |
+| 2026-06-11 | Plan-node ceilings pinned (Polars 1.37): hierarchy_exit 3200, classifier_exit 400, crm_post_ead 2400, crm_pre_guarantee 4000, crm_exit 4000, re_split_exit 500, branches 300–500 | Measured: hierarchy 1,586; crm_pre_guarantee 1,021; crm_exit 1,025–1,225; rest ≤100. SIGSEGV threshold ~25,000. Recalibrate via `RWA_PRINT_EDGE_NODES=1` on every Polars upgrade (test pins the Polars minor version) |
+| 2026-06-11 | Spill-edge default at scale: **OPEN** — decision deferred to a 1M+ profile run | First measurement (5k rows, `scripts/profile_memory.py`): spill mode is strictly worse at small scale (+146% peak RSS, 20× wall, dominated by the pre-guarantee sink). Run the gate at 1M+ before choosing the 10M default; do not enable `spill_edges` below the measured crossover |
 
 *(Append further preserve-or-fix decisions here as phases land.)*

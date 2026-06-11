@@ -668,9 +668,7 @@ class CRMProcessor:
         )
         errors.extend(look_through_errors)
 
-        # Steps 1-3: provisions -> CCF -> init EAD (lazy; the stage input is
-        # eager-backed via the classifier_exit edge, and the chain materialises
-        # at the crm_pre_guarantee checkpoint / crm_exit edge below)
+        # Steps 1-3: provisions -> CCF -> init EAD -> crm_post_ead checkpoint
         exposures = self._run_ead_pipeline(data, config)
 
         # Generate synthetic collateral from netting (CRR Art. 195)
@@ -710,7 +708,7 @@ class CRMProcessor:
         # Pre-compute life insurance method columns (Art. 232) for SA RW mapping
         exposures = self._apply_life_insurance_step(exposures, collateral, config)
 
-        # The single sanctioned INTRA-STAGE checkpoint (migration Phase 1).
+        # The second sanctioned INTRA-STAGE checkpoint (with crm_post_ead).
         # Empirically irreducible on Polars 1.37: the guarantee module's
         # 3-path concat (no-guarantee / single / multi-guarantor split)
         # re-evaluates the full collateral plan per branch without it
@@ -769,7 +767,17 @@ class CRMProcessor:
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
     ) -> pl.LazyFrame:
-        """Run provisions -> CCF -> init_ead (lazy; no intra-stage barrier)."""
+        """Run provisions -> CCF -> init_ead and materialise the checkpoint.
+
+        ``crm_post_ead`` is the second sanctioned intra-stage checkpoint
+        (with ``crm_pre_guarantee_unified``). The collateral step that
+        follows builds several small lookups from this frame; without the
+        checkpoint each lookup collect re-executes the provisions -> CCF ->
+        EAD chain. Controlled A/B (2026-06-11, quiet machine, Polars 1.37):
+        removing it costs 35-52% on the full-pipeline benchmarks at 10k and
+        100k rows. Recorded in docs/plans/target-architecture-migration.md
+        §6; re-validate per Polars upgrade.
+        """
         exposures = data.all_exposures
         # Step 1: Resolve provisions BEFORE CCF (CRR Art. 111(2))
         # This adds provision_on_drawn, provision_on_nominal, nominal_after_provision
@@ -780,7 +788,7 @@ class CRMProcessor:
         # Uses nominal_after_provision when available
         exposures = self._apply_ccf(exposures, config)
         # Step 3: Initialize EAD columns
-        return self._initialize_ead(exposures)
+        return materialise_edge(self._initialize_ead(exposures), config, "crm_post_ead")
 
     def _merge_netting_collateral(
         self,

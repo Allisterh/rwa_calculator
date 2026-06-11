@@ -57,13 +57,14 @@ from .conftest import (
 # ---------------------------------------------------------------------------
 
 # Measured 2026-06-11 on Polars 1.37 (RWA_PRINT_EDGE_NODES=1): hierarchy_exit
-# 1586, classifier_exit 88, crm_pre_guarantee_unified 1840, crm_exit 1844
-# (1225 when the checkpoint absorbed the collateral plan), re_split_exit 100,
-# branches 28-85. Ceilings pinned at ~2x measured; SIGSEGV threshold ~25,000.
+# 1586, classifier_exit 88, crm_post_ead 22, crm_pre_guarantee_unified 1021,
+# crm_exit 1025 (1225 with guarantees), re_split_exit 100, branches 28-85.
+# Ceilings pinned at ~2-4x measured; SIGSEGV threshold ~25,000.
 _EDGE_NODE_CEILINGS: dict[str, int] = {
     "hierarchy_exit": 3200,
     "ccr_exit": 800,
     "classifier_exit": 400,
+    "crm_post_ead": 2400,
     "crm_pre_guarantee_unified": 4000,
     "crm_exit": 4000,
     "re_split_exit": 500,
@@ -76,6 +77,7 @@ _EDGE_NODE_CEILINGS: dict[str, int] = {
 _BASE_EDGE_SEQUENCE = [
     "hierarchy_exit",
     "classifier_exit",
+    "crm_post_ead",
     "crm_exit",
     "re_split_exit",
     "sa_branch",
@@ -173,15 +175,16 @@ class TestEdgeInventory:
     def test_guaranteed_run_adds_the_crm_checkpoint(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The single sanctioned intra-stage checkpoint appears iff guarantees exist."""
+        """The pre-guarantee intra-stage checkpoint appears iff guarantees exist."""
         edge_map = _run_and_read_map(tmp_path, monkeypatch, with_guarantee=True)
 
         labels = [e["label"] for e in edge_map]
         assert "crm_pre_guarantee_unified" in labels
         without_checkpoint = [lbl for lbl in labels if lbl != "crm_pre_guarantee_unified"]
         assert without_checkpoint == _BASE_EDGE_SEQUENCE
-        # The checkpoint sits inside the CRM stage: after classify, before crm_exit.
-        assert labels.index("classifier_exit") < labels.index("crm_pre_guarantee_unified")
+        # The checkpoint sits inside the CRM stage: after the post-EAD
+        # checkpoint, before crm_exit.
+        assert labels.index("crm_post_ead") < labels.index("crm_pre_guarantee_unified")
         assert labels.index("crm_pre_guarantee_unified") < labels.index("crm_exit")
 
     def test_exposure_edges_carry_rows(
