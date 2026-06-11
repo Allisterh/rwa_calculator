@@ -928,6 +928,36 @@ def check_import_direction(path: Path) -> list[str]:
     return violations
 
 
+def check_no_empty_frame_sentinels(path: Path) -> list[str]:
+    """No bare ``pl.LazyFrame()`` / ``pl.DataFrame().lazy()`` sentinels in engine/**.
+
+    Migration Phase 2: optional frames are ``None`` — an empty-LazyFrame
+    sentinel conflates "absent input" with "zero-row result", forcing every
+    consumer to guess which it has (the root of the presence-guard debt).
+    A genuine zero-row frame produced by a filter is fine; what this bans is
+    *constructing* an empty frame to stand in for a missing one.
+    """
+    violations = []
+    pattern = re.compile(r"pl\.LazyFrame\(\s*\)|pl\.DataFrame\(\s*\)\s*\.lazy\(\)")
+    engine_root = path / "engine"
+    if not engine_root.exists():
+        return []
+    for py_file in sorted(engine_root.rglob("*.py")):
+        try:
+            text = py_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        code_lines = _code_line_numbers(text)
+        for i, line in enumerate(text.split("\n"), 1):
+            if i not in code_lines:
+                continue
+            if pattern.search(line):
+                violations.append(
+                    f"  {py_file}:{i}: empty-LazyFrame sentinel -- optional frames are None"
+                )
+    return violations
+
+
 def check_watchfire_citations() -> tuple[list[str], list[str]]:
     """Run `watchfire check` via its Python API.
 
@@ -1036,6 +1066,10 @@ def main() -> int:
         (
             "Import direction points downward (contracts/engine/reporting/data/domain)",
             check_import_direction,
+        ),
+        (
+            "No empty-LazyFrame sentinels in engine/ (optional frames are None)",
+            check_no_empty_frame_sentinels,
         ),
     ]
 

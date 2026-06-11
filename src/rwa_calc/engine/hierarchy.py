@@ -2832,7 +2832,7 @@ class HierarchyResolver:
     def _enrich_with_lending_group(
         self,
         exposures: pl.LazyFrame,
-        lending_mappings: pl.LazyFrame,
+        lending_mappings: pl.LazyFrame | None,
     ) -> pl.LazyFrame:
         """
         Add lending group reference and exposure totals to each exposure.
@@ -2848,39 +2848,49 @@ class HierarchyResolver:
 
         Args:
             exposures: Exposures with property coverage columns already added
-            lending_mappings: Lending group parent-child mappings
+            lending_mappings: Lending group parent-child mappings, or None when
+                no lending-group table was supplied — every counterparty is
+                then a group-of-one (identical to an empty mappings table)
 
         Returns:
             Exposures with lending_group_reference, lending_group_total_exposure,
             and lending_group_adjusted_exposure columns added
         """
-        # Build lending group membership
-        lending_groups = lending_mappings.select(
-            [
-                pl.col("parent_counterparty_reference").alias("lending_group_reference"),
-                pl.col("child_counterparty_reference").alias("member_counterparty_reference"),
-            ]
-        )
+        if lending_mappings is None:
+            # No lending-group table: every row's group reference is null, so
+            # the null-partition fallback below aggregates per counterparty —
+            # exactly the empty-mappings behaviour.
+            exposures = exposures.with_columns(
+                pl.lit(None).cast(pl.String).alias("lending_group_reference")
+            )
+        else:
+            # Build lending group membership
+            lending_groups = lending_mappings.select(
+                [
+                    pl.col("parent_counterparty_reference").alias("lending_group_reference"),
+                    pl.col("child_counterparty_reference").alias("member_counterparty_reference"),
+                ]
+            )
 
-        parent_as_member = lending_mappings.select(
-            [
-                pl.col("parent_counterparty_reference").alias("lending_group_reference"),
-                pl.col("parent_counterparty_reference").alias("member_counterparty_reference"),
-            ]
-        ).unique()
+            parent_as_member = lending_mappings.select(
+                [
+                    pl.col("parent_counterparty_reference").alias("lending_group_reference"),
+                    pl.col("parent_counterparty_reference").alias("member_counterparty_reference"),
+                ]
+            ).unique()
 
-        all_members = pl.concat(
-            [lending_groups, parent_as_member],
-            how="vertical",
-        ).unique(subset=["member_counterparty_reference"], keep="first")
+            all_members = pl.concat(
+                [lending_groups, parent_as_member],
+                how="vertical",
+            ).unique(subset=["member_counterparty_reference"], keep="first")
 
-        # Join to get lending group reference
-        exposures = exposures.join(
-            all_members,
-            left_on="counterparty_reference",
-            right_on="member_counterparty_reference",
-            how="left",
-        )
+            # Join to get lending group reference
+            exposures = exposures.join(
+                all_members,
+                left_on="counterparty_reference",
+                right_on="member_counterparty_reference",
+                how="left",
+            )
 
         # .over() window functions for group totals (no self-join!).
         # When no lending group, aggregate over counterparty_reference so the

@@ -72,7 +72,7 @@ class CollateralLinkAllocation:
         errors: Accumulated data-quality errors (never raised).
     """
 
-    collateral: pl.LazyFrame
+    collateral: pl.LazyFrame | None
     audit: pl.LazyFrame | None = None
     errors: list[CalculationError] = field(default_factory=list)
 
@@ -100,7 +100,8 @@ class CollateralLinkAllocator:
         supplied (the single-beneficiary path). Never raises.
         """
         if collateral is None or collateral_links is None:
-            return CollateralLinkAllocation(collateral=collateral or pl.LazyFrame(), audit=None)
+            # Absent collateral stays None — never an empty-frame sentinel.
+            return CollateralLinkAllocation(collateral=collateral, audit=None)
 
         coll_cols = collateral.collect_schema().names()
         link_cols = set(collateral_links.collect_schema().names())

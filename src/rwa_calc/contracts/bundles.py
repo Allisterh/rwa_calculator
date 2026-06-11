@@ -76,7 +76,9 @@ class RawDataBundle:
     loans: pl.LazyFrame
     counterparties: pl.LazyFrame
     facility_mappings: pl.LazyFrame
-    lending_mappings: pl.LazyFrame
+    # Optional frames are None when absent — never an empty-LazyFrame
+    # sentinel (migration Phase 2; enforced by arch_check check 13).
+    lending_mappings: pl.LazyFrame | None = None
     org_mappings: pl.LazyFrame | None = None
     contingents: pl.LazyFrame | None = None
     collateral: pl.LazyFrame | None = None
@@ -818,7 +820,7 @@ def create_empty_raw_data_bundle() -> RawDataBundle:
         loans=pl.LazyFrame(),
         counterparties=pl.LazyFrame(),
         facility_mappings=pl.LazyFrame(),
-        lending_mappings=pl.LazyFrame(),
+        lending_mappings=None,
         org_mappings=None,
         contingents=None,
         collateral=None,
