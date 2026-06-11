@@ -106,6 +106,17 @@ join keys and column names).</div>
 {{ render_table(result.component_table) }}
 
 <h2>2 · Segment — where do breaks concentrate?</h2>
+{% if result.allocation_table.rows %}
+<div class="panel">
+  <h3>Asset-class allocation — legacy vs ours (RWA)</h3>
+  {{ result.chart_allocation | safe }}
+</div>
+<h3>Asset-class allocation — EAD &amp; RWA by risk class</h3>
+<p class="muted">Each side's exposures are totalled by risk class (a split exposure's
+portions each counted in their own class). Offsetting deltas show where the two engines
+allocate an exposure to different classes.</p>
+{{ render_table(result.allocation_table) }}
+{% endif %}
 <h3>By bucket</h3>
 {{ render_table(result.bucket_table) }}
 <h3>By exposure class</h3>

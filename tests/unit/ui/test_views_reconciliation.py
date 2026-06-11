@@ -97,6 +97,64 @@ def test_tie_out_chart_items_are_triples(response: ReconciliationResponse) -> No
 
 
 # =============================================================================
+# Tier 2 — asset-class allocation
+# =============================================================================
+
+
+def _response_with_class() -> ReconciliationResponse:
+    """Like ``_response`` but with the class mapped, so allocation is populated."""
+    ours = pl.LazyFrame(
+        {
+            "exposure_reference": ["L1", "L2", "L3"],
+            "exposure_class": ["corporate", "retail", "corporate"],
+            "approach_applied": ["SA", "SA", "SA"],
+            "ead_final": [100.0, 200.0, 500.0],
+            "rwa_final": [50.0, 150.0, 250.0],
+        }
+    )
+    legacy = pl.LazyFrame(
+        {
+            "exposure_reference": ["L1", "L2", "L3"],
+            "legacy_ead": [100.0, 200.0, 500.0],
+            "legacy_rwa": [50.0, 150.0, 300.0],
+            "legacy_exposure_class": ["corporate", "retail", "corporate"],
+        }
+    )
+    mapping = LegacyColumnMapping(
+        legacy_keys=("exposure_reference",),
+        our_keys=("exposure_reference",),
+        components={
+            "ead": ComponentMapping("EAD"),
+            "rwa": ComponentMapping("RWA"),
+            "exposure_class": ComponentMapping("legacy_exposure_class"),
+        },
+    )
+    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    return ReconciliationResponse.from_bundle(
+        bundle, legacy_file=Path("legacy.csv"), framework="CRR"
+    )
+
+
+def test_class_allocation_table_totals_per_class() -> None:
+    df = rv.class_allocation_table(_response_with_class())
+    corp = df.filter(pl.col("exposure_class") == "corporate").row(0, named=True)
+    assert corp["our_rwa"] == pytest.approx(300.0)  # L1 50 + L3 250
+    assert corp["legacy_rwa"] == pytest.approx(350.0)  # L1 50 + L3 300
+
+
+def test_class_allocation_chart_items_are_triples() -> None:
+    items = rv.class_allocation_chart_items(_response_with_class())
+    assert items
+    assert all(len(it) == 3 for it in items)
+
+
+def test_class_allocation_empty_when_unmapped(response: ReconciliationResponse) -> None:
+    # The base fixture maps no class -> empty allocation table and no chart items.
+    assert rv.class_allocation_table(response).height == 0
+    assert rv.class_allocation_chart_items(response) == []
+
+
+# =============================================================================
 # Tier 4 — forensic table projection + filter
 # =============================================================================
 
@@ -158,7 +216,7 @@ def test_readable_recon_columns_drops_rel_delta_and_explain() -> None:
 
 def test_default_mapping_toml_parses() -> None:
     settings = loads_reconciliation_config(rv.DEFAULT_MAPPING_TOML, base_dir=".")
-    assert set(settings.mapping.components) == {"ead", "rwa"}
+    assert set(settings.mapping.components) == {"ead", "rwa", "exposure_class"}
 
 
 def test_bucket_choices_lead_with_all_then_break() -> None:

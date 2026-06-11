@@ -86,6 +86,50 @@ class TestReconcileEndToEnd:
         assert buckets.get("exact_match") == 1
         assert buckets.get("missing_left") == 1
 
+    def test_reconciles_with_class_in_join_key(
+        self, our_calc: CreditRiskCalc, tmp_path: Path
+    ) -> None:
+        # Keying on the raw legacy class column (used as BOTH a join key and the
+        # exposure_class component) proves the loader loads it under both aliases
+        # and the value-mapped class key aligns across engines.
+        our = our_calc.calculate()
+        results = our.collect_results()
+        our_ref = results["exposure_reference"][0]
+        our_class = str(results["exposure_class"][0])
+        our_rwa = float(results["rwa_final"][0])
+        legacy = tmp_path / "legacy_classkey.csv"
+        pl.DataFrame(
+            {
+                "loan_id": [our_ref],
+                "RWA_m": [our_rwa / 1_000_000.0],
+                "Asset_Class": ["XCLASS"],  # synonym mapped to our class below
+            }
+        ).write_csv(legacy)
+        settings = ReconciliationSettings(
+            legacy_file=legacy.resolve(),
+            legacy_format="csv",
+            mapping=LegacyColumnMapping(
+                legacy_keys=("loan_id", "Asset_Class"),
+                our_keys=("exposure_reference", "exposure_class"),
+                components={
+                    "rwa": ComponentMapping("RWA_m", scale=1_000_000.0),
+                    "exposure_class": ComponentMapping(
+                        "Asset_Class", value_map={"XCLASS": our_class}
+                    ),
+                },
+            ),
+        )
+
+        # Act
+        response = our_calc.reconcile(settings)
+
+        # Assert: the single (exposure, class) line matches on the value-mapped key.
+        assert response.success
+        buckets = {
+            r["row_bucket"]: r["count"] for r in response.collect_summary_by_bucket().to_dicts()
+        }
+        assert buckets.get("exact_match") == 1
+
     def test_totals_tie_out_includes_phantom(
         self, our_calc: CreditRiskCalc, tmp_path: Path
     ) -> None:

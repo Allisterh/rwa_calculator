@@ -133,6 +133,7 @@ class ReconciliationRunner:
         return ReconciliationBundle(
             component_reconciliation=recon,
             summary_by_component=_summary_by_component(recon, active),
+            class_allocation=_class_allocation(our_results, legacy_results, mapping, active),
             summary_by_bucket=_summary_by_bucket(recon),
             summary_by_exposure_class=_summary_by_group(recon, "our_exposure_class", active),
             summary_by_approach=_summary_by_group(recon, "our_approach", active),
@@ -252,7 +253,9 @@ class ReconciliationRunner:
     ) -> pl.LazyFrame:
         """Select our key, value, grouping and explain/input columns."""
         present = set(collapsed.collect_schema().names())
-        exprs: list[pl.Expr] = [_key_expr(mapping.our_keys).alias(_RECON_KEY)]
+        exprs: list[pl.Expr] = [
+            _key_expr(mapping.our_keys, _our_key_categoricals(mapping, active)).alias(_RECON_KEY)
+        ]
         seen: set[str] = {_RECON_KEY}
 
         # Carry the our-key columns verbatim for the break worklist.
@@ -290,15 +293,30 @@ class ReconciliationRunner:
         active: list[_ActiveComponent],
         errors: list[CalculationError],
     ) -> pl.LazyFrame:
-        """Select legacy key + value columns, deduped to one row per key (REC002)."""
-        exprs: list[pl.Expr] = [_key_expr(mapping.legacy_keys).alias(_RECON_KEY)]
+        """Select legacy key + value columns and aggregate to one row per key.
+
+        Symmetric with our side (``aggregate_to_key_grain``): additive components
+        are summed, the derived-ratio component (risk weight) is recomputed from
+        the summed numerator/denominator, and every other component (rates,
+        categoricals) takes the first value of the group. A legacy file that splits
+        one exposure across several lines — a collateralised portion in one risk
+        class, the residual in another, or guaranteed/unguaranteed portions —
+        therefore ties out by total instead of having all-but-the-first line
+        silently dropped (REC002). A within-key class/approach disagreement is
+        surfaced as REC004.
+        """
+        exprs: list[pl.Expr] = [
+            _key_expr(mapping.legacy_keys, _legacy_key_categoricals(mapping, active)).alias(
+                _RECON_KEY
+            )
+        ]
         for a in active:
             exprs.append(pl.col(a.legacy_col))
         exprs.append(pl.lit(True).alias("_legacy_present"))  # noqa: FBT003
         legacy = legacy_results.select(exprs)
 
-        # Detect duplicate keys (small diagnostic collect) before deduping, so a
-        # non-1:1 legacy file is surfaced rather than silently dropped on join.
+        # Detect keys with >1 legacy row (small diagnostic collect). With one row
+        # per key there is nothing to aggregate, so the common case is untouched.
         dup_count = (
             legacy.group_by(_RECON_KEY)
             .len()
@@ -307,15 +325,46 @@ class ReconciliationRunner:
             .collect()
             .item()
         )
-        if dup_count:
+        if not dup_count:
+            return legacy
+        errors.append(
+            reconciliation_warning(
+                ERROR_RECON_DUPLICATE_LEGACY_KEY,
+                f"{dup_count} legacy key(s) had multiple rows; aggregated to the "
+                "reconciliation grain (additive components summed, ratios recomputed)",
+                actual_value=str(dup_count),
+            )
+        )
+        self._warn_legacy_heterogeneity(legacy, active, errors)
+        return _aggregate_legacy_to_key_grain(legacy, active)
+
+    def _warn_legacy_heterogeneity(
+        self,
+        legacy: pl.LazyFrame,
+        active: list[_ActiveComponent],
+        errors: list[CalculationError],
+    ) -> None:
+        """Emit REC004 when a key's legacy rows disagree on a categorical value."""
+        cat_cols = [a.legacy_col for a in active if a.spec.kind == "categorical"]
+        if not cat_cols:
+            return
+        count = (
+            legacy.group_by(_RECON_KEY)
+            .agg([pl.col(c).n_unique().alias(c) for c in cat_cols])
+            .filter(pl.any_horizontal([pl.col(c) > 1 for c in cat_cols]))
+            .select(pl.len())
+            .collect()
+            .item()
+        )
+        if count:
             errors.append(
                 reconciliation_warning(
-                    ERROR_RECON_DUPLICATE_LEGACY_KEY,
-                    f"{dup_count} duplicate legacy key(s); keeping the first row of each on join",
-                    actual_value=str(dup_count),
+                    ERROR_RECON_GRAIN_HETEROGENEOUS,
+                    f"{count} legacy key(s) had rows of differing exposure class / "
+                    "approach; the categorical value shown is the first in each group",
+                    actual_value=str(count),
                 )
             )
-        return legacy.unique(subset=[_RECON_KEY], keep="first")
 
     # -- bucketing ----------------------------------------------------------
 
@@ -377,6 +426,7 @@ class ReconciliationRunner:
         return ReconciliationBundle(
             component_reconciliation=bundle.component_reconciliation,
             summary_by_component=bundle.summary_by_component,
+            class_allocation=bundle.class_allocation,
             summary_by_bucket=bundle.summary_by_bucket,
             summary_by_exposure_class=bundle.summary_by_exposure_class,
             summary_by_approach=bundle.summary_by_approach,
@@ -519,6 +569,104 @@ def _summary_by_component(recon: pl.LazyFrame, active: list[_ActiveComponent]) -
     return pl.concat(rows, how="vertical")
 
 
+def _class_allocation(
+    our_results: pl.LazyFrame,
+    legacy_results: pl.LazyFrame,
+    mapping: LegacyColumnMapping,
+    active: list[_ActiveComponent],
+) -> pl.LazyFrame:
+    """Portfolio EAD/RWA by risk class, ours vs legacy — allocation comfort.
+
+    Built independently of the per-key join: each side's rows are grouped by their
+    own exposure class (normalised both sides, value-mapped on the legacy side) and
+    the additive money fields summed, then full-joined on the canonical class. A
+    class our engine allocates differently to the legacy one shows as offsetting
+    deltas. Uses the raw (un-collapsed) ``our_results`` so a split exposure's
+    portions each land in their own class. Returns an empty frame (stable schema)
+    when exposure class or both money components are unmapped.
+    """
+    by_name = {a.spec.name: a for a in active}
+    cls = by_name.get("exposure_class")
+    ead = by_name.get("ead")
+    rwa = by_name.get("rwa")
+    if cls is None or (ead is None and rwa is None):
+        return _empty_class_allocation()
+
+    value_map = mapping.components["exposure_class"].value_map
+    our_side = (
+        our_results.with_columns(_normalise(pl.col(cls.our_col)).alias("exposure_class"))
+        .group_by("exposure_class")
+        .agg(
+            _sum_or_null(ead.our_col if ead else None).alias("our_ead"),
+            _sum_or_null(rwa.our_col if rwa else None).alias("our_rwa"),
+        )
+    )
+    legacy_side = (
+        legacy_results.with_columns(
+            _apply_value_map(_normalise(pl.col(cls.legacy_col)), value_map).alias("exposure_class")
+        )
+        .group_by("exposure_class")
+        .agg(
+            _sum_or_null(ead.legacy_col if ead else None).alias("legacy_ead"),
+            _sum_or_null(rwa.legacy_col if rwa else None).alias("legacy_rwa"),
+        )
+    )
+
+    joined = our_side.join(legacy_side, on="exposure_class", how="full", coalesce=True)
+    # A class absent from one side means 0 allocated there (mapped components only),
+    # so the delta reflects the full one-sided allocation rather than a null.
+    fills: list[pl.Expr] = []
+    if ead is not None:
+        fills += [pl.col("our_ead").fill_null(0.0), pl.col("legacy_ead").fill_null(0.0)]
+    if rwa is not None:
+        fills += [pl.col("our_rwa").fill_null(0.0), pl.col("legacy_rwa").fill_null(0.0)]
+    if fills:
+        joined = joined.with_columns(fills)
+
+    return (
+        joined.with_columns(
+            (pl.col("our_ead") - pl.col("legacy_ead")).alias("delta_ead"),
+            (pl.col("our_rwa") - pl.col("legacy_rwa")).alias("delta_rwa"),
+            pl.when(pl.col("legacy_rwa").abs() > _ZERO_GUARD)
+            .then((pl.col("our_rwa") - pl.col("legacy_rwa")) / pl.col("legacy_rwa") * 100.0)
+            .otherwise(pl.lit(None, dtype=pl.Float64))
+            .alias("delta_rwa_pct"),
+        )
+        .select(
+            "exposure_class",
+            "our_ead",
+            "legacy_ead",
+            "delta_ead",
+            "our_rwa",
+            "legacy_rwa",
+            "delta_rwa",
+            "delta_rwa_pct",
+        )
+        .sort("exposure_class", nulls_last=True)
+    )
+
+
+def _sum_or_null(col: str | None) -> pl.Expr:
+    """Sum a column, or a null Float64 literal when the component is unmapped."""
+    return pl.col(col).sum() if col is not None else pl.lit(None, dtype=pl.Float64)
+
+
+def _empty_class_allocation() -> pl.LazyFrame:
+    """Stable empty schema for the class-allocation view (class/money unmapped)."""
+    return pl.LazyFrame(
+        schema={
+            "exposure_class": pl.String,
+            "our_ead": pl.Float64,
+            "legacy_ead": pl.Float64,
+            "delta_ead": pl.Float64,
+            "our_rwa": pl.Float64,
+            "legacy_rwa": pl.Float64,
+            "delta_rwa": pl.Float64,
+            "delta_rwa_pct": pl.Float64,
+        }
+    )
+
+
 def _summary_by_bucket(recon: pl.LazyFrame) -> pl.LazyFrame:
     """Row-level bucket counts."""
     return recon.group_by("row_bucket").agg(pl.len().alias("count")).sort("row_bucket")
@@ -627,16 +775,116 @@ def _totals_tie_out(recon: pl.LazyFrame, active: list[_ActiveComponent]) -> pl.L
 
 
 # =============================================================================
+# Legacy-side aggregation
+# =============================================================================
+
+
+def _aggregate_legacy_to_key_grain(
+    legacy: pl.LazyFrame, active: list[_ActiveComponent]
+) -> pl.LazyFrame:
+    """Collapse multiple legacy rows per key to one — symmetric with our side.
+
+    Additive components (EAD, RWA, expected loss) are summed; a derived-ratio
+    component (risk weight) is recomputed as sum(numerator) / sum(denominator)
+    when both are mapped; every other component (rates, categoricals) and
+    ``_legacy_present`` take the first value of the group.
+    """
+    by_name = {a.spec.name: a for a in active}
+    ratio_recompute: dict[str, tuple[str, str]] = {}
+    agg_exprs: list[pl.Expr] = []
+    for a in active:
+        col = a.legacy_col
+        if a.spec.additive:
+            agg_exprs.append(pl.col(col).sum().alias(col))
+            continue
+        num_den = _ratio_source_cols(a.spec, by_name)
+        if num_den is not None:
+            ratio_recompute[col] = num_den
+        agg_exprs.append(pl.col(col).first().alias(col))
+    agg_exprs.append(pl.col("_legacy_present").first().alias("_legacy_present"))
+
+    grouped = legacy.group_by(_RECON_KEY, maintain_order=True).agg(agg_exprs)
+    for col, (num_col, den_col) in ratio_recompute.items():
+        grouped = grouped.with_columns(
+            pl.when(pl.col(den_col).abs() > _ZERO_GUARD)
+            .then(pl.col(num_col) / pl.col(den_col))
+            .otherwise(pl.lit(None, dtype=pl.Float64))
+            .alias(col)
+        )
+    return grouped
+
+
+def _ratio_source_cols(
+    spec: ReconcilableComponent, by_name: dict[str, _ActiveComponent]
+) -> tuple[str, str] | None:
+    """Resolve a derived-ratio component to its (numerator, denominator) legacy
+    columns when both are active, else None (the component falls back to first)."""
+    if spec.derived_ratio is None:
+        return None
+    num_name, den_name = spec.derived_ratio
+    num = by_name.get(num_name)
+    den = by_name.get(den_name)
+    if num is None or den is None:
+        return None
+    return num.legacy_col, den.legacy_col
+
+
+# =============================================================================
 # Expression helpers
 # =============================================================================
 
 
-def _key_expr(key_columns: tuple[str, ...]) -> pl.Expr:
-    """Concatenate key columns into a single string join key (null-safe)."""
-    parts = [pl.col(c).cast(pl.String).fill_null("") for c in key_columns]
+def _key_expr(
+    key_columns: tuple[str, ...],
+    categorical: dict[str, dict[str, str]] | None = None,
+) -> pl.Expr:
+    """Concatenate key columns into a single string join key (null-safe).
+
+    Columns named in ``categorical`` are normalised (casefold/strip) and, with a
+    value map, translated to canonical synonyms before concatenation — so a
+    class-valued key aligns across engines (legacy ``RRE`` -> ``residential_mortgage``).
+    Other columns keep their raw string form.
+    """
+    categorical = categorical or {}
+    parts: list[pl.Expr] = []
+    for c in key_columns:
+        if c in categorical:
+            parts.append(_apply_value_map(_normalise(pl.col(c)), categorical[c]).fill_null(""))
+        else:
+            parts.append(pl.col(c).cast(pl.String).fill_null(""))
     if len(parts) == 1:
         return parts[0]
     return pl.concat_str(parts, separator=_KEY_SEP)
+
+
+def _our_key_categoricals(
+    mapping: LegacyColumnMapping, active: list[_ActiveComponent]
+) -> dict[str, dict[str, str]]:
+    """Our key columns that are categorical components — normalise only (canonical)."""
+    keys = set(mapping.our_keys)
+    return {a.our_col: {} for a in active if a.spec.kind == "categorical" and a.our_col in keys}
+
+
+def _legacy_key_categoricals(
+    mapping: LegacyColumnMapping, active: list[_ActiveComponent]
+) -> dict[str, dict[str, str]]:
+    """Legacy key columns that are categorical components — normalise + value-map.
+
+    The key may name either the canonical ``legacy_<component>`` column or the raw
+    source column the loader read it from (``ComponentMapping.legacy_column``).
+    """
+    keys = set(mapping.legacy_keys)
+    out: dict[str, dict[str, str]] = {}
+    for a in active:
+        if a.spec.kind != "categorical":
+            continue
+        cm = mapping.components.get(a.spec.name)
+        value_map = cm.value_map if cm is not None else {}
+        for candidate in (a.legacy_col, cm.legacy_column if cm is not None else None):
+            if candidate in keys:
+                out[candidate] = value_map
+                break
+    return out
 
 
 def _raw_grouping_expr(source_col: str, out_name: str, present: set[str]) -> pl.Expr:

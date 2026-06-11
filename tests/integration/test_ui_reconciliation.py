@@ -107,6 +107,36 @@ def test_reconciliation_post_renders_four_tiers(client: TestClient, recon_dir: s
     assert '<svg class="chart"' in resp.text
 
 
+def test_reconciliation_renders_asset_class_allocation(client: TestClient, tmp_path: Path) -> None:
+    # Arrange: a legacy file that carries an asset-class column per line (the
+    # default mapping maps exposure_class -> Asset_Class), so the allocation tier
+    # is populated and rendered.
+    write_mandatory_minimum(tmp_path)
+    ours = (
+        CreditRiskCalc(
+            data_path=str(tmp_path),
+            framework="CRR",
+            reporting_date=date(2025, 1, 1),
+            permission_mode="standardised",
+            data_format="parquet",
+        )
+        .calculate()
+        .scan_results()
+        .select("exposure_reference", "ead_final", "rwa_final", "exposure_class")
+        .collect()
+    )
+    ours.rename(
+        {"ead_final": "EAD", "rwa_final": "RWA", "exposure_class": "Asset_Class"}
+    ).write_csv(tmp_path / "legacy_output.csv")
+
+    # Act
+    resp = client.post("/reconciliation", data=_form_data(str(tmp_path)))
+
+    # Assert: the asset-class allocation view is present.
+    assert resp.status_code == 200
+    assert "Asset-class allocation" in resp.text
+
+
 def test_reconciliation_bucket_filter_reads_cached_result(
     client: TestClient, recon_dir: str
 ) -> None:
