@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.contracts.validation import validate_bundle_values
-from rwa_calc.engine.hierarchy import HierarchyResolver
 from rwa_calc.engine.irb import IRBExpr, IRBLazyFrame  # noqa: F401 - registers namespace
 from tests.fixtures.contract_columns import pad_crm_exit_defaults as _pad
 from tests.fixtures.raw_bundle import make_raw_bundle
@@ -249,8 +248,9 @@ class TestSchemaAndPropagation:
 
     def test_effective_maturity_on_exposures_frame_schema(self) -> None:
         """The column is declared in the internal exposures frame schema."""
+        from rwa_calc.engine.stages.hierarchy.unify import unify_exposures
 
-        source = HierarchyResolver._unify_exposures.__code__.co_consts
+        source = unify_exposures.__code__.co_consts
         # Flatten nested code constants looking for the string literal
         found = any(
             isinstance(c, str) and c == "effective_maturity"

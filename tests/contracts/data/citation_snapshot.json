@@ -247,16 +247,6 @@
   "rwa_calc.engine.equity.calculator::_append_ciu_branches": [
     "PS1/26, paragraph 132"
   ],
-  "rwa_calc.engine.hierarchy::HierarchyResolver._apply_short_term_rating_override": [
-    "CRR Art. 131",
-    "CRR Art. 140"
-  ],
-  "rwa_calc.engine.hierarchy::HierarchyResolver._attach_counterparty_rating": [
-    "CRR Art. 135",
-    "CRR Art. 136",
-    "CRR Art. 138",
-    "CRR Art. 139"
-  ],
   "rwa_calc.engine.irb.formulas::_capital_k_expr_from_params": [
     "CRR Art. 153(1)"
   ],
@@ -408,6 +398,16 @@
   ],
   "rwa_calc.engine.slotting.namespace::SlottingLazyFrame.apply_slotting_weights": [
     "CRR Art. 153(5)"
+  ],
+  "rwa_calc.engine.stages.hierarchy.enrich::apply_short_term_rating_override": [
+    "CRR Art. 131",
+    "CRR Art. 140"
+  ],
+  "rwa_calc.engine.stages.hierarchy.enrich::attach_counterparty_rating": [
+    "CRR Art. 135",
+    "CRR Art. 136",
+    "CRR Art. 138",
+    "CRR Art. 139"
   ],
   "rwa_calc.engine.supporting_factors::SupportingFactorCalculator.apply_factors": [
     "CRR Art. 501"

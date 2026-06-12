@@ -3,7 +3,8 @@ Entity-type to exposure-class mappings.
 
 Pipeline position:
     Consumed by ``engine.classifier`` (entity_type → SA/IRB class via
-    ``replace_strict``), ``engine.hierarchy`` (SA RW preview), and the
+    ``replace_strict``), ``engine.stages.hierarchy.facility_undrawn``
+    (SA RW preview), and the
     SA / IRB / CRM guarantee branches that need to derive a guarantor's
     SA exposure class from its entity_type.
 

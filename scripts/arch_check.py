@@ -118,12 +118,13 @@ VALIDATION_ENUM_ALLOWLIST: dict[str, set[str]] = {
     _PATH_UTILS: {"NULLABLE_PARTITION_KEYS"},
     # Two-site coupling marker for QRRE-related facility columns. Same
     # rationale as NULLABLE_PARTITION_KEYS: these are engine-internal column
-    # names that document a within-module coupling between
-    # _undrawn_select_expressions and _propagate_facility_qrre_columns; the
-    # constant exists to make the coupling explicit and is pinned by
+    # names that document a within-package coupling between
+    # facility_undrawn._undrawn_select_expressions and
+    # enrich.propagate_facility_qrre_columns; the constant exists to make the
+    # coupling explicit and is pinned by
     # tests/unit/test_p6_26_qrre_coupling_constant.py. Moving it to
     # data/schemas.py would split the rule from the code that enforces it.
-    "engine/hierarchy.py": {"_FACILITY_QRRE_COUPLED_COLUMNS"},
+    "engine/stages/hierarchy/__init__.py": {"_FACILITY_QRRE_COUPLED_COLUMNS"},
     # Per-row money columns the securitisation residual multiplier scales.
     # These are engine-internal column names (the calculators' own output
     # columns), not input-domain validation enums. Pinned to the aggregator
