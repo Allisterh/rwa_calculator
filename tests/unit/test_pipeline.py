@@ -36,6 +36,7 @@ from rwa_calc.engine.pipeline import (
     create_pipeline,
     create_test_pipeline,
 )
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 # =============================================================================
 # Test Fixtures
@@ -220,7 +221,7 @@ def mock_raw_data() -> RawDataBundle:
         }
     )
 
-    return RawDataBundle(
+    return make_raw_bundle(
         facilities=facilities,
         loans=loans,
         contingents=contingents,

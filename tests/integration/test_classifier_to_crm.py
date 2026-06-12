@@ -37,6 +37,7 @@ from tests.fixtures.irb_test_helpers import (
     create_full_irb_model_permissions,
     enrich_ratings_with_model_id,
 )
+from tests.fixtures.raw_bundle import seal_raw_table
 
 from .conftest import (
     make_contingent,
@@ -107,7 +108,15 @@ def _bundle_with_ratings(
     ratings_lf = _rows_to_lazyframe(ratings, RATINGS_SCHEMA)
     if model_permissions is not None:
         ratings_lf = enrich_ratings_with_model_id(ratings_lf)
-    return replace(bundle, ratings=ratings_lf, model_permissions=model_permissions)
+    return replace(
+        bundle,
+        ratings=seal_raw_table(ratings_lf, "ratings"),
+        model_permissions=(
+            seal_raw_table(model_permissions, "model_permissions")
+            if model_permissions is not None
+            else None
+        ),
+    )
 
 
 def _run_pipeline(
@@ -559,9 +568,7 @@ class TestApproachSplit:
         crm_bundle = _run_pipeline(
             hierarchy_resolver, classifier, crm_processor, crr_config, bundle
         )
-        sa_df = crm_bundle.exposures.filter(
-            pl.col("approach") == ApproachType.SA.value
-        ).collect()
+        sa_df = crm_bundle.exposures.filter(pl.col("approach") == ApproachType.SA.value).collect()
 
         assert sa_df.height > 0
         approaches = sa_df["approach"].unique().to_list()
@@ -678,8 +685,6 @@ class TestApproachSplit:
         irb_count = unified.filter(
             pl.col("approach").is_in([ApproachType.FIRB.value, ApproachType.AIRB.value])
         ).height
-        slotting_count = unified.filter(
-            pl.col("approach") == ApproachType.SLOTTING.value
-        ).height
+        slotting_count = unified.filter(pl.col("approach") == ApproachType.SLOTTING.value).height
 
         assert sa_count + irb_count + slotting_count == total

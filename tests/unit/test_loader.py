@@ -28,6 +28,7 @@ from rwa_calc.engine.loader import (
     enforce_schema,
     normalize_columns,
 )
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 if TYPE_CHECKING:
     pass
@@ -1049,7 +1050,7 @@ class TestBundleValidation:
         """Loader validation should catch invalid categorical column values."""
         from rwa_calc.engine.loader import _run_bundle_validation
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=pl.LazyFrame(),
             counterparties=pl.LazyFrame({"entity_type": ["sovereign", "INVALID_TYPE"]}),
@@ -1065,7 +1066,7 @@ class TestBundleValidation:
         """_run_bundle_validation returns empty list when all values are valid."""
         from rwa_calc.engine.loader import _run_bundle_validation
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=pl.LazyFrame(),
             counterparties=pl.LazyFrame({"entity_type": ["sovereign", "corporate"]}),
@@ -1078,7 +1079,7 @@ class TestBundleValidation:
 
     def test_errors_field_default_is_empty_list(self) -> None:
         """RawDataBundle.errors defaults to an empty list."""
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=pl.LazyFrame(),
             counterparties=pl.LazyFrame(),

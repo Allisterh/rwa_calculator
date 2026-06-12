@@ -22,9 +22,9 @@ from datetime import date
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.engine.hierarchy import HierarchyResolver
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 # Default reporting date for benchmarks
 BENCHMARK_REPORTING_DATE = date(2026, 1, 1)
@@ -51,7 +51,7 @@ class TestHierarchyBenchmark10K:
         Target: < 1 second
         """
         # Create RawDataBundle from generated data
-        raw_data = RawDataBundle(
+        raw_data = make_raw_bundle(
             counterparties=dataset_10k["counterparties"],
             facilities=dataset_10k["facilities"],
             loans=dataset_10k["loans"],
@@ -161,7 +161,7 @@ class TestHierarchyBenchmark100K:
 
         Target: < 5 seconds
         """
-        raw_data = RawDataBundle(
+        raw_data = make_raw_bundle(
             counterparties=dataset_100k["counterparties"],
             facilities=dataset_100k["facilities"],
             loans=dataset_100k["loans"],
@@ -341,7 +341,7 @@ class TestHierarchyBenchmark1M:
 
         Target: < 60 seconds
         """
-        raw_data = RawDataBundle(
+        raw_data = make_raw_bundle(
             counterparties=dataset_1m["counterparties"],
             facilities=dataset_1m["facilities"],
             loans=dataset_1m["loans"],
@@ -392,7 +392,7 @@ class TestHierarchyMemoryBenchmark:
 
         Target: < 100 MB peak
         """
-        raw_data = RawDataBundle(
+        raw_data = make_raw_bundle(
             counterparties=dataset_10k["counterparties"],
             facilities=dataset_10k["facilities"],
             loans=dataset_10k["loans"],
@@ -429,7 +429,7 @@ class TestHierarchyMemoryBenchmark:
 
         Target: < 500 MB peak
         """
-        raw_data = RawDataBundle(
+        raw_data = make_raw_bundle(
             counterparties=dataset_100k["counterparties"],
             facilities=dataset_100k["facilities"],
             loans=dataset_100k["loans"],

@@ -29,6 +29,7 @@ from rwa_calc.domain.enums import ApproachType, PermissionMode
 from rwa_calc.engine.classifier import ExposureClassifier
 from rwa_calc.engine.crm.processor import CRMProcessor
 from rwa_calc.engine.hierarchy import HierarchyResolver
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 from .conftest import (
     _rows_to_lazyframe,
@@ -119,7 +120,7 @@ def _make_bundle_with_ratings(
     )
     ratings_lf = _rows_to_lazyframe(ratings, RATINGS_SCHEMA) if ratings else None
     # Reconstruct with ratings (frozen dataclass — use __class__ constructor)
-    return RawDataBundle(
+    return make_raw_bundle(
         facilities=bundle.facilities,
         loans=bundle.loans,
         counterparties=bundle.counterparties,

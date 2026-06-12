@@ -23,6 +23,7 @@ from rwa_calc.contracts.bundles import RawDataBundle
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 # Default reporting date for benchmarks
 BENCHMARK_REPORTING_DATE = date(2026, 1, 1)
@@ -50,7 +51,7 @@ def create_pipeline(raw_data: RawDataBundle) -> PipelineOrchestrator:
 
 def create_raw_data_bundle(dataset: dict[str, pl.LazyFrame]) -> RawDataBundle:
     """Create a RawDataBundle from benchmark dataset."""
-    return RawDataBundle(
+    return make_raw_bundle(
         counterparties=dataset["counterparties"],
         facilities=dataset["facilities"],
         loans=dataset["loans"],

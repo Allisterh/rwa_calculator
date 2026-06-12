@@ -28,6 +28,7 @@ from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.contracts.validation import validate_bundle_values
 from rwa_calc.engine.hierarchy import HierarchyResolver
 from rwa_calc.engine.irb import IRBExpr, IRBLazyFrame  # noqa: F401 - registers namespace
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 ONE_DAY = 1.0 / 365.0
 
@@ -45,7 +46,7 @@ def crr_config() -> CalculationConfig:
 @pytest.fixture
 def bundle_with_loans() -> Callable[[pl.LazyFrame], RawDataBundle]:
     def _make(loans: pl.LazyFrame) -> RawDataBundle:
-        return RawDataBundle(
+        return make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=loans,
             contingents=pl.LazyFrame(),

@@ -38,7 +38,33 @@ if TYPE_CHECKING:
 # the Phase 3 strangler seals each stage exit; bundle ``__post_init__``
 # validates every registered field of its class. While a field is
 # unregistered, unbranded frames are accepted (the pre-seal status quo).
-SEALED_FRAME_FIELDS: dict[str, str] = {}
+#
+# RawDataBundle: all 18 frame fields sealed at the loader edge — frames
+# must come from a loader (ParquetLoader/CSVLoader) or a contract-derived
+# builder (tests/fixtures/raw_bundle.make_raw_bundle / seal_raw_table).
+SEALED_FRAME_FIELDS: dict[str, str] = {
+    f"RawDataBundle.{_field}": f"raw_{_field}"
+    for _field in (
+        "facilities",
+        "loans",
+        "counterparties",
+        "facility_mappings",
+        "org_mappings",
+        "lending_mappings",
+        "contingents",
+        "collateral",
+        "collateral_links",
+        "guarantees",
+        "provisions",
+        "ratings",
+        "equity_exposures",
+        "ciu_holdings",
+        "specialised_lending",
+        "fx_rates",
+        "model_permissions",
+        "securitisation_allocations",
+    )
+}
 
 
 def _validate_sealed_frames(bundle: object) -> None:
@@ -849,16 +875,16 @@ def create_empty_raw_data_bundle() -> RawDataBundle:
     """
     Create an empty RawDataBundle for testing.
 
-    Returns a bundle with empty LazyFrames that conform to
-    expected schemas.
+    Returns a bundle whose required tables are empty, schema-complete,
+    SEALED frames from the loader edge contracts.
     """
-    import polars as pl
+    from rwa_calc.contracts.edges import RAW_TABLE_EDGES
 
     return RawDataBundle(
-        facilities=pl.LazyFrame(),
-        loans=pl.LazyFrame(),
-        counterparties=pl.LazyFrame(),
-        facility_mappings=pl.LazyFrame(),
+        facilities=RAW_TABLE_EDGES["facilities"].empty_frame(),
+        loans=RAW_TABLE_EDGES["loans"].empty_frame(),
+        counterparties=RAW_TABLE_EDGES["counterparties"].empty_frame(),
+        facility_mappings=RAW_TABLE_EDGES["facility_mappings"].empty_frame(),
         lending_mappings=None,
         org_mappings=None,
         contingents=None,

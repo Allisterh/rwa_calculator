@@ -26,6 +26,7 @@ from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.contracts.errors import ERROR_DUPLICATE_KEY
 from rwa_calc.domain.enums import ErrorCategory, ErrorSeverity
 from rwa_calc.engine.hierarchy import HierarchyResolver
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 if TYPE_CHECKING:
     pass
@@ -252,7 +253,7 @@ def simple_raw_data_bundle(
     simple_facility_mappings: pl.LazyFrame,
 ) -> RawDataBundle:
     """Simple raw data bundle for testing."""
-    return RawDataBundle(
+    return make_raw_bundle(
         facilities=pl.LazyFrame(),
         loans=simple_loans,
         contingents=simple_contingents,
@@ -1165,7 +1166,7 @@ class TestLendingGroupAggregation:
         lending_group_mappings: pl.LazyFrame,
     ) -> None:
         """Lending group totals should be correctly calculated."""
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=lending_group_loans,
             contingents=pl.LazyFrame(
@@ -1223,7 +1224,7 @@ class TestLendingGroupAggregation:
         lending_group_mappings: pl.LazyFrame,
     ) -> None:
         """Standalone counterparty with one exposure aggregates to its own drawn."""
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=lending_group_loans,
             contingents=pl.LazyFrame(
@@ -1305,7 +1306,7 @@ class TestLendingGroupAggregation:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=loans,
             contingents=pl.LazyFrame(
@@ -1430,7 +1431,7 @@ class TestEdgeCases:
         crr_config: CalculationConfig,
     ) -> None:
         """Should handle empty loans and contingents."""
-        empty_bundle = RawDataBundle(
+        empty_bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=pl.LazyFrame(
                 schema={
@@ -1527,7 +1528,7 @@ class TestEdgeCases:
         crr_config: CalculationConfig,
     ) -> None:
         """Should handle case with no org hierarchy."""
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=simple_loans,
             contingents=simple_contingents,
@@ -2642,7 +2643,7 @@ class TestFacilityUndrawnInUnifyExposures:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=facilities,
             loans=loans,
             contingents=None,
@@ -2745,7 +2746,7 @@ class TestFacilityUndrawnInUnifyExposures:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=facilities,
             loans=loans,
             contingents=None,
@@ -3061,7 +3062,7 @@ class TestSameFacilityAndLoanReference:
         crr_config: CalculationConfig,
     ) -> None:
         """Full resolve() should work correctly with same facility/loan reference."""
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=same_ref_facility,
             loans=same_ref_loan,
             contingents=None,
@@ -3168,7 +3169,7 @@ class TestSameFacilityAndLoanReference:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=facilities,
             loans=loans,
             contingents=None,
@@ -3282,7 +3283,7 @@ class TestSameFacilityAndLoanReference:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=facilities,
             loans=loans,
             contingents=None,
@@ -3374,7 +3375,7 @@ class TestSameFacilityAndLoanReference:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=facilities,
             loans=loans,
             contingents=None,
@@ -3507,7 +3508,7 @@ class TestLendingGroupDuplicateMembership:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=None,
             loans=loans,
             contingents=None,
@@ -3590,7 +3591,7 @@ class TestLendingGroupDuplicateMembership:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=None,
             loans=loans,
             contingents=None,
@@ -3676,7 +3677,7 @@ class TestNegativeDrawnAmountInHierarchy:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=loans,
             contingents=pl.LazyFrame(
@@ -3773,7 +3774,7 @@ class TestNegativeDrawnAmountInHierarchy:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame(),
             loans=loans,
             contingents=pl.LazyFrame(
@@ -4199,7 +4200,7 @@ class TestLargerDatasetFacilityUndrawn:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=facilities,
             loans=loans,
             contingents=None,
@@ -6864,7 +6865,7 @@ class TestOrgMappingDuplicateChild:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=None,
             loans=loans,
             contingents=None,
@@ -7000,7 +7001,7 @@ class TestOrgMappingDuplicateChild:
             }
         ).lazy()
 
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=None,
             loans=loans,
             contingents=None,

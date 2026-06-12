@@ -118,7 +118,6 @@ def _bundle_no_crm_data() -> ClassifiedExposuresBundle:
     )
 
 
-
 class TestCRMErrorPropagationUnifiedBundle:
     """Test errors propagate through get_crm_unified_bundle."""
 

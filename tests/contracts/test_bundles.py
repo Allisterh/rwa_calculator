@@ -6,6 +6,7 @@ empty bundles for testing.
 
 import polars as pl
 import pytest
+from tests.fixtures.raw_bundle import make_raw_bundle
 
 from rwa_calc.contracts.bundles import (
     AggregatedResultBundle,
@@ -27,7 +28,7 @@ class TestRawDataBundle:
 
     def test_create_with_lazyframes(self):
         """Should create bundle with LazyFrames."""
-        bundle = RawDataBundle(
+        bundle = make_raw_bundle(
             facilities=pl.LazyFrame({"id": [1, 2]}),
             loans=pl.LazyFrame({"id": [3, 4]}),
             contingents=pl.LazyFrame({"id": [5]}),
