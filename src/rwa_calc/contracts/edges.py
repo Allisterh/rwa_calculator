@@ -166,6 +166,56 @@ class EdgeContract:
 
         return lf.select(list(self.columns))
 
+    def conform_lenient(self, lf: pl.LazyFrame) -> tuple[pl.LazyFrame, list[str]]:
+        """Input-boundary variant of ``conform`` — external data never raises.
+
+        The loader boundary accumulates data-quality errors instead of
+        raising (input validation is non-blocking), so this variant:
+        injects missing REQUIRED columns as typed nulls and returns their
+        names (the caller maps them to ``CalculationError``s), casts
+        mismatched dtypes with ``strict=False`` (invalid values become
+        null — never an exception), then applies the same default
+        injection, Boolean-only null fill, scratch strip, and canonical
+        order as ``conform``.
+        """
+        schema = lf.collect_schema()
+        present = dict(schema)
+
+        missing_required = [
+            col_name
+            for col_name, col in self.columns.items()
+            if col.required and col_name not in present
+        ]
+
+        additions = [
+            pl.lit(None if col.required else col.default).cast(col.dtype).alias(col_name)
+            for col_name, col in self.columns.items()
+            if col_name not in present
+        ]
+        if additions:
+            lf = lf.with_columns(additions)
+
+        casts = [
+            pl.col(col_name).cast(col.dtype, strict=False)
+            for col_name, col in self.columns.items()
+            if col_name in present and present[col_name] != col.dtype
+        ]
+        if casts:
+            lf = lf.with_columns(casts)
+
+        # Boolean fills strictly AFTER the cast pass — an inferred pl.Null
+        # column must be Boolean before fill_null can coerce its literal
+        # (ordering is load-bearing; mirrors loader.enforce_schema).
+        fills = [
+            pl.col(col_name).fill_null(pl.lit(col.default).cast(pl.Boolean))
+            for col_name, col in self.columns.items()
+            if col.fill_null_default and col_name in present
+        ]
+        if fills:
+            lf = lf.with_columns(fills)
+
+        return lf.select(list(self.columns)), missing_required
+
     def empty_frame(self) -> pl.LazyFrame:
         """A zero-row, schema-complete, sealed frame for this edge."""
         empty = pl.LazyFrame(schema={col_name: col.dtype for col_name, col in self.columns.items()})
@@ -180,6 +230,17 @@ def seal(lf: pl.LazyFrame, edge: EdgeContract) -> pl.LazyFrame:
     the plan); tests and fixture builders call ``seal`` directly.
     """
     return brand(edge.conform(lf), edge.name)
+
+
+def seal_lenient(lf: pl.LazyFrame, edge: EdgeContract) -> tuple[pl.LazyFrame, list[str]]:
+    """Leniently conform ``lf`` to ``edge``, brand it, report missing columns.
+
+    The loader-boundary seal: missing required columns are injected as
+    typed nulls and returned by name so the caller can accumulate
+    data-quality errors instead of raising.
+    """
+    conformed, missing = edge.conform_lenient(lf)
+    return brand(conformed, edge.name), missing
 
 
 def brand(lf: pl.LazyFrame, edge_name: str) -> pl.LazyFrame:
@@ -248,3 +309,50 @@ def edge_columns_from_specs(
         )
         for col_name, spec in schema.items()
     }
+
+
+# ---------------------------------------------------------------------------
+# Edge definitions — loader (raw input tables)
+# ---------------------------------------------------------------------------
+
+
+def _raw_table_edges() -> dict[str, EdgeContract]:
+    """Per-table loader edge contracts, seeded from the input schemas.
+
+    Keys are ``RawDataBundle`` frame field names; edge names carry the
+    ``raw_`` prefix. The loader seals every table it loads against these
+    (leniently — missing required columns become data-quality errors), and
+    the contract-derived test builders construct frames through the same
+    seal so test bundles are shape-identical to production-loaded ones.
+    """
+    from rwa_calc.data import schemas
+
+    table_schemas = {
+        "facilities": schemas.FACILITY_SCHEMA,
+        "loans": schemas.LOAN_SCHEMA,
+        "counterparties": schemas.COUNTERPARTY_SCHEMA,
+        "facility_mappings": schemas.FACILITY_MAPPING_SCHEMA,
+        "org_mappings": schemas.ORG_MAPPING_SCHEMA,
+        "lending_mappings": schemas.LENDING_MAPPING_SCHEMA,
+        "contingents": schemas.CONTINGENTS_SCHEMA,
+        "collateral": schemas.COLLATERAL_SCHEMA,
+        "collateral_links": schemas.COLLATERAL_LINK_SCHEMA,
+        "guarantees": schemas.GUARANTEE_SCHEMA,
+        "provisions": schemas.PROVISION_SCHEMA,
+        "ratings": schemas.RATINGS_SCHEMA,
+        "equity_exposures": schemas.EQUITY_EXPOSURE_SCHEMA,
+        "ciu_holdings": schemas.CIU_HOLDINGS_SCHEMA,
+        "specialised_lending": schemas.SPECIALISED_LENDING_SCHEMA,
+        "fx_rates": schemas.FX_RATES_SCHEMA,
+        "model_permissions": schemas.MODEL_PERMISSIONS_SCHEMA,
+        "securitisation_allocations": schemas.SECURITISATION_ALLOCATION_SCHEMA,
+    }
+    return {
+        field_name: EdgeContract(
+            name=f"raw_{field_name}", columns=edge_columns_from_specs(schema)
+        )
+        for field_name, schema in table_schemas.items()
+    }
+
+
+RAW_TABLE_EDGES: dict[str, EdgeContract] = _raw_table_edges()

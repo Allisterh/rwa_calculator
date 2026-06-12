@@ -21,10 +21,12 @@ import polars as pl
 import pytest
 
 from rwa_calc.contracts.edges import (
+    RAW_TABLE_EDGES,
     EdgeColumn,
     EdgeContract,
     EdgeContractViolation,
     seal,
+    seal_lenient,
     sealed_edge_of,
 )
 
@@ -332,3 +334,120 @@ class TestBundleBrandValidation:
         bundle = CRMAdjustedBundle(exposures=sealed, collateral_allocation=None)
 
         assert bundle.collateral_allocation is None
+
+
+class TestConformLenient:
+    """Input-boundary variant: external data quality must never raise."""
+
+    def test_missing_required_injected_as_typed_null_and_reported(self):
+        contract = _contract()
+        lf = _conformant_frame().drop("ead")
+
+        out, missing = contract.conform_lenient(lf)
+        collected = out.collect()
+
+        assert missing == ["ead"]
+        assert collected["ead"].to_list() == [None, None]
+        assert collected.schema["ead"] == pl.Float64
+
+    def test_dtype_mismatch_cast_not_raised(self):
+        contract = _contract()
+        lf = _conformant_frame().with_columns(
+            pl.Series("ead", ["100.5", "not-a-number"], dtype=pl.String)
+        )
+
+        out, missing = contract.conform_lenient(lf)
+        collected = out.collect()
+
+        assert missing == []
+        # strict=False cast: invalid values become null, never an exception.
+        assert collected["ead"].to_list() == [100.5, None]
+        assert collected.schema["ead"] == pl.Float64
+
+    def test_absent_optional_injected_with_default_not_reported(self):
+        contract = _contract()
+        lf = _conformant_frame().drop("is_defaulted")
+
+        out, missing = contract.conform_lenient(lf)
+
+        assert missing == []
+        assert out.collect()["is_defaulted"].to_list() == [False, False]
+
+    def test_scratch_stripped_and_contract_order(self):
+        contract = _contract()
+        lf = _conformant_frame().with_columns(pl.lit(1).alias("_scratch"))
+
+        out, missing = contract.conform_lenient(lf)
+        collected = out.collect()
+
+        assert missing == []
+        assert collected.columns == [
+            "exposure_reference",
+            "ead",
+            "is_defaulted",
+            "turnover_m",
+        ]
+
+    def test_boolean_fill_applied_after_cast(self):
+        # A pl.Null-inferred column must be cast to Boolean before the fill
+        # (ordering is load-bearing — mirrors loader.enforce_schema).
+        contract = _contract()
+        lf = _conformant_frame().with_columns(pl.lit(None).alias("is_defaulted"))
+
+        out, _ = contract.conform_lenient(lf)
+
+        assert out.collect()["is_defaulted"].to_list() == [False, False]
+
+    def test_seal_lenient_brands_and_reports(self):
+        contract = _contract()
+
+        out, missing = seal_lenient(_conformant_frame().drop("ead"), contract)
+
+        assert sealed_edge_of(out) == "test_edge"
+        assert missing == ["ead"]
+
+
+class TestRawTableEdges:
+    """The loader's per-table edge contracts, seeded from the input schemas."""
+
+    def test_covers_every_raw_data_bundle_frame_field(self):
+        import dataclasses
+
+        from rwa_calc.contracts.bundles import RawDataBundle
+
+        frame_fields = {
+            f.name
+            for f in dataclasses.fields(RawDataBundle)
+            if "LazyFrame" in str(f.type) and f.name != "ccr"
+        }
+
+        assert set(RAW_TABLE_EDGES) == frame_fields
+
+    def test_edge_names_carry_raw_prefix(self):
+        assert all(edge.name == f"raw_{field_name}" for field_name, edge in RAW_TABLE_EDGES.items())
+
+    def test_loans_edge_matches_loan_schema_dtypes(self):
+        from rwa_calc.data.schemas import LOAN_SCHEMA
+
+        edge = RAW_TABLE_EDGES["loans"]
+
+        assert set(edge.columns) == set(LOAN_SCHEMA)
+        assert all(edge.columns[name].dtype == spec.dtype for name, spec in LOAN_SCHEMA.items())
+
+    def test_boolean_defaults_fill_preserved_from_loader_semantics(self):
+        # FACILITY_SCHEMA.committed: Boolean default True, regulatory
+        # load-bearing (CRR Art. 166) — the edge must keep the null fill.
+        edge = RAW_TABLE_EDGES["facilities"]
+
+        committed = edge.columns["committed"]
+
+        assert committed.fill_null_default is True
+        assert committed.default is True
+
+    def test_float_and_string_columns_never_fill(self):
+        for field_name, edge in RAW_TABLE_EDGES.items():
+            for col_name, col in edge.columns.items():
+                if col.fill_null_default:
+                    assert col.dtype == pl.Boolean, (
+                        f"{field_name}.{col_name}: non-Boolean fill is anti-conservative"
+                    )
