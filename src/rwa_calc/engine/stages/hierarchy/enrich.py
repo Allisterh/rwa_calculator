@@ -34,6 +34,14 @@ from typing import TYPE_CHECKING
 import polars as pl
 from watchfire import cites
 
+from rwa_calc.engine.kernels.allocation import (
+    NO_DEFAULT,
+    LevelSpec,
+    allocate_multi_level,
+    beneficiary_level_expr,
+    coalesce_attribute_levels,
+    level_attribute_lookup,
+)
 from rwa_calc.engine.utils import has_required_columns, partition_by_nullable
 
 if TYPE_CHECKING:
@@ -467,32 +475,37 @@ def add_collateral_ltv(
 
     # Multi-level linking: separate collateral by beneficiary_type, then
     # coalesce direct -> facility -> counterparty so the most specific
-    # collateral wins. The collateral frame is sealed at the loader edge,
-    # so the four property columns always exist; ``is_income_producing``
-    # is loader-defaulted (schema default False), so no null fill needed.
-    common_cols = (
-        pl.col("property_type"),
-        pl.col("is_income_producing").alias("has_income_cover"),
-        pl.col("is_qualifying_re"),
-        pl.col("prior_charge_ltv"),
+    # collateral wins (the allocation kernel's attribute-precedence sibling).
+    # The collateral frame is sealed at the loader edge, so the four property
+    # columns always exist; ``is_income_producing`` is loader-defaulted
+    # (schema default False), so no null fill needed. NOTE the preserved
+    # LTV-copy drift: the direct filter is ``["exposure", "loan"]`` with no
+    # otherwise — contingent-beneficiary collateral is silently excluded here
+    # (unlike the property-coverage copy's unknown->direct fallback).
+    attributes = (
+        ("ltv", pl.col("property_ltv")),
+        ("property_type", pl.col("property_type")),
+        ("income_cover", pl.col("is_income_producing")),
+        ("qualifying_re", pl.col("is_qualifying_re")),
+        ("prior_charge_ltv", pl.col("prior_charge_ltv")),
     )
-    direct_ltv = _level_ltv_lookup(
+    direct_ltv = level_attribute_lookup(
         ltv_collateral,
         filter_expr=pl.col("beneficiary_type").str.to_lowercase().is_in(["exposure", "loan"]),
         prefix="direct",
-        common_cols=common_cols,
+        attributes=attributes,
     )
-    facility_ltv = _level_ltv_lookup(
+    facility_ltv = level_attribute_lookup(
         ltv_collateral,
         filter_expr=pl.col("beneficiary_type").str.to_lowercase() == "facility",
         prefix="facility",
-        common_cols=common_cols,
+        attributes=attributes,
     )
-    counterparty_ltv = _level_ltv_lookup(
+    counterparty_ltv = level_attribute_lookup(
         ltv_collateral,
         filter_expr=pl.col("beneficiary_type").str.to_lowercase() == "counterparty",
         prefix="cp",
-        common_cols=common_cols,
+        attributes=attributes,
     )
 
     # Join all three levels onto the exposures frame.
@@ -517,7 +530,19 @@ def add_collateral_ltv(
         )
     )
 
-    return _coalesce_ltv_levels(exposures, prefixes=("direct", "facility", "cp"))
+    # Earliest-prefix non-null wins; has_income_cover defaults to False when
+    # no level provided a value.
+    return coalesce_attribute_levels(
+        exposures,
+        prefixes=("direct", "facility", "cp"),
+        specs=(
+            ("ltv", "ltv", NO_DEFAULT),
+            ("property_type", "property_type", NO_DEFAULT),
+            ("income_cover", "has_income_cover", False),
+            ("qualifying_re", "is_qualifying_re", NO_DEFAULT),
+            ("prior_charge_ltv", "prior_charge_ltv", NO_DEFAULT),
+        ),
+    )
 
 
 def _join_facility_qrre_columns(
@@ -579,9 +604,20 @@ def _join_property_collateral_multi_level(
     """
     Join property collateral at direct/facility/counterparty levels.
 
-    Uses a single conditional group_by across all property collateral and
-    3 joins (one per level) instead of 6 separate aggregations + 6 joins.
-    Allocation weights use .over() window functions.
+    Thin parameterisation of the allocation kernel
+    (:func:`rwa_calc.engine.kernels.allocation.allocate_multi_level`),
+    preserving the property-coverage copy's drift axes:
+
+    - Basis is drawn-only ``total_exposure_amount`` (CRR Art. 147 "total
+      amount owed"), deliberately NOT an EAD basis.
+    - Facility / counterparty levels use the IMMEDIATE parent key only — no
+      ancestor cascade — with ``.over()`` window weights (guarded by
+      ``partition_by_nullable`` inside the kernel against null-partition
+      collapse; both keys are nullable in this frame).
+    - Null / unknown ``beneficiary_type`` falls back to direct
+      (``unknown="direct"``). The kernel classifier routes ``contingent``
+      through its explicit direct branch where the legacy hand-rolled chain
+      routed it through the ``otherwise`` — same label for every input.
 
     Args:
         exposures: Exposures with total_exposure_amount column
@@ -595,225 +631,28 @@ def _join_property_collateral_multi_level(
 
     Returns:
         Exposures with residential_collateral_value, property_collateral_value,
-        re_collateral_non_qualifying, and has_facility_property_collateral
+        has_facility_property_collateral, and re_collateral_non_qualifying
         columns added
     """
-    bt_lower = pl.col("beneficiary_type").str.to_lowercase()
     is_residential = pl.col("property_type").str.to_lowercase() == "residential"
 
-    # Scratch: a single conditional group_by produces `_level` (direct /
-    # facility / counterparty), `_res` (residential market value sum), and
-    # `_prop` (all-property market value sum). The aggregate is then split
-    # by `_level` into three frames; per-level columns are renamed with
-    # suffixes (`_res_d`/`_prop_d`, `_res_f`/`_prop_f`, `_res_c`/`_prop_c`)
-    # so the three joins below can carry their own values without collision.
-    # All scratch columns are coalesced and dropped before the helper returns.
-    # Single conditional group_by: 6 aggregates in one pass
-    coll_agg = (
-        all_property_collateral.with_columns(
-            pl.when(bt_lower.is_in(["exposure", "loan"]))
-            .then(pl.lit("direct"))
-            .when(bt_lower == "facility")
-            .then(pl.lit("facility"))
-            .when(bt_lower == "counterparty")
-            .then(pl.lit("counterparty"))
-            .otherwise(pl.lit("direct"))
-            .alias("_level"),
-        )
-        .group_by(["_level", "beneficiary_reference"])
-        .agg(
-            [
-                pl.col("market_value").filter(is_residential).sum().alias("_res"),
-                pl.col("market_value").sum().alias("_prop"),
-                is_non_qualifying_re.any().alias("_nonqual"),
-            ]
-        )
+    return allocate_multi_level(
+        exposures,
+        all_property_collateral,
+        values={
+            "residential_collateral_value": pl.col("market_value").filter(is_residential).sum(),
+            "property_collateral_value": pl.col("market_value").sum(),
+        },
+        basis=pl.col("total_exposure_amount"),
+        level_of=beneficiary_level_expr(unknown="direct"),
+        levels=(
+            LevelSpec("direct", "exposure_reference", pro_rata=False),
+            LevelSpec("facility", "parent_facility_reference", weights="window"),
+            LevelSpec("counterparty", "counterparty_reference", weights="window"),
+        ),
+        any_positive={"has_facility_property_collateral": "property_collateral_value"},
+        flag_values={"re_collateral_non_qualifying": is_non_qualifying_re.any()},
     )
-
-    # Split and rename for per-level joins
-    coll_direct = (
-        coll_agg.filter(pl.col("_level") == "direct")
-        .drop("_level")
-        .rename({"_res": "_res_d", "_prop": "_prop_d", "_nonqual": "_nonqual_d"})
-    )
-    coll_facility = (
-        coll_agg.filter(pl.col("_level") == "facility")
-        .drop("_level")
-        .rename({"_res": "_res_f", "_prop": "_prop_f", "_nonqual": "_nonqual_f"})
-    )
-    coll_cp = (
-        coll_agg.filter(pl.col("_level") == "counterparty")
-        .drop("_level")
-        .rename({"_res": "_res_c", "_prop": "_prop_c", "_nonqual": "_nonqual_c"})
-    )
-
-    # .over() window functions for allocation weights (no self-join!).
-    # Both partition keys are nullable in this frame: direct exposures
-    # (no facility) have null parent_facility_reference; null
-    # counterparty_reference can arise from upstream join misses. The
-    # null-partition guard prevents pooling unrelated rows.
-    exposures = exposures.with_columns(
-        [
-            partition_by_nullable(
-                pl.col("total_exposure_amount").sum().over("parent_facility_reference"),
-                "parent_facility_reference",
-                pl.col("total_exposure_amount"),
-            ).alias("facility_total"),
-            partition_by_nullable(
-                pl.col("total_exposure_amount").sum().over("counterparty_reference"),
-                "counterparty_reference",
-                pl.col("total_exposure_amount"),
-            ).alias("cp_total"),
-        ]
-    )
-
-    # 3 joins (one per level) instead of 6
-    exposures = (
-        exposures.join(
-            coll_direct,
-            left_on="exposure_reference",
-            right_on="beneficiary_reference",
-            how="left",
-        )
-        .join(
-            coll_facility,
-            left_on="parent_facility_reference",
-            right_on="beneficiary_reference",
-            how="left",
-        )
-        .join(
-            coll_cp,
-            left_on="counterparty_reference",
-            right_on="beneficiary_reference",
-            how="left",
-        )
-    )
-
-    # Pro-rata weights + combine all levels in one batch
-    exposures = exposures.with_columns(
-        [
-            pl.when(pl.col("facility_total") > 0)
-            .then(pl.col("total_exposure_amount") / pl.col("facility_total"))
-            .otherwise(pl.lit(0.0))
-            .alias("facility_weight"),
-            pl.when(pl.col("cp_total") > 0)
-            .then(pl.col("total_exposure_amount") / pl.col("cp_total"))
-            .otherwise(pl.lit(0.0))
-            .alias("cp_weight"),
-        ]
-    )
-
-    exposures = exposures.with_columns(
-        [
-            (
-                pl.col("_res_d").fill_null(0.0)
-                + (pl.col("_res_f").fill_null(0.0) * pl.col("facility_weight"))
-                + (pl.col("_res_c").fill_null(0.0) * pl.col("cp_weight"))
-            ).alias("residential_collateral_value"),
-            (
-                pl.col("_prop_d").fill_null(0.0)
-                + (pl.col("_prop_f").fill_null(0.0) * pl.col("facility_weight"))
-                + (pl.col("_prop_c").fill_null(0.0) * pl.col("cp_weight"))
-            ).alias("property_collateral_value"),
-            (
-                (pl.col("_prop_d").fill_null(0.0) > 0)
-                | (pl.col("_prop_f").fill_null(0.0) > 0)
-                | (pl.col("_prop_c").fill_null(0.0) > 0)
-            ).alias("has_facility_property_collateral"),
-            (
-                pl.col("_nonqual_d").fill_null(False)
-                | pl.col("_nonqual_f").fill_null(False)
-                | pl.col("_nonqual_c").fill_null(False)
-            ).alias("re_collateral_non_qualifying"),
-        ]
-    )
-
-    # Drop intermediate columns
-    return exposures.drop(
-        [
-            "_res_d",
-            "_res_f",
-            "_res_c",
-            "_prop_d",
-            "_prop_f",
-            "_prop_c",
-            "_nonqual_d",
-            "_nonqual_f",
-            "_nonqual_c",
-            "facility_total",
-            "cp_total",
-            "facility_weight",
-            "cp_weight",
-        ]
-    )
-
-
-def _level_ltv_lookup(
-    ltv_collateral: pl.LazyFrame,
-    *,
-    filter_expr: pl.Expr,
-    prefix: str,
-    common_cols: tuple[pl.Expr, pl.Expr, pl.Expr, pl.Expr],
-) -> pl.LazyFrame:
-    """Build a single-level LTV lookup frame with prefixed columns.
-
-    Filters ``ltv_collateral`` to a single beneficiary level, then projects
-    ``beneficiary_reference`` and ``property_ltv`` plus the four optional
-    property columns (property_type, income_cover, qualifying_re,
-    prior_charge_ltv) all aliased with ``{prefix}_``. Deduplicated on the
-    prefixed reference so a beneficiary appearing twice in collateral does
-    not produce duplicate exposure rows after the join.
-    """
-    prop_type, income_cover, qualifying_re, prior_charge_ltv = common_cols
-    return (
-        ltv_collateral.filter(filter_expr)
-        .select(
-            [
-                pl.col("beneficiary_reference").alias(f"{prefix}_ref"),
-                pl.col("property_ltv").alias(f"{prefix}_ltv"),
-                prop_type.alias(f"{prefix}_property_type"),
-                income_cover.alias(f"{prefix}_income_cover"),
-                qualifying_re.alias(f"{prefix}_qualifying_re"),
-                prior_charge_ltv.alias(f"{prefix}_prior_charge_ltv"),
-            ]
-        )
-        .unique(subset=[f"{prefix}_ref"], keep="first")
-    )
-
-
-def _coalesce_ltv_levels(
-    exposures: pl.LazyFrame,
-    *,
-    prefixes: tuple[str, ...],
-) -> pl.LazyFrame:
-    """Collapse per-level LTV columns onto the unified exposure frame.
-
-    For each output column (ltv, property_type, has_income_cover,
-    is_qualifying_re, prior_charge_ltv), coalesce in declared ``prefixes``
-    order — earliest non-null wins. ``has_income_cover`` additionally
-    defaults to ``False`` when no level provided a value. All scratch
-    ``{prefix}_*`` columns are dropped at the end.
-    """
-    # (source_suffix, output_col, fill_null_default_or_sentinel)
-    _NO_DEFAULT: object = object()
-    coalesce_specs: list[tuple[str, str, object]] = [
-        ("ltv", "ltv", _NO_DEFAULT),
-        ("property_type", "property_type", _NO_DEFAULT),
-        ("income_cover", "has_income_cover", False),
-        ("qualifying_re", "is_qualifying_re", _NO_DEFAULT),
-        ("prior_charge_ltv", "prior_charge_ltv", _NO_DEFAULT),
-    ]
-
-    coalesces: list[pl.Expr] = []
-    drop_cols: list[str] = []
-    for source_suffix, output_col, default in coalesce_specs:
-        expr = pl.coalesce(*[pl.col(f"{p}_{source_suffix}") for p in prefixes])
-        if default is not _NO_DEFAULT:
-            expr = expr.fill_null(default)
-        coalesces.append(expr.alias(output_col))
-        drop_cols.extend(f"{p}_{source_suffix}" for p in prefixes)
-
-    return exposures.with_columns(coalesces).drop(drop_cols)
 
 
 def _add_ltv_defaults_for_missing_collateral(exposures: pl.LazyFrame) -> pl.LazyFrame:
