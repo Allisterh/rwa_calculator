@@ -28,6 +28,11 @@ from rwa_calc.engine.classifier import ExposureClassifier
 from rwa_calc.engine.crm.processor import CRMProcessor
 from rwa_calc.engine.equity.calculator import EquityCalculator
 from rwa_calc.engine.hierarchy import HierarchyResolver
+from tests.fixtures.contract_columns import (
+    pad_irb_branch,
+    pad_sa_branch,
+    pad_slotting_branch,
+)
 from tests.fixtures.resolved_bundle import make_crm_bundle
 
 from .conftest import (
@@ -42,7 +47,11 @@ from .conftest import (
 # HELPERS
 # =============================================================================
 
+# Padded zero-row branch frames mirroring the orchestrator's sealed branch
+# collect — empty branches still carry the full edge schema in production.
 EMPTY = pl.LazyFrame({"exposure_reference": pl.Series([], dtype=pl.String)})
+EMPTY_IRB = pad_irb_branch(EMPTY)
+EMPTY_SLOTTING = pad_slotting_branch(EMPTY)
 
 
 def _run_through_hierarchy_classifier_crm(
@@ -268,9 +277,9 @@ class TestEquityAggregation:
         equity_bundle = equity_calculator.get_equity_result_bundle(crm_bundle, crr_config)
 
         result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY,
-            slotting_results=EMPTY,
+            sa_results=pad_sa_branch(sa_results),
+            irb_results=EMPTY_IRB,
+            slotting_results=EMPTY_SLOTTING,
             equity_bundle=equity_bundle,
             config=crr_config,
         )
@@ -310,9 +319,9 @@ class TestEquityAggregation:
         equity_bundle = equity_calculator.get_equity_result_bundle(crm_bundle, crr_config)
 
         result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY,
-            slotting_results=EMPTY,
+            sa_results=pad_sa_branch(sa_results),
+            irb_results=EMPTY_IRB,
+            slotting_results=EMPTY_SLOTTING,
             equity_bundle=equity_bundle,
             config=crr_config,
         )
@@ -347,9 +356,9 @@ class TestEquityAggregation:
         equity_bundle = equity_calculator.get_equity_result_bundle(crm_bundle, crr_config)
 
         result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY,
-            slotting_results=EMPTY,
+            sa_results=pad_sa_branch(sa_results),
+            irb_results=EMPTY_IRB,
+            slotting_results=EMPTY_SLOTTING,
             equity_bundle=equity_bundle,
             config=crr_config,
         )

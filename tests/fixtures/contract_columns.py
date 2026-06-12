@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import polars as pl
 
+from rwa_calc.contracts.edges import CALC_BRANCH_EDGES, seal_lenient
+
 _SIMPLE_DEFAULTS: dict[str, pl.Expr] = {
     "seniority": pl.lit("senior"),
     "exposure_class": pl.lit(None, dtype=pl.String),
@@ -108,3 +110,38 @@ def pad_slotting_branch_defaults(lf: pl.LazyFrame) -> pl.LazyFrame:
     if "approach" not in names:
         lf = lf.with_columns(pl.lit("slotting").alias("approach"))
     return pad_crm_exit_defaults(lf)
+
+
+def _pad_calc_branch(frame: pl.LazyFrame | pl.DataFrame, branch: str) -> pl.LazyFrame:
+    """Leniently conform a hand-rolled calculator-branch frame to its edge.
+
+    Mirrors the orchestrator's branch-exit seal shape: missing REQUIRED
+    columns become typed nulls, required-with-inject optionals get their
+    defaults, CONDITIONAL (inject=False) columns are preserved only when
+    supplied, undeclared scratch columns are stripped.
+
+    ``equity_type`` is appended after the seal: it is required at the
+    aggregator exit but owned by the equity path — production's combined
+    frame always carries it because the equity calculator returns a
+    (possibly empty) results frame with the column even when the portfolio
+    holds no equity. Aggregate-calling tests that pass
+    ``equity_bundle=None`` need the column to come from the branch inputs.
+    """
+    lf = frame.lazy() if isinstance(frame, pl.DataFrame) else frame
+    sealed, _missing = seal_lenient(lf, CALC_BRANCH_EDGES[branch])
+    return sealed.with_columns(pl.lit(None, dtype=pl.String).alias("equity_type"))
+
+
+def pad_sa_branch(frame: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Pad a hand-rolled SA results frame to the sa_branch edge shape."""
+    return _pad_calc_branch(frame, "sa_branch")
+
+
+def pad_irb_branch(frame: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Pad a hand-rolled IRB results frame to the irb_branch edge shape."""
+    return _pad_calc_branch(frame, "irb_branch")
+
+
+def pad_slotting_branch(frame: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Pad a hand-rolled slotting results frame to the slotting_branch edge shape."""
+    return _pad_calc_branch(frame, "slotting_branch")

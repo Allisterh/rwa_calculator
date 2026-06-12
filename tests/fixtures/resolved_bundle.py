@@ -27,6 +27,7 @@ from typing import Any
 import polars as pl
 
 from rwa_calc.contracts.bundles import (
+    AggregatedResultBundle,
     ClassifiedExposuresBundle,
     CounterpartyLookup,
     CRMAdjustedBundle,
@@ -34,6 +35,7 @@ from rwa_calc.contracts.bundles import (
     create_empty_counterparty_lookup,
 )
 from rwa_calc.contracts.edges import (
+    AGGREGATOR_EXIT_EDGE,
     CLASSIFIER_EXIT_EDGE,
     CP_LOOKUP_EDGES,
     CRM_EXIT_EDGE,
@@ -134,9 +136,7 @@ def make_classified_bundle(
         frame = kwargs.get(raw_field)
         if frame is not None:
             kwargs[raw_field] = seal_raw_table(frame, raw_field)
-    return ClassifiedExposuresBundle(
-        all_exposures=seal_classifier_exit(all_exposures), **kwargs
-    )
+    return ClassifiedExposuresBundle(all_exposures=seal_classifier_exit(all_exposures), **kwargs)
 
 
 def seal_crm_exit(frame: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
@@ -166,3 +166,28 @@ def make_crm_bundle(
     if frame is not None:
         kwargs["ciu_holdings"] = seal_raw_table(frame, "ciu_holdings")
     return CRMAdjustedBundle(exposures=seal_crm_exit(exposures), **kwargs)
+
+
+def seal_aggregator_exit(frame: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Seal a hand-rolled combined results frame against the aggregator_exit edge.
+
+    Lenient by design: missing declared columns become typed nulls and
+    CONDITIONAL (inject=False) columns are preserved only when supplied —
+    test bundles are shape-identical to the frame the reporting layer
+    receives from ``OutputAggregator.aggregate``.
+    """
+    lf = frame.lazy() if isinstance(frame, pl.DataFrame) else frame
+    sealed, _missing = seal_lenient(lf, AGGREGATOR_EXIT_EDGE)
+    return sealed
+
+
+def make_aggregated_bundle(
+    results: pl.LazyFrame | pl.DataFrame,
+    **kwargs: Any,
+) -> AggregatedResultBundle:
+    """Drop-in replacement for direct ``AggregatedResultBundle(...)``.
+
+    Same keyword surface; ``results`` is sealed against aggregator_exit,
+    every other field passes through untouched.
+    """
+    return AggregatedResultBundle(results=seal_aggregator_exit(results), **kwargs)

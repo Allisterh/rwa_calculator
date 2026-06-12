@@ -76,6 +76,9 @@ SEALED_FRAME_FIELDS: dict[str, str | tuple[str, ...]] = {
         "re_split_exit_ccr",
     ),
     "CRMAdjustedBundle.ciu_holdings": "raw_ciu_holdings",
+    # Aggregator exit: the combined results frame is the reporting input
+    # contract (Phase 7 consumes it as such).
+    "AggregatedResultBundle.results": "aggregator_exit",
 } | {
     f"RawDataBundle.{_field}": f"raw_{_field}"
     for _field in (

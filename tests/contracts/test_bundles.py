@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 from tests.fixtures.raw_bundle import make_raw_bundle
 from tests.fixtures.resolved_bundle import (
+    make_aggregated_bundle,
     make_classified_bundle,
     make_counterparty_lookup,
     make_crm_bundle,
@@ -15,7 +16,6 @@ from tests.fixtures.resolved_bundle import (
 )
 
 from rwa_calc.contracts.bundles import (
-    AggregatedResultBundle,
     ClassifiedExposuresBundle,
     CounterpartyLookup,
     CRMAdjustedBundle,
@@ -198,15 +198,13 @@ class TestCRMAdjustedBundle:
         assert bundle.collateral_link_allocation is None
 
 
-
-
 class TestAggregatedResultBundle:
     """Tests for AggregatedResultBundle dataclass."""
 
     def test_create_aggregated_results(self):
         """Should create bundle with aggregated results."""
-        bundle = AggregatedResultBundle(
-            results=pl.LazyFrame({"final_rwa": [100.0, 150.0]}),
+        bundle = make_aggregated_bundle(
+            results=pl.LazyFrame({"rwa_final": [100.0, 150.0]}),
             sa_results=pl.LazyFrame({"sa_rwa": [100.0]}),
             irb_results=pl.LazyFrame({"irb_rwa": [150.0]}),
         )
@@ -215,7 +213,7 @@ class TestAggregatedResultBundle:
 
     def test_optional_impact_analysis(self):
         """Impact analysis frames should be optional."""
-        bundle = AggregatedResultBundle(results=pl.LazyFrame())
+        bundle = make_aggregated_bundle(results=pl.LazyFrame())
 
         assert bundle.floor_impact is None
         assert bundle.supporting_factor_impact is None

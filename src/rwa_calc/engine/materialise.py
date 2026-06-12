@@ -243,6 +243,26 @@ def materialise_sealed_edge(
     return brand(out, edge.name)
 
 
+def materialise_sealed_branches(
+    branches: list[pl.LazyFrame],
+    config: CalculationConfig,
+    edges: list[EdgeContract],
+) -> list[pl.DataFrame]:
+    """Conform each calculator branch to its contract, collect, and brand.
+
+    The branch-exit seal (Phase 3): each plan is conformed BEFORE the
+    shared ``collect_all`` (violations raise without executing), and each
+    collected DataFrame carries its edge brand — ``setattr`` works on
+    DataFrames exactly as on LazyFrames, and the brand is likewise lost on
+    any transformation.
+    """
+    conformed = [edge.conform(lf) for lf, edge in zip(branches, edges, strict=True)]
+    results = materialise_branches(conformed, config, [edge.name for edge in edges])
+    for df, edge in zip(results, edges, strict=True):
+        brand(df, edge.name)  # type: ignore[arg-type]
+    return results
+
+
 def materialise_branches(
     branches: list[pl.LazyFrame],
     config: CalculationConfig,
