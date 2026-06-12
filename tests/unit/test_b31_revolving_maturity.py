@@ -254,7 +254,8 @@ class TestB31RevolvingMaturity:
             }
         )
         rwa_non_revolving = (
-            _pad(lf_non_revolving).irb.prepare_columns(b31_config)
+            _pad(lf_non_revolving)
+            .irb.prepare_columns(b31_config)
             .irb.apply_all_formulas(b31_config)
             .collect()["rwa"][0]
         )
@@ -269,7 +270,8 @@ class TestB31RevolvingMaturity:
             }
         )
         rwa_revolving = (
-            _pad(lf_revolving).irb.prepare_columns(b31_config)
+            _pad(lf_revolving)
+            .irb.prepare_columns(b31_config)
             .irb.apply_all_formulas(b31_config)
             .collect()["rwa"][0]
         )
@@ -293,7 +295,9 @@ class TestB31RevolvingMaturity:
             }
         )
 
-        result = _pad(lf).irb.prepare_columns(b31_config).irb.apply_all_formulas(b31_config).collect()
+        result = (
+            _pad(lf).irb.prepare_columns(b31_config).irb.apply_all_formulas(b31_config).collect()
+        )
         # Retail always gets MA = 1.0 regardless of maturity source
         assert result["maturity_adjustment"][0] == pytest.approx(1.0)
 

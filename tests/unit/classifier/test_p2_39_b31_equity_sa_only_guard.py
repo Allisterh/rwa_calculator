@@ -195,7 +195,9 @@ class TestB31EquitySaOnlyGuard:
         enriched_bundle_exposures = _add_internal_pd(bundle.exposures)
         import dataclasses
 
-        bundle = dataclasses.replace(bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures))
+        bundle = dataclasses.replace(
+            bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures)
+        )
 
         # Act
         result: ClassifiedExposuresBundle = classifier.classify(bundle, b31_config)
@@ -234,7 +236,9 @@ class TestB31EquitySaOnlyGuard:
         enriched_bundle_exposures = _add_internal_pd(bundle.exposures)
         import dataclasses
 
-        bundle = dataclasses.replace(bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures))
+        bundle = dataclasses.replace(
+            bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures)
+        )
 
         # Act
         result: ClassifiedExposuresBundle = classifier.classify(bundle, b31_config)
@@ -269,7 +273,9 @@ class TestB31EquitySaOnlyGuard:
         enriched_bundle_exposures = _add_internal_pd(bundle.exposures)
         import dataclasses
 
-        bundle = dataclasses.replace(bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures))
+        bundle = dataclasses.replace(
+            bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures)
+        )
 
         # Act
         result: ClassifiedExposuresBundle = classifier.classify(bundle, b31_config)
@@ -298,7 +304,9 @@ class TestB31EquitySaOnlyGuard:
         enriched_bundle_exposures = _add_internal_pd(bundle.exposures)
         import dataclasses
 
-        bundle = dataclasses.replace(bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures))
+        bundle = dataclasses.replace(
+            bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures)
+        )
 
         # Act
         result: ClassifiedExposuresBundle = classifier.classify(bundle, b31_config)
@@ -351,7 +359,9 @@ class TestCrrEquityControlNoB31Guard:
         enriched_bundle_exposures = _add_internal_pd(bundle.exposures)
         import dataclasses
 
-        bundle = dataclasses.replace(bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures))
+        bundle = dataclasses.replace(
+            bundle, exposures=seal_hierarchy_exit(enriched_bundle_exposures)
+        )
 
         # Act
         result: ClassifiedExposuresBundle = classifier.classify(bundle, crr_config)

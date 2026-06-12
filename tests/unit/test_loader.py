@@ -1154,9 +1154,7 @@ class TestLoaderEdgeSeal:
 
         assert bundle.loans.collect_schema().names() == list(LOAN_SCHEMA)
 
-    def test_missing_required_column_emits_dq001_with_typed_null(
-        self, sealed_dir: Path
-    ) -> None:
+    def test_missing_required_column_emits_dq001_with_typed_null(self, sealed_dir: Path) -> None:
         # Drop the required counterparty_reference from loans.
         pl.DataFrame({"loan_reference": ["L1"], "drawn_amount": [10.0]}).write_parquet(
             sealed_dir / "exposures" / "loans.parquet"

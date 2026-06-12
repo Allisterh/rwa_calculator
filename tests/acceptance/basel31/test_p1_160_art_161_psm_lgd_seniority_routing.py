@@ -237,7 +237,8 @@ def _build_p1160_crm_and_irb_result(
 
     # IRB pipeline: classify → F-IRB LGD → prepare → formulas → EL → guarantee sub
     result = (
-        _pad(exposures_with_guarantee).irb.classify_approach(config)
+        _pad(exposures_with_guarantee)
+        .irb.classify_approach(config)
         .irb.apply_firb_lgd(config)
         .irb.prepare_columns(config)
         .irb.apply_all_formulas(config)

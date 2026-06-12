@@ -282,7 +282,6 @@ class TestBundleBrandValidation:
         )
 
     def test_correctly_branded_frame_constructs(self, registered_crm_exposures):
-
         sealed = seal(_conformant_frame(), _contract())
 
         bundle = CRMAdjustedBundle(exposures=sealed)
@@ -290,7 +289,6 @@ class TestBundleBrandValidation:
         assert bundle.exposures is sealed
 
     def test_unbranded_frame_on_registered_field_raises(self, registered_crm_exposures):
-
         with pytest.raises(EdgeContractViolation, match="CRMAdjustedBundle.exposures"):
             CRMAdjustedBundle(exposures=_conformant_frame())
 

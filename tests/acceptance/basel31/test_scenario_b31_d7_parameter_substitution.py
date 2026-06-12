@@ -166,7 +166,8 @@ def _create_crm_and_irb_result(
 
     # Run full IRB formula pipeline and guarantee substitution
     result = (
-        _pad(exposures_with_guarantee).irb.classify_approach(config)
+        _pad(exposures_with_guarantee)
+        .irb.classify_approach(config)
         .irb.apply_firb_lgd(config)
         .irb.prepare_columns(config)
         .irb.apply_all_formulas(config)

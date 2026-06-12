@@ -54,6 +54,7 @@ def apply_irb_formulas(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFr
     sealed branch input guarantees, then invoke the real function."""
     return _apply_irb_formulas_raw(_pad(lf), config)
 
+
 # =============================================================================
 # FIXTURES
 # =============================================================================

@@ -112,7 +112,9 @@ class TestMaturityAdjustmentEndToEnd:
             }
         )
 
-        result = _pad(lf).irb.prepare_columns(b31_config).irb.apply_all_formulas(b31_config).collect()
+        result = (
+            _pad(lf).irb.prepare_columns(b31_config).irb.apply_all_formulas(b31_config).collect()
+        )
 
         assert result["maturity"][0] == pytest.approx(0.1, abs=1e-9)
         assert result["maturity_adjustment"][0] < 1.0
@@ -130,7 +132,9 @@ class TestMaturityAdjustmentEndToEnd:
             }
         )
 
-        result = _pad(lf).irb.prepare_columns(b31_config).irb.apply_all_formulas(b31_config).collect()
+        result = (
+            _pad(lf).irb.prepare_columns(b31_config).irb.apply_all_formulas(b31_config).collect()
+        )
 
         assert result["maturity"][0] == pytest.approx(0.1, abs=1e-9)
         assert result["maturity_adjustment"][0] == pytest.approx(1.0, abs=1e-9)

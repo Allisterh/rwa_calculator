@@ -300,7 +300,8 @@ class TestELGuaranteeAdjustment:
 
         # Run full pipeline then guarantee substitution
         result_pre = (
-            _pad(lf).irb.apply_firb_lgd(crr_config)
+            _pad(lf)
+            .irb.apply_firb_lgd(crr_config)
             .irb.prepare_columns(crr_config)
             .irb.apply_all_formulas(crr_config)
         )

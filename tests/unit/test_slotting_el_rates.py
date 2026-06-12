@@ -279,7 +279,8 @@ class TestSlottingNamespaceELRateLookup:
     ) -> None:
         """CRR non-HVCRE >= 2.5yr: Strong=0.4%, Good=0.8%, Satisfactory=2.8%, Weak=8%, Default=50%."""
         result = (
-            _pad(basic_slotting_frame).slotting.prepare_columns(crr_config)
+            _pad(basic_slotting_frame)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -300,7 +301,8 @@ class TestSlottingNamespaceELRateLookup:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(crr_config)
+            _pad(lf)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -327,7 +329,8 @@ class TestSlottingNamespaceELRateLookup:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(crr_config)
+            _pad(lf)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -349,7 +352,8 @@ class TestSlottingNamespaceELRateLookup:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(b31_config)
+            _pad(lf)
+            .slotting.prepare_columns(b31_config)
             .slotting.apply_slotting_weights(b31_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(b31_config)
@@ -373,7 +377,8 @@ class TestSlottingELComputation:
     ) -> None:
         """EL = el_rate × EAD for each exposure."""
         result = (
-            _pad(basic_slotting_frame).slotting.prepare_columns(crr_config)
+            _pad(basic_slotting_frame)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -399,7 +404,8 @@ class TestSlottingELComputation:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(crr_config)
+            _pad(lf)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -420,7 +426,8 @@ class TestSlottingELComputation:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(crr_config)
+            _pad(lf)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -451,7 +458,8 @@ class TestSlottingELShortfallExcess:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(crr_config)
+            _pad(lf)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -475,7 +483,8 @@ class TestSlottingELShortfallExcess:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(crr_config)
+            _pad(lf)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -499,7 +508,8 @@ class TestSlottingELShortfallExcess:
             }
         )
         result = (
-            _pad(lf).slotting.prepare_columns(crr_config)
+            _pad(lf)
+            .slotting.prepare_columns(crr_config)
             .slotting.apply_slotting_weights(crr_config)
             .slotting.calculate_rwa()
             .slotting.apply_el_rates(crr_config)
@@ -709,7 +719,8 @@ def test_crr_el_rate_parametrized(
         }
     )
     result = (
-        _pad(lf).slotting.prepare_columns(crr_config)
+        _pad(lf)
+        .slotting.prepare_columns(crr_config)
         .slotting.apply_slotting_weights(crr_config)
         .slotting.calculate_rwa()
         .slotting.apply_el_rates(crr_config)

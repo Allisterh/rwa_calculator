@@ -48,33 +48,37 @@ def basel31_config() -> CalculationConfig:
 @pytest.fixture
 def basic_lazyframe() -> pl.LazyFrame:
     """Return a basic LazyFrame with IRB columns."""
-    return _pad(pl.LazyFrame(
-        {
-            "exposure_reference": ["EXP001", "EXP002", "EXP003"],
-            "pd": [0.01, 0.05, 0.0001],  # Last one below CRR floor
-            "lgd": [0.45, 0.35, 0.40],
-            "ead_final": [1_000_000.0, 500_000.0, 250_000.0],
-            "exposure_class": ["CORPORATE", "CORPORATE", "CORPORATE"],
-            "maturity": [2.5, 3.0, 5.0],
-            "approach": ["foundation_irb", "foundation_irb", "foundation_irb"],
-        }
-    ))
+    return _pad(
+        pl.LazyFrame(
+            {
+                "exposure_reference": ["EXP001", "EXP002", "EXP003"],
+                "pd": [0.01, 0.05, 0.0001],  # Last one below CRR floor
+                "lgd": [0.45, 0.35, 0.40],
+                "ead_final": [1_000_000.0, 500_000.0, 250_000.0],
+                "exposure_class": ["CORPORATE", "CORPORATE", "CORPORATE"],
+                "maturity": [2.5, 3.0, 5.0],
+                "approach": ["foundation_irb", "foundation_irb", "foundation_irb"],
+            }
+        )
+    )
 
 
 @pytest.fixture
 def retail_lazyframe() -> pl.LazyFrame:
     """Return a LazyFrame with retail exposures."""
-    return _pad(pl.LazyFrame(
-        {
-            "exposure_reference": ["EXP001", "EXP002", "EXP003"],
-            "pd": [0.02, 0.03, 0.01],
-            "lgd": [0.30, 0.25, 0.15],
-            "ead_final": [100_000.0, 50_000.0, 200_000.0],
-            "exposure_class": ["RETAIL_MORTGAGE", "RETAIL_QRRE", "RETAIL"],
-            "maturity": [5.0, 2.5, 3.0],
-            "approach": ["advanced_irb", "advanced_irb", "advanced_irb"],
-        }
-    ))
+    return _pad(
+        pl.LazyFrame(
+            {
+                "exposure_reference": ["EXP001", "EXP002", "EXP003"],
+                "pd": [0.02, 0.03, 0.01],
+                "lgd": [0.30, 0.25, 0.15],
+                "ead_final": [100_000.0, 50_000.0, 200_000.0],
+                "exposure_class": ["RETAIL_MORTGAGE", "RETAIL_QRRE", "RETAIL"],
+                "maturity": [5.0, 2.5, 3.0],
+                "approach": ["advanced_irb", "advanced_irb", "advanced_irb"],
+            }
+        )
+    )
 
 
 @pytest.fixture
@@ -87,18 +91,20 @@ def sme_lazyframe() -> pl.LazyFrame:
     - GBP 21.83m → EUR 25m (mid SME)
     - GBP 87.32m → EUR 100m (large corp, above 50m threshold)
     """
-    return _pad(pl.LazyFrame(
-        {
-            "exposure_reference": ["EXP001", "EXP002", "EXP003"],
-            "pd": [0.01, 0.01, 0.01],
-            "lgd": [0.45, 0.45, 0.45],
-            "ead_final": [1_000_000.0, 1_000_000.0, 1_000_000.0],
-            "exposure_class": ["CORPORATE", "CORPORATE", "CORPORATE"],
-            "maturity": [2.5, 2.5, 2.5],
-            "turnover_m": [4.366, 21.83, 87.32],  # GBP values converting to EUR 5m, 25m, 100m
-            "approach": ["foundation_irb", "foundation_irb", "foundation_irb"],
-        }
-    ))
+    return _pad(
+        pl.LazyFrame(
+            {
+                "exposure_reference": ["EXP001", "EXP002", "EXP003"],
+                "pd": [0.01, 0.01, 0.01],
+                "lgd": [0.45, 0.45, 0.45],
+                "ead_final": [1_000_000.0, 1_000_000.0, 1_000_000.0],
+                "exposure_class": ["CORPORATE", "CORPORATE", "CORPORATE"],
+                "maturity": [2.5, 2.5, 2.5],
+                "turnover_m": [4.366, 21.83, 87.32],  # GBP values converting to EUR 5m, 25m, 100m
+                "approach": ["foundation_irb", "foundation_irb", "foundation_irb"],
+            }
+        )
+    )
 
 
 # =============================================================================
@@ -359,7 +365,8 @@ class TestCalculateK:
         )
 
         result = (
-            _pad(lf).irb.apply_pd_floor(crr_config)
+            _pad(lf)
+            .irb.apply_pd_floor(crr_config)
             .irb.apply_lgd_floor(crr_config)
             .irb.calculate_correlation(crr_config)
             .irb.calculate_k(crr_config)
@@ -452,7 +459,8 @@ class TestExactFractionalYears:
         )
 
         result = (
-            _pad(lf).irb.classify_approach(config)
+            _pad(lf)
+            .irb.classify_approach(config)
             .irb.apply_firb_lgd(config)
             .irb.prepare_columns(config)
             .collect()
@@ -481,7 +489,8 @@ class TestExactFractionalYears:
         )
 
         result = (
-            _pad(lf).irb.classify_approach(config)
+            _pad(lf)
+            .irb.classify_approach(config)
             .irb.apply_firb_lgd(config)
             .irb.prepare_columns(config)
             .collect()
@@ -511,7 +520,8 @@ class TestExactFractionalYears:
         )
 
         result = (
-            _pad(lf).irb.classify_approach(config)
+            _pad(lf)
+            .irb.classify_approach(config)
             .irb.apply_firb_lgd(config)
             .irb.prepare_columns(config)
             .collect()
@@ -538,7 +548,8 @@ class TestExactFractionalYears:
         )
 
         result = (
-            _pad(lf).irb.classify_approach(crr_config)
+            _pad(lf)
+            .irb.classify_approach(crr_config)
             .irb.apply_firb_lgd(crr_config)
             .irb.prepare_columns(crr_config)
             .irb.apply_all_formulas(crr_config)
@@ -718,7 +729,8 @@ class TestMethodChaining:
         )
 
         result = (
-            _pad(lf).irb.apply_pd_floor(crr_config)
+            _pad(lf)
+            .irb.apply_pd_floor(crr_config)
             .irb.apply_lgd_floor(crr_config)
             .irb.calculate_correlation(crr_config)
             .irb.calculate_k(crr_config)

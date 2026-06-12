@@ -46,29 +46,39 @@ def basel31_config() -> CalculationConfig:
 @pytest.fixture
 def basic_slotting_exposures() -> pl.LazyFrame:
     """Return basic slotting exposures with various categories."""
-    return _pad(pl.LazyFrame(
-        {
-            "exposure_reference": ["SL001", "SL002", "SL003", "SL004", "SL005"],
-            "ead_final": [1_000_000.0, 500_000.0, 250_000.0, 100_000.0, 50_000.0],
-            "slotting_category": ["strong", "good", "satisfactory", "weak", "default"],
-            "is_hvcre": [False, False, False, False, False],
-            "sl_type": ["project_finance", "object_finance", "commodities_finance", "ipre", "ipre"],
-        }
-    ))
+    return _pad(
+        pl.LazyFrame(
+            {
+                "exposure_reference": ["SL001", "SL002", "SL003", "SL004", "SL005"],
+                "ead_final": [1_000_000.0, 500_000.0, 250_000.0, 100_000.0, 50_000.0],
+                "slotting_category": ["strong", "good", "satisfactory", "weak", "default"],
+                "is_hvcre": [False, False, False, False, False],
+                "sl_type": [
+                    "project_finance",
+                    "object_finance",
+                    "commodities_finance",
+                    "ipre",
+                    "ipre",
+                ],
+            }
+        )
+    )
 
 
 @pytest.fixture
 def hvcre_exposures() -> pl.LazyFrame:
     """Return HVCRE exposures."""
-    return _pad(pl.LazyFrame(
-        {
-            "exposure_reference": ["HVCRE001", "HVCRE002", "HVCRE003"],
-            "ead_final": [1_000_000.0, 500_000.0, 250_000.0],
-            "slotting_category": ["strong", "good", "satisfactory"],
-            "is_hvcre": [True, True, True],
-            "sl_type": ["hvcre", "hvcre", "hvcre"],
-        }
-    ))
+    return _pad(
+        pl.LazyFrame(
+            {
+                "exposure_reference": ["HVCRE001", "HVCRE002", "HVCRE003"],
+                "ead_final": [1_000_000.0, 500_000.0, 250_000.0],
+                "slotting_category": ["strong", "good", "satisfactory"],
+                "is_hvcre": [True, True, True],
+                "sl_type": ["hvcre", "hvcre", "hvcre"],
+            }
+        )
+    )
 
 
 # =============================================================================
