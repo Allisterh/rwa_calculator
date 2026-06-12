@@ -336,16 +336,20 @@ conformance rewritten to real-implementation isinstance + typed assignment.
 
 ### Phase 3 — Producer-sealed edge contracts and defensive-guard retirement
 
-**Status (2026-06-12, branch `feat/phase3`):** the edge chain is COMPLETE —
-every stage exit loader→aggregator carries a producer seal, with the
-aggregator exit as the reporting input contract; guard ratchet banked at
-549→377 presence / 469→446 fill_null / 191→166 collect_schema; both
-divergences resolved (recorded FIX decisions). Remaining tail: the Wave-2
-guarantor null-equivalence rework (flip the 19 conditional columns and
-delete the substitution presence guards), the `has_required_columns`
-bare-except fix (design note in §6), the test-lint ratchet, and the docs
-close-out. Decision log (§6) records the conditional-column lesson, the
-parity re-baselines, and four engine findings.
+**Status: DONE (2026-06-12, branch `feat/phase3`, 16 commits).** Every stage
+exit loader→aggregator carries a producer seal (the aggregator exit is the
+reporting input contract); guard ratchet banked at 549→374 presence /
+469→446 fill_null / 191→166 collect_schema (hierarchy.py −413 LOC,
+classifier.py −202 LOC); both anti-conservative divergences resolved as
+recorded FIX decisions; the silent-skip layer is gone
+(has_required_columns/has_rows raise on broken plans, with boundary
+leniency owned by the CRM stage); contract-derived builders are the
+sanctioned test construction path with a HARD lint (zero direct bundle
+construction in tests); Wave-2 flipped 18 of 19 conditional columns to
+injection after a verified null-equivalence rework — `guarantor_entity_type`
+remains the one conditional sentinel (impossibility argument in §6).
+Parity baselines: `../rwa_phase3_parity/post_wave2` is current. Next =
+Phase 4 (uniform stage model).
 
 Executes [engine-defensiveness-boundary-hardening](engine-defensiveness-boundary-hardening.md)
 in full, upgraded with seal-strips-scratch, branded frames, and conservative-direction
