@@ -20,8 +20,10 @@ from datetime import date
 import polars as pl
 import pytest
 
-import rwa_calc.engine.irb.namespace  # noqa: F401 - Register namespace
 from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.engine.irb.transforms import (
+    apply_guarantee_substitution as irb_apply_guarantee_substitution,
+)
 from rwa_calc.engine.sa.rw_adjustments import apply_guarantee_substitution
 
 
@@ -118,7 +120,7 @@ def _irb_guarantee_result(
         data["guarantee_currency"] = [guarantee_currency]
 
     lf = pl.LazyFrame(data)
-    return lf.irb.apply_guarantee_substitution(config).collect()
+    return lf.pipe(irb_apply_guarantee_substitution, config).collect()
 
 
 class TestSAGuarantorExposureClassMapping:

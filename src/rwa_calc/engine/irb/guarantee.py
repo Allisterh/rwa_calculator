@@ -449,14 +449,15 @@ def _psm_lgd_expr(config: CalculationConfig, guarantor_supervisory_lgd_expr: pl.
 
     Option (i) returns the borrower's own unprotected LGD (read from
     ``lgd``, which by this stage carries the seniority-correct borrower
-    supervisory value from ``IRBLazyFrame.apply_firb_lgd``). ``lgd_pre_crm``
+    supervisory value from ``transforms.apply_firb_lgd``). ``lgd_pre_crm``
     is unsuitable because the CRM processor initialises it to the raw input
     ``lgd`` (often null for F-IRB inputs, falling back to the 45% default).
 
     Option (ii) returns the guarantor supervisory LGD expression — the
     historical engine default.
     """
-    if config.irb_permissions.psm_lgd_source == "option_i":
+    # irb_permissions is derived non-None in CalculationConfig.__post_init__.
+    if config.irb_permissions.psm_lgd_source == "option_i":  # ty: ignore[unresolved-attribute]
         return pl.col("lgd")
     return guarantor_supervisory_lgd_expr
 
@@ -739,7 +740,8 @@ def _adjust_expected_loss(
         # EL uses the same LGD_covered as RW (Art. 236(1A)(b) PRA PS1/26).
         # See note in _apply_parameter_substitution on column choice — ``lgd``
         # carries the seniority-correct borrower supervisory LGD by this stage.
-        if config.irb_permissions.psm_lgd_source == "option_i":
+        # irb_permissions is derived non-None in CalculationConfig.__post_init__.
+        if config.irb_permissions.psm_lgd_source == "option_i":  # ty: ignore[unresolved-attribute]
             guarantor_lgd_el = pl.col("lgd")
         else:
             guarantor_lgd_el = guarantor_supervisory_lgd_el

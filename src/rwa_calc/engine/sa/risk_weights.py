@@ -125,9 +125,14 @@ from rwa_calc.data.tables.eu_sovereign import (
 from rwa_calc.domain.enums import CQS, EquityType
 
 if TYPE_CHECKING:
+    from polars.expr.whenthen import ChainedThen, Then
+
     from rwa_calc.contracts.config import CalculationConfig
 
 logger = logging.getLogger(__name__)
+
+# In-progress when/then chain accepted/extended by the branch appenders.
+type _RWChain = Then | ChainedThen
 
 
 # =============================================================================
@@ -523,7 +528,7 @@ def _is_residential_re_class(uc: pl.Expr) -> pl.Expr:
 
 
 @cites("PS1/26, paragraph 128")
-def _b31_append_high_risk_branch(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _b31_append_high_risk_branch(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append Basel 3.1 Art. 128 high-risk items branch (150% flat).
 
     Items associated with particularly high risk — venture capital, private
@@ -538,7 +543,7 @@ def _b31_append_high_risk_branch(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
 
 
 @cites("PS1/26, paragraph 123")
-def _b31_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _b31_append_retail_branches(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append Basel 3.1 retail-class risk-weight branches (Art. 123).
 
     Covers the regulatory retail class only (uc contains "RETAIL"):
@@ -572,7 +577,7 @@ def _b31_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
 
 
 @cites("PS1/26, paragraph 124")
-def _b31_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _b31_append_real_estate_branches(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append Basel 3.1 real-estate branches (ADC / other-RE / CRE / resi)."""
     is_re_class = (
         _is_commercial_re_class(uc)
@@ -595,7 +600,7 @@ def _b31_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     )
 
 
-def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _b31_append_institution_maturity_branches(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append Basel 3.1 ECRA / SCRA institution maturity branches."""
     is_institution = uc.str.contains("INSTITUTION", literal=True)
     is_rated = pl.col("cqs").is_not_null() & (pl.col("cqs") > 0)
@@ -666,7 +671,7 @@ def _b31_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl
     )
 
 
-def _b31_append_corporate_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _b31_append_corporate_maturity_branches(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append Basel 3.1 Art. 122(3) Table 6A short-term corporate ECAI branch.
 
     Fires for rated CORPORATE exposures that carry a dedicated short-term ECAI
@@ -697,7 +702,7 @@ def _b31_append_corporate_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl.E
 
 
 @cites("CRR Art. 123")
-def _crr_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _crr_append_retail_branches(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append CRR retail-class risk-weight branches (Art. 123).
 
     Covers the regulatory retail class only (uc contains "RETAIL"):
@@ -731,7 +736,7 @@ def _crr_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
 
 
 @cites("CRR Art. 124")
-def _crr_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _crr_append_real_estate_branches(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append CRR commercial-then-residential RE branches (Art. 125-126)."""
     ltv_safe = pl.col("ltv").fill_null(1.0)
     # CRR Art. 126(2)(d) proportion split for CRE with income cover and LTV > 50%:
@@ -779,7 +784,7 @@ def _crr_append_real_estate_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
     )
 
 
-def _crr_append_institution_maturity_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
+def _crr_append_institution_maturity_branches(chain: _RWChain, uc: pl.Expr) -> ChainedThen:
     """Append CRR Art. 120/121 short-term institution branches."""
     is_institution = uc.str.contains("INSTITUTION", literal=True)
     is_rated = pl.col("cqs").is_not_null() & (pl.col("cqs") > 0)

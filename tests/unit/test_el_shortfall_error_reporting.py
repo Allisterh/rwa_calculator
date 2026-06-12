@@ -23,6 +23,9 @@ from rwa_calc.contracts.errors import (
     ErrorSeverity,
 )
 from rwa_calc.engine.irb.adjustments import compute_el_shortfall_excess
+from rwa_calc.engine.irb.transforms import (
+    compute_el_shortfall_excess as irb_compute_el_shortfall_excess,
+)
 from rwa_calc.engine.slotting.transforms import (
     compute_el_shortfall_excess as slotting_compute_el_shortfall_excess,
 )
@@ -178,16 +181,15 @@ class TestSlottingELShortfallErrorReporting:
 
 
 # =============================================================================
-# IRB NAMESPACE wrapper
+# IRB transforms wrapper
 # =============================================================================
 
 
-class TestIRBNamespaceELShortfallErrorReporting:
-    """IRB namespace wrapper passes errors through correctly."""
+class TestIRBTransformsELShortfallErrorReporting:
+    """IRB transforms wrapper passes errors through correctly."""
 
-    def test_namespace_passes_errors_through(self) -> None:
-        """Errors list is populated when calling through .irb namespace."""
-        import rwa_calc.engine.irb.namespace  # noqa: F401
+    def test_transforms_passes_errors_through(self) -> None:
+        """Errors list is populated when calling the transforms wrapper."""
 
         errors: list[CalculationError] = []
         lf = pl.LazyFrame(
@@ -196,14 +198,13 @@ class TestIRBNamespaceELShortfallErrorReporting:
                 "provision_allocated": [1_000.0],
             }
         )
-        lf.irb.compute_el_shortfall_excess(errors=errors).collect()
+        lf.pipe(irb_compute_el_shortfall_excess, errors=errors).collect()
 
         assert len(errors) == 1
         assert errors[0].code == ERROR_MISSING_EXPECTED_LOSS
 
-    def test_namespace_no_errors_when_el_present(self) -> None:
-        """No errors when expected_loss exists via namespace."""
-        import rwa_calc.engine.irb.namespace  # noqa: F401
+    def test_transforms_no_errors_when_el_present(self) -> None:
+        """No errors when expected_loss exists via the transforms wrapper."""
 
         errors: list[CalculationError] = []
         lf = pl.LazyFrame(
@@ -215,6 +216,6 @@ class TestIRBNamespaceELShortfallErrorReporting:
                 "other_own_funds_reductions": [0.0],
             }
         )
-        lf.irb.compute_el_shortfall_excess(errors=errors).collect()
+        lf.pipe(irb_compute_el_shortfall_excess, errors=errors).collect()
 
         assert len(errors) == 0

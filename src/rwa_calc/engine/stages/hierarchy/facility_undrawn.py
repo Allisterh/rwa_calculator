@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_facility_undrawn(
-    facilities: pl.LazyFrame,
+    facilities: pl.LazyFrame | None,
     loans: pl.LazyFrame,
     contingents: pl.LazyFrame | None,
     facility_mappings: pl.LazyFrame,

@@ -515,14 +515,14 @@ Last generated: 2026-06-12.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:1009:1037"
     ```
 
-??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/namespace.py:518"
+??? quote "`calculate_correlation` — src/rwa_calc/engine/irb/transforms.py:337"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:518:546"
+    --8<-- "src/rwa_calc/engine/irb/transforms.py:337:366"
     ```
 
-??? quote "`calculate_k` — src/rwa_calc/engine/irb/namespace.py:548"
+??? quote "`calculate_k` — src/rwa_calc/engine/irb/transforms.py:369"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:548:561"
+    --8<-- "src/rwa_calc/engine/irb/transforms.py:369:383"
     ```
 
 ??? quote "`calculate_branch` — src/rwa_calc/engine/slotting/calculator.py:88"
@@ -622,9 +622,9 @@ Last generated: 2026-06-12.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:1040:1074"
     ```
 
-??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/namespace.py:563"
+??? quote "`calculate_maturity_adjustment` — src/rwa_calc/engine/irb/transforms.py:386"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:563:595"
+    --8<-- "src/rwa_calc/engine/irb/transforms.py:386:419"
     ```
 
 
@@ -635,9 +635,9 @@ Last generated: 2026-06-12.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:53:139"
     ```
 
-??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:433"
+??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/transforms.py:252"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:433:455"
+    --8<-- "src/rwa_calc/engine/irb/transforms.py:252:273"
     ```
 
 
@@ -648,9 +648,9 @@ Last generated: 2026-06-12.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:142:192"
     ```
 
-??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:457"
+??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/transforms.py:276"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:457:516"
+    --8<-- "src/rwa_calc/engine/irb/transforms.py:276:334"
     ```
 
 
@@ -1229,9 +1229,9 @@ Last generated: 2026-06-12.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:53:139"
     ```
 
-??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/namespace.py:434"
+??? quote "`apply_pd_floor` — src/rwa_calc/engine/irb/transforms.py:253"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:433:455"
+    --8<-- "src/rwa_calc/engine/irb/transforms.py:252:273"
     ```
 
 
@@ -1252,9 +1252,9 @@ Last generated: 2026-06-12.
     --8<-- "src/rwa_calc/engine/irb/formulas.py:265:349"
     ```
 
-??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/namespace.py:458"
+??? quote "`apply_lgd_floor` — src/rwa_calc/engine/irb/transforms.py:277"
     ```python
-    --8<-- "src/rwa_calc/engine/irb/namespace.py:457:516"
+    --8<-- "src/rwa_calc/engine/irb/transforms.py:276:334"
     ```
 
 

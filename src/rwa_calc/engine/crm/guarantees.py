@@ -44,6 +44,8 @@ from rwa_calc.engine.kernels.allocation import (
 from rwa_calc.engine.utils import exact_fractional_years_expr
 
 if TYPE_CHECKING:
+    from polars._typing import PolarsDataType
+
     from rwa_calc.contracts.config import CalculationConfig
 
 
@@ -235,7 +237,7 @@ def _join_guarantor_counterparty(
 
     # Ensure optional guarantor columns exist (fill null if not in counterparty data)
     post_join_names = exposures.collect_schema().names()
-    fillers: dict[str, pl.DataType] = {
+    fillers: dict[str, PolarsDataType] = {
         "guarantor_country_code": pl.String,
         "guarantor_is_ccp_client_cleared": pl.Boolean,
         "guarantor_scra_grade": pl.String,
@@ -304,9 +306,10 @@ def _assign_guarantor_approach(exposures: pl.LazyFrame, config: CalculationConfi
        actively rates this counterparty under its IRB model.
     Counterparties with only external ratings (CQS) are treated under SA.
     """
+    # irb_permissions is derived non-None in CalculationConfig.__post_init__.
     irb_exposure_class_values = {
         ec.value
-        for ec, approaches in config.irb_permissions.permissions.items()
+        for ec, approaches in config.irb_permissions.permissions.items()  # ty: ignore[unresolved-attribute]
         if ApproachType.FIRB in approaches or ApproachType.AIRB in approaches
     }
 

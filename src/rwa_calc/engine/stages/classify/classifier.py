@@ -141,7 +141,7 @@ class ExposureClassifier:
         classified = sync_irb_exposure_class(classified)
 
         has_model_permissions = data.model_permissions is not None
-        if has_model_permissions:
+        if data.model_permissions is not None:
             classified = resolve_model_permissions(classified, data.model_permissions)
 
         classified = assign_approach(

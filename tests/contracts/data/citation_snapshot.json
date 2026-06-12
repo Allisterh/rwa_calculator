@@ -289,21 +289,21 @@
   "rwa_calc.engine.irb.guarantee::apply_guarantee_substitution": [
     "CRR Art. 161(3)"
   ],
-  "rwa_calc.engine.irb.namespace::IRBLazyFrame.apply_lgd_floor": [
+  "rwa_calc.engine.irb.transforms::apply_lgd_floor": [
     "CRR Art. 164",
     "PS1/26, paragraph 164"
   ],
-  "rwa_calc.engine.irb.namespace::IRBLazyFrame.apply_pd_floor": [
+  "rwa_calc.engine.irb.transforms::apply_pd_floor": [
     "CRR Art. 163",
     "PS1/26, paragraph 163"
   ],
-  "rwa_calc.engine.irb.namespace::IRBLazyFrame.calculate_correlation": [
+  "rwa_calc.engine.irb.transforms::calculate_correlation": [
     "CRR Art. 153(1)"
   ],
-  "rwa_calc.engine.irb.namespace::IRBLazyFrame.calculate_k": [
+  "rwa_calc.engine.irb.transforms::calculate_k": [
     "CRR Art. 153(1)"
   ],
-  "rwa_calc.engine.irb.namespace::IRBLazyFrame.calculate_maturity_adjustment": [
+  "rwa_calc.engine.irb.transforms::calculate_maturity_adjustment": [
     "CRR Art. 162"
   ],
   "rwa_calc.engine.sa.factors_output::apply_supporting_factors": [

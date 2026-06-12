@@ -353,14 +353,15 @@ def build_permission_exprs(
         return false_expr, false_expr, false_expr, false_expr, false_expr
 
     # Org-wide SL permissions from config
+    # irb_permissions is derived non-None in CalculationConfig.__post_init__.
     sl_airb = pl.lit(
-        config.irb_permissions.is_permitted(
+        config.irb_permissions.is_permitted(  # ty: ignore[unresolved-attribute]
             ExposureClass.SPECIALISED_LENDING,
             ApproachType.AIRB,
         )
     )
     sl_slotting = pl.lit(
-        config.irb_permissions.is_permitted(
+        config.irb_permissions.is_permitted(  # ty: ignore[unresolved-attribute]
             ExposureClass.SPECIALISED_LENDING,
             ApproachType.SLOTTING,
         )
@@ -379,7 +380,8 @@ def _build_orgwide_permission_exprs(
 
     Returns (airb_permitted_expr, firb_permitted_expr, firb_clear_expr).
     """
-    perms = config.irb_permissions.permissions
+    # irb_permissions is derived non-None in CalculationConfig.__post_init__.
+    perms = config.irb_permissions.permissions  # ty: ignore[unresolved-attribute]
     airb_classes = [ec.value for ec, approaches in perms.items() if ApproachType.AIRB in approaches]
     firb_classes = [ec.value for ec, approaches in perms.items() if ApproachType.FIRB in approaches]
     firb_only_classes = [
