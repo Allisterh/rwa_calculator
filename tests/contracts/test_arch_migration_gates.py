@@ -1,6 +1,6 @@
-"""Contract tests for the architecture-migration Phase 0 gates.
+"""Contract tests for the architecture-migration gates.
 
-Mirrors arch_check checks 11 and 12 (see
+Mirrors arch_check checks 11, 12 and 13 (see
 docs/plans/target-architecture-migration.md):
 
 - **Check 11 — architecture-debt ratchet**: the measured defensive surface of
@@ -14,6 +14,10 @@ docs/plans/target-architecture-migration.md):
   never imports api/ui; data/ and domain/ import nothing above themselves.
   Known legacy inversions live in ``IMPORT_DIRECTION_ALLOWLIST`` with the
   migration phase that retires them.
+- **Check 13 — no empty-LazyFrame sentinels in engine/**: optional frames
+  are ``None`` (migration Phase 2); constructing a bare ``pl.LazyFrame()``
+  to stand in for an absent input conflates "absent" with "zero rows" and
+  regrows the presence-guard debt the ratchet is burning down.
 
 These tests re-use the check functions from ``scripts/arch_check.py`` so the
 rules, metrics, and allowlists live in exactly one place (the same pattern as
@@ -68,4 +72,14 @@ def test_imports_point_downward() -> None:
         "Import-direction violation — layering points downward; an inversion "
         "needs an IMPORT_DIRECTION_ALLOWLIST entry in scripts/arch_check.py "
         "with a migration-phase justification:\n" + "\n".join(violations)
+    )
+
+
+def test_no_empty_frame_sentinels_in_engine() -> None:
+    """engine/** never constructs an empty LazyFrame to stand in for None."""
+    arch_check = _load_arch_check()
+    violations = arch_check.check_no_empty_frame_sentinels(SRC_ROOT)
+    assert not violations, (
+        "Empty-LazyFrame sentinel in engine/ — optional frames are None "
+        "(migration Phase 2):\n" + "\n".join(violations)
     )

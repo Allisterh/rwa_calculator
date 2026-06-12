@@ -252,8 +252,9 @@ Step 7: _add_classification_audit()
 Step 7a: _enrich_slotting_exposures()
         Add slotting_category, sl_type, is_hvcre for specialised lending
 
-Step 8: Split by approach
-        Filter into sa_exposures, irb_exposures, slotting_exposures
+Step 8: Assemble bundle
+        All exposures stay on the single unified frame; downstream
+        consumers filter on the `approach` column
 ```
 
 ### FI Scalar (CRR Art. 153(2))
@@ -302,79 +303,55 @@ Apply credit risk mitigation (collateral, guarantees, provisions).
 
 ```python
 class CRMProcessorProtocol(Protocol):
-    def apply_crm(
-        self,
-        data: ClassifiedExposuresBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Apply credit risk mitigation. Returns LazyFrameResult with CRM-adjusted
-        exposures and any errors."""
-        ...
-
-    def get_crm_adjusted_bundle(
+    def get_crm_unified_bundle(
         self,
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
     ) -> CRMAdjustedBundle:
-        """Apply CRM and return as a bundle."""
+        """Apply CRM and return the unified bundle (no approach split)."""
         ...
 ```
 
 ### Implementation
 
-The `CRMProcessor` provides three public methods:
-
-- `apply_crm()` → `LazyFrameResult` — returns CRM-adjusted LazyFrame with errors
-- `get_crm_adjusted_bundle()` → `CRMAdjustedBundle` — wraps `apply_crm()` result as a bundle with approach-split exposures
-- `get_crm_unified_bundle()` → `CRMAdjustedBundle` — unified path (no approach split), used for Basel 3.1 output floor calculation where SA-equivalent RWA is needed on all rows
+`get_crm_unified_bundle()` is the CRM stage's single entry point (the legacy
+`apply_crm()`/`get_crm_adjusted_bundle()` dual path was deleted in migration
+Phase 2). All exposures travel on one unified frame; the pipeline splits by
+`approach` once, just before the calculators.
 
 ```python
 class CRMProcessor:
     """Process credit risk mitigation (Art. 111(1)(a)-(b) compliant)."""
-
-    def get_crm_adjusted_bundle(
-        self,
-        data: ClassifiedExposuresBundle,
-        config: CalculationConfig,
-    ) -> CRMAdjustedBundle:
-        # Provisions resolved BEFORE CCF, then CRM waterfall after EAD init
-
-        # Step 1: Resolve provisions (before CCF)
-        #   SA: drawn-first deduction, remainder reduces nominal
-        #   IRB/Slotting: tracked but not deducted
-        after_provisions = self._resolve_provisions(
-            data.all_exposures, data.provisions, config
-        )
-
-        # Step 2: Apply CCFs (uses nominal_after_provision)
-        after_ccf = self._apply_ccf(after_provisions, config)
-
-        # Step 3: Initialize EAD waterfall + collect barrier
-        #   (flattens deep plan to prevent 3× re-evaluation downstream)
-        after_init = self._initialize_ead(after_ccf)
-
-        # Step 4: Apply collateral (3 lookup collects: direct/facility/counterparty)
-        after_collateral = self._apply_collateral(
-            after_init, data.collateral, config
-        )
-
-        # Step 5: Apply guarantees (cross-approach CCF substitution)
-        after_guarantees = self._apply_guarantees(
-            after_collateral, data.guarantees, data.counterparty_lookup, config
-        )
-
-        # Step 6: Finalize EAD (no provision subtraction — already in ead_pre_crm)
-        final = self._finalize_ead(after_guarantees)
-
-        return CRMAdjustedBundle(exposures=final, ...)
 
     def get_crm_unified_bundle(
         self,
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
     ) -> CRMAdjustedBundle:
-        """Same pipeline, but does not split by approach.
-        Used for Basel 3.1 output floor (SA-equiv RW on all rows)."""
+        # Step 0: Funded-only two-layer protection look-through (Art. 191A)
+
+        # Step 1: Resolve provisions (before CCF)
+        #   SA: drawn-first deduction, remainder reduces nominal
+        #   IRB/Slotting: tracked but not deducted
+        # Step 2: Apply CCFs (uses nominal_after_provision)
+        # Step 3: Initialize EAD waterfall + crm_post_ead checkpoint
+        exposures = self._run_ead_pipeline(data, config)
+
+        # Step 4: Apply collateral (3 lookup collects: direct/facility/counterparty)
+        #   + misdirected-AIRB diagnostics (CRM006)
+        exposures, applied = self._apply_collateral_unified_step(
+            exposures, collateral, config, errors
+        )
+
+        # Step 5: Apply guarantees (cross-approach CCF substitution),
+        #   behind the crm_pre_guarantee_unified checkpoint
+        exposures = self._apply_guarantees_step(
+            exposures, guarantees, data, config, errors
+        )
+
+        # Step 6: Finalize EAD (no provision subtraction — already in ead_pre_crm)
+        # Step 7: Audit columns, then the crm_exit stage edge
+        return CRMAdjustedBundle(exposures=exposures, crm_errors=errors, ...)
 ```
 
 ### Key Features
@@ -395,12 +372,24 @@ Calculate RWA using the Standardised Approach.
 
 ```python
 class SACalculatorProtocol(Protocol):
-    def calculate(
+    def calculate_branch(
         self,
         exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> SAResultBundle:
-        """Calculate SA RWA."""
+        config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
+    ) -> pl.LazyFrame:
+        """Calculate SA RWA on pre-filtered SA-only rows."""
+        ...
+
+    def calculate_unified(
+        self,
+        exposures: pl.LazyFrame,
+        config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
+    ) -> pl.LazyFrame:
+        """SA risk weights on the unified frame (B3.1 output floor path)."""
         ...
 ```
 
@@ -408,38 +397,28 @@ class SACalculatorProtocol(Protocol):
 
 ```python
 class SACalculator:
-    """Calculate Standardised Approach RWA."""
+    """Calculate Standardised Approach RWA (thin orchestrator over lf.sa)."""
 
-    def calculate(
-        self,
-        exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> SAResultBundle:
-        result = (
-            exposures
-            # Look up risk weight
-            .with_columns(
-                risk_weight=self._get_risk_weight(
-                    pl.col("exposure_class"),
-                    pl.col("cqs"),
-                    config
-                )
-            )
-            # Calculate base RWA
-            .with_columns(
-                rwa_base=pl.col("ead") * pl.col("risk_weight")
-            )
-        )
+    def calculate_branch(self, exposures, config, *, errors=None):
+        if errors is not None:
+            self._warn_equity_in_main_table(exposures, errors)  # SA005
 
-        # Apply supporting factors (CRR only)
-        if config.apply_sme_supporting_factor:
-            result = self._apply_sme_factor(result, config)
-
-        if config.apply_infrastructure_factor:
-            result = self._apply_infrastructure_factor(result, config)
-
-        return SAResultBundle(data=result)
+        return (
+            exposures.sa.apply_risk_weights(config)
+            .sa.apply_fcsm_rw_substitution(config)
+            .sa.apply_life_insurance_rw_mapping()
+            .sa.apply_guarantee_substitution(config)
+            .sa.apply_currency_mismatch_multiplier(config)
+            .sa.apply_due_diligence_override(config, errors=errors)  # SA004
+            .sa.calculate_rwa()
+            .sa.apply_supporting_factors(config, errors=errors)      # SF001
+        )  # + approach_applied / rwa_final standardisation for the aggregator
 ```
+
+The optional `errors` accumulator is the branch-path error channel: the
+pipeline passes one list into every `calculate_branch` call and merges the
+accumulated `CalculationError`s into the result bundle with their original
+codes.
 
 ### Key Features
 
@@ -458,12 +437,14 @@ Calculate RWA using IRB approaches (F-IRB and A-IRB).
 
 ```python
 class IRBCalculatorProtocol(Protocol):
-    def calculate(
+    def calculate_branch(
         self,
         exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> IRBResultBundle:
-        """Calculate IRB RWA."""
+        config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
+    ) -> pl.LazyFrame:
+        """Calculate IRB RWA on pre-filtered IRB-only rows."""
         ...
 ```
 
@@ -475,28 +456,19 @@ The IRB Calculator uses a Polars namespace extension (`IRBLazyFrame`) for fluent
 class IRBCalculator:
     """Calculate IRB RWA using K formula."""
 
-    def get_irb_result_bundle(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig
-    ) -> IRBResultBundle:
-        # Apply IRB calculations using namespace for fluent pipeline
-        exposures = (data.irb_exposures
-            .irb.classify_approach(config)   # Determine F-IRB vs A-IRB
-            .irb.apply_firb_lgd(config)      # Apply supervisory LGD for F-IRB
-            .irb.prepare_columns(config)     # Ensure required columns exist
-            .irb.apply_all_formulas(config)  # Run full IRB calculation
+    def calculate_branch(self, exposures, config, *, errors=None):
+        exposures = (
+            exposures.irb.classify_approach(config)   # Determine F-IRB vs A-IRB
+            .irb.apply_firb_lgd(config)               # Supervisory LGD for F-IRB
+            .irb.prepare_columns(config)              # Ensure required columns
+            .irb.apply_all_formulas(config)           # Full IRB calculation
+            .irb.apply_post_model_adjustments(config)
+            .irb.compute_el_shortfall_excess(errors=errors)
+            .irb.apply_guarantee_substitution(config)
         )
-
-        # Apply supporting factors (CRR only - Art. 501)
-        exposures = self._apply_supporting_factors(exposures, config)
-
-        return IRBResultBundle(
-            results=exposures,
-            expected_loss=exposures.irb.select_expected_loss(),
-            calculation_audit=exposures.irb.build_audit(),
-            errors=[],
-        )
+        # Supporting factors (CRR only — Art. 501), then aggregator columns
+        exposures = self._apply_supporting_factors(exposures, config, errors=errors)
+        return exposures  # + approach_applied / rwa_final / irb_maturity_m
 ```
 
 ### IRB Namespace
@@ -539,12 +511,14 @@ Calculate RWA using the slotting approach for specialised lending.
 
 ```python
 class SlottingCalculatorProtocol(Protocol):
-    def calculate(
+    def calculate_branch(
         self,
         exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> SlottingResultBundle:
-        """Calculate Slotting RWA."""
+        config: CalculationConfig,
+        *,
+        errors: list[CalculationError] | None = None,
+    ) -> pl.LazyFrame:
+        """Calculate Slotting RWA on pre-filtered slotting-only rows."""
         ...
 ```
 
@@ -554,33 +528,17 @@ class SlottingCalculatorProtocol(Protocol):
 class SlottingCalculator:
     """Calculate Slotting RWA for specialised lending."""
 
-    def calculate(
-        self,
-        exposures: pl.LazyFrame,
-        config: CalculationConfig
-    ) -> SlottingResultBundle:
-        result = (
-            exposures
-            # Look up slotting risk weight
-            .with_columns(
-                risk_weight=self._get_slotting_weight(
-                    pl.col("lending_type"),
-                    pl.col("slotting_category"),
-                    pl.col("is_pre_operational"),  # For project finance
-                    config
-                )
-            )
-            # Calculate RWA
-            .with_columns(
-                rwa=pl.col("ead") * pl.col("risk_weight")
-            )
+    def calculate_branch(self, exposures, config, *, errors=None):
+        exposures = (
+            exposures.slotting.prepare_columns(config)
+            .slotting.apply_slotting_weights(config)   # Art. 153(5) tables
+            .slotting.calculate_rwa()
         )
-
-        # Apply infrastructure factor (CRR only)
-        if config.apply_infrastructure_factor:
-            result = self._apply_infrastructure_factor(result, config)
-
-        return SlottingResultBundle(data=result)
+        # Supporting factors (CRR Art. 501/501a), EL rates + shortfall/excess
+        exposures = self._apply_supporting_factors(exposures, config, errors=errors)
+        exposures = exposures.slotting.apply_el_rates(config)
+        exposures = exposures.slotting.compute_el_shortfall_excess(errors=errors)
+        return exposures  # + approach_applied / rwa_final
 ```
 
 ### Key Features
@@ -600,14 +558,6 @@ Calculate RWA for equity exposures using SA (Article 133) or IRB Simple (Article
 
 ```python
 class EquityCalculatorProtocol(Protocol):
-    def calculate(
-        self,
-        data: CRMAdjustedBundle,
-        config: CalculationConfig,
-    ) -> LazyFrameResult:
-        """Calculate RWA for equity exposures."""
-        ...
-
     def get_equity_result_bundle(
         self,
         data: CRMAdjustedBundle,
@@ -673,11 +623,12 @@ Combine results from all calculators, apply output floor.
 class OutputAggregatorProtocol(Protocol):
     def aggregate(
         self,
-        sa_result: SAResultBundle,
-        irb_result: IRBResultBundle,
-        slotting_result: SlottingResultBundle,
-        equity_result: EquityResultBundle,
-        config: CalculationConfig
+        sa_results: pl.LazyFrame,
+        irb_results: pl.LazyFrame,
+        slotting_results: pl.LazyFrame,
+        equity_bundle: EquityResultBundle | None,
+        config: CalculationConfig,
+        securitisation_audit: pl.LazyFrame | None = None,
     ) -> AggregatedResultBundle:
         """Aggregate results and apply final adjustments."""
         ...
@@ -691,19 +642,20 @@ class OutputAggregator:
 
     def aggregate(
         self,
-        sa_result: SAResultBundle,
-        irb_result: IRBResultBundle,
-        slotting_result: SlottingResultBundle,
-        equity_result: EquityResultBundle,
-        config: CalculationConfig
+        sa_results: pl.LazyFrame,
+        irb_results: pl.LazyFrame,
+        slotting_results: pl.LazyFrame,
+        equity_bundle: EquityResultBundle | None,
+        config: CalculationConfig,
+        securitisation_audit: pl.LazyFrame | None = None,
     ) -> AggregatedResultBundle:
-        # Combine all results
+        # Combine the collected branch frames (+ equity results)
         combined = pl.concat([
-            sa_result.data.with_columns(approach=pl.lit("SA")),
-            irb_result.data.with_columns(approach=pl.lit("IRB")),
-            slotting_result.data.with_columns(approach=pl.lit("SLOTTING")),
-            equity_result.results.with_columns(approach=pl.lit("EQUITY")),
-        ])
+            sa_results,
+            irb_results,
+            slotting_results,
+            *( [equity_bundle.results] if equity_bundle else [] ),
+        ], how="diagonal_relaxed")
 
         # Apply output floor (Basel 3.1)
         if config.framework == RegulatoryFramework.BASEL_3_1:

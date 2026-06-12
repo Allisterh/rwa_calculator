@@ -83,9 +83,6 @@ from rwa_calc.contracts.bundles import (
     ResolvedHierarchyBundle,
     ClassifiedExposuresBundle,
     CRMAdjustedBundle,
-    SAResultBundle,
-    IRBResultBundle,
-    SlottingResultBundle,
     AggregatedResultBundle,
 )
 ```

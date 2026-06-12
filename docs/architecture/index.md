@@ -200,16 +200,17 @@ result = (
 Errors collected without exceptions:
 
 ```python
-# Errors accumulated, not thrown
-result = LazyFrameResult(
-    data=processed_df,
-    errors=[
-        CalculationError(exposure_id="E001", message="Missing PD"),
-        CalculationError(exposure_id="E002", message="Invalid LGD"),
-    ]
+# Errors accumulated, not thrown — each stage bundle carries its list
+bundle = CRMAdjustedBundle(
+    exposures=processed_lf,
+    crm_errors=[
+        CalculationError(exposure_reference="E001", message="Missing PD", ...),
+        CalculationError(exposure_reference="E002", message="Invalid LGD", ...),
+    ],
 )
 
-# All exposures processed, errors reported at end
+# All exposures processed; the pipeline merges every stage's errors into
+# AggregatedResultBundle.errors with their original codes
 ```
 
 ## Performance Characteristics

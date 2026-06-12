@@ -649,31 +649,29 @@ config = CalculationConfig.crr(reporting_date=date(2026, 12, 31))
 processor = CRMProcessor(is_basel_3_1=config.is_basel_3_1)
 
 # Process exposures through CRM pipeline — returns CRMAdjustedBundle
-result = processor.get_crm_adjusted_bundle(
+result = processor.get_crm_unified_bundle(
     data=classified_exposures_bundle,
     config=config,
 )
 
-# Access adjusted exposures (split by approach)
+# Access adjusted exposures (unified frame; filter on `approach` if needed)
 adjusted = result.exposures      # All exposures with CRM adjustments
-sa_adjusted = result.sa_exposures
-irb_adjusted = result.irb_exposures
+sa_adjusted = adjusted.filter(pl.col("approach") == "standardised")
 ```
 
 ::: rwa_calc.engine.crm.processor.CRMProcessor
     options:
       show_root_heading: true
       members:
-        - apply_crm
-        - get_crm_adjusted_bundle
+        - get_crm_unified_bundle
         - resolve_provisions
         - apply_collateral
         - apply_guarantees
       show_source: false
 
 ??? example "CRM Processor Implementation (processor.py)"
-    See `CRMProcessor.apply_crm()` and `CRMProcessor.get_crm_adjusted_bundle()`
-    in `src/rwa_calc/engine/crm/processor.py` for the full pipeline implementation.
+    See `CRMProcessor.get_crm_unified_bundle()` in
+    `src/rwa_calc/engine/crm/processor.py` for the full pipeline implementation.
 
 ### Haircut Calculator
 

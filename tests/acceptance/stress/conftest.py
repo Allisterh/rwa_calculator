@@ -22,7 +22,6 @@ from rwa_calc.data.schemas import (
     COUNTERPARTY_SCHEMA,
     FACILITY_MAPPING_SCHEMA,
     FACILITY_SCHEMA,
-    LENDING_MAPPING_SCHEMA,
     LOAN_SCHEMA,
     ORG_MAPPING_SCHEMA,
     RATINGS_SCHEMA,
@@ -545,7 +544,7 @@ def create_raw_bundle(
         ratings=ratings,
         facility_mappings=dataset["facility_mappings"],
         org_mappings=dataset["org_mappings"],
-        lending_mappings=pl.LazyFrame(schema=dtypes_of(LENDING_MAPPING_SCHEMA)),
+        lending_mappings=None,
         model_permissions=model_permissions,
     )
 

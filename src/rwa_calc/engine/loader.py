@@ -516,7 +516,9 @@ def _build_bundle(
         counterparties=load(config.counterparties_file, COUNTERPARTY_SCHEMA),
         facility_mappings=load(config.facility_mappings_file, FACILITY_MAPPING_SCHEMA),
         org_mappings=_opt("org_mappings", config.org_mappings_file, ORG_MAPPING_SCHEMA),
-        lending_mappings=load(config.lending_mappings_file, LENDING_MAPPING_SCHEMA),
+        lending_mappings=_opt(
+            "lending_mappings", config.lending_mappings_file, LENDING_MAPPING_SCHEMA
+        ),
         contingents=_opt("contingents", config.contingents_file, CONTINGENTS_SCHEMA),
         collateral=_opt("collateral", config.collateral_file, COLLATERAL_SCHEMA),
         collateral_links=_opt(
