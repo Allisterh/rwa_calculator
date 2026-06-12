@@ -751,10 +751,12 @@ class CRMProcessor:
         schema_names = set(exposures.collect_schema().names())
         if "exposure_class" not in schema_names or "exposure_reference" not in schema_names:
             return exposures
-        # Register the `.sa` namespace (lazy import avoids a module-level cycle).
-        import rwa_calc.engine.sa.namespace  # noqa: F401
+        # Deferred import keeps the crm <-> sa coupling lazy in both directions
+        # (sa/rw_adjustments lazily imports crm/guarantees for the guarantee
+        # redistribution) so neither package pulls the other in at module load.
+        from rwa_calc.engine.sa.risk_weights import apply_risk_weights
 
-        ranked = exposures.sa.apply_risk_weights(config).select(
+        ranked = apply_risk_weights(exposures, config).select(
             pl.col("exposure_reference"),
             pl.col("risk_weight").alias(RANK_METRIC_COLUMN),
         )

@@ -21,8 +21,8 @@ import polars as pl
 import pytest
 
 import rwa_calc.engine.irb.namespace  # noqa: F401 - Register namespace
-import rwa_calc.engine.sa.namespace  # noqa: F401 - Register namespace
 from rwa_calc.contracts.config import CalculationConfig
+from rwa_calc.engine.sa.rw_adjustments import apply_guarantee_substitution
 
 
 @pytest.fixture
@@ -69,8 +69,8 @@ def _sa_guarantee_result(
         data["guarantee_currency"] = [guarantee_currency]
 
     lf = pl.LazyFrame(data)
-    # Call the namespace API directly for isolated testing
-    result_lf = lf.sa.apply_guarantee_substitution(config)
+    # Call the transform function directly for isolated testing
+    result_lf = apply_guarantee_substitution(lf, config)
     result: pl.DataFrame = result_lf.collect()
     return result
 
