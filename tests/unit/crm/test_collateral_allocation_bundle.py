@@ -227,15 +227,16 @@ class TestCollateralAllocationPopulated:
         assert alloc.shape[0] == 1
         assert alloc["total_collateral_for_lgd"][0] == pytest.approx(0.0)
 
-    def test_allocation_none_with_invalid_collateral(
+    def test_invalid_collateral_yields_zero_allocation_and_precise_warning(
         self, processor: CRMProcessor, crr_config: CalculationConfig
     ) -> None:
-        """Collateral with unusable required columns should leave allocation as None.
+        """Dtype-malformed collateral is dropped with a precise warning.
 
-        The table carries the required column names (so it survives the CRM
-        netting merge, which silently replaces a name-missing table with the
-        synthetic netting frame) but malformed values — the post-seal CRM001
-        skip path.
+        Phase 3 silent-skip fix: the table carries the required column names
+        but a String market_value — the CRM boundary now reports the dtype
+        incompatibility explicitly and proceeds without the table, so the
+        allocation view exists with zero allocated value (identical to the
+        no-collateral path) rather than the whole step silently skipping.
         """
         exposures = pl.LazyFrame([_sa_exposure("E1", 1_000_000)])
         bad_collateral = pl.LazyFrame(
@@ -249,7 +250,10 @@ class TestCollateralAllocationPopulated:
             _make_bundle(exposures, bad_collateral), crr_config
         )
 
-        assert bundle.collateral_allocation is None
+        assert any("incompatible column dtypes" in e.message for e in bundle.crm_errors)
+        assert bundle.collateral_allocation is not None
+        allocation = bundle.collateral_allocation.collect()
+        assert allocation["total_collateral_for_lgd"].sum() == 0.0
 
     def test_allocation_row_count_matches_exposures(
         self, processor: CRMProcessor, crr_config: CalculationConfig
