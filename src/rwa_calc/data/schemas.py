@@ -668,9 +668,11 @@ EQUITY_EXPOSURE_SCHEMA: dict[str, ColumnSpec] = {
     "business_age_years": ColumnSpec(pl.Float64, required=False),
     # CRR Art. 155(3): True -> institution has sufficient Art. 178 default-
     # definition data, so the 1.5x PD/LGD scaling does NOT apply. False/null ->
-    # the 1.5x scaling applies. Default True is the non-conservative branch, so
-    # the 1.5x edge case must set this explicitly False.
-    "has_default_definition_info": ColumnSpec(pl.Boolean, default=True, required=False),
+    # the 1.5x scaling applies. Skipping the scaling is the preferential
+    # treatment and requires affirmative attestation, so unknown -> False
+    # (apply the 1.5x — conservative). Recorded FIX decision 2026-06-12:
+    # the previous default=True made the code contradict this very comment.
+    "has_default_definition_info": ColumnSpec(pl.Boolean, default=False, required=False),
     # CRR Art. 155(2) non-trading-book short-position netting inputs.
     # position_value: signed market value (+long / -short). When absent the
     #   equity calculator falls back to the fair_value/carrying_value/ead chain
@@ -1678,7 +1680,14 @@ CRM_OUTPUT_SCHEMA: dict[str, ColumnSpec] = {
 # Columns produced by the classification stage: SME / retail / RE / SL flags
 # derived from counterparty attributes + exposure amounts + regulatory rules.
 CLASSIFIER_OUTPUT_SCHEMA: dict[str, ColumnSpec] = {
-    "qualifies_as_retail": ColumnSpec(pl.Boolean, default=True, required=False),
+    # CRR Art. 123 / PS1/26 Art. 123A / CRE20.65-67: the 75% retail weight
+    # is PREFERENTIAL — available only when the qualifying criteria are
+    # demonstrated. Unknown -> False (100% non-qualifying retail), the
+    # conservative direction. Recorded FIX decision 2026-06-12 (was True,
+    # diverging from b31_risk_weights' coalesce-False); the classifier
+    # always recomputes this in-pipeline, so only direct-invocation paths
+    # are affected and no goldens change.
+    "qualifies_as_retail": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_sme": ColumnSpec(pl.Boolean, default=False, required=False),
     "is_defaulted": ColumnSpec(pl.Boolean, default=False, required=False),
     "has_income_cover": ColumnSpec(pl.Boolean, default=False, required=False),

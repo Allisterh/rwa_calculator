@@ -559,7 +559,7 @@ def _b31_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
         # Non-regulatory retail (fails Art. 123A criteria): 100%.
         .when(
             uc.str.contains("RETAIL", literal=True)
-            & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
+            & (pl.col("qualifies_as_retail").fill_null(False) == False)  # noqa: E712
         )
         .then(pl.lit(_SA_B31_RW["non_reg_retail"]))
         # Regulatory retail (non-mortgage): 75% flat.
@@ -712,7 +712,7 @@ def _crr_append_retail_branches(chain: pl.Expr, uc: pl.Expr) -> pl.Expr:
         # Non-regulatory retail (fails qualifying criteria): 100%.
         chain.when(
             uc.str.contains("RETAIL", literal=True)
-            & (pl.col("qualifies_as_retail").fill_null(True) == False)  # noqa: E712
+            & (pl.col("qualifies_as_retail").fill_null(False) == False)  # noqa: E712
         )
         .then(pl.lit(_SA_CRR_RW["non_reg_retail"]))
         # Payroll/pension loans: 35% (CRR Art. 123 second subparagraph,
