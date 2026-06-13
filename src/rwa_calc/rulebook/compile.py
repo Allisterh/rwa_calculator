@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from collections.abc import Hashable
     from decimal import Decimal
 
+    from polars._typing import PolarsDataType
+
     from rwa_calc.rulebook.model import (
         BandedTable,
         DecisionTable,
@@ -147,7 +149,7 @@ def decision_table_df(
     t: DecisionTable[Decimal],
     *,
     value_name: str = "value",
-    key_dtypes: dict[str, pl.DataType] | None = None,
+    key_dtypes: dict[str, PolarsDataType] | None = None,
 ) -> pl.DataFrame:
     """Render a Decimal-valued ``DecisionTable`` to a keyed lookup ``pl.DataFrame``.
 
