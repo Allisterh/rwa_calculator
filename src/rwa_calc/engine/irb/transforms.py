@@ -161,8 +161,8 @@ def apply_firb_lgd(
     pr_dilution_lgd = float(lgd_table["dilution_risk"])
 
     # Under Basel 3.1, FSE senior unsecured = 45% (Art. 161(1)(a));
-    # non-FSE = 40% (Art. 161(1)(aa)). Under CRR, all = 45%.
-    if config.is_basel_3_1:
+    # non-FSE = 40% (Art. 161(1)(aa)). Under CRR, all = 45% (no FSE split).
+    if resolved_pack.feature("firb_fse_senior_lgd_split"):
         fse_lgd = float(lgd_table["unsecured_senior_fse"])
         default_lgd_expr = (
             pl.when(pl.col("cp_is_financial_sector_entity").fill_null(False))

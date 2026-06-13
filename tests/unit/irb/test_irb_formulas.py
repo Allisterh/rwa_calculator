@@ -86,6 +86,13 @@ def test_subordinated_unsecured_lgd_is_regime_invariant_075() -> None:
     assert subordinated_unsecured_lgd(_CRR_PACK) == subordinated_unsecured_lgd(_B31_PACK) == 0.75
 
 
+def test_firb_fse_senior_lgd_split_feature_per_regime() -> None:
+    # Act / Assert — CRR has no FSE senior-unsecured split (flat 45%); B31 does
+    # (FSE 45% / non-FSE 40%), so apply_firb_lgd gates the per-row FSE selection.
+    assert _CRR_PACK.feature("firb_fse_senior_lgd_split") is False
+    assert _B31_PACK.feature("firb_fse_senior_lgd_split") is True
+
+
 # =============================================================================
 # STATS BACKEND TESTS (previously zero coverage)
 # =============================================================================

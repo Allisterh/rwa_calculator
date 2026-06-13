@@ -81,6 +81,15 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("CRR", "153(3)", "double-default treatment (Art. 153(3), 202-203)"),
     ),
+    # F-IRB senior unsecured supervisory LGD: CRR applies a flat 45% (Art. 161(1)(a))
+    # with no financial-sector-entity split, so this is disabled. Basel 3.1 splits
+    # senior unsecured into FSE 45% (Art. 161(1)(a)) vs non-FSE 40% (Art. 161(1)(aa)).
+    # Gates the per-row FSE selection in engine/irb/formulas.py::apply_firb_lgd.
+    "firb_fse_senior_lgd_split": Feature(
+        name="firb_fse_senior_lgd_split",
+        enabled=False,
+        citation=Citation("CRR", "161(1)(a)", "flat 45% senior unsecured F-IRB LGD, no FSE split"),
+    ),
     # IRB PD floors (CRR Art. 160(1)): a uniform 0.03% floor across every IRB
     # exposure class. Basel 3.1 differentiates these (packs/b31.py). Consumed by
     # engine/irb/formulas.py::_pd_floor_expression via compile.formula_float_map.
