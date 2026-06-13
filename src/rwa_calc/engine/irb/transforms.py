@@ -221,7 +221,9 @@ def apply_firb_lgd(
     return lf.with_columns([lgd_input_expr.alias("lgd_input")])
 
 
-def prepare_columns(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame:
+def prepare_columns(
+    lf: pl.LazyFrame, config: CalculationConfig, *, pack: ResolvedRulepack | None = None
+) -> pl.LazyFrame:
     """
     Ensure all required columns exist with defaults.
 
@@ -230,6 +232,8 @@ def prepare_columns(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame
     Args:
         lf: IRB exposures frame
         config: Calculation configuration
+        pack: Resolved rulepack (falls back to ``config`` when omitted) — supplies
+            the maturity-treatment regime Features.
 
     Returns:
         LazyFrame with all required columns
@@ -243,8 +247,9 @@ def prepare_columns(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame
     #   5. Fallback default 2.5y
     # CRR F-IRB SFT supervisory M = 0.5y (Art. 162(1)) is applied to the base
     # chain (4/3) but is superseded by the two explicit overrides above.
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
     names = set(lf.collect_schema().names())
-    exprs = _prepare_columns_exprs(config, names)
+    exprs = _prepare_columns_exprs(config, names, pack=resolved_pack)
     if exprs:
         return lf.with_columns(exprs)
     return lf
@@ -841,7 +846,7 @@ def clip_maturity(expr: pl.Expr, floor: float = 1.0, cap: float = 5.0) -> pl.Exp
 # =============================================================================
 
 
-def _maturity_base_expr(config: CalculationConfig) -> pl.Expr:
+def _maturity_base_expr(config: CalculationConfig, *, pack: ResolvedRulepack) -> pl.Expr:
     """Build the base maturity expression from maturity_date/termination/default."""
     maturity_from_date = (
         pl.when(pl.col("maturity_date").is_not_null())
@@ -849,7 +854,7 @@ def _maturity_base_expr(config: CalculationConfig) -> pl.Expr:
         .otherwise(pl.lit(2.5))
     )
 
-    if config.is_basel_3_1:
+    if pack.feature("revolving_uses_termination_maturity"):
         # B31 Art. 162(2A)(k): revolving + non-null termination date → use termination date
         maturity_from_termination = (
             pl.when(pl.col("facility_termination_date").is_not_null())
@@ -870,13 +875,13 @@ def _maturity_base_expr(config: CalculationConfig) -> pl.Expr:
 
 
 def _apply_firb_sft_supervisory_maturity(
-    maturity_expr: pl.Expr, config: CalculationConfig
+    maturity_expr: pl.Expr, *, pack: ResolvedRulepack
 ) -> pl.Expr:
     """CRR Art. 162(1): F-IRB fixed supervisory maturity for repo-style SFTs (0.5y).
 
     B31 deleted Art. 162(1); under B31 all IRB firms calculate M per Art. 162(2A).
     """
-    if not config.is_crr:
+    if not pack.feature("firb_sft_supervisory_maturity"):
         return maturity_expr
     return (
         pl.when((pl.col("approach") == ApproachType.FIRB.value) & pl.col("is_sft").fill_null(False))
@@ -885,7 +890,7 @@ def _apply_firb_sft_supervisory_maturity(
     )
 
 
-def _effective_one_day_floor_flag(config: CalculationConfig) -> pl.Expr:
+def _effective_one_day_floor_flag(config: CalculationConfig, *, pack: ResolvedRulepack) -> pl.Expr:
     """Compose the Art. 162(3) one-day maturity floor flag.
 
     Per CRR Art. 162(3) second sub-paragraph point (b), self-liquidating short-term
@@ -895,7 +900,7 @@ def _effective_one_day_floor_flag(config: CalculationConfig) -> pl.Expr:
     True is preserved by ORing the derived flag onto the input column.
     """
     input_floor_flag = pl.col("has_one_day_maturity_floor").fill_null(False)
-    if not config.is_crr:
+    if not pack.feature("one_day_maturity_floor"):
         return input_floor_flag
 
     residual_years = (
@@ -911,16 +916,16 @@ def _effective_one_day_floor_flag(config: CalculationConfig) -> pl.Expr:
     return input_floor_flag | derived_floor_flag
 
 
-def _build_maturity_exprs(config: CalculationConfig) -> list[pl.Expr]:
+def _build_maturity_exprs(config: CalculationConfig, *, pack: ResolvedRulepack) -> list[pl.Expr]:
     """Build the full maturity priority chain as a list of aliased expressions.
 
     Returns two expressions: ``maturity`` and ``has_one_day_maturity_floor``.
     See ``prepare_columns`` for the priority chain documentation.
     """
-    maturity_expr = _maturity_base_expr(config)
-    maturity_expr = _apply_firb_sft_supervisory_maturity(maturity_expr, config)
+    maturity_expr = _maturity_base_expr(config, pack=pack)
+    maturity_expr = _apply_firb_sft_supervisory_maturity(maturity_expr, pack=pack)
 
-    effective_floor_flag = _effective_one_day_floor_flag(config)
+    effective_floor_flag = _effective_one_day_floor_flag(config, pack=pack)
     maturity_expr = (
         pl.when(effective_floor_flag).then(pl.lit(_ONE_DAY_YEARS)).otherwise(maturity_expr)
     )
@@ -941,7 +946,9 @@ def _build_maturity_exprs(config: CalculationConfig) -> list[pl.Expr]:
     ]
 
 
-def _prepare_columns_exprs(config: CalculationConfig, names: set[str]) -> list[pl.Expr]:
+def _prepare_columns_exprs(
+    config: CalculationConfig, names: set[str], *, pack: ResolvedRulepack
+) -> list[pl.Expr]:
     """Build the default-column expressions for ``prepare_columns``.
 
     Extracted as a module-level helper to keep the public function's cognitive
@@ -952,7 +959,7 @@ def _prepare_columns_exprs(config: CalculationConfig, names: set[str]) -> list[p
 
     # Maturity priority chain — see ``prepare_columns`` docstring for details.
     if "maturity" not in names:
-        exprs.extend(_build_maturity_exprs(config))
+        exprs.extend(_build_maturity_exprs(config, pack=pack))
 
     if "turnover_m" not in names:
         # CRR Art. 153(4) third subparagraph: substitute total assets of the

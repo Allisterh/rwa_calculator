@@ -605,7 +605,11 @@ def _apply_double_default(
     pack: ResolvedRulepack,
 ) -> pl.LazyFrame:
     """Apply double default treatment (CRR Art. 153(3), 202-203)."""
-    use_double_default = config.is_crr and config.enable_double_default and has_guarantor_pd
+    use_double_default = (
+        pack.feature("double_default_treatment")
+        and config.enable_double_default
+        and has_guarantor_pd
+    )
     if not use_double_default:
         return lf.with_columns(
             [

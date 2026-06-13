@@ -45,6 +45,36 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "161(5)"),
     ),
+    # IRB maturity (M) regime treatments — see packs/crr.py. Basel 3.1 deleted the
+    # CRR SFT supervisory M and the short-term-trade one-day-floor derivation, and
+    # added the revolving→termination-date rule (Art. 162(2A)(k)).
+    "firb_sft_supervisory_maturity": Feature(
+        name="firb_sft_supervisory_maturity",
+        enabled=False,
+        citation=Citation(
+            "PS1/26", "162", "Basel 3.1 deleted the CRR Art. 162(1) SFT supervisory M"
+        ),
+    ),
+    "one_day_maturity_floor": Feature(
+        name="one_day_maturity_floor",
+        enabled=False,
+        citation=Citation(
+            "PS1/26", "162", "no CRR Art. 162(3) short-term-trade one-day-floor derivation"
+        ),
+    ),
+    "revolving_uses_termination_maturity": Feature(
+        name="revolving_uses_termination_maturity",
+        enabled=True,
+        citation=Citation(
+            "PS1/26", "162(2A)(k)", "revolving facilities use the facility termination date for M"
+        ),
+    ),
+    # Basel 3.1 removed the CRR Art. 153(3) double-default treatment.
+    "double_default_treatment": Feature(
+        name="double_default_treatment",
+        enabled=False,
+        citation=Citation("PS1/26", "153", "Basel 3.1 removed CRR double-default treatment"),
+    ),
     # IRB PD floors differentiated by exposure class (PRA PS1/26 Art. 160(1)
     # wholesale / Art. 163(1) retail). Overrides the CRR uniform 0.03% bundle.
     # Consumed by engine/irb/formulas.py::_pd_floor_expression.

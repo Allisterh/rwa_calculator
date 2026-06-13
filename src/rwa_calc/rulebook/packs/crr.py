@@ -51,6 +51,36 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "164", "no A-IRB own-estimate LGD floor under CRR"),
     ),
+    # IRB maturity (M) regime treatments — Features gate only the on/off regime
+    # branch; the numeric constants they gate (0.5y SFT supervisory M, the 1/365
+    # one-day floor) stay engine literals. Consumed in engine/irb/transforms.py.
+    "firb_sft_supervisory_maturity": Feature(
+        name="firb_sft_supervisory_maturity",
+        enabled=True,
+        citation=Citation("CRR", "162(1)", "F-IRB fixed 0.5y supervisory M for repo-style SFTs"),
+    ),
+    "one_day_maturity_floor": Feature(
+        name="one_day_maturity_floor",
+        enabled=True,
+        citation=Citation(
+            "CRR", "162(3)", "one-day M floor derivation for short-term trade finance"
+        ),
+    ),
+    "revolving_uses_termination_maturity": Feature(
+        name="revolving_uses_termination_maturity",
+        enabled=False,
+        citation=Citation(
+            "CRR", "162", "revolving facilities use the standard M derivation under CRR"
+        ),
+    ),
+    # CRR Art. 153(3)/202-203 double-default treatment for guaranteed exposures —
+    # removed under Basel 3.1. The election (config.enable_double_default) and the
+    # 0.15+160xPD multiplier constant stay engine-side; only the regime gate moves.
+    "double_default_treatment": Feature(
+        name="double_default_treatment",
+        enabled=True,
+        citation=Citation("CRR", "153(3)", "double-default treatment (Art. 153(3), 202-203)"),
+    ),
     # IRB PD floors (CRR Art. 160(1)): a uniform 0.03% floor across every IRB
     # exposure class. Basel 3.1 differentiates these (packs/b31.py). Consumed by
     # engine/irb/formulas.py::_pd_floor_expression via compile.formula_float_map.
