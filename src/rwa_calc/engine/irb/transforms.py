@@ -284,7 +284,9 @@ def apply_pd_floor(
 
 @cites("CRR Art. 164")
 @cites("PS1/26, paragraph 164")
-def apply_lgd_floor(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame:
+def apply_lgd_floor(
+    lf: pl.LazyFrame, config: CalculationConfig, *, pack: ResolvedRulepack | None = None
+) -> pl.LazyFrame:
     """
     Apply LGD floor for Basel 3.1 A-IRB exposures.
 
@@ -304,6 +306,7 @@ def apply_lgd_floor(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame
     Args:
         lf: IRB exposures frame
         config: Calculation configuration
+        pack: Resolved rulepack (falls back to ``config`` when omitted)
 
     Returns:
         LazyFrame with lgd_floored column
@@ -311,25 +314,28 @@ def apply_lgd_floor(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame
     schema = lf.collect_schema()
     schema_names = schema.names()
     lgd_col = "lgd_input" if "lgd_input" in schema_names else "lgd"
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
 
-    if config.is_basel_3_1:
+    if resolved_pack.feature("airb_lgd_floor"):
         if "collateral_type" in schema_names:
             lgd_floor_expr = _lgd_floor_expression_with_collateral(
                 config,
                 has_seniority=True,
                 has_exposure_class=True,
+                pack=resolved_pack,
             )
         else:
             lgd_floor_expr = _lgd_floor_expression(
                 config,
                 has_seniority=True,
                 has_exposure_class=True,
+                pack=resolved_pack,
             )
 
         # Art. 164(4)(c) blended floor for retail with mixed collateral
         # Use blended floor where applicable (retail_other/qrre with collateral),
         # fall back to single-type floor otherwise
-        blended_expr = _lgd_floor_blended_expression(config)
+        blended_expr = _lgd_floor_blended_expression(config, pack=resolved_pack)
         lgd_floor_expr = (
             pl.when(blended_expr.is_not_null()).then(blended_expr).otherwise(lgd_floor_expr)
         )
@@ -588,7 +594,7 @@ def apply_all_formulas(
     # LGD floor (CRR: none, Basel 3.1: per-collateral-type for A-IRB only)
     # F-IRB supervisory LGDs are regulatory values — don't floor them (CRE30.41)
     lgd_col = "lgd_input" if "lgd_input" in schema_names else "lgd"
-    batch1.append(_lgd_floored_expr(config, schema_names, lgd_col))
+    batch1.append(_lgd_floored_expr(config, schema_names, lgd_col, pack=resolved_pack))
 
     lf = lf.with_columns(batch1)
 
@@ -975,14 +981,21 @@ def _prepare_columns_exprs(config: CalculationConfig, names: set[str]) -> list[p
 # =============================================================================
 
 
-def _lgd_floored_expr(config: CalculationConfig, schema_names: set[str], lgd_col: str) -> pl.Expr:
+def _lgd_floored_expr(
+    config: CalculationConfig,
+    schema_names: set[str],
+    lgd_col: str,
+    *,
+    pack: ResolvedRulepack | None = None,
+) -> pl.Expr:
     """Build the ``lgd_floored`` expression for ``apply_all_formulas``.
 
-    CRR has no LGD floor. Basel 3.1 applies per-collateral-type floors to
-    A-IRB only (F-IRB supervisory LGDs are regulatory values — not floored,
-    per CRE30.41).
+    CRR has no LGD floor (the ``airb_lgd_floor`` Feature is off). Basel 3.1
+    applies per-collateral-type floors to A-IRB only (F-IRB supervisory LGDs are
+    regulatory values — not floored, per CRE30.41).
     """
-    if not config.is_basel_3_1:
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    if not resolved_pack.feature("airb_lgd_floor"):
         return pl.col(lgd_col).alias("lgd_floored")
 
     if "collateral_type" in schema_names:
@@ -990,15 +1003,17 @@ def _lgd_floored_expr(config: CalculationConfig, schema_names: set[str], lgd_col
             config,
             has_seniority=True,
             has_exposure_class=True,
+            pack=resolved_pack,
         )
     else:
         lgd_floor_expr = _lgd_floor_expression(
             config,
             has_seniority=True,
             has_exposure_class=True,
+            pack=resolved_pack,
         )
     # Art. 164(4)(c) blended floor for retail with mixed collateral
-    blended_expr = _lgd_floor_blended_expression(config)
+    blended_expr = _lgd_floor_blended_expression(config, pack=resolved_pack)
     lgd_floor_expr = (
         pl.when(blended_expr.is_not_null()).then(blended_expr).otherwise(lgd_floor_expr)
     )

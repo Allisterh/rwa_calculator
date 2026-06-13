@@ -195,6 +195,7 @@ def _lgd_floor_expression(
     *,
     has_seniority: bool = False,
     has_exposure_class: bool = False,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.Expr:
     """
     Build Polars expression for LGD floor (no collateral_type column).
@@ -212,22 +213,23 @@ def _lgd_floor_expression(
 
     Returns a Polars expression evaluating to the per-row LGD floor value.
     """
-    if config.is_crr:
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    if not resolved_pack.feature("airb_lgd_floor"):
         return pl.lit(0.0)
 
-    floors = config.lgd_floors
+    floors = formula_float_map(resolved_pack.formula("lgd_floors"))
 
     if has_exposure_class:
         # Route by exposure class — retail gets Art. 164(4) floors
         exp_class = pl.col("exposure_class").cast(pl.String).str.to_lowercase()
         return (
             pl.when(exp_class.is_in(["retail_mortgage"]))
-            .then(pl.lit(float(floors.retail_rre)))  # 5% Art. 164(4)(a)
+            .then(pl.lit(floors["retail_rre"]))  # 5% Art. 164(4)(a)
             .when(exp_class.is_in(["retail_qrre"]))
-            .then(pl.lit(float(floors.retail_qrre_unsecured)))  # 50% Art. 164(4)(b)(i)
+            .then(pl.lit(floors["retail_qrre_unsecured"]))  # 50% Art. 164(4)(b)(i)
             .when(exp_class.is_in(["retail_other"]))
-            .then(pl.lit(float(floors.retail_other_unsecured)))  # 30% Art. 164(4)(b)(ii)
-            .otherwise(pl.lit(float(floors.unsecured)))  # 25% Art. 161(5)
+            .then(pl.lit(floors["retail_other_unsecured"]))  # 30% Art. 164(4)(b)(ii)
+            .otherwise(pl.lit(floors["unsecured"]))  # 25% Art. 161(5)
         )
 
     if has_seniority:
@@ -235,10 +237,10 @@ def _lgd_floor_expression(
         # unsecured floor regardless of seniority (Art. 161(5)). The 50%
         # subordinated_unsecured value is the F-IRB supervisory LGD per
         # Art. 161(1)(b), not an A-IRB floor — do not branch on seniority here.
-        return pl.lit(float(floors.unsecured))
+        return pl.lit(floors["unsecured"])
 
     # Default to unsecured floor (25%) — most conservative for senior
-    return pl.lit(float(floors.unsecured))
+    return pl.lit(floors["unsecured"])
 
 
 @cites("PS1/26, paragraph 164")
@@ -247,6 +249,7 @@ def _lgd_floor_expression_with_collateral(
     *,
     has_seniority: bool = False,
     has_exposure_class: bool = False,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.Expr:
     """
     Build Polars expression for per-collateral-type LGD floor when collateral_type
@@ -259,10 +262,11 @@ def _lgd_floor_expression_with_collateral(
         - retail + other collateral: same LGDS as corporate (0%/10%/10%/15%)
     Corporate floors use Art. 161(5): 25% unsecured, collateral-type LGDS.
     """
-    if config.is_crr:
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    if not resolved_pack.feature("airb_lgd_floor"):
         return pl.lit(0.0)
 
-    floors = config.lgd_floors
+    floors = formula_float_map(resolved_pack.formula("lgd_floors"))
     coll = pl.col("collateral_type").fill_null("unsecured").str.to_lowercase()
 
     # Determine unsecured floor based on exposure class (retail vs corporate)
@@ -270,43 +274,43 @@ def _lgd_floor_expression_with_collateral(
         exp_class = pl.col("exposure_class").cast(pl.String).str.to_lowercase()
         unsecured_floor = (
             pl.when(exp_class.is_in(["retail_mortgage"]))
-            .then(pl.lit(float(floors.retail_rre)))  # 5% Art. 164(4)(a)
+            .then(pl.lit(floors["retail_rre"]))  # 5% Art. 164(4)(a)
             .when(exp_class.is_in(["retail_qrre"]))
-            .then(pl.lit(float(floors.retail_qrre_unsecured)))  # 50% Art. 164(4)(b)(i)
+            .then(pl.lit(floors["retail_qrre_unsecured"]))  # 50% Art. 164(4)(b)(i)
             .when(exp_class.is_in(["retail_other"]))
-            .then(pl.lit(float(floors.retail_other_unsecured)))  # 30% Art. 164(4)(b)(ii)
-            .otherwise(pl.lit(float(floors.unsecured)))  # 25% Art. 161(5)
+            .then(pl.lit(floors["retail_other_unsecured"]))  # 30% Art. 164(4)(b)(ii)
+            .otherwise(pl.lit(floors["unsecured"]))  # 25% Art. 161(5)
         )
         # RRE collateral floor: 5% for retail_mortgage, 10% for corporate
         rre_floor = (
             pl.when(exp_class.is_in(["retail_mortgage"]))
-            .then(pl.lit(float(floors.retail_rre)))  # 5% Art. 164(4)(a)
-            .otherwise(pl.lit(float(floors.residential_real_estate)))  # 10% Art. 161(5)
+            .then(pl.lit(floors["retail_rre"]))  # 5% Art. 164(4)(a)
+            .otherwise(pl.lit(floors["residential_real_estate"]))  # 10% Art. 161(5)
         )
     elif has_seniority:
         # Fallback without exposure_class: corporate A-IRB applies a single 25%
         # unsecured floor regardless of seniority (Art. 161(5)). The 50%
         # subordinated_unsecured value is the F-IRB supervisory LGD per
         # Art. 161(1)(b), not an A-IRB floor — do not branch on seniority here.
-        unsecured_floor = pl.lit(float(floors.unsecured))
-        rre_floor = pl.lit(float(floors.residential_real_estate))
+        unsecured_floor = pl.lit(floors["unsecured"])
+        rre_floor = pl.lit(floors["residential_real_estate"])
     else:
-        unsecured_floor = pl.lit(float(floors.unsecured))
-        rre_floor = pl.lit(float(floors.residential_real_estate))
+        unsecured_floor = pl.lit(floors["unsecured"])
+        rre_floor = pl.lit(floors["residential_real_estate"])
 
     return (
         pl.when(coll.is_in(["financial_collateral", "cash", "deposit", "gold", "financial"]))
-        .then(pl.lit(float(floors.financial_collateral)))
+        .then(pl.lit(floors["financial_collateral"]))
         .when(coll.is_in(["receivables", "trade_receivables"]))
-        .then(pl.lit(float(floors.receivables)))
+        .then(pl.lit(floors["receivables"]))
         .when(coll.is_in(["residential_re", "rre", "residential", "residential_property"]))
         .then(rre_floor)
         .when(coll.is_in(["commercial_re", "cre", "commercial", "commercial_property"]))
-        .then(pl.lit(float(floors.commercial_real_estate)))
+        .then(pl.lit(floors["commercial_real_estate"]))
         .when(coll.is_in(["real_estate", "property", "immovable"]))
         .then(rre_floor)  # Routes to 5% for retail_mortgage, 10% for corporate (P1.8)
         .when(coll.is_in(["other_physical", "equipment", "inventory"]))
-        .then(pl.lit(float(floors.other_physical)))
+        .then(pl.lit(floors["other_physical"]))
         .otherwise(unsecured_floor)
     )
 
@@ -314,6 +318,8 @@ def _lgd_floor_expression_with_collateral(
 @cites("PS1/26, paragraph 164")
 def _lgd_floor_blended_expression(
     config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.Expr:
     """
     Build Polars expression for the Art. 164(4)(c) blended LGD floor.
@@ -342,10 +348,11 @@ def _lgd_floor_blended_expression(
     References:
         PRA PS1/26 Art. 164(4)(c)
     """
-    if config.is_crr:
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    if not resolved_pack.feature("airb_lgd_floor"):
         return pl.lit(0.0)
 
-    floors = config.lgd_floors
+    floors = formula_float_map(resolved_pack.formula("lgd_floors"))
 
     ead = pl.col("ead_gross")
     total_coll = pl.col("total_collateral_for_lgd").fill_null(0.0)
@@ -359,12 +366,12 @@ def _lgd_floor_blended_expression(
     alloc_li = pl.col("crm_alloc_life_insurance").fill_null(0.0)
 
     # Per-type LGDS floors for retail (Art. 164(4)(c))
-    lgds_fin = float(floors.financial_collateral)  # 0%
-    lgds_cb = float(floors.financial_collateral)  # 0% (treated as financial)
-    lgds_rec = float(floors.receivables)  # 10%
-    lgds_re = float(floors.commercial_real_estate)  # 10% (non-RRE immovable property)
-    lgds_op = float(floors.other_physical)  # 15%
-    lgds_li = float(floors.financial_collateral)  # 0% (treated as financial)
+    lgds_fin = floors["financial_collateral"]  # 0%
+    lgds_cb = floors["financial_collateral"]  # 0% (treated as financial)
+    lgds_rec = floors["receivables"]  # 10%
+    lgds_re = floors["commercial_real_estate"]  # 10% (non-RRE immovable property)
+    lgds_op = floors["other_physical"]  # 15%
+    lgds_li = floors["financial_collateral"]  # 0% (treated as financial)
 
     numerator = (
         alloc_fin * lgds_fin
@@ -381,8 +388,8 @@ def _lgd_floor_blended_expression(
     exp_class = pl.col("exposure_class").cast(pl.String).str.to_lowercase()
     lgdu_expr = (
         pl.when(exp_class.is_in(["retail_qrre"]))
-        .then(pl.lit(float(floors.retail_qrre_unsecured)))  # 50%
-        .otherwise(pl.lit(float(floors.retail_lgdu)))  # 30%
+        .then(pl.lit(floors["retail_qrre_unsecured"]))  # 50%
+        .otherwise(pl.lit(floors["retail_lgdu"]))  # 30%
     )
 
     numerator_with_unsecured = numerator + unsecured_portion * lgdu_expr
@@ -453,21 +460,23 @@ def apply_irb_formulas(
     # Step 2: Apply LGD floor (Basel 3.1 A-IRB only, CRR has no LGD floors)
     # LGD floors only apply to A-IRB own-estimate LGDs (CRE30.41).
     # F-IRB supervisory LGDs are regulatory values and don't need flooring.
-    if config.is_basel_3_1:
+    if resolved_pack.feature("airb_lgd_floor"):
         if "collateral_type" in schema_names:
             lgd_floor_expr = _lgd_floor_expression_with_collateral(
                 config,
                 has_seniority=True,
                 has_exposure_class=True,
+                pack=resolved_pack,
             )
         else:
             lgd_floor_expr = _lgd_floor_expression(
                 config,
                 has_seniority=True,
                 has_exposure_class=True,
+                pack=resolved_pack,
             )
         # Art. 164(4)(c) blended floor for retail with mixed collateral
-        blended_expr = _lgd_floor_blended_expression(config)
+        blended_expr = _lgd_floor_blended_expression(config, pack=resolved_pack)
         lgd_floor_expr = (
             pl.when(blended_expr.is_not_null()).then(blended_expr).otherwise(lgd_floor_expr)
         )
