@@ -55,6 +55,7 @@ from rwa_calc.engine.supporting_factors import SupportingFactorCalculator
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ class SlottingCalculator:
         config: CalculationConfig,
         *,
         errors: list[CalculationError] | None = None,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Calculate Slotting RWA and Expected Loss on pre-filtered slotting-only rows.
@@ -110,14 +112,14 @@ class SlottingCalculator:
         """
         exposures = (
             exposures.pipe(prepare_columns, config)
-            .pipe(apply_slotting_weights, config)
+            .pipe(apply_slotting_weights, config, pack=pack)
             .pipe(calculate_rwa)
         )
 
         # Apply supporting factors (CRR Art. 501/501a) — same pattern as IRB
         exposures = self._apply_supporting_factors(exposures, config, errors=errors)
 
-        exposures = exposures.pipe(apply_el_rates, config).pipe(
+        exposures = exposures.pipe(apply_el_rates, config, pack=pack).pipe(
             compute_el_shortfall_excess, errors=errors
         )
 

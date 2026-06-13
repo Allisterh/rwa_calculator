@@ -183,6 +183,18 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "110", "no Art. 110A due-diligence RW override under CRR"),
     ),
+    # Slotting (supervisory specialised-lending) risk-weight + EL-rate tables:
+    # Basel 3.1 (PRA PS1/26 Art. 153(5) Table A / CRE33) revises them with HVCRE
+    # and PF pre-operational splits — see packs/b31.py. The Feature selects the
+    # CRR vs B31 table family in engine/slotting/transforms.py (apply_slotting_
+    # weights / apply_el_rates); the VALUES stay in data/tables/{crr,b31}_slotting.
+    "slotting_revised_tables": Feature(
+        name="slotting_revised_tables",
+        enabled=False,
+        citation=Citation(
+            "CRR", "153(5)", "UK CRR single slotting table (HVCRE Table 2 not onshored)"
+        ),
+    ),
     # F-IRB collateral step-functions apply under CRR (Art. 230 Table 5): the
     # overcollateralisation divisor and the 30% C*/C** minimum threshold. Basel
     # 3.1 removes both (see packs/b31.py); the divisor/threshold values

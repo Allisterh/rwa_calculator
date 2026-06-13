@@ -172,6 +172,15 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "110A", "due-diligence RW override (RW may only increase)"),
     ),
+    # Basel 3.1 revised slotting tables (PRA PS1/26 Art. 153(5) Table A / CRE33):
+    # HVCRE risk-weight + EL splits and the PF pre-operational distinction.
+    # Overrides the CRR Feature; selects the B31 table family in
+    # engine/slotting/transforms.py.
+    "slotting_revised_tables": Feature(
+        name="slotting_revised_tables",
+        enabled=True,
+        citation=Citation("PS1/26", "153(5)", "Basel 3.1 slotting tables (HVCRE + PF pre-op)"),
+    ),
     "output_floor": Feature(
         name="output_floor",
         enabled=True,

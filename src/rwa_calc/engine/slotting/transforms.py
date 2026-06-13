@@ -75,12 +75,14 @@ from rwa_calc.data.tables.crr_slotting import (
     SLOTTING_RISK_WEIGHTS_SHORT,
 )
 from rwa_calc.engine.utils import exact_fractional_years_expr
+from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
     from decimal import Decimal
 
     from rwa_calc.contracts.config import CalculationConfig
     from rwa_calc.domain.enums import SlottingCategory
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
 
@@ -163,9 +165,15 @@ def prepare_columns(lf: pl.LazyFrame, config: CalculationConfig | None = None) -
 
 
 @cites("CRR Art. 153(5)")
-def apply_slotting_weights(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame:
+def apply_slotting_weights(
+    lf: pl.LazyFrame,
+    config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
+) -> pl.LazyFrame:
     """Apply slotting risk weights based on framework, category, HVCRE flag, and maturity."""
-    is_crr = config.is_crr
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    is_crr = not resolved_pack.feature("slotting_revised_tables")
 
     if is_crr:
         rw_expr = lookup_rw(
@@ -192,14 +200,20 @@ def calculate_rwa(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.with_columns(rwa=rwa)
 
 
-def apply_el_rates(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame:
+def apply_el_rates(
+    lf: pl.LazyFrame,
+    config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
+) -> pl.LazyFrame:
     """Apply slotting expected loss rates per Art. 158(6) Table B.
 
     Produces:
         slotting_el_rate: The EL rate for this category/maturity/HVCRE combination
         expected_loss: EL rate x EAD (the expected loss amount)
     """
-    is_crr = config.is_crr
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    is_crr = not resolved_pack.feature("slotting_revised_tables")
     # EL rates are always maturity-dependent (even under B31 where RW is not)
     el_rate_expr = lookup_el_rate(
         col("slotting_category"),

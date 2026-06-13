@@ -435,6 +435,7 @@ class SlottingCalculatorProtocol(Protocol):
         config: CalculationConfig,
         *,
         errors: list[CalculationError] | None = None,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Calculate Slotting RWA on pre-filtered slotting-only rows.
@@ -443,6 +444,8 @@ class SlottingCalculatorProtocol(Protocol):
             exposures: Pre-filtered slotting rows only
             config: Calculation configuration
             errors: Optional error accumulator for data quality warnings
+            pack: Optional resolved rulepack; falls back to
+                ``RulepackV0.from_config(config).pack`` when ``None``.
 
         Returns:
             LazyFrame with slotting RWA columns populated.

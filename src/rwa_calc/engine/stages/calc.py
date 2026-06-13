@@ -112,7 +112,7 @@ def run(
         irb_branch, run_config, errors=branch_errors, pack=rulepack.pack
     )
     slotting_result = components.slotting_calculator.calculate_branch(
-        slotting_branch, run_config, errors=branch_errors
+        slotting_branch, run_config, errors=branch_errors, pack=rulepack.pack
     )
 
     # Collect all branches. In cpu mode, uses collect_all with CSE so
