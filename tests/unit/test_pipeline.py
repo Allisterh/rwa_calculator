@@ -480,19 +480,21 @@ class TestPipelineOrchestratorInitialization:
         assert components.classifier is mock_classifier
         assert components.hierarchy_resolver is not None
 
-    def test_build_components_crm_follows_framework(self, crr_config, basel31_config):
-        """CRMProcessor regime state comes from the run's config, per run.
+    def test_build_components_crm_carries_no_regime_state(self, crr_config, basel31_config):
+        """CRMProcessor carries no constructor regime-state — regime is per-method.
 
         The pre-fold orchestrator cached the CRM processor across runs, so a
         framework switch on a reused orchestrator silently kept the wrong
-        haircut table (the comparison.py two-orchestrator workaround).
-        Per-run construction makes that failure mode unrepresentable.
+        haircut table (the comparison.py two-orchestrator workaround). The
+        processor now reads the framework per-method from the effective config,
+        so it holds no ``_is_basel_3_1`` attribute at all — making the stale-
+        cache failure mode unrepresentable regardless of the run's config.
         """
         crr_components = build_components(crr_config)
         b31_components = build_components(basel31_config)
 
-        assert crr_components.crm_processor._is_basel_3_1 is False
-        assert b31_components.crm_processor._is_basel_3_1 is True
+        assert not hasattr(crr_components.crm_processor, "_is_basel_3_1")
+        assert not hasattr(b31_components.crm_processor, "_is_basel_3_1")
 
 
 class TestPipelineRunWithData:
@@ -770,7 +772,7 @@ class TestStageErrorChannel:
 
         class SentinelCRMProcessor:
             def get_crm_unified_bundle(self, classified, config):
-                processor = CRMProcessor(is_basel_3_1=config.is_basel_3_1)
+                processor = CRMProcessor()
                 result = processor.get_crm_unified_bundle(classified, config)
                 return replace(result, crm_errors=[*result.crm_errors, sentinel])
 

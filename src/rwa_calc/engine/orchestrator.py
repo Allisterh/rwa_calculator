@@ -282,10 +282,11 @@ def build_components(
 ) -> StageComponents:
     """Build per-run stage components, honouring injected overrides.
 
-    Defaults are constructed fresh every run from the *effective* config
-    (post FX-rate sync) — in particular ``CRMProcessor(is_basel_3_1=...)``,
-    whose constructor regime state made cached components framework-stale
-    on reuse (the documented two-orchestrator workaround in comparison.py).
+    Defaults are constructed fresh every run. ``CRMProcessor`` no longer carries
+    constructor regime-state: it reads the framework per-method from the
+    *effective* config (post FX-rate sync) each entry point already receives, so
+    a single instance is framework-correct under either regime. The per-run
+    rebuild still isolates frameworks for any component that does cache state.
     """
     from rwa_calc.engine.aggregator import OutputAggregator
     from rwa_calc.engine.crm.processor import CRMProcessor
@@ -302,7 +303,7 @@ def build_components(
         securitisation_allocator=securitisation_allocator or SecuritisationAllocator(),
         hierarchy_resolver=hierarchy_resolver or HierarchyResolver(),
         classifier=classifier or ExposureClassifier(),
-        crm_processor=crm_processor or CRMProcessor(is_basel_3_1=config.is_basel_3_1),
+        crm_processor=crm_processor or CRMProcessor(),
         re_splitter=re_splitter or RealEstateSplitter(),
         sa_calculator=sa_calculator or SACalculator(),
         irb_calculator=irb_calculator or IRBCalculator(),

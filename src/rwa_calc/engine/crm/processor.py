@@ -477,15 +477,16 @@ class CRMProcessor:
     GUARANTEE_REQUIRED_COLUMNS = {"beneficiary_reference", "amount_covered", "guarantor"}
     PROVISION_REQUIRED_COLUMNS = {"beneficiary_reference", "amount"}
 
-    def __init__(self, is_basel_3_1: bool = False) -> None:
+    def __init__(self) -> None:
         """Initialize CRM processor with sub-calculators.
 
-        Args:
-            is_basel_3_1: True for Basel 3.1 framework (affects haircuts and supervisory LGD)
+        The processor carries no constructor regime-state: the framework
+        (CRR vs Basel 3.1) is read per-method from the effective
+        ``CalculationConfig`` each public entry point already receives, so a
+        single processor instance computes correctly under either framework.
         """
         self._ccf_calculator = CCFCalculator()
-        self._haircut_calculator = HaircutCalculator(is_basel_3_1=is_basel_3_1)
-        self._is_basel_3_1 = is_basel_3_1
+        self._haircut_calculator = HaircutCalculator()
 
     @cites("CRR Art. 194")
     def get_crm_unified_bundle(
@@ -798,7 +799,7 @@ class CRMProcessor:
         # seniority. Under B31, AIRB Foundation/169B exposures also get
         # formula-based LGD.
         exposures = collateral_mod.apply_firb_supervisory_lgd_no_collateral(
-            exposures, self._is_basel_3_1, config=config
+            exposures, config.is_basel_3_1, config=config
         )
         return exposures, False
 
@@ -811,7 +812,7 @@ class CRMProcessor:
     ) -> None:
         """Append warnings for AIRB-model-collateral pledged to non-AIRB exposures."""
         misdirected = collateral_mod.find_misdirected_airb_model_collateral(
-            exposures, collateral, config, self._is_basel_3_1
+            exposures, collateral, config, config.is_basel_3_1
         )
         for coll_ref, exp_ref in misdirected:
             errors.append(
@@ -938,11 +939,11 @@ class CRMProcessor:
     def _apply_firb_supervisory_lgd_no_collateral(
         self,
         exposures: pl.LazyFrame,
-        config: CalculationConfig | None = None,
+        config: CalculationConfig,
     ) -> pl.LazyFrame:
         """Apply F-IRB supervisory LGD when no collateral is available."""
         return collateral_mod.apply_firb_supervisory_lgd_no_collateral(
-            exposures, self._is_basel_3_1, config=config
+            exposures, config.is_basel_3_1, config=config
         )
 
     def _generate_netting_collateral(
@@ -964,7 +965,7 @@ class CRMProcessor:
             collateral,
             config,
             haircut_calculator=self._haircut_calculator,
-            is_basel_3_1=self._is_basel_3_1,
+            is_basel_3_1=config.is_basel_3_1,
             build_exposure_lookups_fn=_build_exposure_lookups,
             join_collateral_to_lookups_fn=_join_collateral_to_lookups,
             resolve_pledge_from_joined_fn=_resolve_pledge_from_joined,
@@ -1245,14 +1246,14 @@ class CRMProcessor:
         )
 
 
-def create_crm_processor(is_basel_3_1: bool = False) -> CRMProcessor:
+def create_crm_processor() -> CRMProcessor:
     """
     Create a CRM processor instance.
 
-    Args:
-        is_basel_3_1: True for Basel 3.1 framework (affects haircuts and supervisory LGD)
+    The processor carries no constructor regime-state — the framework is read
+    per-method from the effective ``CalculationConfig`` at call time.
 
     Returns:
         CRMProcessor ready for use
     """
-    return CRMProcessor(is_basel_3_1=is_basel_3_1)
+    return CRMProcessor()

@@ -271,8 +271,9 @@ class TestCalculatorSingleItemLiquidationPeriod:
 
     def test_equity_b31_5day_rwa(self) -> None:
         """B31 equity at 5-day: lower haircut → higher adjusted value."""
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         result = calc.calculate_single_haircut(
+            is_basel_3_1=True,
             collateral_type="equity",
             market_value=Decimal("1000000"),
             collateral_currency="GBP",
@@ -286,8 +287,9 @@ class TestCalculatorSingleItemLiquidationPeriod:
 
     def test_equity_b31_20day_rwa(self) -> None:
         """B31 equity at 20-day: higher haircut → lower adjusted value."""
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         result = calc.calculate_single_haircut(
+            is_basel_3_1=True,
             collateral_type="equity",
             market_value=Decimal("1000000"),
             collateral_currency="GBP",
@@ -300,8 +302,9 @@ class TestCalculatorSingleItemLiquidationPeriod:
 
     def test_gold_b31_default_10day(self) -> None:
         """B31 gold at default 10-day: 20% haircut."""
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         result = calc.calculate_single_haircut(
+            is_basel_3_1=True,
             collateral_type="gold",
             market_value=Decimal("500000"),
             collateral_currency="GBP",
@@ -312,8 +315,9 @@ class TestCalculatorSingleItemLiquidationPeriod:
 
     def test_fx_mismatch_scaled_20day(self) -> None:
         """FX mismatch at 20-day: ~11.3% instead of 8%."""
-        calc = HaircutCalculator(is_basel_3_1=False)
+        calc = HaircutCalculator()
         result = calc.calculate_single_haircut(
+            is_basel_3_1=False,
             collateral_type="cash",
             market_value=Decimal("1000000"),
             collateral_currency="USD",
@@ -346,7 +350,7 @@ class TestCalculatorPipelineLiquidationPeriod:
     def test_pipeline_5day_repo_scales_haircut(self) -> None:
         """Pipeline with liquidation_period_days=5 scales equity haircut down."""
         config = self._make_config(is_b31=True)
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         df = pl.LazyFrame(
             {
                 "collateral_type": ["equity"],
@@ -367,7 +371,7 @@ class TestCalculatorPipelineLiquidationPeriod:
     def test_pipeline_20day_secured_scales_haircut(self) -> None:
         """Pipeline with liquidation_period_days=20 scales equity haircut up."""
         config = self._make_config(is_b31=True)
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         df = pl.LazyFrame(
             {
                 "collateral_type": ["equity"],
@@ -393,7 +397,7 @@ class TestCalculatorPipelineLiquidationPeriod:
         the pipeline now defaults to 20 days (√2 scaling), not 10 days.
         """
         config = self._make_config(is_b31=True)
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         df = pl.LazyFrame(
             {
                 "collateral_type": ["equity"],
@@ -418,7 +422,7 @@ class TestCalculatorPipelineLiquidationPeriod:
         Test name preserved for traceability; the *default* changed to 20-day.
         """
         config = self._make_config(is_b31=True)
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         df = pl.LazyFrame(
             {
                 "collateral_type": ["equity"],
@@ -439,7 +443,7 @@ class TestCalculatorPipelineLiquidationPeriod:
     def test_pipeline_fx_mismatch_scaled_5day(self) -> None:
         """FX mismatch haircut scaled for 5-day liquidation."""
         config = self._make_config(is_b31=True)
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         df = pl.LazyFrame(
             {
                 "collateral_type": ["cash"],
@@ -460,7 +464,7 @@ class TestCalculatorPipelineLiquidationPeriod:
     def test_pipeline_mixed_liquidation_periods(self) -> None:
         """Batch with different liquidation periods produces correct haircuts."""
         config = self._make_config(is_b31=True)
-        calc = HaircutCalculator(is_basel_3_1=True)
+        calc = HaircutCalculator()
         df = pl.LazyFrame(
             {
                 "collateral_type": ["gold", "gold", "gold"],
@@ -492,7 +496,7 @@ class TestCalculatorPipelineLiquidationPeriod:
         To get 15% unscaled, supply liquidation_period_days=10 explicitly.
         """
         config = self._make_config(is_b31=False)
-        calc = HaircutCalculator(is_basel_3_1=False)
+        calc = HaircutCalculator()
         df = pl.LazyFrame(
             {
                 "collateral_type": ["gold"],

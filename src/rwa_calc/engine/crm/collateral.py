@@ -347,7 +347,7 @@ def apply_collateral(
     # CRR Art. 223(5) FCCM exposure volatility haircut (HE). Computed once on
     # the exposure frame so the SA branch in ``_apply_collateral_unified`` can
     # gross E by (1 + HE). Non-SFT / cash / standard-loan rows yield HE = 0.
-    exposures = haircut_calculator.apply_exposure_haircut(exposures)
+    exposures = haircut_calculator.apply_exposure_haircut(exposures, is_basel_3_1)
 
     exposures = exposures.with_columns(
         airb_lgd_preserved_expr(config, is_basel_3_1, schema_names).alias("_is_airb_pool")

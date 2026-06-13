@@ -97,14 +97,16 @@ class HaircutCalculator:
       for non-SFT exposures, not the 10-day capital-market period)
     """
 
-    def __init__(self, is_basel_3_1: bool = False) -> None:
-        """Initialize haircut calculator with lookup tables.
+    def __init__(self) -> None:
+        """Initialize haircut calculator.
 
-        Args:
-            is_basel_3_1: True for Basel 3.1 haircuts, False for CRR
+        The calculator carries no constructor regime-state: the framework
+        (CRR vs Basel 3.1) is read per-call from the effective
+        ``CalculationConfig`` (or an explicit ``is_basel_3_1`` argument on the
+        single-item methods), so one instance computes correctly under either
+        framework. The haircut table is looked up per call via
+        ``get_haircut_table(...)``.
         """
-        self._is_basel_3_1 = is_basel_3_1
-        self._haircut_table = get_haircut_table(is_basel_3_1=is_basel_3_1)
 
     @cites("CRR Art. 224")
     def apply_haircuts(
@@ -126,15 +128,16 @@ class HaircutCalculator:
             LazyFrame with haircut-adjusted collateral values
         """
         is_b31 = config.is_basel_3_1
+        haircut_table = get_haircut_table(is_basel_3_1=is_b31)
 
         # Add maturity band for bond haircut lookup
         collateral = collateral.with_columns(
             [self._maturity_band_expression(is_b31).alias("maturity_band")]
         )
 
-        # Calculate collateral-specific haircut based on type
-        # Framework selection lives in self._haircut_table — no need to pass is_b31.
-        collateral = self._apply_collateral_haircuts(collateral)
+        # Calculate collateral-specific haircut based on type. The framework is
+        # selected by the per-call ``haircut_table`` derived from config above.
+        collateral = self._apply_collateral_haircuts(collateral, haircut_table)
 
         # Scale collateral haircut and FX haircut by liquidation period (Art. 226(2))
         # H_m = H_10 × sqrt(T_m / 10)
@@ -285,6 +288,7 @@ class HaircutCalculator:
     def apply_exposure_haircut(
         self,
         exposures: pl.LazyFrame,
+        is_basel_3_1: bool,
     ) -> pl.LazyFrame:
         """
         Add ``exposure_volatility_haircut`` (HE) column per CRR Art. 223(5).
@@ -298,6 +302,10 @@ class HaircutCalculator:
         path: ``is_sft=True`` → 5 days (Art. 224(2)(c)), else → 20 days
         (Art. 224(2)(a)). Non-SFT rows carry HE = 0 because Art. 223(5) only
         applies the exposure-side haircut for SFTs lending securities.
+
+        Args:
+            exposures: Exposures, optionally carrying exposure-side security cols
+            is_basel_3_1: Whether Basel 3.1 maturity bands / haircuts apply
 
         References:
             CRR Art. 223(5): E* = max(0, E(1 + HE) - CVA(1 - HC - HFX))
@@ -313,7 +321,7 @@ class HaircutCalculator:
         if "exposure_collateral_type" not in names:
             return exposures.with_columns(pl.lit(0.0).alias("exposure_volatility_haircut"))
 
-        is_b31 = self._is_basel_3_1
+        is_b31 = is_basel_3_1
         ct = pl.col("exposure_collateral_type").str.to_lowercase()
 
         # Map exposure security type to the canonical haircut-table key. Cash
@@ -376,7 +384,8 @@ class HaircutCalculator:
         # on. Equity / cash / null types miss the join → haircut becomes null
         # → HE = 0.
         ht = (
-            self._haircut_table.lazy()
+            get_haircut_table(is_basel_3_1=is_b31)
+            .lazy()
             .filter(pl.col("collateral_type").is_in(["govt_bond", "corp_bond"]))
             .select(
                 pl.col("collateral_type").alias("_he_lookup_type"),
@@ -448,6 +457,7 @@ class HaircutCalculator:
     def _apply_collateral_haircuts(
         self,
         collateral: pl.LazyFrame,
+        haircut_table: pl.DataFrame,
     ) -> pl.LazyFrame:
         """Apply collateral-type-specific haircuts via lookup table join.
 
@@ -455,6 +465,10 @@ class HaircutCalculator:
         collateral type is eligible (cash/deposit or CQS ≤ 1 sovereign bond), both
         H_c and H_fx are set to 0%.  The ``_is_zero_haircut`` flag is propagated so
         ``apply_haircuts`` can also zero the FX haircut.
+
+        Args:
+            collateral: Collateral data with normalised lookup keys
+            haircut_table: Framework-specific haircut table (CRR or Basel 3.1)
         """
         # Ensure issuer_type column exists for bond type normalization.
         collateral = ensure_columns(
@@ -502,7 +516,7 @@ class HaircutCalculator:
         )
 
         # Prepare haircut table with matching sentinels
-        ht = self._haircut_table.lazy().with_columns(
+        ht = haircut_table.lazy().with_columns(
             [
                 pl.col("cqs").fill_null(-1).cast(pl.Int8),
                 pl.col("maturity_band").fill_null("__none__"),
@@ -737,6 +751,7 @@ class HaircutCalculator:
         has_one_day_maturity_floor: bool = False,
         liquidation_period_days: int = 10,
         qualifies_for_zero_haircut: bool = False,
+        is_basel_3_1: bool = False,
     ) -> HaircutResult:
         """
         Calculate haircut for a single collateral item (convenience method).
@@ -755,6 +770,7 @@ class HaircutCalculator:
             has_one_day_maturity_floor: Art. 162(3) 1-day M floor exposure
             liquidation_period_days: Liquidation period in business days (default 10)
             qualifies_for_zero_haircut: Art. 227 — institution certifies all 8 conditions met
+            is_basel_3_1: Whether Basel 3.1 haircut tables apply (default CRR)
 
         Returns:
             HaircutResult with all haircut details
@@ -789,7 +805,7 @@ class HaircutCalculator:
             cqs=cqs,
             residual_maturity_years=residual_maturity_years,
             is_main_index=is_main_index,
-            is_basel_3_1=self._is_basel_3_1,
+            is_basel_3_1=is_basel_3_1,
             liquidation_period_days=liquidation_period_days,
         )
 
@@ -893,17 +909,18 @@ class HaircutCalculator:
         )
 
 
-def create_haircut_calculator(is_basel_3_1: bool = False) -> HaircutCalculator:
+def create_haircut_calculator() -> HaircutCalculator:
     """
     Create a haircut calculator instance.
 
-    Args:
-        is_basel_3_1: True for Basel 3.1 haircuts, False for CRR
+    The calculator carries no constructor regime-state — the framework is read
+    per-call from the effective config (or an explicit ``is_basel_3_1`` argument
+    on the single-item methods).
 
     Returns:
         HaircutCalculator ready for use
     """
-    return HaircutCalculator(is_basel_3_1=is_basel_3_1)
+    return HaircutCalculator()
 
 
 def _is_art227_eligible(collateral_type: str, cqs: int | None) -> bool:

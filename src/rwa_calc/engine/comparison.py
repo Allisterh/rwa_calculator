@@ -89,9 +89,11 @@ class DualFrameworkRunner:
     """
     Run the same portfolio through CRR and Basel 3.1 pipelines and compare.
 
-    Uses two separate PipelineOrchestrator instances (one per framework)
-    to avoid CRM processor caching issues — each orchestrator initializes
-    its own CRMProcessor with the correct is_basel_3_1 flag.
+    Uses two separate PipelineOrchestrator instances (one per framework) so
+    each run is driven by its own ``CalculationConfig``. CRM components no
+    longer carry constructor regime-state — ``CRMProcessor`` reads the framework
+    per-method from the effective config — so the split is now purely a matter
+    of running each config end-to-end rather than a caching workaround.
 
     The comparison join is on exposure_reference, producing per-exposure
     delta columns: delta_rwa, delta_risk_weight, delta_ead, delta_pct.

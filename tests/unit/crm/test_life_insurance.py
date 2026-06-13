@@ -234,8 +234,9 @@ class TestLifeInsuranceHaircut:
 
     def test_life_insurance_haircut_is_zero(self) -> None:
         """Life insurance collateral gets 0% haircut — surrender value is the effective value."""
-        calc = HaircutCalculator(is_basel_3_1=False)
+        calc = HaircutCalculator()
         result = calc.calculate_single_haircut(
+            is_basel_3_1=False,
             collateral_type="life_insurance",
             market_value=Decimal("50000"),
             collateral_currency="GBP",
@@ -246,8 +247,9 @@ class TestLifeInsuranceHaircut:
 
     def test_life_insurance_fx_mismatch_still_applies(self) -> None:
         """FX mismatch haircut should still apply for life insurance (currency risk)."""
-        calc = HaircutCalculator(is_basel_3_1=False)
+        calc = HaircutCalculator()
         result = calc.calculate_single_haircut(
+            is_basel_3_1=False,
             collateral_type="life_insurance",
             market_value=Decimal("50000"),
             collateral_currency="EUR",
@@ -267,8 +269,9 @@ class TestCreditLinkedNotes:
 
     def test_cln_normalized_to_cash(self) -> None:
         """CLN type normalizes to 'cash' in haircut lookup -> 0% haircut."""
-        calc = HaircutCalculator(is_basel_3_1=False)
+        calc = HaircutCalculator()
         result = calc.calculate_single_haircut(
+            is_basel_3_1=False,
             collateral_type="credit_linked_note",
             market_value=Decimal("100000"),
             collateral_currency="GBP",
