@@ -36,10 +36,12 @@ from rwa_calc.contracts.errors import (
     ErrorSeverity,
     beel_on_non_defaulted_exposure_warning,
 )
+from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.bundles import ResolvedHierarchyBundle
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,8 @@ logger = logging.getLogger(__name__)
 def collect_input_warnings(
     data: ResolvedHierarchyBundle,
     config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> list[CalculationError]:
     """Collect non-blocking warnings for null input data.
 
@@ -73,7 +77,8 @@ def collect_input_warnings(
     the only branch that triggers a ``.collect()``.
     """
     errors: list[CalculationError] = []
-    if not config.is_basel_3_1:
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    if not resolved_pack.feature("approach_restrictions_b31_applicable"):
         return errors
 
     # Art. 147A(1)(d): null annual_revenue triggers the conservative

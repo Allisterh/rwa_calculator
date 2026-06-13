@@ -177,6 +177,8 @@ class ClassifierProtocol(Protocol):
         self,
         data: ResolvedHierarchyBundle,
         config: CalculationConfig,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> ClassifiedExposuresBundle:
         """
         Classify exposures and split by approach.
@@ -184,6 +186,8 @@ class ClassifierProtocol(Protocol):
         Args:
             data: Hierarchy-resolved data
             config: Calculation configuration
+            pack: Optional resolved rulepack; falls back to
+                ``RulepackV0.from_config(config).pack`` when ``None``.
 
         Returns:
             ClassifiedExposuresBundle with exposures split by approach

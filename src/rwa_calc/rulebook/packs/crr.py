@@ -213,6 +213,17 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "133", "CRR Art. 133(2) 100% flat equity SA RW"),
     ),
+    # Classifier Art. 147A IRB-approach restrictions: Basel 3.1 removes A-IRB for
+    # FSE/large-corp/institution, forces sovereign-like + equity to SA, and routes
+    # IPRE/HVCRE to slotting (PRA PS1/26 Art. 147A(1)) — none of which exist under
+    # CRR. The Feature gates the whole Art. 147A restriction family in
+    # engine/stages/classify/{approach,audit}.py; the FX-derived thresholds those
+    # branches read (sme_balance_sheet, large_corporate_revenue) stay config.
+    "approach_restrictions_b31_applicable": Feature(
+        name="approach_restrictions_b31_applicable",
+        enabled=False,
+        citation=Citation("CRR", "147", "no Art. 147A IRB approach restrictions under CRR"),
+    ),
     # F-IRB collateral step-functions apply under CRR (Art. 230 Table 5): the
     # overcollateralisation divisor and the 30% C*/C** minimum threshold. Basel
     # 3.1 removes both (see packs/b31.py); the divisor/threshold values

@@ -46,9 +46,11 @@ from rwa_calc.domain.enums import (
     SpecialisedLendingType,
 )
 from rwa_calc.engine.stages.classify.permissions import build_permission_exprs
+from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,7 @@ def assign_approach(
     schema_names: set[str],
     *,
     has_model_permissions: bool = False,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.LazyFrame:
     """
     Determine calculation approach and finalize classification.
@@ -86,6 +89,8 @@ def assign_approach(
     Sets: approach, lgd (cleared for FIRB), exposure_class (re-aligned
     for IRB-routed rgla_* / pse_*).
     """
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+
     # IRB requires an internal rating (PD from the firm's IRB model).
     # Counterparties with only external ratings fall through to SA.
     has_internal_rating = pl.col("internal_pd").is_not_null()
@@ -105,6 +110,7 @@ def assign_approach(
         firb_expr,
         firb_clear_expr,
         config,
+        pack=resolved_pack,
     )
 
     # Step 3: approach decision ladder
@@ -117,6 +123,7 @@ def assign_approach(
         sl_slotting=sl_slotting,
         has_internal_rating=has_internal_rating,
         has_modelled_lgd=has_modelled_lgd,
+        pack=resolved_pack,
     )
 
     # FIRB LGD clearing — clear LGD when FIRB approach is chosen (FIRB uses
@@ -137,10 +144,13 @@ def _apply_b31_approach_restrictions(
     firb_expr: pl.Expr,
     firb_clear_expr: pl.Expr,
     config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
     """Apply Basel 3.1 Art. 147A approach restrictions.
 
-    Returns the inputs unchanged when ``not config.is_basel_3_1``.
+    Returns the inputs unchanged when the
+    ``approach_restrictions_b31_applicable`` Feature is off (CRR).
     Under Basel 3.1, removes A-IRB eligibility for FSE / large-corporate /
     institution exposures (Art. 147A(1)(b)/(d)/(e)) and removes both A-IRB
     and F-IRB for sovereign-like entity types (Art. 147A(1)(a)). Also
@@ -151,7 +161,8 @@ def _apply_b31_approach_restrictions(
     ``full_irb_b31()`` with data-dependent checks that cannot be encoded
     in the permission map.
     """
-    if not config.is_basel_3_1:
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    if not resolved_pack.feature("approach_restrictions_b31_applicable"):
         return airb_expr, firb_expr, firb_clear_expr
 
     # Art. 147A(1)(d)/(e): FSE → no A-IRB (null = not flagged as FSE)
@@ -217,6 +228,7 @@ def _build_approach_expr(
     sl_slotting: pl.Expr,
     has_internal_rating: pl.Expr,
     has_modelled_lgd: pl.Expr,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.Expr:
     """Compose the ``pl.when`` decision ladder for ``approach``.
 
@@ -232,6 +244,8 @@ def _build_approach_expr(
     9. Equity → EQUITY approach
     10. Otherwise → SA
     """
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+
     managed_as_retail_without_lgd = (
         (pl.col("cp_is_managed_as_retail") == True)  # noqa: E712
         & (pl.col("qualifies_as_retail") == True)  # noqa: E712
@@ -249,7 +263,7 @@ def _build_approach_expr(
     # sovereign-like exposures are SA-only as a mandatory restriction,
     # also backstopped by the `b31_sa_only` IRB-blocker.
     is_eu_domestic_sovereign = (
-        pl.lit(config.is_basel_3_1)
+        pl.lit(resolved_pack.feature("approach_restrictions_b31_applicable"))
         & (pl.col("exposure_class") == ExposureClass.CENTRAL_GOVT_CENTRAL_BANK.value)
         & build_eu_domestic_currency_expr(
             "cp_country_code", denomination_currency_expr(schema_names)
@@ -258,7 +272,7 @@ def _build_approach_expr(
 
     # Art. 147A(1)(c): IPRE/HVCRE → slotting only (overrides model perms)
     b31_ipre_hvcre_forced_slotting = pl.lit(False)
-    if config.is_basel_3_1:
+    if resolved_pack.feature("approach_restrictions_b31_applicable"):
         b31_ipre_hvcre_forced_slotting = (
             pl.col("exposure_class") == ExposureClass.SPECIALISED_LENDING.value
         ) & pl.col("sl_type").is_in(list(_B31_SLOTTING_ONLY_SL_TYPES))

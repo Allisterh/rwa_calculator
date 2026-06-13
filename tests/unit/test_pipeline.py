@@ -743,8 +743,8 @@ class TestStageErrorChannel:
         )
 
         class SentinelClassifier:
-            def classify(self, resolved, config):
-                result = ExposureClassifier().classify(resolved, config)
+            def classify(self, resolved, config, *, pack=None):
+                result = ExposureClassifier().classify(resolved, config, pack=pack)
                 return replace(
                     result,
                     classification_errors=[*result.classification_errors, sentinel],

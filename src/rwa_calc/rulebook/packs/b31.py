@@ -195,6 +195,18 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "133", "Basel 3.1 equity SA RW 250%/400%/150%"),
     ),
+    # Basel 3.1 Art. 147A(1) IRB-approach restrictions: FSE/large-corp/institution
+    # no A-IRB, sovereign-like + equity SA-only, IPRE/HVCRE slotting-only.
+    # Overrides the CRR Feature; gates engine/stages/classify/{approach,audit}.py.
+    "approach_restrictions_b31_applicable": Feature(
+        name="approach_restrictions_b31_applicable",
+        enabled=True,
+        citation=Citation(
+            "PS1/26",
+            "147A",
+            "Art. 147A(1) IRB approach restrictions (FSE/large-corp/institution/sovereign/IPRE)",
+        ),
+    ),
     "output_floor": Feature(
         name="output_floor",
         enabled=True,
