@@ -82,7 +82,7 @@ def run(
     # For Basel 3.1 output floor: SA-equivalent RW needed on all rows
     if run_config.output_floor.enabled:
         exposures = components.sa_calculator.calculate_unified(
-            exposures, run_config, errors=branch_errors
+            exposures, run_config, errors=branch_errors, pack=rulepack.pack
         )
 
     # Split once by approach
@@ -105,7 +105,7 @@ def run(
         )
     else:
         sa_result = components.sa_calculator.calculate_branch(
-            sa_branch, run_config, errors=branch_errors
+            sa_branch, run_config, errors=branch_errors, pack=rulepack.pack
         )
 
     irb_result = components.irb_calculator.calculate_branch(

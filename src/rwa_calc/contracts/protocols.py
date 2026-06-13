@@ -333,6 +333,7 @@ class SACalculatorProtocol(Protocol):
         config: CalculationConfig,
         *,
         errors: list[CalculationError] | None = None,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Apply SA risk weights on unified frame (single-pass pipeline).
@@ -341,6 +342,8 @@ class SACalculatorProtocol(Protocol):
             exposures: Unified frame with all approaches
             config: Calculation configuration
             errors: Optional error accumulator for data quality warnings
+            pack: Optional resolved rulepack; falls back to
+                ``RulepackV0.from_config(config).pack`` when ``None``.
 
         Returns:
             Unified frame with SA columns populated for SA rows
@@ -353,6 +356,7 @@ class SACalculatorProtocol(Protocol):
         config: CalculationConfig,
         *,
         errors: list[CalculationError] | None = None,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Calculate SA RWA on pre-filtered SA-only rows.
@@ -361,6 +365,8 @@ class SACalculatorProtocol(Protocol):
             exposures: Pre-filtered SA rows only
             config: Calculation configuration
             errors: Optional error accumulator for data quality warnings
+            pack: Optional resolved rulepack; falls back to
+                ``RulepackV0.from_config(config).pack`` when ``None``.
 
         Returns:
             LazyFrame with SA RWA columns populated.

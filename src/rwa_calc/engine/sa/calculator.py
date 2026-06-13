@@ -53,6 +53,7 @@ from rwa_calc.engine.sa.rw_adjustments import (
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,7 @@ class SACalculator:
         config: CalculationConfig,
         *,
         errors: list[CalculationError] | None = None,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Apply SA risk weights to SA rows on a unified frame.
@@ -105,7 +107,7 @@ class SACalculator:
         # Runs unconditionally — also provides SA-equivalent RW for the
         # IRB output floor.
         exposures = (
-            exposures.pipe(apply_risk_weights, config)
+            exposures.pipe(apply_risk_weights, config, pack=pack)
             .pipe(apply_fcsm_rw_substitution, config)
             .pipe(apply_life_insurance_rw_mapping)
             .pipe(apply_guarantee_substitution, config)
@@ -148,6 +150,7 @@ class SACalculator:
         config: CalculationConfig,
         *,
         errors: list[CalculationError] | None = None,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Calculate SA RWA on pre-filtered SA-only rows.
@@ -169,7 +172,7 @@ class SACalculator:
             self._warn_equity_in_main_table(exposures, errors)
 
         exposures = (
-            exposures.pipe(apply_risk_weights, config)
+            exposures.pipe(apply_risk_weights, config, pack=pack)
             .pipe(apply_fcsm_rw_substitution, config)
             .pipe(apply_life_insurance_rw_mapping)
             .pipe(apply_guarantee_substitution, config)

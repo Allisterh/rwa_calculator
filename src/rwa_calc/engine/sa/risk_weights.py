@@ -123,11 +123,13 @@ from rwa_calc.data.tables.eu_sovereign import (
     denomination_currency_expr,
 )
 from rwa_calc.domain.enums import CQS, EquityType
+from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
     from polars.expr.whenthen import ChainedThen, Then
 
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
 
@@ -294,7 +296,12 @@ _SA_B31_RW: dict[str, float] = {
 
 
 @cites("CRR Art. 112")
-def apply_risk_weights(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame:
+def apply_risk_weights(
+    lf: pl.LazyFrame,
+    config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
+) -> pl.LazyFrame:
     """Look up and apply risk weights based on exposure class.
 
     Orchestrates the three-phase SA risk weight assignment:
@@ -306,7 +313,7 @@ def apply_risk_weights(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFr
     the framework override helpers apply them in the sequence prescribed
     by the regulation.
     """
-    exposures, uc, is_domestic_currency = _prepare_risk_weight_lookup(lf, config)
+    exposures, uc, is_domestic_currency = _prepare_risk_weight_lookup(lf, config, pack=pack)
 
     if config.is_basel_3_1:
         exposures = _apply_b31_risk_weight_overrides(exposures, uc, is_domestic_currency, config)
@@ -829,6 +836,8 @@ def _crr_append_institution_maturity_branches(chain: _RWChain, uc: pl.Expr) -> C
 def _prepare_risk_weight_lookup(
     exposures: pl.LazyFrame,
     config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> tuple[pl.LazyFrame, pl.Expr, pl.Expr]:
     """Ensure required columns, classify for join, and attach CQS risk weights.
 
@@ -837,8 +846,10 @@ def _prepare_risk_weight_lookup(
     expression reused by override chains, and the domestic-currency flag
     used for CGCB zero-weight treatment and sovereign-derived fallbacks.
     """
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+
     # CQS-based risk weight table — Basel 3.1 uses revised corporate weights
-    if config.is_basel_3_1:
+    if resolved_pack.feature("sa_revised_risk_weight_tables"):
         rw_table = get_b31_combined_cqs_risk_weights().lazy()
     else:
         rw_table = get_combined_cqs_risk_weights().lazy()
@@ -913,7 +924,7 @@ def _prepare_risk_weight_lookup(
     # (``b31_sa_sl_rw_expr``) instead of the rated-corporate CQS table. Scoped
     # to Basel 3.1 SL exposures only — ordinary rated corporates (Art. 122(2))
     # are untouched.
-    if config.is_basel_3_1:
+    if resolved_pack.feature("sa_sl_inferred_rating_disapplied"):
         is_sl_exposure = pl.col("sl_type").fill_null("").str.len_chars() > 0
         rating_not_issue_specific = (
             pl.col("external_rating_is_issue_specific").fill_null(True) == False  # noqa: E712

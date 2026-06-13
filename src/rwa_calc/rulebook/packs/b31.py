@@ -129,6 +129,24 @@ ENTRIES: dict[str, RuleEntry] = {
             "PS1/26", "161(5)", "A-IRB LGD floors (Art. 161(5) corporate / 164(4) retail)"
         ),
     ),
+    # Basel 3.1 revised SA base risk-weight tables (PRA PS1/26 Art. 122(2)
+    # corporate Table 6, Art. 120 institution ECRA/SCRA). Overrides the CRR
+    # Feature; gates the combined-CQS table selection in
+    # engine/sa/risk_weights.py and (S6c) the shared guarantor-RW builder. The
+    # table VALUES live in data/tables/b31_risk_weights.py.
+    "sa_revised_risk_weight_tables": Feature(
+        name="sa_revised_risk_weight_tables",
+        enabled=True,
+        citation=Citation("PS1/26", "122(2)", "Basel 3.1 revised SA risk-weight tables"),
+    ),
+    # PRA PS1/26 Art. 139(2B): non-issue-specific ECAI assessments are disapplied
+    # for the SA specialised-lending routing — such SL exposures are treated as
+    # unrated (routed through the unrated-SL RW branch).
+    "sa_sl_inferred_rating_disapplied": Feature(
+        name="sa_sl_inferred_rating_disapplied",
+        enabled=True,
+        citation=Citation("PS1/26", "139(2B)", "non-issue-specific ECAI disapplied for SL"),
+    ),
     "output_floor": Feature(
         name="output_floor",
         enabled=True,

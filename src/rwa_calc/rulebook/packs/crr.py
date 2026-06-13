@@ -135,6 +135,26 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation("CRR", "122"),
         default=Decimal("1.00"),
     ),
+    # SA base risk-weight tables: Basel 3.1 replaces the CRR Art. 112-134 tables
+    # with the PS1/26 revised set (corporate Table 6 CQS3 100%->75%, institution
+    # ECRA/SCRA, etc.) — see packs/b31.py. The Feature gates the combined-CQS
+    # table selection in engine/sa/risk_weights.py::_prepare_risk_weight_lookup
+    # and (S6c) the shared guarantor-RW builder; the table VALUES stay in
+    # data/tables/{crr,b31}_risk_weights.py. CRR uses the original tables.
+    "sa_revised_risk_weight_tables": Feature(
+        name="sa_revised_risk_weight_tables",
+        enabled=False,
+        citation=Citation("CRR", "122", "original SA risk-weight tables (Art. 112-134)"),
+    ),
+    # PRA PS1/26 Art. 139(2B) disapplies inferred / issuer-level (non-issue-
+    # specific) ECAI assessments for the SA specialised-lending routing — CRR has
+    # no such disapplication. Gates the SL CQS-nulling in
+    # engine/sa/risk_weights.py::_prepare_risk_weight_lookup.
+    "sa_sl_inferred_rating_disapplied": Feature(
+        name="sa_sl_inferred_rating_disapplied",
+        enabled=False,
+        citation=Citation("CRR", "139", "inferred/issuer-level ECAI assessments apply to SL"),
+    ),
     # F-IRB collateral step-functions apply under CRR (Art. 230 Table 5): the
     # overcollateralisation divisor and the 30% C*/C** minimum threshold. Basel
     # 3.1 removes both (see packs/b31.py); the divisor/threshold values
