@@ -385,7 +385,7 @@ def _apply_parameter_substitution(
         direct_lgd_expr=guarantor_supervisory_lgd_expr,
         scaling_factor=scaling_factor,
         eur_gbp_rate=eur_gbp_rate,
-        is_b31=config.is_basel_3_1,
+        is_b31=pack.feature("irb_correlation_sme_gbp_native"),
         sme_turnover_threshold_m=sme_turnover_m,
     )
 

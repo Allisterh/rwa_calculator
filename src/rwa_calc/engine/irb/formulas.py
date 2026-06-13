@@ -495,7 +495,7 @@ def apply_irb_formulas(
     exposures = exposures.with_columns(
         _polars_correlation_expr(
             eur_gbp_rate=eur_gbp_rate,
-            is_b31=config.is_basel_3_1,
+            is_b31=resolved_pack.feature("irb_correlation_sme_gbp_native"),
             sme_turnover_threshold_m=sme_turnover_m,
         ).alias("correlation")
     )

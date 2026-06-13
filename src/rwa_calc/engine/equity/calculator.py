@@ -258,7 +258,7 @@ class EquityCalculator:
         # Art. 155(3) PD/LGD computes RWEA inside the branch and bypasses both
         # the IRB Simple transitional floor and _calculate_rwa.
         if approach == EquityApproach.PD_LGD:
-            exposures = self._apply_equity_weights_pd_lgd(exposures, config)
+            exposures = self._apply_equity_weights_pd_lgd(exposures, config, pack=pack)
         else:
             if approach == EquityApproach.IRB_SIMPLE:
                 exposures = self._apply_equity_weights_irb_simple(exposures, config)
@@ -807,6 +807,8 @@ class EquityCalculator:
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Apply the Article 155(3) PD/LGD equity approach.
@@ -872,10 +874,11 @@ class EquityCalculator:
             lgd.alias("lgd"),
         )
 
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
         correlation = _correlation_expr_from_pd(
             pl.col("pd_floored"),
             eur_gbp_rate=float(config.eur_gbp_rate),
-            is_b31=config.is_basel_3_1,
+            is_b31=resolved_pack.feature("irb_correlation_sme_gbp_native"),
         )
         exposures = exposures.with_columns(correlation.alias("correlation"))
 

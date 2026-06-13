@@ -355,7 +355,12 @@ def apply_lgd_floor(
 
 
 @cites("CRR Art. 153(1)")
-def calculate_correlation(lf: pl.LazyFrame, config: CalculationConfig) -> pl.LazyFrame:
+def calculate_correlation(
+    lf: pl.LazyFrame,
+    config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
+) -> pl.LazyFrame:
     """
     Calculate asset correlation using pure Polars expressions.
 
@@ -374,13 +379,14 @@ def calculate_correlation(lf: pl.LazyFrame, config: CalculationConfig) -> pl.Laz
     Returns:
         LazyFrame with correlation column
     """
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
     # B31 uses GBP-native thresholds (Art. 153(4)); CRR converts GBP→EUR via rate
     eur_gbp_rate = float(config.eur_gbp_rate)
     sme_turnover_m = float(config.thresholds.sme_turnover_threshold) / 1_000_000
     return lf.with_columns(
         _polars_correlation_expr(
             eur_gbp_rate=eur_gbp_rate,
-            is_b31=config.is_basel_3_1,
+            is_b31=resolved_pack.feature("irb_correlation_sme_gbp_native"),
             sme_turnover_threshold_m=sme_turnover_m,
         ).alias("correlation")
     )
@@ -618,7 +624,7 @@ def apply_all_formulas(
         [
             _polars_correlation_expr(
                 eur_gbp_rate=eur_gbp_rate,
-                is_b31=config.is_basel_3_1,
+                is_b31=resolved_pack.feature("irb_correlation_sme_gbp_native"),
                 sme_turnover_threshold_m=sme_turnover_m,
             ).alias("correlation"),
             pl.when(is_retail)

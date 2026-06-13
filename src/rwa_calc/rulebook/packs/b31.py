@@ -229,6 +229,13 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "147A", "three-way corporate COREP exposure-subclass split"),
     ),
+    # Basel 3.1 SME correlation uses GBP-native turnover thresholds directly, no
+    # EUR FX conversion (PRA PS1/26 Art. 153(4)). Overrides the CRR Feature.
+    "irb_correlation_sme_gbp_native": Feature(
+        name="irb_correlation_sme_gbp_native",
+        enabled=True,
+        citation=Citation("PS1/26", "153(4)", "SME correlation uses GBP-native turnover, no FX"),
+    ),
     "output_floor": Feature(
         name="output_floor",
         enabled=True,

@@ -247,6 +247,17 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "147", "no COREP corporate exposure-subclass split under CRR"),
     ),
+    # IRB SME-correlation turnover basis (Art. 153(4)): CRR converts GBP turnover
+    # to EUR via eur_gbp_rate then clips EUR 5-50m; Basel 3.1 uses GBP-native
+    # thresholds directly (no FX conversion). The Feature selects the branch in
+    # engine/irb/formulas.py::_correlation_expr_from_pd; the turnover threshold
+    # VALUES (EUR 50m / GBP 44m / eur_gbp_rate) stay config-threaded (FX-derived,
+    # → S11).
+    "irb_correlation_sme_gbp_native": Feature(
+        name="irb_correlation_sme_gbp_native",
+        enabled=False,
+        citation=Citation("CRR", "153(4)", "SME correlation converts GBP turnover to EUR"),
+    ),
     # F-IRB collateral step-functions apply under CRR (Art. 230 Table 5): the
     # overcollateralisation divisor and the 30% C*/C** minimum threshold. Basel
     # 3.1 removes both (see packs/b31.py); the divisor/threshold values
