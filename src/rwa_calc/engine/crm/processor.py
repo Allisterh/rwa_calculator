@@ -585,7 +585,9 @@ class CRMProcessor:
             and data.counterparty_lookup is not None
         ):
             exposures = materialise_edge(exposures, config, "crm_pre_guarantee_unified")
-            exposures = self._apply_guarantees_step(exposures, guarantees_lf, data, config, errors)
+            exposures = self._apply_guarantees_step(
+                exposures, guarantees_lf, data, config, errors, pack=pack
+            )
         else:
             self._collect_guarantee_skip_errors(guarantees_lf, data, errors)
 
@@ -881,6 +883,8 @@ class CRMProcessor:
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
         errors: list[CalculationError],
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """Apply guarantees or record skip warnings if not applicable."""
         if (
@@ -902,6 +906,7 @@ class CRMProcessor:
                 cp_lookup_df.lazy(),
                 config,
                 ri_df.lazy(),
+                pack=pack,
             )
         self._collect_guarantee_skip_errors(guarantees_lf, data, errors)
         return exposures
@@ -990,6 +995,8 @@ class CRMProcessor:
         counterparty_lookup: pl.LazyFrame,
         config: CalculationConfig,
         rating_inheritance: pl.LazyFrame | None = None,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """Apply guarantee substitution."""
         return guarantees_mod.apply_guarantees(
@@ -998,6 +1005,7 @@ class CRMProcessor:
             counterparty_lookup,
             config,
             rating_inheritance,
+            pack=pack,
         )
 
     # --- Internal methods ---

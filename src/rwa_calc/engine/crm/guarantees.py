@@ -42,11 +42,14 @@ from rwa_calc.engine.kernels.allocation import (
     explode_facility_membership,
 )
 from rwa_calc.engine.utils import exact_fractional_years_expr
+from rwa_calc.rulebook import RulepackV0
+from rwa_calc.rulebook.compile import scalar_value
 
 if TYPE_CHECKING:
     from polars._typing import PolarsDataType
 
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 
 def _stock_split_cols() -> tuple[str, ...]:
@@ -93,6 +96,8 @@ def apply_guarantees(
     counterparty_lookup: pl.LazyFrame,
     config: CalculationConfig,
     rating_inheritance: pl.LazyFrame | None = None,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.LazyFrame:
     """
     Apply guarantee substitution.
@@ -109,7 +114,7 @@ def apply_guarantees(
     Returns:
         Exposures with guarantee effects applied
     """
-    guarantees = _prepare_guarantees(guarantees, exposures, config)
+    guarantees = _prepare_guarantees(guarantees, exposures, config, pack=pack)
 
     exposures = exposures.with_columns(
         pl.col("exposure_reference").alias("parent_exposure_reference"),
@@ -166,8 +171,14 @@ def _prepare_guarantees(
     guarantees: pl.LazyFrame,
     exposures: pl.LazyFrame,
     config: CalculationConfig,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.LazyFrame:
     """Normalise, filter, expand, and haircut guarantees before the split."""
+    # Art. 233 H_fx and Art. 233(2) restructuring-exclusion haircuts are
+    # regime-invariant scalars sourced from the rulepack. Production threads the
+    # run's pack; direct callers resolve an identical one from config.
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
     # Default protection_type to "guarantee" when absent, then fill nulls with
     # the same default (backward compatibility for legacy data).
     guarantees = ensure_columns(
@@ -195,8 +206,8 @@ def _prepare_guarantees(
     # Haircuts reduce the nominal credit protection value G, then capping
     # at EAD happens inside the split. This ensures large cross-currency
     # guarantees still fully cover smaller exposures after the haircut.
-    guarantees = _apply_fx_haircut_to_guarantees(guarantees, exposures)
-    guarantees = _apply_restructuring_haircut_to_guarantees(guarantees)
+    guarantees = _apply_fx_haircut_to_guarantees(guarantees, exposures, pack=resolved_pack)
+    guarantees = _apply_restructuring_haircut_to_guarantees(guarantees, pack=resolved_pack)
 
     # CRR Art. 239(3) / PS1/26 Art. 239(3): maturity mismatch adjustment for
     # unfunded credit protection. When the protection's residual maturity t is
@@ -939,6 +950,8 @@ def _allocate_guarantees_pro_rata(
 def _apply_fx_haircut_to_guarantees(
     guarantees: pl.LazyFrame,
     exposures: pl.LazyFrame,
+    *,
+    pack: ResolvedRulepack,
 ) -> pl.LazyFrame:
     """
     Apply FX mismatch haircut to guarantee amounts BEFORE splitting.
@@ -991,7 +1004,7 @@ def _apply_fx_haircut_to_guarantees(
         how="left",
     )
 
-    h_fx = float(FX_HAIRCUT)
+    h_fx = scalar_value(pack.scalar_param("fx_haircut"))
     has_pct = "percentage_covered" in guar_cols
 
     # Guarantee provides coverage via amount or percentage
@@ -1035,6 +1048,8 @@ def _apply_fx_haircut_to_guarantees(
 
 def _apply_restructuring_haircut_to_guarantees(
     guarantees: pl.LazyFrame,
+    *,
+    pack: ResolvedRulepack,
 ) -> pl.LazyFrame:
     """
     Apply CDS restructuring exclusion haircut to guarantee amounts BEFORE splitting.
@@ -1062,7 +1077,7 @@ def _apply_restructuring_haircut_to_guarantees(
             pl.lit(0.0).alias("guarantee_restructuring_haircut"),
         )
 
-    h_restructuring = float(RESTRUCTURING_EXCLUSION_HAIRCUT)
+    h_restructuring = scalar_value(pack.scalar_param("restructuring_exclusion_haircut"))
 
     applies = (
         (pl.col("protection_type") == "credit_derivative")
