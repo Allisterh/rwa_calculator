@@ -27,6 +27,7 @@ from rwa_calc.engine.crm.expressions import (
     collateral_lgd_expr,
     min_collateralisation_threshold_expr,
     overcollateralisation_ratio_expr,
+    supervisory_lgd_values,
 )
 from rwa_calc.engine.crm.haircuts import HaircutCalculator
 from rwa_calc.engine.crm.life_insurance import (
@@ -38,9 +39,21 @@ from rwa_calc.engine.crm.life_insurance import (
 from rwa_calc.engine.sa.rw_adjustments import apply_life_insurance_rw_mapping
 from rwa_calc.rulebook.resolve import resolve
 
-# Resolved CRR pack for the per-expression unit tests (overcoll / min-threshold
-# builders now read their values + the regime Feature from the rulepack).
+# Resolved packs for the per-expression unit tests (the CRM collateral builders
+# now read their values + regime Features from the rulepack).
 _CRR_PACK = resolve("crr", date(2026, 1, 1))
+_B31_PACK = resolve("b31", date(2027, 1, 1))
+
+
+def test_supervisory_lgd_values_crr_projection_byte_identical() -> None:
+    # Assert — the canonical DecisionTable projects to the exact CRR CRM-shape dict
+    assert supervisory_lgd_values(_CRR_PACK) == CRR_SUPERVISORY_LGD
+
+
+def test_supervisory_lgd_values_b31_projection_byte_identical() -> None:
+    # Assert — and to the exact Basel 3.1 CRM-shape dict (the flagged collapse)
+    assert supervisory_lgd_values(_B31_PACK) == BASEL31_SUPERVISORY_LGD
+
 
 # --- Art. 232: Risk Weight Mapping Table ---
 
@@ -213,7 +226,7 @@ class TestLifeInsuranceConstants:
 
     def test_collateral_lgd_expr_maps_life_insurance(self) -> None:
         df = pl.DataFrame({"collateral_type": ["life_insurance"]}).lazy()
-        result = df.with_columns(collateral_lgd_expr(False).alias("lgd")).collect()
+        result = df.with_columns(collateral_lgd_expr(_CRR_PACK).alias("lgd")).collect()
         assert result["lgd"][0] == pytest.approx(0.40)
 
     def test_overcollateralisation_ratio_is_1(self) -> None:
@@ -297,7 +310,7 @@ class TestCreditLinkedNotes:
     def test_cln_lgds_is_zero(self) -> None:
         """CLN treated as financial -> LGDS = 0%."""
         df = pl.DataFrame({"collateral_type": ["credit_linked_note"]}).lazy()
-        result = df.with_columns(collateral_lgd_expr(False).alias("lgd")).collect()
+        result = df.with_columns(collateral_lgd_expr(_CRR_PACK).alias("lgd")).collect()
         assert result["lgd"][0] == pytest.approx(0.0)
 
     def test_cln_in_valid_collateral_types(self) -> None:

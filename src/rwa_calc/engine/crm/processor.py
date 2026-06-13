@@ -808,7 +808,7 @@ class CRMProcessor:
         # seniority. Under B31, AIRB Foundation/169B exposures also get
         # formula-based LGD.
         exposures = collateral_mod.apply_firb_supervisory_lgd_no_collateral(
-            exposures, config.is_basel_3_1, config=config
+            exposures, config.is_basel_3_1, config=config, pack=pack
         )
         return exposures, False
 

@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -44,6 +45,7 @@ from rwa_calc.engine.crm.haircuts import HaircutCalculator
 from rwa_calc.observability.audit_cache import sink_audit
 from rwa_calc.rulebook import RulepackV0
 from rwa_calc.rulebook.compile import lookup_float_map
+from rwa_calc.rulebook.resolve import resolve
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
@@ -413,11 +415,33 @@ def apply_collateral(
     )
 
 
+def _resolve_pack_for_lgd(
+    pack: ResolvedRulepack | None,
+    config: CalculationConfig | None,
+    is_basel_3_1: bool,
+) -> ResolvedRulepack:
+    """Resolve a rulepack for the (date-independent) supervisory-LGD lookup.
+
+    Production always supplies ``pack`` (threaded) or ``config``; the
+    ``is_basel_3_1`` fallback (with a placeholder reporting date — the LGD
+    tables carry no Schedule, so the date is immaterial to the lookup) keeps the
+    direct unit-test callers of ``apply_firb_supervisory_lgd_no_collateral``
+    working without a config.
+    """
+    if pack is not None:
+        return pack
+    if config is not None:
+        return RulepackV0.from_config(config).pack
+    return resolve("b31" if is_basel_3_1 else "crr", date(2026, 1, 1))
+
+
 @cites("CRR Art. 161")
 def apply_firb_supervisory_lgd_no_collateral(
     exposures: pl.LazyFrame,
     is_basel_3_1: bool,
     config: CalculationConfig | None = None,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.LazyFrame:
     """
     Apply F-IRB supervisory LGD when no collateral is available.
@@ -441,7 +465,7 @@ def apply_firb_supervisory_lgd_no_collateral(
     Returns:
         Exposures with lgd_post_crm set for F-IRB (and qualifying A-IRB)
     """
-    lgd_values = supervisory_lgd_values(is_basel_3_1)
+    lgd_values = supervisory_lgd_values(_resolve_pack_for_lgd(pack, config, is_basel_3_1))
     lgd_senior = lgd_values["unsecured"]
 
     # Add collateral-related columns with zero values for consistency
@@ -556,7 +580,7 @@ def _apply_collateral_unified(
     -> other_physical.  This replaces the former pro-rata allocation.
     """
     resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
-    lgd_values = supervisory_lgd_values(is_basel_3_1)
+    lgd_values = supervisory_lgd_values(resolved_pack)
     lgd_unsecured = lgd_values["unsecured"]
 
     # LGDS values per waterfall category (Art. 230/231)
@@ -629,7 +653,7 @@ def _apply_collateral_unified(
 
     annotated = adjusted_collateral.with_columns(
         [
-            collateral_lgd_expr(is_basel_3_1).alias("collateral_lgd"),
+            collateral_lgd_expr(resolved_pack).alias("collateral_lgd"),
             overcollateralisation_ratio_expr(resolved_pack).alias("overcollateralisation_ratio"),
             is_financial_collateral_type_expr().alias("is_financial_collateral_type"),
             collateral_category_expr().alias("_coll_category"),

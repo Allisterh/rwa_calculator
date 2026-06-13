@@ -24,7 +24,14 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from rwa_calc.rulebook.model import Citation, Feature, RuleEntry, ScalarParam, Schedule
+from rwa_calc.rulebook.model import (
+    Citation,
+    DecisionTable,
+    Feature,
+    RuleEntry,
+    ScalarParam,
+    Schedule,
+)
 
 ENTRIES: dict[str, RuleEntry] = {
     "irb_scaling_factor": ScalarParam(
@@ -68,5 +75,31 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation(
             "PS1/26", "230(1)", "LGD* formula — no minimum collateralisation threshold"
         ),
+    ),
+    # Canonical F-IRB supervisory LGD under Basel 3.1 (PRA PS1/26 Art. 161 /
+    # CRE32.9-12). Overrides the CRR table of the same name. Key changes:
+    # non-FSE senior 45%->40% with a distinct FSE row at 45%; receivables/RE
+    # 35%->20%, other physical 40%->25%, dilution risk 75%->100%; Art. 230(2)
+    # drops the *_subordinated secured-portion LGDS rows. life_insurance is
+    # CRM-only (Art. 232(2)(b), unchanged at 40%).
+    "firb_supervisory_lgd": DecisionTable(
+        name="firb_supervisory_lgd",
+        key_names=("collateral_type", "seniority", "is_fse"),
+        rows=(
+            (("unsecured", "senior", False), Decimal("0.40")),
+            (("unsecured", "senior", True), Decimal("0.45")),
+            (("unsecured", "subordinated", False), Decimal("0.75")),
+            (("covered_bond", "senior", False), Decimal("0.1125")),
+            (("financial_collateral", "senior", False), Decimal("0.00")),
+            (("receivables", "senior", False), Decimal("0.20")),
+            (("residential_re", "senior", False), Decimal("0.20")),
+            (("commercial_re", "senior", False), Decimal("0.20")),
+            (("other_physical", "senior", False), Decimal("0.25")),
+            (("purchased_receivables", "senior", False), Decimal("0.40")),
+            (("purchased_receivables", "subordinated", False), Decimal("1.00")),
+            (("purchased_receivables", "dilution_risk", False), Decimal("1.00")),
+            (("life_insurance", "senior", False), Decimal("0.40")),
+        ),
+        citation=Citation("PS1/26", "161", "Basel 3.1 F-IRB supervisory LGD (CRE32.9-12)"),
     ),
 }

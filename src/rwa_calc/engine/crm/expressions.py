@@ -36,10 +36,6 @@ from rwa_calc.data.schemas import (
     REAL_ESTATE_COLLATERAL_TYPES,
     RECEIVABLE_COLLATERAL_TYPES,
 )
-from rwa_calc.data.tables.crm_supervisory import (
-    BASEL31_SUPERVISORY_LGD,
-    CRR_SUPERVISORY_LGD,
-)
 from rwa_calc.engine.kernels.allocation import (
     beneficiary_level_expr as kernel_beneficiary_level_expr,
 )
@@ -58,19 +54,49 @@ def _coll_type_lower() -> pl.Expr:
     return pl.col("collateral_type").str.to_lowercase()
 
 
-def supervisory_lgd_values(is_basel_3_1: bool) -> dict[str, float]:
-    """Return the appropriate supervisory LGD dict for the framework."""
-    return BASEL31_SUPERVISORY_LGD if is_basel_3_1 else CRR_SUPERVISORY_LGD
+def supervisory_lgd_values(pack: ResolvedRulepack) -> dict[str, float]:
+    """Project the canonical ``firb_supervisory_lgd`` table to CRM simple categories.
+
+    Reproduces the CRM-shape LGD dict (financial / receivables / real_estate /
+    other_physical / unsecured / covered_bond / life_insurance, plus
+    ``unsecured_fse`` under Basel 3.1 and the CRR Art. 230 Table 5
+    ``*_subordinated`` secured-portion LGDS) from the single FIRB-granularity
+    DecisionTable — one source of truth across the CRM and IRB-direct shapes.
+    """
+    rows = {keys: float(value) for keys, value in pack.decision("firb_supervisory_lgd").rows}
+    values = {
+        "financial": rows[("financial_collateral", "senior", False)],
+        "receivables": rows[("receivables", "senior", False)],
+        "real_estate": rows[("residential_re", "senior", False)],
+        "other_physical": rows[("other_physical", "senior", False)],
+        "unsecured": rows[("unsecured", "senior", False)],
+        "covered_bond": rows[("covered_bond", "senior", False)],
+        "life_insurance": rows[("life_insurance", "senior", False)],
+    }
+    # FSE senior unsecured exists only where the regime splits FSE (Basel 3.1).
+    unsecured_fse = rows.get(("unsecured", "senior", True))
+    if unsecured_fse is not None and unsecured_fse != values["unsecured"]:
+        values["unsecured_fse"] = unsecured_fse
+    # CRR Art. 230 Table 5 subordinated secured-portion LGDS (dropped under B31).
+    for crm_key, ct in (
+        ("receivables_subordinated", "receivables"),
+        ("real_estate_subordinated", "residential_re"),
+        ("other_physical_subordinated", "other_physical"),
+    ):
+        sub = rows.get((ct, "subordinated", False))
+        if sub is not None:
+            values[crm_key] = sub
+    return values
 
 
-def collateral_lgd_expr(is_basel_3_1: bool) -> pl.Expr:
+def collateral_lgd_expr(pack: ResolvedRulepack) -> pl.Expr:
     """Build expression mapping collateral_type to supervisory LGD.
 
     Note: The "otherwise" (unsecured) value uses the non-FSE LGD under Basel 3.1.
     FSE-specific unsecured LGD (45%) is handled at the exposure level in
     collateral.py, not here — this expression is for per-collateral-type LGDS.
     """
-    lgd = supervisory_lgd_values(is_basel_3_1)
+    lgd = supervisory_lgd_values(pack)
     ct = _coll_type_lower()
     return (
         pl.when(ct.is_in(LIFE_INSURANCE_COLLATERAL_TYPES))
