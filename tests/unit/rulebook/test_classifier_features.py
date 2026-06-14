@@ -40,6 +40,7 @@ _FEATURE_MATRIX = [
     ("b31_high_risk_class_applicable", False, True),
     ("b31_art_124e_three_property_limit_applies", False, True),
     ("b31_exposure_subclass_reporting_applies", False, True),
+    ("retail_art_123a_two_path_applicable", False, True),
 ]
 
 

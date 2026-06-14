@@ -346,7 +346,7 @@ def derive_independent_flags(
             # ``is_adc`` value so an explicit user-supplied flag wins.
             _build_is_adc_expr(schema_names),
             # --- Retail threshold check + Art. 123A conditions (B31) ---
-            _build_qualifies_as_retail_expr(config, max_retail_exposure),
+            _build_qualifies_as_retail_expr(config, max_retail_exposure, pack=resolved_pack),
             pl.when(pl.col("residential_collateral_value") > 0)
             .then(pl.lit(True))
             .otherwise(pl.lit(False))
@@ -522,6 +522,8 @@ def _build_is_mortgage_expr() -> pl.Expr:
 def _build_qualifies_as_retail_expr(
     config: CalculationConfig,
     max_retail_exposure: float,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.Expr:
     """Build qualifies_as_retail expression with Art. 123A enforcement.
 
@@ -548,7 +550,8 @@ def _build_qualifies_as_retail_expr(
     # check is a single comparison across both cases.
     threshold_fail = pl.col("lending_group_adjusted_exposure") > max_retail_exposure
 
-    if not config.is_basel_3_1:
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    if not resolved_pack.feature("retail_art_123a_two_path_applicable"):
         # CRR: threshold check only
         return (
             pl.when(threshold_fail)

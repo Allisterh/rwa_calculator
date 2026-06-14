@@ -286,6 +286,14 @@ ENTRIES: dict[str, RuleEntry] = {
             "PS1/26", "124E", "natural-person three-property income-producing re-route"
         ),
     ),
+    # Basel 3.1 Art. 123A two-path retail qualification — see packs/crr.py. Gates the
+    # B31 SME-auto-qualify + threshold/granularity limbs in
+    # engine/stages/classify/attributes.py::_build_qualifies_as_retail_expr.
+    "retail_art_123a_two_path_applicable": Feature(
+        name="retail_art_123a_two_path_applicable",
+        enabled=True,
+        citation=Citation("PS1/26", "123A", "two-path retail qualification (SME + granularity)"),
+    ),
     # Basel 3.1 Art. 147A(1) COREP corporate sub-class split (financial-large /
     # SME / other).
     "b31_exposure_subclass_reporting_applies": Feature(

@@ -298,6 +298,16 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "124", "no natural-person three-property re-route under CRR"),
     ),
+    # Basel 3.1 Art. 123A two-path retail qualification (SME auto-qualify + the
+    # threshold/granularity limbs); CRR uses the single aggregate-exposure threshold
+    # check only. Gates engine/stages/classify/attributes.py::_build_qualifies_as_retail_expr.
+    # The retail-exposure THRESHOLD it compares against is FX-derived and stays config
+    # (RegulatoryThresholds → S11c); the enforce_retail_granularity election stays config.
+    "retail_art_123a_two_path_applicable": Feature(
+        name="retail_art_123a_two_path_applicable",
+        enabled=False,
+        citation=Citation("CRR", "123", "single aggregate-exposure retail threshold check"),
+    ),
     # Basel 3.1 Art. 147A(1) COREP corporate sub-class split (financial-large /
     # SME / other); CRR has no exposure_subclass reporting column.
     "b31_exposure_subclass_reporting_applies": Feature(
