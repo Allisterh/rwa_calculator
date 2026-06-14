@@ -34,7 +34,6 @@ from rwa_calc.data.tables.crr_risk_weights import (
     INSTITUTION_RISK_WEIGHTS_B31_ECRA,
     INSTITUTION_RISK_WEIGHTS_CRR,
 )
-from rwa_calc.data.tables.crr_simple_method import FCSM_EQUITY_COLLATERAL_RW
 from rwa_calc.domain.enums import CQS, ApproachType
 from rwa_calc.rulebook import RulepackV0
 from rwa_calc.rulebook.compile import scalar_value
@@ -50,8 +49,8 @@ class _FcsmFloors:
 
     The five regime-invariant Financial Collateral Simple Method scalars
     (CRR Art. 222 / PRA PS1/26 Art. 222 — the common pack) read once per call
-    and threaded into the per-item expression builders, replacing the
-    module-level ``data/tables/crr_simple_method`` constants.
+    and threaded into the per-item expression builders (superseding the deleted
+    ``data/tables/crr_simple_method`` module-level constants).
     """
 
     rw_floor: float
@@ -72,9 +71,7 @@ class _FcsmFloors:
         )
 
 
-def _derive_collateral_rw_expr(
-    is_basel_3_1: bool = False, *, equity_rw: float = float(FCSM_EQUITY_COLLATERAL_RW)
-) -> pl.Expr:
+def _derive_collateral_rw_expr(is_basel_3_1: bool = False, *, equity_rw: float = 1.0) -> pl.Expr:
     """Derive the SA risk weight for financial collateral per Art. 222(1).
 
     "The risk weight prescribed under Chapter 2 of Title II for the type
@@ -85,8 +82,8 @@ def _derive_collateral_rw_expr(
         is_basel_3_1: Whether Basel 3.1 tables apply (affects institution CQS 2
             ECRA divergence and corporate CQS 5).
         equity_rw: SA risk weight for equity held as FCSM collateral
-            (``fcsm_equity_collateral_rw``, common pack). Defaults to the module
-            constant for direct callers; production supplies the resolved value.
+            (``fcsm_equity_collateral_rw``, common pack). Defaults to 1.0 (100%)
+            for direct callers; production supplies the resolved pack value.
 
     Returns:
         Polars expression producing the collateral's own risk weight (float).

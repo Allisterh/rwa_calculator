@@ -14,13 +14,6 @@ from rwa_calc.data.tables.crm_supervisory import (
     MIN_COLLATERALISATION_THRESHOLDS,
     OVERCOLLATERALISATION_RATIOS,
 )
-from rwa_calc.data.tables.crr_simple_method import (
-    ART_222_4_CMP_RW,
-    ART_222_4_NON_CMP_RW,
-    FCSM_EQUITY_COLLATERAL_RW,
-    FCSM_RW_FLOOR,
-    SOVEREIGN_BOND_DISCOUNT,
-)
 from rwa_calc.data.tables.haircuts import RESTRUCTURING_EXCLUSION_HAIRCUT, get_haircut_table
 from rwa_calc.rulebook.compile import decision_table_df
 from rwa_calc.rulebook.model import LookupTable, ScalarParam
@@ -49,13 +42,13 @@ def test_common_pack_entry_visible_in_regime() -> None:
 def test_fcsm_floors_resolve_from_common_pack() -> None:
     # Arrange
     pack = resolve("crr", date(2026, 1, 1))
-    # Act / Assert — the five Art. 222 FCSM scalars reproduce the data/tables
-    # values exactly (byte-identical migration; same Decimals, both regimes).
-    assert pack.scalar("fcsm_rw_floor") == FCSM_RW_FLOOR
-    assert pack.scalar("fcsm_sovereign_bond_discount") == SOVEREIGN_BOND_DISCOUNT
-    assert pack.scalar("fcsm_sft_cmp_floor") == ART_222_4_CMP_RW
-    assert pack.scalar("fcsm_sft_non_cmp_floor") == ART_222_4_NON_CMP_RW
-    assert pack.scalar("fcsm_equity_collateral_rw") == FCSM_EQUITY_COLLATERAL_RW
+    # Act / Assert — the five Art. 222 FCSM scalars pinned to their canonical
+    # values (the former data/tables/crr_simple_method constants, now deleted).
+    assert pack.scalar("fcsm_rw_floor") == Decimal("0.20")
+    assert pack.scalar("fcsm_sovereign_bond_discount") == Decimal("0.20")
+    assert pack.scalar("fcsm_sft_cmp_floor") == Decimal("0.00")
+    assert pack.scalar("fcsm_sft_non_cmp_floor") == Decimal("0.10")
+    assert pack.scalar("fcsm_equity_collateral_rw") == Decimal("1.00")
 
 
 def test_fcsm_floors_regime_invariant() -> None:
