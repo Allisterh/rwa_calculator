@@ -283,8 +283,8 @@ class TestCalculationConfig:
         assert crr_config.sync_eur_gbp_rate_from_fx_table is True
         assert b31_config.sync_eur_gbp_rate_from_fx_table is True
 
-    def test_with_fx_rate_rebuilds_thresholds(self):
-        """with_fx_rate should update eur_gbp_rate AND re-derive GBP thresholds."""
+    def test_with_fx_rate_updates_eur_gbp_rate(self):
+        """with_fx_rate updates eur_gbp_rate (GBP thresholds now derive from the pack)."""
         config = CalculationConfig.crr(
             reporting_date=date(2025, 12, 31),
             eur_gbp_rate=Decimal("0.8732"),
@@ -293,11 +293,8 @@ class TestCalculationConfig:
         new_config = config.with_fx_rate(Decimal("0.90"))
 
         assert new_config.eur_gbp_rate == Decimal("0.90")
-        # EUR 50m * 0.90 = GBP 45m
-        assert new_config.thresholds.sme_turnover_threshold == Decimal("50000000") * Decimal("0.90")
         # Original config is untouched (frozen + replace returns a new instance)
         assert config.eur_gbp_rate == Decimal("0.8732")
-        assert config.thresholds.sme_turnover_threshold == Decimal("50000000") * Decimal("0.8732")
 
     def test_with_fx_rate_noop_when_rate_unchanged(self):
         """with_fx_rate should return the same instance when rate matches."""

@@ -917,7 +917,6 @@ class CalculationConfig:
         apply_fx_conversion: Whether to convert exposures to base_currency
         output_floor: Output floor configuration
         post_model_adjustments: Post-model adjustments (Basel 3.1 only)
-        thresholds: Consolidated regulatory thresholds for exposure classification
         permission_mode: STANDARDISED (all SA) or IRB (model permissions drive routing)
         use_investment_grade_assessment: Art. 122(6) election — IG=65% / non-IG=135%
         collect_engine: Polars engine for .collect() - 'cpu' (default) for
@@ -935,7 +934,6 @@ class CalculationConfig:
         default_factory=PostModelAdjustmentConfig.crr
     )
     ccr: CCRConfig = field(default_factory=CCRConfig)
-    thresholds: RegulatoryThresholds = field(default_factory=RegulatoryThresholds.crr)
     permission_mode: PermissionMode = PermissionMode.STANDARDISED
     # Optional explicit IRBPermissions override. When None (default) the value
     # is derived in __post_init__ from permission_mode and framework. Passing a
@@ -1041,20 +1039,19 @@ class CalculationConfig:
         return self.output_floor.get_floor_percentage(self.reporting_date)
 
     def with_fx_rate(self, eur_gbp_rate: Decimal) -> CalculationConfig:
-        """Return a new CRR config with eur_gbp_rate and thresholds rebuilt.
+        """Return a new CRR config with ``eur_gbp_rate`` updated.
 
-        No-op for Basel 3.1 (GBP-native thresholds; eur_gbp_rate is unused by
-        the B3.1 SME correlation branch per PRA PS1/26 Art. 153(4)).
+        Only the rate is carried: the engine derives GBP thresholds from the pack
+        EUR bases × ``eur_gbp_rate`` at read time (engine/thresholds.py), so there
+        is no config-side threshold to rebuild. No-op for Basel 3.1 (GBP-native
+        thresholds; eur_gbp_rate is unused by the B3.1 SME correlation branch per
+        PRA PS1/26 Art. 153(4)).
         """
         if self.framework != RegulatoryFramework.CRR:
             return self
         if eur_gbp_rate == self.eur_gbp_rate:
             return self
-        return replace(
-            self,
-            eur_gbp_rate=eur_gbp_rate,
-            thresholds=RegulatoryThresholds.crr(eur_gbp_rate=eur_gbp_rate),
-        )
+        return replace(self, eur_gbp_rate=eur_gbp_rate)
 
     @classmethod
     def crr(
@@ -1115,7 +1112,6 @@ class CalculationConfig:
                 mpor_floor_days=mpor_floor_days,
                 recognise_im=recognise_im,
             ),
-            thresholds=RegulatoryThresholds.crr(eur_gbp_rate=eur_gbp_rate),
             permission_mode=permission_mode,
             eur_gbp_rate=eur_gbp_rate,
             enable_double_default=enable_double_default,
@@ -1225,7 +1221,6 @@ class CalculationConfig:
                 mpor_floor_days=mpor_floor_days,
                 recognise_im=recognise_im,
             ),
-            thresholds=RegulatoryThresholds.basel_3_1(eur_gbp_rate=Decimal("0.8732")),
             permission_mode=permission_mode,
             equity_transitional=EquityTransitionalConfig.basel_3_1(),
             eur_gbp_rate=Decimal("0.8732"),  # Used only to derive sme_balance_sheet_threshold

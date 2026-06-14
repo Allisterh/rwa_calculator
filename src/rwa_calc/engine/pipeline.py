@@ -250,9 +250,10 @@ class PipelineOrchestrator:
                     "run_id": run_id,
                 },
             )
-            # Keep eur_gbp_rate in step with the loaded fx_rates table so
-            # IRB SME correlation and RegulatoryThresholds use the same rate
-            # as FX amount conversion. CRR-only: B3.1 thresholds are GBP-native.
+            # Keep eur_gbp_rate in step with the loaded fx_rates table so the IRB
+            # SME correlation and the pack-derived regulatory thresholds (EUR
+            # bases × eur_gbp_rate, engine/thresholds.py) use the same rate as FX
+            # amount conversion. CRR-only: B3.1 thresholds are GBP-native.
             # Runs BEFORE components/rulepack are built — the fold sees one
             # immutable effective config per run.
             if config.is_crr and config.sync_eur_gbp_rate_from_fx_table:

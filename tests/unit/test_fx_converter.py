@@ -758,14 +758,3 @@ class TestRegulatoryThresholdsDynamicRate:
         # Default rate is 0.8732
         assert thresholds.retail_max_exposure == Decimal("1000000") * Decimal("0.8732")
         assert thresholds.qrre_max_limit == Decimal("100000") * Decimal("0.8732")
-
-    def test_crr_config_passes_rate_to_thresholds(self) -> None:
-        """Test CalculationConfig.crr() passes eur_gbp_rate to RegulatoryThresholds."""
-        rate = Decimal("0.85")
-        config = CalculationConfig.crr(
-            reporting_date=date(2026, 1, 1),
-            eur_gbp_rate=rate,
-        )
-
-        assert config.thresholds.retail_max_exposure == Decimal("1000000") * rate
-        assert config.thresholds.qrre_max_limit == Decimal("100000") * rate
