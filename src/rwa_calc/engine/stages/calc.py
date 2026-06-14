@@ -77,7 +77,9 @@ def run(
     # this, each branch's apply_factors would compute the window sum on
     # its own subset and under-count E* whenever a group spans multiple
     # approaches. No-op when supporting factors are disabled (Basel 3.1).
-    exposures = compute_e_star_group_drawn(exposures, run_config, errors=branch_errors)
+    exposures = compute_e_star_group_drawn(
+        exposures, run_config, errors=branch_errors, pack=rulepack.pack
+    )
 
     # For Basel 3.1 output floor: SA-equivalent RW needed on all rows
     if run_config.output_floor.enabled:

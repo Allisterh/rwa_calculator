@@ -119,7 +119,9 @@ class IRBCalculator:
             .pipe(compute_el_shortfall_excess, errors=sf_errors)
             .pipe(apply_guarantee_substitution, config, pack=resolved_pack)
         )
-        exposures = self._apply_supporting_factors(exposures, config, errors=sf_errors)
+        exposures = self._apply_supporting_factors(
+            exposures, config, errors=sf_errors, pack=resolved_pack
+        )
 
         # Standardize output for aggregator
         return exposures.with_columns(
@@ -134,6 +136,7 @@ class IRBCalculator:
         config: CalculationConfig,
         *,
         errors: list[CalculationError] | None = None,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Apply SME and infrastructure supporting factors (CRR Art. 501).
@@ -144,7 +147,8 @@ class IRBCalculator:
 
         Under Basel 3.1, supporting factors are not available.
         """
-        if not config.supporting_factors.enabled:
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+        if not resolved_pack.feature("supporting_factors"):
             # Basel 3.1 or supporting factors disabled - no adjustment
             return exposures.with_columns(
                 [
@@ -162,7 +166,7 @@ class IRBCalculator:
 
         # Use the SA supporting factor calculator
         sf_calc = SupportingFactorCalculator()
-        exposures = sf_calc.apply_factors(exposures, config, errors=errors)
+        exposures = sf_calc.apply_factors(exposures, config, errors=errors, pack=resolved_pack)
 
         # Rename rwa_post_factor back to rwa for consistency
         if "rwa_post_factor" in exposures.collect_schema().names():

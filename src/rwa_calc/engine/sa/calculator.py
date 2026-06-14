@@ -140,7 +140,7 @@ class SACalculator:
         )
 
         # Supporting factors (SA rows only).
-        exposures = exposures.pipe(apply_supporting_factors, config, errors=errors)
+        exposures = exposures.pipe(apply_supporting_factors, config, errors=errors, pack=pack)
 
         return exposures
 
@@ -179,7 +179,7 @@ class SACalculator:
             .pipe(apply_currency_mismatch_multiplier, config, pack=pack)
             .pipe(apply_due_diligence_override, config, errors=errors, pack=pack)
             .pipe(calculate_rwa)
-            .pipe(apply_supporting_factors, config, errors=errors)
+            .pipe(apply_supporting_factors, config, errors=errors, pack=pack)
         )
 
         # Standardise output for aggregator.

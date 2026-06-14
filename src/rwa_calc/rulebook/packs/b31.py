@@ -40,6 +40,25 @@ ENTRIES: dict[str, RuleEntry] = {
         value=Decimal("1.0"),
         citation=Citation("PS1/26", "153(1)"),
     ),
+    # Basel 3.1 removes the CRR Art. 501/501a supporting factors. The Feature is
+    # disabled (the engine returns factor=1.0 before reading values); the values
+    # bundle is all-1.0 for shape parity with packs/crr.py (mirrors
+    # contracts/config.py::SupportingFactors.basel_3_1()). Consumed in
+    # engine/supporting_factors.py.
+    "supporting_factors": Feature(
+        name="supporting_factors",
+        enabled=False,
+        citation=Citation("PS1/26", "501", "SME/infrastructure supporting factors removed"),
+    ),
+    "supporting_factors_values": FormulaParams(
+        name="supporting_factors_values",
+        params={
+            "sme_factor_under_threshold": Decimal("1.0"),
+            "sme_factor_above_threshold": Decimal("1.0"),
+            "infrastructure_factor": Decimal("1.0"),
+        },
+        citation=Citation("PS1/26", "501", "supporting factors removed (all 1.0)"),
+    ),
     "airb_lgd_floor": Feature(
         name="airb_lgd_floor",
         enabled=True,

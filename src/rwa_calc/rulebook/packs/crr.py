@@ -42,6 +42,21 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("CRR", "501"),
     ),
+    # CRR Art. 501/501a supporting-factor multipliers — the VALUES gated by the
+    # `supporting_factors` Feature above. SME 0.7619 (<= threshold) / 0.85 (> threshold)
+    # + infrastructure 0.75. Consumed in engine/supporting_factors.py (Decimal via
+    # pack.formula(...).params for the scalar helpers, float via compile.formula_float_map
+    # in apply_factors). The FX-derived SME exposure THRESHOLD stays config
+    # (RegulatoryThresholds → S11c). Basel 3.1 removes these (all 1.0 — packs/b31.py).
+    "supporting_factors_values": FormulaParams(
+        name="supporting_factors_values",
+        params={
+            "sme_factor_under_threshold": Decimal("0.7619"),
+            "sme_factor_above_threshold": Decimal("0.85"),
+            "infrastructure_factor": Decimal("0.75"),
+        },
+        citation=Citation("CRR", "501", "SME 0.7619/0.85 + infrastructure 0.75 multipliers"),
+    ),
     # CRR imposes no A-IRB own-estimate LGD floor (Art. 164 lets A-IRB firms model
     # LGD freely). The Feature gates the LGD-floor branch in engine/irb; Basel 3.1
     # overrides it to True (packs/b31.py). The lgd_floors bundle below is all-zero

@@ -50,6 +50,7 @@ from rwa_calc.engine.aggregator._summaries import (
     generate_summary_by_class,
 )
 from rwa_calc.engine.aggregator._supporting_factors import generate_supporting_factor_impact
+from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.bundles import EquityResultBundle
@@ -248,9 +249,11 @@ class OutputAggregator:
         summary_by_class = generate_summary_by_class(post_crm_detailed)
         summary_by_approach = generate_summary_by_approach(post_crm_detailed)
 
-        # Supporting factor impact
+        # Supporting factor impact. The regime gate is pack Feature-sourced (S11);
+        # supporting factors are regime-derived (not FX-derived), so the from_config
+        # fallback is byte-identical without threading a pack into run()'s signature.
         supporting_factor_impact = None
-        if config.supporting_factors.enabled:
+        if RulepackV0.from_config(config).pack.feature("supporting_factors"):
             supporting_factor_impact = generate_supporting_factor_impact(combined)
 
         # Materialise the post-floor views ONCE (same single-collect pattern
