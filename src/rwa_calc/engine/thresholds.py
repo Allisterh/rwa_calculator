@@ -11,9 +11,9 @@ The rulepack holds the FX-INVARIANT regulatory values (CRR: EUR bases; B31:
 final GBP) under ``regulatory_thresholds``, plus the
 ``regulatory_thresholds_fx_derived`` Feature. This module applies the per-run
 EUR/GBP rate ENGINE-SIDE so the pack stays FX-free and ``eur_gbp_rate`` — a
-market input, not a regulatory value — stays on the run config. The result
-reproduces ``contracts/config.py::RegulatoryThresholds.crr(rate)`` /
-``.basel_3_1(rate)`` exactly (same ``Decimal × Decimal`` arithmetic).
+market input, not a regulatory value — stays on the run config. CRR thresholds
+are ``EUR base × eur_gbp_rate``; Basel 3.1 thresholds are native GBP (the
+Feature is False, so the rate is ignored).
 
 Pipeline position: read by the classifier, IRB and supporting-factor stages.
 
@@ -44,8 +44,8 @@ def regulatory_threshold(
 
     Args:
         pack: The run's resolved rulepack.
-        name: A ``regulatory_thresholds`` key (a ``RegulatoryThresholds`` field
-            name, e.g. ``"sme_turnover_threshold"``).
+        name: A ``regulatory_thresholds`` bundle key, e.g.
+            ``"sme_turnover_threshold"``.
         eur_gbp_rate: The run's EUR/GBP rate (``config.eur_gbp_rate`` — a market
             input). Used only when the regime's thresholds are EUR-derived.
 

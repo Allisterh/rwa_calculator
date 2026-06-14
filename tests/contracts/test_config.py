@@ -12,144 +12,14 @@ import pytest
 from rwa_calc.contracts.config import (
     CalculationConfig,
     IRBPermissions,
-    LGDFloors,
     OutputFloorConfig,
-    PDFloors,
-    SupportingFactors,
 )
 from rwa_calc.domain.enums import (
     ApproachType,
-    CollateralType,
     ExposureClass,
     PermissionMode,
     RegulatoryFramework,
 )
-
-
-class TestPDFloors:
-    """Tests for PDFloors configuration."""
-
-    def test_crr_pd_floors_single_value(self):
-        """CRR should have a single 0.03% PD floor for all classes."""
-        floors = PDFloors.crr()
-
-        assert floors.corporate == Decimal("0.0003")
-        assert floors.corporate_sme == Decimal("0.0003")
-        assert floors.retail_mortgage == Decimal("0.0003")
-        assert floors.retail_other == Decimal("0.0003")
-        assert floors.retail_qrre_transactor == Decimal("0.0003")
-        assert floors.retail_qrre_revolver == Decimal("0.0003")
-
-    def test_basel_3_1_pd_floors_differentiated(self):
-        """Basel 3.1 should have differentiated PD floors per PRA Art. 160/163."""
-        floors = PDFloors.basel_3_1()
-
-        assert floors.corporate == Decimal("0.0005")  # 0.05% Art. 160(1)
-        assert floors.corporate_sme == Decimal("0.0005")  # 0.05% Art. 160(1)
-        assert floors.retail_mortgage == Decimal("0.0010")  # 0.10% Art. 163(1)(b) UK RRE
-        assert floors.retail_other == Decimal("0.0005")  # 0.05% Art. 163(1)(c)
-        assert floors.retail_qrre_transactor == Decimal("0.0005")  # 0.05% Art. 163(1)(c)
-        assert floors.retail_qrre_revolver == Decimal("0.0010")  # 0.10% Art. 163(1)(a)
-
-    def test_get_floor_by_exposure_class(self):
-        """get_floor should return correct floor for each class."""
-        floors = PDFloors.basel_3_1()
-
-        assert floors.get_floor(ExposureClass.CORPORATE) == Decimal("0.0005")
-        assert floors.get_floor(ExposureClass.RETAIL_MORTGAGE) == Decimal("0.0010")
-        assert floors.get_floor(ExposureClass.RETAIL_QRRE, is_qrre_transactor=True) == Decimal(
-            "0.0005"
-        )
-        assert floors.get_floor(ExposureClass.RETAIL_QRRE, is_qrre_transactor=False) == Decimal(
-            "0.0010"
-        )
-
-    def test_pd_floors_immutable(self):
-        """PDFloors should be immutable (frozen dataclass)."""
-        floors = PDFloors.crr()
-
-        with pytest.raises(AttributeError):
-            floors.corporate = Decimal("0.01")
-
-
-class TestLGDFloors:
-    """Tests for LGDFloors configuration."""
-
-    def test_crr_lgd_floors_zero(self):
-        """CRR should have no LGD floors (all zero)."""
-        floors = LGDFloors.crr()
-
-        assert floors.unsecured == Decimal("0.0")
-        assert floors.financial_collateral == Decimal("0.0")
-        assert floors.receivables == Decimal("0.0")
-        assert floors.commercial_real_estate == Decimal("0.0")
-        assert floors.residential_real_estate == Decimal("0.0")
-        assert floors.other_physical == Decimal("0.0")
-        # Retail floors also zero under CRR
-        assert floors.retail_rre == Decimal("0.0")
-        assert floors.retail_qrre_unsecured == Decimal("0.0")
-        assert floors.retail_other_unsecured == Decimal("0.0")
-        assert floors.retail_lgdu == Decimal("0.0")
-
-    def test_basel_3_1_lgd_floors(self):
-        """Basel 3.1 should have LGD floors by collateral type."""
-        floors = LGDFloors.basel_3_1()
-
-        # Corporate floors — Art. 161(5)
-        assert floors.unsecured == Decimal("0.25")  # 25%
-        assert floors.financial_collateral == Decimal("0.0")  # 0%
-        assert floors.receivables == Decimal("0.10")  # 10%
-        assert floors.commercial_real_estate == Decimal("0.10")  # 10%
-        assert floors.residential_real_estate == Decimal("0.10")  # 10% (PRA Art. 161(5))
-        assert floors.other_physical == Decimal("0.15")  # 15%
-        # Retail floors — Art. 164(4)
-        assert floors.retail_rre == Decimal("0.05")  # 5% Art. 164(4)(a)
-        assert floors.retail_qrre_unsecured == Decimal("0.50")  # 50% Art. 164(4)(b)(i)
-        assert floors.retail_other_unsecured == Decimal("0.30")  # 30% Art. 164(4)(b)(ii)
-        assert floors.retail_lgdu == Decimal("0.30")  # 30% Art. 164(4)(c)
-
-    def test_get_floor_by_collateral_type(self):
-        """get_floor should return correct floor for each collateral type."""
-        floors = LGDFloors.basel_3_1()
-
-        assert floors.get_floor(CollateralType.FINANCIAL) == Decimal("0.0")
-        assert floors.get_floor(CollateralType.RECEIVABLES) == Decimal("0.10")
-        assert floors.get_floor(CollateralType.OTHER) == Decimal("0.25")
-
-    def test_get_floor_retail_exposure_classes(self):
-        """get_floor returns retail-specific floors when exposure_class is provided."""
-        floors = LGDFloors.basel_3_1()
-
-        # Retail QRRE unsecured: 50% (Art. 164(4)(b)(i))
-        assert floors.get_floor(CollateralType.OTHER, "retail_qrre") == Decimal("0.50")
-        # Retail other unsecured: 30% (Art. 164(4)(b)(ii))
-        assert floors.get_floor(CollateralType.OTHER, "retail_other") == Decimal("0.30")
-        # Retail mortgage + immovable: 5% (Art. 164(4)(a))
-        assert floors.get_floor(CollateralType.IMMOVABLE, "retail_mortgage") == Decimal("0.05")
-        # Corporate unsecured (no retail override): 25%
-        assert floors.get_floor(CollateralType.OTHER, "CORPORATE") == Decimal("0.25")
-
-
-class TestSupportingFactors:
-    """Tests for SupportingFactors configuration."""
-
-    def test_crr_supporting_factors_enabled(self):
-        """CRR should have SME and infrastructure factors enabled."""
-        factors = SupportingFactors.crr()
-
-        assert factors.enabled is True
-        assert factors.sme_factor_under_threshold == Decimal("0.7619")
-        assert factors.sme_factor_above_threshold == Decimal("0.85")
-        assert factors.infrastructure_factor == Decimal("0.75")
-
-    def test_basel_3_1_supporting_factors_disabled(self):
-        """Basel 3.1 should have supporting factors disabled (all 1.0)."""
-        factors = SupportingFactors.basel_3_1()
-
-        assert factors.enabled is False
-        assert factors.sme_factor_under_threshold == Decimal("1.0")
-        assert factors.sme_factor_above_threshold == Decimal("1.0")
-        assert factors.infrastructure_factor == Decimal("1.0")
 
 
 class TestOutputFloorConfig:

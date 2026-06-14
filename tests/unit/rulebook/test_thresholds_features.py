@@ -26,7 +26,6 @@ from decimal import Decimal
 
 import pytest
 
-from rwa_calc.contracts.config import RegulatoryThresholds
 from rwa_calc.engine.thresholds import regulatory_threshold
 from rwa_calc.rulebook.resolve import resolve
 
@@ -45,6 +44,28 @@ _FIELDS = (
 # Default rate plus non-default rates the production FX-sync can produce.
 _RATES = (Decimal("0.8732"), Decimal("0.95"), Decimal("0.50"), Decimal("1.0"))
 
+# Independent oracle for the FX arithmetic (was RegulatoryThresholds.crr/.basel_3_1
+# before the S11e carve deleted those dataclasses). CRR: EUR bases × eur_gbp_rate;
+# B31: PRA-native GBP (sme_balance_sheet = EUR 43m × 0.8732 frozen — B31 never syncs).
+_CRR_EUR_BASES = {
+    "sme_turnover_threshold": Decimal("50000000"),
+    "sme_balance_sheet_threshold": Decimal("43000000"),
+    "sme_exposure_threshold": Decimal("2500000"),
+    "large_corporate_revenue_threshold": Decimal("0"),
+    "retail_max_exposure": Decimal("1000000"),
+    "qrre_max_limit": Decimal("100000"),
+    "lfse_total_assets_threshold": Decimal("70000000000"),
+}
+_B31_GBP = {
+    "sme_turnover_threshold": Decimal("44000000"),
+    "sme_balance_sheet_threshold": Decimal("37547600"),
+    "sme_exposure_threshold": Decimal("0"),
+    "large_corporate_revenue_threshold": Decimal("440000000"),
+    "retail_max_exposure": Decimal("880000"),
+    "qrre_max_limit": Decimal("90000"),
+    "lfse_total_assets_threshold": Decimal("0"),
+}
+
 
 def test_fx_derived_feature_per_regime() -> None:
     # Arrange / Act / Assert
@@ -56,7 +77,7 @@ def test_fx_derived_feature_per_regime() -> None:
 @pytest.mark.parametrize("field", _FIELDS)
 def test_crr_threshold_matches_config_at_rate(field: str, rate: Decimal) -> None:
     # CRR thresholds = EUR base × rate, reproduced exactly at any rate.
-    expected = getattr(RegulatoryThresholds.crr(eur_gbp_rate=rate), field)
+    expected = _CRR_EUR_BASES[field] * rate
     assert regulatory_threshold(_CRR_PACK, field, rate) == expected
 
 
@@ -65,7 +86,7 @@ def test_crr_threshold_matches_config_at_rate(field: str, rate: Decimal) -> None
 def test_b31_threshold_is_native_gbp_frozen(field: str, rate: Decimal) -> None:
     # B31 thresholds are native GBP (sme_balance_sheet frozen at the default
     # 0.8732 — B31 never FX-syncs), so the accessor IGNORES the rate.
-    expected = getattr(RegulatoryThresholds.basel_3_1(eur_gbp_rate=Decimal("0.8732")), field)
+    expected = _B31_GBP[field]
     assert regulatory_threshold(_B31_PACK, field, rate) == expected
 
 
