@@ -59,6 +59,7 @@ from rwa_calc.engine.irb.formulas import (
     _maturity_adjustment_expr_from_pd,
 )
 from rwa_calc.rulebook import RulepackV0
+from rwa_calc.rulebook.compile import scalar_value
 
 if TYPE_CHECKING:
     from polars.expr.whenthen import ChainedThen, Then
@@ -835,7 +836,8 @@ class EquityCalculator:
         The IRB Simple transitional floor (PRA Rules 4.1-4.10) does NOT apply —
         it is Simple-approach machinery.
         """
-        scaling_factor = float(config.scaling_factor)
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+        scaling_factor = scalar_value(resolved_pack.scalar_param("irb_scaling_factor"))
         maturity = float(EQUITY_PD_LGD_MATURITY)
         lgd_diversified = float(EQUITY_PD_LGD_LGD["private_equity_diversified"])
         lgd_other = float(EQUITY_PD_LGD_LGD["other"])
@@ -874,7 +876,6 @@ class EquityCalculator:
             lgd.alias("lgd"),
         )
 
-        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
         correlation = _correlation_expr_from_pd(
             pl.col("pd_floored"),
             eur_gbp_rate=float(config.eur_gbp_rate),
