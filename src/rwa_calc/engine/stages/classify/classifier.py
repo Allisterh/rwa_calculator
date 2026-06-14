@@ -143,7 +143,9 @@ class ExposureClassifier:
         classified = derive_independent_flags(exposures, config, schema_names, pack=resolved_pack)
         classified = classify_exposure_subtypes(classified, config)
         classified = reclassify_corporate_to_retail(classified, config, schema_names)
-        classified = flag_property_reclassification_candidates(classified, config, schema_names)
+        classified = flag_property_reclassification_candidates(
+            classified, config, schema_names, pack=resolved_pack
+        )
         classified = sync_irb_exposure_class(classified)
 
         has_model_permissions = data.model_permissions is not None

@@ -172,6 +172,31 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "110A", "due-diligence RW override (RW may only increase)"),
     ),
+    # SA RE loan-split regime gates. Basel 3.1 (PS1/26 Art. 124F/124H) drops the CRE
+    # rental-coverage test, adds the Art. 124(4) all-or-nothing mixed-RE gate, and
+    # adds the Art. 124H(3) pure-CRE whole-loan path. Override the CRR Features; the
+    # split parameter VALUES live in data/tables/re_split_parameters.py (S9g).
+    "sa_re_split_cre_rental_coverage_required": Feature(
+        name="sa_re_split_cre_rental_coverage_required",
+        enabled=False,
+        citation=Citation(
+            "PS1/26", "124H", "Basel 3.1 removes the CRE rental-coverage requirement"
+        ),
+    ),
+    "sa_re_split_art_124_4_all_or_nothing": Feature(
+        name="sa_re_split_art_124_4_all_or_nothing",
+        enabled=True,
+        citation=Citation(
+            "PS1/26", "124(4)", "mixed-RE with any non-qualifying component drops to Art. 124J"
+        ),
+    ),
+    "sa_re_split_whole_loan_path_applies": Feature(
+        name="sa_re_split_whole_loan_path_applies",
+        enabled=True,
+        citation=Citation(
+            "PS1/26", "124H(3)", "pure-CRE non-NP/SME corporates route to a whole-loan row"
+        ),
+    ),
     # Basel 3.1 revised slotting tables (PRA PS1/26 Art. 153(5) Table A / CRE33):
     # HVCRE risk-weight + EL splits and the PF pre-operational distinction.
     # Overrides the CRR Feature; selects the B31 table family in

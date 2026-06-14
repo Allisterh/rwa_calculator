@@ -183,6 +183,25 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "110", "no Art. 110A due-diligence RW override under CRR"),
     ),
+    # SA RE loan-split regime gates (engine/stages/re_split/flagging.py, run inside
+    # the classifier stage). CRR Art. 125/126 vs PS1/26 Art. 124F/124H. Each gates one
+    # regulatory limb of the split decision; the split LTV/RW parameter VALUES live in
+    # data/tables/re_split_parameters.py (the splitter call-site migration is S9g).
+    "sa_re_split_cre_rental_coverage_required": Feature(
+        name="sa_re_split_cre_rental_coverage_required",
+        enabled=True,
+        citation=Citation("CRR", "126", "CRE split requires the rental-coverage test (>=1.5x)"),
+    ),
+    "sa_re_split_art_124_4_all_or_nothing": Feature(
+        name="sa_re_split_art_124_4_all_or_nothing",
+        enabled=False,
+        citation=Citation("CRR", "124", "no Art. 124(4) all-or-nothing mixed-RE rule under CRR"),
+    ),
+    "sa_re_split_whole_loan_path_applies": Feature(
+        name="sa_re_split_whole_loan_path_applies",
+        enabled=False,
+        citation=Citation("CRR", "126", "no Art. 124H(3) whole-loan CRE path; all eligible split"),
+    ),
     # Slotting (supervisory specialised-lending) risk-weight + EL-rate tables:
     # Basel 3.1 (PRA PS1/26 Art. 153(5) Table A / CRE33) revises them with HVCRE
     # and PF pre-operational splits — see packs/b31.py. The Feature selects the
