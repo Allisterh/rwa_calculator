@@ -11,7 +11,6 @@ import polars as pl
 import pytest
 
 from rwa_calc.contracts.config import CalculationConfig
-from rwa_calc.domain.enums import RegulatoryFramework
 from rwa_calc.engine.fx_converter import FXConverter, create_fx_converter
 
 # =============================================================================
@@ -41,7 +40,7 @@ def fx_rates() -> pl.LazyFrame:
 def config() -> CalculationConfig:
     """Create calculation config with FX conversion enabled."""
     return CalculationConfig(
-        framework=RegulatoryFramework.CRR,
+        regime_id="crr",
         reporting_date=date(2026, 1, 1),
         base_currency="GBP",
         apply_fx_conversion=True,
@@ -52,7 +51,7 @@ def config() -> CalculationConfig:
 def config_fx_disabled() -> CalculationConfig:
     """Create calculation config with FX conversion disabled."""
     return CalculationConfig(
-        framework=RegulatoryFramework.CRR,
+        regime_id="crr",
         reporting_date=date(2026, 1, 1),
         base_currency="GBP",
         apply_fx_conversion=False,
@@ -489,7 +488,7 @@ class TestFXConverterIntegration:
         )
 
         config_eur = CalculationConfig(
-            framework=RegulatoryFramework.CRR,
+            regime_id="crr",
             reporting_date=date(2026, 1, 1),
             base_currency="EUR",
             apply_fx_conversion=True,

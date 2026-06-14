@@ -25,7 +25,7 @@ from decimal import Decimal
 import polars as pl
 import pytest
 
-from rwa_calc.contracts.config import CalculationConfig, IRBPermissions, RegulatoryFramework
+from rwa_calc.contracts.config import CalculationConfig, IRBPermissions
 from rwa_calc.data.tables.b31_risk_weights import (
     B31_COVERED_BOND_RISK_WEIGHTS,
     B31_COVERED_BOND_UNRATED_FROM_SCRA,
@@ -288,7 +288,7 @@ class TestCoveredBondSACRR:
     ):
         """CRR CQS → CB derivation is framework-keyed, not currency-keyed (Art. 120 Table 3)."""
         config = CalculationConfig(
-            framework=RegulatoryFramework.CRR,
+            regime_id="crr",
             reporting_date=date(2025, 12, 31),
             base_currency="EUR",
         )

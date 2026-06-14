@@ -37,6 +37,14 @@ from rwa_calc.domain.enums import (
 # Type alias for Polars collection engine
 PolarsEngine = Literal["cpu", "gpu", "streaming"]
 
+# Regime identifier ("crr" | "b31") → the legacy RegulatoryFramework enum. The
+# regime is carried on RunConfig as the ``regime_id`` string (Phase 5 S11e); the
+# ``framework`` property derives the enum from it for the enum-typed read sites.
+_REGIME_ID_TO_FRAMEWORK = {
+    "crr": RegulatoryFramework.CRR,
+    "b31": RegulatoryFramework.BASEL_3_1,
+}
+
 
 @dataclass(frozen=True)
 class OutputFloorConfig:
@@ -576,7 +584,7 @@ class CalculationConfig:
     correctly configured instances.
 
     Attributes:
-        framework: Regulatory framework (CRR or BASEL_3_1)
+        regime_id: Regime identifier ("crr" | "b31") — the regime carrier
         reporting_date: As-of date for the calculation
         base_currency: Currency for reporting (default GBP)
         apply_fx_conversion: Whether to convert exposures to base_currency
@@ -590,7 +598,7 @@ class CalculationConfig:
             None uses system temp directory.
     """
 
-    framework: RegulatoryFramework
+    regime_id: str  # "crr" | "b31" — the regime carrier (Phase 5 S11e)
     reporting_date: date
     base_currency: str = "GBP"
     apply_fx_conversion: bool = True  # Convert exposures to base_currency using fx_rates
@@ -601,7 +609,7 @@ class CalculationConfig:
     ccr: CCRConfig = field(default_factory=CCRConfig)
     permission_mode: PermissionMode = PermissionMode.STANDARDISED
     # Optional explicit IRBPermissions override. When None (default) the value
-    # is derived in __post_init__ from permission_mode and framework. Passing a
+    # is derived in __post_init__ from permission_mode and regime_id. Passing a
     # non-None value (or replacing via ``dataclasses.replace``) lets callers
     # customise IRB-permission flags such as ``psm_lgd_source`` without having
     # to reconstruct the master config from scratch.
@@ -673,7 +681,7 @@ class CalculationConfig:
     audit_cache_max_runs: int | None = None
 
     def __post_init__(self) -> None:
-        """Derive internal irb_permissions from permission_mode and framework.
+        """Derive internal irb_permissions from permission_mode and regime_id.
 
         Skips derivation when an explicit ``irb_permissions`` was supplied so
         callers can override flags like ``psm_lgd_source`` without losing the
@@ -682,7 +690,7 @@ class CalculationConfig:
         if self.irb_permissions is not None:
             return
         if self.permission_mode == PermissionMode.IRB:
-            if self.framework == RegulatoryFramework.BASEL_3_1:
+            if self.regime_id == "b31":
                 object.__setattr__(self, "irb_permissions", IRBPermissions.full_irb_b31())
             else:
                 object.__setattr__(self, "irb_permissions", IRBPermissions.full_irb())
@@ -690,14 +698,23 @@ class CalculationConfig:
             object.__setattr__(self, "irb_permissions", IRBPermissions.sa_only())
 
     @property
+    def framework(self) -> RegulatoryFramework:
+        """The RegulatoryFramework enum derived from ``regime_id`` (back-compat).
+
+        ``regime_id`` is the stored regime carrier (Phase 5 S11e); this property
+        keeps the enum-typed read sites (logging, COREP, comparison) unchanged.
+        """
+        return _REGIME_ID_TO_FRAMEWORK[self.regime_id]
+
+    @property
     def is_crr(self) -> bool:
         """Check if using CRR framework."""
-        return self.framework == RegulatoryFramework.CRR
+        return self.regime_id == "crr"
 
     @property
     def is_basel_3_1(self) -> bool:
         """Check if using Basel 3.1 framework."""
-        return self.framework == RegulatoryFramework.BASEL_3_1
+        return self.regime_id == "b31"
 
     def get_output_floor_percentage(self) -> Decimal:
         """Get the applicable output floor percentage."""
@@ -712,7 +729,7 @@ class CalculationConfig:
         thresholds; eur_gbp_rate is unused by the B3.1 SME correlation branch per
         PRA PS1/26 Art. 153(4)).
         """
-        if self.framework != RegulatoryFramework.CRR:
+        if self.regime_id != "crr":
             return self
         if eur_gbp_rate == self.eur_gbp_rate:
             return self
@@ -765,7 +782,7 @@ class CalculationConfig:
             Configured CalculationConfig for CRR
         """
         return cls(
-            framework=RegulatoryFramework.CRR,
+            regime_id="crr",
             reporting_date=reporting_date,
             base_currency=base_currency,
             output_floor=OutputFloorConfig.crr(),
@@ -865,7 +882,7 @@ class CalculationConfig:
             Configured CalculationConfig for Basel 3.1
         """
         return cls(
-            framework=RegulatoryFramework.BASEL_3_1,
+            regime_id="b31",
             reporting_date=reporting_date,
             base_currency=base_currency,
             output_floor=OutputFloorConfig.basel_3_1(
