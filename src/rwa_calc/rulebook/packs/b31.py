@@ -38,7 +38,7 @@ ENTRIES: dict[str, RuleEntry] = {
     "irb_scaling_factor": ScalarParam(
         name="irb_scaling_factor",
         value=Decimal("1.0"),
-        citation=Citation("PS1/26", "153(1)"),
+        citation=Citation("PS1/26", "153", "(1)"),
     ),
     # Basel 3.1 removes the CRR Art. 501/501a supporting factors. The Feature is
     # disabled (the engine returns factor=1.0 before reading values); the values
@@ -62,7 +62,7 @@ ENTRIES: dict[str, RuleEntry] = {
     "airb_lgd_floor": Feature(
         name="airb_lgd_floor",
         enabled=True,
-        citation=Citation("PS1/26", "161(5)"),
+        citation=Citation("PS1/26", "161", "(5)"),
     ),
     # IRB maturity (M) regime treatments — see packs/crr.py. Basel 3.1 deleted the
     # CRR SFT supervisory M and the short-term-trade one-day-floor derivation, and
@@ -85,7 +85,7 @@ ENTRIES: dict[str, RuleEntry] = {
         name="revolving_uses_termination_maturity",
         enabled=True,
         citation=Citation(
-            "PS1/26", "162(2A)(k)", "revolving facilities use the facility termination date for M"
+            "PS1/26", "162", "(2A)(k) revolving facilities use the facility termination date for M"
         ),
     ),
     # Basel 3.1 removed the CRR Art. 153(3) double-default treatment.
@@ -101,7 +101,7 @@ ENTRIES: dict[str, RuleEntry] = {
         name="firb_fse_senior_lgd_split",
         enabled=True,
         citation=Citation(
-            "PS1/26", "161(1)(aa)", "senior unsecured F-IRB LGD FSE 45% / non-FSE 40%"
+            "PS1/26", "161", "(1)(aa) senior unsecured F-IRB LGD FSE 45% / non-FSE 40%"
         ),
     ),
     # IRB PD floors differentiated by exposure class (PRA PS1/26 Art. 160(1)
@@ -121,8 +121,8 @@ ENTRIES: dict[str, RuleEntry] = {
         },
         citation=Citation(
             "PS1/26",
-            "160(1)",
-            "differentiated IRB PD floors (Art. 160(1) wholesale / 163(1) retail)",
+            "160",
+            "(1) differentiated IRB PD floors (Art. 160(1) wholesale / 163(1) retail)",
         ),
     ),
     # A-IRB LGD floors (PRA PS1/26 Art. 161(5) corporate / Art. 164(4) retail).
@@ -145,7 +145,7 @@ ENTRIES: dict[str, RuleEntry] = {
             "retail_lgdu": Decimal("0.30"),
         },
         citation=Citation(
-            "PS1/26", "161(5)", "A-IRB LGD floors (Art. 161(5) corporate / 164(4) retail)"
+            "PS1/26", "161", "(5) A-IRB LGD floors (Art. 161(5) corporate / 164(4) retail)"
         ),
     ),
     # Basel 3.1 revised SA base risk-weight tables (PRA PS1/26 Art. 122(2)
@@ -156,7 +156,7 @@ ENTRIES: dict[str, RuleEntry] = {
     "sa_revised_risk_weight_tables": Feature(
         name="sa_revised_risk_weight_tables",
         enabled=True,
-        citation=Citation("PS1/26", "122(2)", "Basel 3.1 revised SA risk-weight tables"),
+        citation=Citation("PS1/26", "122", "(2) Basel 3.1 revised SA risk-weight tables"),
     ),
     # Basel 3.1 revised SA risk-weight override ladder (PRA PS1/26): the PS1/26
     # institution ECRA/SCRA branches, revised covered-bond/real-estate handling,
@@ -174,7 +174,7 @@ ENTRIES: dict[str, RuleEntry] = {
     "sa_sl_inferred_rating_disapplied": Feature(
         name="sa_sl_inferred_rating_disapplied",
         enabled=True,
-        citation=Citation("PS1/26", "139(2B)", "non-issue-specific ECAI disapplied for SL"),
+        citation=Citation("PS1/26", "139", "(2B) non-issue-specific ECAI disapplied for SL"),
     ),
     # Basel 3.1 defaulted-exposure treatment (PRA PS1/26 Art. 127 / CRE20.88):
     # gross-outstanding unsecured denominator + the Art. 127(3) residential-RE
@@ -216,14 +216,14 @@ ENTRIES: dict[str, RuleEntry] = {
         name="sa_re_split_art_124_4_all_or_nothing",
         enabled=True,
         citation=Citation(
-            "PS1/26", "124(4)", "mixed-RE with any non-qualifying component drops to Art. 124J"
+            "PS1/26", "124", "(4) mixed-RE with any non-qualifying component drops to Art. 124J"
         ),
     ),
     "sa_re_split_whole_loan_path_applies": Feature(
         name="sa_re_split_whole_loan_path_applies",
         enabled=True,
         citation=Citation(
-            "PS1/26", "124H(3)", "pure-CRE non-NP/SME corporates route to a whole-loan row"
+            "PS1/26", "124H", "(3) pure-CRE non-NP/SME corporates route to a whole-loan row"
         ),
     ),
     # RE loan-split parameter set selection: Basel 3.1 Art. 124F/124H LTV caps / RW
@@ -243,7 +243,7 @@ ENTRIES: dict[str, RuleEntry] = {
     "slotting_revised_tables": Feature(
         name="slotting_revised_tables",
         enabled=True,
-        citation=Citation("PS1/26", "153(5)", "Basel 3.1 slotting tables (HVCRE + PF pre-op)"),
+        citation=Citation("PS1/26", "153", "(5) Basel 3.1 slotting tables (HVCRE + PF pre-op)"),
     ),
     # Basel 3.1 removed the IRB equity approaches — all equity uses SA
     # (CRE20.58-62 / PRA PS1/26 Art. 133). Overrides the CRR Feature.
@@ -330,7 +330,7 @@ ENTRIES: dict[str, RuleEntry] = {
     "irb_correlation_sme_gbp_native": Feature(
         name="irb_correlation_sme_gbp_native",
         enabled=True,
-        citation=Citation("PS1/26", "153(4)", "SME correlation uses GBP-native turnover, no FX"),
+        citation=Citation("PS1/26", "153", "(4) SME correlation uses GBP-native turnover, no FX"),
     ),
     # CCF regime gates (engine/ccf.py). Basel 3.1 Art. 166C: F-IRB CCFs equal SA
     # CCFs (SL slotting → SA). Art. 166D(5): A-IRB EAD floor tests. Override the CRR
@@ -343,14 +343,14 @@ ENTRIES: dict[str, RuleEntry] = {
     "airb_ead_floor_applies": Feature(
         name="airb_ead_floor_applies",
         enabled=True,
-        citation=Citation("PS1/26", "166D(5)", "A-IRB EAD floor tests (on-BS + 50% off-BS)"),
+        citation=Citation("PS1/26", "166D", "(5) A-IRB EAD floor tests (on-BS + 50% off-BS)"),
     ),
     # SA CCF table selection: Basel 3.1 Table A1 (OC 40%, LR 10%) vs the CRR Annex I
     # table. Overrides the CRR Feature; gates the provisions pro-rata weighting basis.
     "sa_revised_ccf_table": Feature(
         name="sa_revised_ccf_table",
         enabled=True,
-        citation=Citation("PS1/26", "111(1)", "Basel 3.1 revised SA CCF table (Table A1)"),
+        citation=Citation("PS1/26", "111", "(1) Basel 3.1 revised SA CCF table (Table A1)"),
     ),
     # SA-CCR transitional alpha add-on (PRA PS1/26 Art. 274(2A)): Basel-3.1-only
     # phase-in (2027-2029) of the α=1.4 uplift for legacy CVA-exempt non-financial
@@ -360,7 +360,7 @@ ENTRIES: dict[str, RuleEntry] = {
         name="ccr_transitional_alpha_addon_applicable",
         enabled=True,
         citation=Citation(
-            "PS1/26", "274(2A)", "transitional alpha add-on for legacy CVA-exempt counterparties"
+            "PS1/26", "274", "(2A) transitional alpha add-on for legacy CVA-exempt counterparties"
         ),
     ),
     "output_floor": Feature(
@@ -377,7 +377,7 @@ ENTRIES: dict[str, RuleEntry] = {
             (date(2030, 1, 1), Decimal("0.725")),
         ),
         before_first=Decimal("0.0"),
-        citation=Citation("PS1/26", "92(5)"),
+        citation=Citation("PS1/26", "92", "(5)"),
     ),
     # Full (fully-phased-in) output floor — Art. 92 72.5%. Used when a firm
     # voluntarily skips the Art. 92(5) transitional phase-in (the skip_transitional
@@ -433,7 +433,7 @@ ENTRIES: dict[str, RuleEntry] = {
         name="post_model_adjustments",
         enabled=True,
         citation=Citation(
-            "PS1/26", "154(4A)", "IRB post-model adjustments (Art. 153(5A)/154(4A)/158(6A))"
+            "PS1/26", "154", "(4A) IRB post-model adjustments (Art. 153(5A)/154(4A)/158(6A))"
         ),
     ),
     # PRA PS1/26 Art. 154(4A)(b) mortgage RW floor — the 10% minimum risk weight for
@@ -445,7 +445,7 @@ ENTRIES: dict[str, RuleEntry] = {
     "mortgage_rw_floor": ScalarParam(
         name="mortgage_rw_floor",
         value=Decimal("0.10"),
-        citation=Citation("PS1/26", "154(4A)", "10% mortgage RW floor (residential IRB)"),
+        citation=Citation("PS1/26", "154", "(4A) 10% mortgage RW floor (residential IRB)"),
     ),
     # Basel 3.1 replaces the CRR Art. 230 F-IRB collateral step-functions with
     # the continuous LGD* formula (PS1/26 Art. 230(1)): no overcollateralisation
@@ -454,13 +454,13 @@ ENTRIES: dict[str, RuleEntry] = {
     "firb_overcollateralisation_divisor_applies": Feature(
         name="firb_overcollateralisation_divisor_applies",
         enabled=False,
-        citation=Citation("PS1/26", "230(1)", "LGD* formula — no overcollateralisation divisor"),
+        citation=Citation("PS1/26", "230", "(1) LGD* formula — no overcollateralisation divisor"),
     ),
     "firb_min_collateralisation_threshold_applies": Feature(
         name="firb_min_collateralisation_threshold_applies",
         enabled=False,
         citation=Citation(
-            "PS1/26", "230(1)", "LGD* formula — no minimum collateralisation threshold"
+            "PS1/26", "230", "(1) LGD* formula — no minimum collateralisation threshold"
         ),
     ),
     # AIRB LGD collateral method (PS1/26 Art. 169A/169B): Basel 3.1 Foundation
