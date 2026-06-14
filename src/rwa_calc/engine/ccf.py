@@ -481,9 +481,9 @@ class CCFCalculator:
         overridden to this rate regardless of the row's generic risk_type bucket
         (e.g. a flagged MR row routes to 40%, not the generic 50%).
 
-        Basel-3.1-only: callers gate this on ``config.is_basel_3_1``; there is no
-        equivalent CRR purchased-receivables undrawn-commitment CCF, so the flag
-        is a no-op under CRR.
+        Basel-3.1-only: callers gate this on the ``firb_uses_sa_ccf`` pack Feature
+        (S9c); there is no equivalent CRR purchased-receivables undrawn-commitment
+        CCF, so the flag is a no-op under CRR.
         """
         oc_ccf = float(SA_CCF_B31["OC"])
         ucc_ccf = float(SA_CCF_B31["LR"])
