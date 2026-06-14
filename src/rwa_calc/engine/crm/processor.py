@@ -533,7 +533,7 @@ class CRMProcessor:
         errors.extend(look_through_errors)
 
         # Steps 1-3: provisions -> CCF -> init EAD -> crm_post_ead checkpoint
-        exposures = self._run_ead_pipeline(data, config)
+        exposures = self._run_ead_pipeline(data, config, pack=pack)
 
         # Generate synthetic collateral from netting (CRR Art. 195)
         exposures, collateral = self._merge_netting_collateral(exposures, collateral_lf, errors)
@@ -640,6 +640,8 @@ class CRMProcessor:
         self,
         data: ClassifiedExposuresBundle,
         config: CalculationConfig,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """Run provisions -> CCF -> init_ead and materialise the checkpoint.
 
@@ -660,7 +662,7 @@ class CRMProcessor:
             exposures = self.resolve_provisions(exposures, data.provisions, config)
         # Step 2: Apply CCF to calculate EAD for contingents
         # Uses nominal_after_provision when available
-        exposures = self._apply_ccf(exposures, config)
+        exposures = self._apply_ccf(exposures, config, pack=pack)
         # Step 3: Initialize EAD columns
         return materialise_edge(self._initialize_ead(exposures), config, "crm_post_ead")
 
@@ -1014,9 +1016,11 @@ class CRMProcessor:
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """Apply CCF to off-balance sheet exposures."""
-        return self._ccf_calculator.apply_ccf(exposures, config)
+        return self._ccf_calculator.apply_ccf(exposures, config, pack=pack)
 
     def _initialize_ead(
         self,

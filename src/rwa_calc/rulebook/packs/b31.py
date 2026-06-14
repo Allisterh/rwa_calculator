@@ -236,6 +236,19 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "153(4)", "SME correlation uses GBP-native turnover, no FX"),
     ),
+    # CCF regime gates (engine/ccf.py). Basel 3.1 Art. 166C: F-IRB CCFs equal SA
+    # CCFs (SL slotting → SA). Art. 166D(5): A-IRB EAD floor tests. Override the CRR
+    # Features; the CCF tables and the 0.5 floor multiplier stay data-layer constants.
+    "firb_uses_sa_ccf": Feature(
+        name="firb_uses_sa_ccf",
+        enabled=True,
+        citation=Citation("PS1/26", "166C", "F-IRB CCFs equal SA CCFs; Art. 147(8) SL uses SA"),
+    ),
+    "airb_ead_floor_applies": Feature(
+        name="airb_ead_floor_applies",
+        enabled=True,
+        citation=Citation("PS1/26", "166D(5)", "A-IRB EAD floor tests (on-BS + 50% off-BS)"),
+    ),
     # SA-CCR transitional alpha add-on (PRA PS1/26 Art. 274(2A)): Basel-3.1-only
     # phase-in (2027-2029) of the α=1.4 uplift for legacy CVA-exempt non-financial
     # counterparties carved out to α=1.0. Overrides the CRR Feature; gates the

@@ -78,9 +78,11 @@ from rwa_calc.data.tables.ccf import (
     build_sa_ccf_expr,
 )
 from rwa_calc.domain.enums import ApproachType
+from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 
 def drawn_for_ead() -> pl.Expr:
@@ -164,6 +166,8 @@ class CCFCalculator:
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """
         Apply CCF to calculate EAD for off-balance sheet exposures.
@@ -195,8 +199,8 @@ class CCFCalculator:
         has_provision_cols = "nominal_after_provision" in names and "provision_on_drawn" in names
 
         exposures, added_cols = self._ensure_columns(exposures, names, has_provision_cols)
-        exposures = self._compute_ccf(exposures, config)
-        exposures = self._compute_ead(exposures, has_provision_cols, config)
+        exposures = self._compute_ccf(exposures, config, pack=pack)
+        exposures = self._compute_ead(exposures, has_provision_cols, config, pack=pack)
         exposures = self._build_audit_trail(
             exposures, original_has_risk_type, original_has_underlying, original_has_interest
         )
@@ -294,6 +298,8 @@ class CCFCalculator:
         self,
         exposures: pl.LazyFrame,
         config: CalculationConfig,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """Compute CCF based on risk type and approach.
 
@@ -326,7 +332,11 @@ class CCFCalculator:
             .alias("risk_type"),
         )
 
-        is_b31 = config.is_basel_3_1
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+        # S9c: the F-IRB-uses-SA-CCF routing gate (Art. 166C) reads the cited pack
+        # Feature; sa_ccf_expression / _firb_ccf_for_col keep their is_basel_3_1 bool
+        # plumbing params (Option B). All CCF VALUES stay static data-layer tables.
+        is_b31 = resolved_pack.feature("firb_uses_sa_ccf")
 
         if is_b31:
             # Basel 3.1 Art. 166C: F-IRB uses SA CCFs (PRA PS1/26 Art. 111 Table A1)
@@ -502,6 +512,8 @@ class CCFCalculator:
         exposures: pl.LazyFrame,
         has_provision_cols: bool,
         config: CalculationConfig,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> pl.LazyFrame:
         """Calculate EAD from CCF-adjusted undrawn and on-balance-sheet components.
 
@@ -531,8 +543,10 @@ class CCFCalculator:
             (pl.col("on_bs_for_ead") + pl.col("ead_from_ccf")).alias("ead_pre_crm"),
         )
 
-        # Art. 166D(5) EAD floors — Basel 3.1 A-IRB only
-        if config.is_basel_3_1:
+        # Art. 166D(5) EAD floors — Basel 3.1 A-IRB only (S9c: gated on the cited
+        # pack Feature; the 0.5 floor multiplier stays a static data-layer constant).
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+        if resolved_pack.feature("airb_ead_floor_applies"):
             is_airb = pl.col("approach") == ApproachType.AIRB.value
             has_modelled_ead = pl.col("ead_modelled").is_not_null()
 
