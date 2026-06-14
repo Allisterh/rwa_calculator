@@ -379,6 +379,16 @@ ENTRIES: dict[str, RuleEntry] = {
         before_first=Decimal("0.0"),
         citation=Citation("PS1/26", "92(5)"),
     ),
+    # Full (fully-phased-in) output floor — Art. 92 72.5%. Used when a firm
+    # voluntarily skips the Art. 92(5) transitional phase-in (the skip_transitional
+    # ELECTION on OutputFloorConfig): the floor is the full 72.5% from day one,
+    # not the output_floor_pct Schedule value. Consumed in
+    # engine/aggregator/aggregator.py::_output_floor_pct.
+    "output_floor_pct_full": ScalarParam(
+        name="output_floor_pct_full",
+        value=Decimal("0.725"),
+        citation=Citation("PS1/26", "92", "fully phased-in output floor (72.5%)"),
+    ),
     # Basel-3.1 capital-stack regime GATES (S11d). Mirror the regime-derived
     # `enabled` flags on EquityTransitionalConfig / PostModelAdjustmentConfig
     # (the output_floor gate is the Feature above). The engine sources the on/off

@@ -53,8 +53,11 @@ from rwa_calc.engine.aggregator._supporting_factors import generate_supporting_f
 from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
+    from datetime import date
+    from decimal import Decimal
+
     from rwa_calc.contracts.bundles import EquityResultBundle
-    from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.contracts.config import CalculationConfig, OutputFloorConfig
     from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
@@ -201,7 +204,9 @@ class OutputAggregator:
         floor_impact = None
         output_floor_summary = None
         if resolved_pack.feature("output_floor") and config.output_floor.is_entity_in_scope():
-            floor_pct = float(config.output_floor.get_floor_percentage(config.reporting_date))
+            floor_pct = float(
+                _output_floor_pct(resolved_pack, config.output_floor, config.reporting_date)
+            )
 
             # Compute OF-ADJ from EL summary + capital-tier config inputs
             # OF-ADJ = 12.5 * (IRB_T2 - IRB_CET1 - GCRA + SA_T2)
@@ -336,3 +341,19 @@ def _collect_views(views: dict[str, pl.LazyFrame]) -> dict[str, pl.DataFrame]:
     """
     collected = pl.collect_all(list(views.values()))
     return dict(zip(views, collected, strict=True))
+
+
+def _output_floor_pct(pack: ResolvedRulepack, output_floor: OutputFloorConfig, on: date) -> Decimal:
+    """Output-floor percentage for ``on`` from the rulepack (Phase 5 S11e-v1).
+
+    Pack twin of the value computation in
+    ``OutputFloorConfig.get_floor_percentage``: the Art. 92(5) transitional
+    phase-in (``output_floor_pct`` Schedule) and the fully-phased-in 72.5%
+    (``output_floor_pct_full`` scalar) are pack data; the ``skip_transitional``
+    ELECTION stays on the config. Called only when the ``output_floor`` Feature
+    is on (the caller gates), so the disabled / before-start cases reduce to the
+    Schedule's ``before_first`` (0.0) — byte-identical with the config method.
+    """
+    if output_floor.skip_transitional:
+        return pack.scalar("output_floor_pct_full")
+    return pack.schedule("output_floor_pct").resolve(on)

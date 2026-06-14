@@ -335,6 +335,14 @@ class OutputFloorConfig:
     art_40_deductions: float = 0.0
     """Art. 40 additional CET1 deductions (supervisory add-on beyond Art. 36(1)(d))."""
 
+    # Firm election (Art. 92 para 5): voluntarily apply the full 72.5% floor from
+    # day one rather than the transitional phase-in. Engine-read (Phase 5 S11e-v1)
+    # alongside the pack output-floor percentages (output_floor_pct Schedule +
+    # output_floor_pct_full scalar). The floor_percentage / transitional_* fields
+    # below remain for the config-side get_floor_percentage method until the
+    # S11e carve deletes them.
+    skip_transitional: bool = False
+
     # Art. 92 para 2A(a): combinations where the output floor applies
     _FLOOR_APPLICABLE_COMBINATIONS: frozenset[tuple[InstitutionType, ReportingBasis]] = field(
         default=frozenset(
@@ -468,6 +476,7 @@ class OutputFloorConfig:
             gcra_amount=gcra_amount,
             sa_t2_credit=sa_t2_credit,
             art_40_deductions=art_40_deductions,
+            skip_transitional=skip_transitional,
         )
 
 
