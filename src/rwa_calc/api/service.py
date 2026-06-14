@@ -332,8 +332,8 @@ def get_default_config(
         "scaling_factor": str(pack.scalar("irb_scaling_factor")),
         "eur_gbp_rate": str(config.eur_gbp_rate),
         "pd_floors": {
-            "corporate": str(config.pd_floors.corporate),
-            "retail_mortgage": str(config.pd_floors.retail_mortgage),
+            "corporate": str(pack.formula("pd_floors").params["corporate"]),
+            "retail_mortgage": str(pack.formula("pd_floors").params["retail_mortgage"]),
         },
         "supporting_factors_enabled": config.supporting_factors.enabled,
         "output_floor_enabled": config.output_floor.enabled,

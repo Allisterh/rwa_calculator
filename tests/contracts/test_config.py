@@ -226,8 +226,6 @@ class TestCalculationConfig:
         assert config.base_currency == "GBP"
 
         # Check sub-configurations
-        assert config.pd_floors.corporate == Decimal("0.0003")
-        assert config.lgd_floors.unsecured == Decimal("0.0")
         assert config.supporting_factors.enabled is True
         assert config.output_floor.enabled is False
 
@@ -243,8 +241,6 @@ class TestCalculationConfig:
         assert config.reporting_date == date(2027, 3, 31)
 
         # Check sub-configurations
-        assert config.pd_floors.corporate == Decimal("0.0005")
-        assert config.lgd_floors.unsecured == Decimal("0.25")
         assert config.supporting_factors.enabled is False
         assert config.output_floor.enabled is True
 

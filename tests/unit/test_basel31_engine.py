@@ -2344,50 +2344,6 @@ class TestConfigFactoryMethods:
     """Tests for CalculationConfig factory methods to ensure correct
     framework-specific defaults."""
 
-    def test_crr_pd_floors_uniform(self) -> None:
-        """CRR config pd_floors has uniform 0.03% for all classes."""
-        config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))
-        assert config.pd_floors.corporate == Decimal("0.0003")
-        assert config.pd_floors.corporate_sme == Decimal("0.0003")
-        assert config.pd_floors.retail_mortgage == Decimal("0.0003")
-        assert config.pd_floors.retail_other == Decimal("0.0003")
-        assert config.pd_floors.retail_qrre_transactor == Decimal("0.0003")
-        assert config.pd_floors.retail_qrre_revolver == Decimal("0.0003")
-
-    def test_basel31_pd_floors_differentiated(self) -> None:
-        """Basel 3.1 config pd_floors has differentiated values per PRA Art. 160/163."""
-        config = CalculationConfig.basel_3_1(
-            reporting_date=date(2028, 1, 1),
-        )
-        assert config.pd_floors.corporate == Decimal("0.0005")  # 0.05% Art. 160(1)
-        assert config.pd_floors.corporate_sme == Decimal("0.0005")  # 0.05% Art. 160(1)
-        assert config.pd_floors.retail_mortgage == Decimal("0.0010")  # 0.10% Art. 163(1)(b)
-        assert config.pd_floors.retail_other == Decimal("0.0005")  # 0.05% Art. 163(1)(c)
-        assert config.pd_floors.retail_qrre_transactor == Decimal("0.0005")  # 0.05% Art. 163(1)(c)
-        assert config.pd_floors.retail_qrre_revolver == Decimal("0.0010")  # 0.10% Art. 163(1)(a)
-
-    def test_crr_lgd_floors_all_zero(self) -> None:
-        """CRR config lgd_floors are all 0% (no floor)."""
-        config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))
-        assert config.lgd_floors.unsecured == Decimal("0.0")
-        assert config.lgd_floors.financial_collateral == Decimal("0.0")
-        assert config.lgd_floors.receivables == Decimal("0.0")
-        assert config.lgd_floors.residential_real_estate == Decimal("0.0")
-        assert config.lgd_floors.commercial_real_estate == Decimal("0.0")
-        assert config.lgd_floors.other_physical == Decimal("0.0")
-
-    def test_basel31_lgd_floors_differentiated(self) -> None:
-        """Basel 3.1 config lgd_floors has differentiated values."""
-        config = CalculationConfig.basel_3_1(
-            reporting_date=date(2028, 1, 1),
-        )
-        assert config.lgd_floors.unsecured == Decimal("0.25")
-        assert config.lgd_floors.financial_collateral == Decimal("0.0")
-        assert config.lgd_floors.receivables == Decimal("0.10")
-        assert config.lgd_floors.residential_real_estate == Decimal("0.10")
-        assert config.lgd_floors.commercial_real_estate == Decimal("0.10")
-        assert config.lgd_floors.other_physical == Decimal("0.15")
-
     def test_crr_is_crr_property(self) -> None:
         """CRR config.is_crr is True."""
         config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))

@@ -1,13 +1,12 @@
 """
-Byte-identical parity pins: rulebook floor bundles vs the config floor factories.
+Regulatory-value pins for the rulebook IRB PD/LGD floor bundles.
 
-Phase 5 S5c moves the IRB PD/LGD floors off ``contracts/config.py`` (PDFloors /
-LGDFloors dataclasses) and onto the resolved rulepack (``pd_floors`` / ``lgd_floors``
-FormulaParams in packs/crr.py + packs/b31.py, gated by the ``airb_lgd_floor``
-Feature). These pins guarantee the pack-authored values reproduce the config
-factory values field-for-field, so the engine swap (config-read -> pack-read) is
-byte-identical. They are the safety net for the floor migration: any drift between
-the two sources fails here before it can move an RWA number.
+Phase 5 S5c moved the IRB PD/LGD floors onto the resolved rulepack (``pd_floors``
+/ ``lgd_floors`` FormulaParams in packs/crr.py + packs/b31.py, gated by the
+``airb_lgd_floor`` Feature). Phase 5 S11e-carve(2) then deleted the legacy
+``contracts/config.py`` PDFloors / LGDFloors dataclasses (the engine reads the
+pack). These pins assert the pack-authored floor values directly — the canonical
+regulatory values — so any drift fails here before it can move an RWA number.
 
 References:
 - CRR Art. 160(1): uniform 0.03% IRB PD floor.
@@ -17,49 +16,94 @@ References:
 
 from __future__ import annotations
 
-from dataclasses import fields
 from datetime import date
+from decimal import Decimal
 
-from rwa_calc.contracts.config import LGDFloors, PDFloors
 from rwa_calc.rulebook.resolve import resolve
 
 _CRR_PACK = resolve("crr", date(2026, 1, 1))
 _B31_PACK = resolve("b31", date(2027, 1, 1))
 
-
-def _factory_params(floors: object) -> dict[str, object]:
-    """Project a PDFloors / LGDFloors instance to its ``{field_name: Decimal}`` map."""
-    return {f.name: getattr(floors, f.name) for f in fields(floors)}
+# CRR Art. 160(1): a uniform 0.03% PD floor across every IRB exposure class.
+_CRR_PD_FLOORS = {
+    "corporate": Decimal("0.0003"),
+    "corporate_sme": Decimal("0.0003"),
+    "sovereign": Decimal("0.0003"),
+    "institution": Decimal("0.0003"),
+    "retail_mortgage": Decimal("0.0003"),
+    "retail_other": Decimal("0.0003"),
+    "retail_qrre_transactor": Decimal("0.0003"),
+    "retail_qrre_revolver": Decimal("0.0003"),
+}
+# PRA PS1/26 Art. 160(1) wholesale / 163(1) retail: differentiated PD floors.
+_B31_PD_FLOORS = {
+    "corporate": Decimal("0.0005"),
+    "corporate_sme": Decimal("0.0005"),
+    "sovereign": Decimal("0.0005"),
+    "institution": Decimal("0.0005"),
+    "retail_mortgage": Decimal("0.0010"),
+    "retail_other": Decimal("0.0005"),
+    "retail_qrre_transactor": Decimal("0.0005"),
+    "retail_qrre_revolver": Decimal("0.0010"),
+}
+# CRR Art. 164: no A-IRB own-estimate LGD floor (all zero).
+_CRR_LGD_FLOORS = {
+    "unsecured": Decimal("0.0"),
+    "subordinated_unsecured": Decimal("0.0"),
+    "financial_collateral": Decimal("0.0"),
+    "receivables": Decimal("0.0"),
+    "commercial_real_estate": Decimal("0.0"),
+    "residential_real_estate": Decimal("0.0"),
+    "other_physical": Decimal("0.0"),
+    "retail_rre": Decimal("0.0"),
+    "retail_qrre_unsecured": Decimal("0.0"),
+    "retail_other_unsecured": Decimal("0.0"),
+    "retail_lgdu": Decimal("0.0"),
+}
+# PRA PS1/26 Art. 161(5) corporate / 164(4) retail: A-IRB LGD floors.
+_B31_LGD_FLOORS = {
+    "unsecured": Decimal("0.25"),
+    "subordinated_unsecured": Decimal("0.50"),
+    "financial_collateral": Decimal("0.0"),
+    "receivables": Decimal("0.10"),
+    "commercial_real_estate": Decimal("0.10"),
+    "residential_real_estate": Decimal("0.10"),
+    "other_physical": Decimal("0.15"),
+    "retail_rre": Decimal("0.05"),
+    "retail_qrre_unsecured": Decimal("0.50"),
+    "retail_other_unsecured": Decimal("0.30"),
+    "retail_lgdu": Decimal("0.30"),
+}
 
 
 # ---------------------------------------------------------------------------
-# PD floors — pack bundle vs PDFloors factory
+# PD floors — pack bundle holds the canonical values
 # ---------------------------------------------------------------------------
 
 
-def test_pd_floors_crr_pack_matches_config_factory() -> None:
+def test_pd_floors_crr_pack_values() -> None:
     # Arrange / Act / Assert
-    assert dict(_CRR_PACK.formula("pd_floors").params) == _factory_params(PDFloors.crr())
+    assert dict(_CRR_PACK.formula("pd_floors").params) == _CRR_PD_FLOORS
 
 
-def test_pd_floors_b31_pack_matches_config_factory() -> None:
+def test_pd_floors_b31_pack_values() -> None:
     # Arrange / Act / Assert
-    assert dict(_B31_PACK.formula("pd_floors").params) == _factory_params(PDFloors.basel_3_1())
+    assert dict(_B31_PACK.formula("pd_floors").params) == _B31_PD_FLOORS
 
 
 # ---------------------------------------------------------------------------
-# LGD floors — pack bundle vs LGDFloors factory
+# LGD floors — pack bundle holds the canonical values
 # ---------------------------------------------------------------------------
 
 
-def test_lgd_floors_crr_pack_matches_config_factory() -> None:
+def test_lgd_floors_crr_pack_values() -> None:
     # Arrange / Act / Assert
-    assert dict(_CRR_PACK.formula("lgd_floors").params) == _factory_params(LGDFloors.crr())
+    assert dict(_CRR_PACK.formula("lgd_floors").params) == _CRR_LGD_FLOORS
 
 
-def test_lgd_floors_b31_pack_matches_config_factory() -> None:
+def test_lgd_floors_b31_pack_values() -> None:
     # Arrange / Act / Assert
-    assert dict(_B31_PACK.formula("lgd_floors").params) == _factory_params(LGDFloors.basel_3_1())
+    assert dict(_B31_PACK.formula("lgd_floors").params) == _B31_LGD_FLOORS
 
 
 # ---------------------------------------------------------------------------
