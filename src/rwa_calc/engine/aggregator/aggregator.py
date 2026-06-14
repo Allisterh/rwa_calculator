@@ -55,6 +55,7 @@ from rwa_calc.rulebook import RulepackV0
 if TYPE_CHECKING:
     from rwa_calc.contracts.bundles import EquityResultBundle
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,8 @@ class OutputAggregator:
         equity_bundle: EquityResultBundle | None,
         config: CalculationConfig,
         securitisation_audit: pl.LazyFrame | None = None,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> AggregatedResultBundle:
         """
         Aggregate calculator outputs into final result bundle.
@@ -91,6 +94,10 @@ class OutputAggregator:
                 allocator stage (one row per securitised exposure carrying
                 residual_pct + pool_allocations + audit_status). None when
                 no allocations were supplied.
+            pack: Resolved rulepack for the run's regime/date (Phase 5 — sources
+                the ``output_floor`` / ``supporting_factors`` regime gates).
+                Production threads the orchestrator's pack; direct callers may
+                omit it, in which case one is resolved from ``config``.
 
         Returns:
             AggregatedResultBundle with all summaries and adjustments. Every
@@ -99,6 +106,8 @@ class OutputAggregator:
             wrapped back with ``.lazy()``, so a downstream collect call is a
             near-free shallow collect rather than a plan re-execution.
         """
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+
         # Combine for summaries (data already materialised — cheap concat).
         # ``combined_unmultiplied`` retains the full ead_final / rwa_final
         # values so the per-pool securitisation summary can multiply by each
@@ -191,7 +200,7 @@ class OutputAggregator:
         # combinations — exempt entities use U-TREA with no floor add-on.
         floor_impact = None
         output_floor_summary = None
-        if config.output_floor.is_floor_applicable():
+        if resolved_pack.feature("output_floor") and config.output_floor.is_entity_in_scope():
             floor_pct = float(config.output_floor.get_floor_percentage(config.reporting_date))
 
             # Compute OF-ADJ from EL summary + capital-tier config inputs
@@ -249,11 +258,11 @@ class OutputAggregator:
         summary_by_class = generate_summary_by_class(post_crm_detailed)
         summary_by_approach = generate_summary_by_approach(post_crm_detailed)
 
-        # Supporting factor impact. The regime gate is pack Feature-sourced (S11);
-        # supporting factors are regime-derived (not FX-derived), so the from_config
-        # fallback is byte-identical without threading a pack into run()'s signature.
+        # Supporting factor impact. The regime gate is pack Feature-sourced; the
+        # pack is threaded into aggregate() (S11d), so this reads the run's
+        # resolved pack directly rather than re-deriving one from config.
         supporting_factor_impact = None
-        if RulepackV0.from_config(config).pack.feature("supporting_factors"):
+        if resolved_pack.feature("supporting_factors"):
             supporting_factor_impact = generate_supporting_factor_impact(combined)
 
         # Materialise the post-floor views ONCE (same single-collect pattern

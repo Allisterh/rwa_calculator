@@ -944,8 +944,9 @@ class EquityCalculator:
         floor comparison is skipped. The opt-out applies jointly with the CIU
         underlying higher-of suppression (Rule 4.9).
         """
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
         eq_config = config.equity_transitional
-        if not eq_config.enabled or eq_config.opt_out:
+        if not resolved_pack.feature("equity_transitional") or eq_config.opt_out:
             return exposures
 
         std_rw = eq_config.get_transitional_rw(config.reporting_date, is_higher_risk=False)
@@ -1009,7 +1010,6 @@ class EquityCalculator:
         # Determine transitional approach type for COREP reporting (OF 07.00
         # rows 0371-0374).  CRR firms with prior IRB equity permission use
         # "irb_transitional"; all others use "sa_transitional".
-        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
         approach_label = (
             "irb_transitional"
             if resolved_pack.feature("equity_irb_approaches_available")

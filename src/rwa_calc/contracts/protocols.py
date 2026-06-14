@@ -523,6 +523,8 @@ class OutputAggregatorProtocol(Protocol):
         equity_bundle: EquityResultBundle | None,
         config: CalculationConfig,
         securitisation_audit: pl.LazyFrame | None = None,
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> AggregatedResultBundle:
         """
         Aggregate calculator outputs into final result bundle.
@@ -533,6 +535,10 @@ class OutputAggregatorProtocol(Protocol):
             slotting_results: Slotting branch results.
             equity_bundle: Equity result bundle (optional, separate path).
             config: Calculation configuration.
+            securitisation_audit: Resolved securitisation lookup (optional).
+            pack: Resolved rulepack sourcing the output-floor / supporting-factor
+                regime gates; resolved from ``config`` via
+                ``RulepackV0.from_config(config).pack`` when ``None``.
 
         Returns:
             AggregatedResultBundle with all summaries and adjustments.

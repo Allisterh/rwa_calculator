@@ -50,6 +50,7 @@ from rwa_calc.engine.sa.rw_adjustments import (
     apply_guarantee_substitution,
     apply_life_insurance_rw_mapping,
 )
+from rwa_calc.rulebook import RulepackV0
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
@@ -98,6 +99,8 @@ class SACalculator:
         Returns:
             Unified frame with SA columns populated for SA rows
         """
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+
         is_sa = pl.col("approach") == ApproachType.SA.value
 
         if errors is not None:
@@ -119,7 +122,7 @@ class SACalculator:
         # overwrites risk_weight. The output floor needs: floor_rwa = floor_pct × sa_rwa.
         schema = exposures.collect_schema()
         ead_col = "ead_final" if "ead_final" in schema.names() else "ead"
-        if config.output_floor.enabled:
+        if resolved_pack.feature("output_floor"):
             exposures = exposures.with_columns(
                 (pl.col(ead_col) * pl.col("risk_weight")).alias("sa_rwa"),
             )

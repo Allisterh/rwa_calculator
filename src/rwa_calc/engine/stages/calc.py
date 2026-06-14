@@ -82,7 +82,7 @@ def run(
     )
 
     # For Basel 3.1 output floor: SA-equivalent RW needed on all rows
-    if run_config.output_floor.enabled:
+    if rulepack.pack.feature("output_floor"):
         exposures = components.sa_calculator.calculate_unified(
             exposures, run_config, errors=branch_errors, pack=rulepack.pack
         )
@@ -98,7 +98,7 @@ def run(
     slotting_branch = exposures.filter(is_slotting)
 
     # Process each branch (all still lazy)
-    if run_config.output_floor.enabled:
+    if rulepack.pack.feature("output_floor"):
         # SA already calculated by calculate_unified above — add
         # aggregator columns that calculate_branch normally provides
         sa_result = sa_branch.with_columns(

@@ -271,6 +271,30 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "133", "CRR Art. 133(2) 100% flat equity SA RW"),
     ),
+    # Basel-3.1 capital-stack regime GATES, all absent under CRR (S11d). These
+    # mirror the regime-derived `enabled` flags on contracts/config.py's
+    # OutputFloorConfig / EquityTransitionalConfig / PostModelAdjustmentConfig —
+    # the engine sources the on/off gate from these Features; the VALUES
+    # (floor pct + transitional schedule, equity transitional RW schedule,
+    # mortgage RW floor) and the firm ELECTIONS (institution_type/reporting_basis,
+    # opt_out, PMA scalars) stay config-side. The aggregate output floor
+    # (engine/aggregator), the PRA equity transitional floor (engine/equity), and
+    # the IRB post-model adjustments (engine/irb/adjustments) are all Basel-3.1-only.
+    "output_floor": Feature(
+        name="output_floor",
+        enabled=False,
+        citation=Citation("CRR", "92", "no aggregate output floor under CRR"),
+    ),
+    "equity_transitional": Feature(
+        name="equity_transitional",
+        enabled=False,
+        citation=Citation("CRR", "133", "no PRA equity transitional regime under CRR"),
+    ),
+    "post_model_adjustments": Feature(
+        name="post_model_adjustments",
+        enabled=False,
+        citation=Citation("CRR", "153", "no post-model adjustment framework under CRR"),
+    ),
     # Classifier Art. 147A IRB-approach restrictions: Basel 3.1 removes A-IRB for
     # FSE/large-corp/institution, forces sovereign-like + equity to SA, and routes
     # IPRE/HVCRE to slotting (PRA PS1/26 Art. 147A(1)) — none of which exist under

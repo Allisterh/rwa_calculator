@@ -115,7 +115,7 @@ class IRBCalculator:
             .pipe(apply_firb_lgd, config, pack=resolved_pack)
             .pipe(prepare_columns, config, pack=resolved_pack)
             .pipe(apply_all_formulas, config, pack=resolved_pack)
-            .pipe(apply_post_model_adjustments, config)
+            .pipe(apply_post_model_adjustments, config, pack=resolved_pack)
             .pipe(compute_el_shortfall_excess, errors=sf_errors)
             .pipe(apply_guarantee_substitution, config, pack=resolved_pack)
         )

@@ -348,6 +348,25 @@ class OutputFloorConfig:
         repr=False,
     )
 
+    def is_entity_in_scope(self) -> bool:
+        """Art. 92 para 2A(a) entity-scope test, independent of the enabled gate.
+
+        Returns True when the entity type / reporting basis bring the firm into
+        output-floor scope — either because they are not set (backward compatible
+        default: caller has already determined applicability) or because the
+        ``(institution_type, reporting_basis)`` pair is in the Art. 92 para 2A(a)
+        applicability set. Returns False for the para 2A(b)-(d) exempt entities.
+
+        This is the firm-election half of :meth:`is_floor_applicable`: the regime
+        on/off GATE is sourced from the ``output_floor`` rulepack Feature engine-
+        side (Phase 5 S11d), so the engine composes
+        ``pack.feature("output_floor") and config.output_floor.is_entity_in_scope()``.
+        """
+        # Backward compatible: when entity type not specified, default to applicable
+        if self.institution_type is None or self.reporting_basis is None:
+            return True
+        return (self.institution_type, self.reporting_basis) in self._FLOOR_APPLICABLE_COMBINATIONS
+
     def is_floor_applicable(self) -> bool:
         """Determine if the output floor applies per Art. 92 para 2A.
 
@@ -364,12 +383,7 @@ class OutputFloorConfig:
           institutions on sub-consolidated basis, ring-fenced bodies at individual
           level, international subsidiaries.
         """
-        if not self.enabled:
-            return False
-        # Backward compatible: when entity type not specified, default to applicable
-        if self.institution_type is None or self.reporting_basis is None:
-            return True
-        return (self.institution_type, self.reporting_basis) in self._FLOOR_APPLICABLE_COMBINATIONS
+        return self.enabled and self.is_entity_in_scope()
 
     def get_floor_percentage(self, calculation_date: date) -> Decimal:
         """Get the applicable floor percentage for a given date.

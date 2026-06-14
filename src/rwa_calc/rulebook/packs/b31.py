@@ -379,6 +379,24 @@ ENTRIES: dict[str, RuleEntry] = {
         before_first=Decimal("0.0"),
         citation=Citation("PS1/26", "92(5)"),
     ),
+    # Basel-3.1 capital-stack regime GATES (S11d). Mirror the regime-derived
+    # `enabled` flags on EquityTransitionalConfig / PostModelAdjustmentConfig
+    # (the output_floor gate is the Feature above). The engine sources the on/off
+    # gate from these Features; the VALUES (equity transitional RW schedule,
+    # mortgage RW floor) and the firm ELECTIONS (opt_out, PMA scalars) stay
+    # config-side until the S11e carve.
+    "equity_transitional": Feature(
+        name="equity_transitional",
+        enabled=True,
+        citation=Citation("PS1/26", "4.1", "PRA equity transitional regime (Rules 4.1-4.10)"),
+    ),
+    "post_model_adjustments": Feature(
+        name="post_model_adjustments",
+        enabled=True,
+        citation=Citation(
+            "PS1/26", "154(4A)", "IRB post-model adjustments (Art. 153(5A)/154(4A)/158(6A))"
+        ),
+    ),
     # Basel 3.1 replaces the CRR Art. 230 F-IRB collateral step-functions with
     # the continuous LGD* formula (PS1/26 Art. 230(1)): no overcollateralisation
     # divisor and no minimum collateralisation threshold. Overrides the CRR
