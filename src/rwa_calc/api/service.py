@@ -335,7 +335,7 @@ def get_default_config(
             "corporate": str(pack.formula("pd_floors").params["corporate"]),
             "retail_mortgage": str(pack.formula("pd_floors").params["retail_mortgage"]),
         },
-        "supporting_factors_enabled": config.supporting_factors.enabled,
+        "supporting_factors_enabled": pack.feature("supporting_factors"),
         "output_floor_enabled": config.output_floor.enabled,
         "output_floor_percentage": str(config.output_floor.get_floor_percentage(reporting_date)),
     }

@@ -915,7 +915,6 @@ class CalculationConfig:
         reporting_date: As-of date for the calculation
         base_currency: Currency for reporting (default GBP)
         apply_fx_conversion: Whether to convert exposures to base_currency
-        supporting_factors: SME/infrastructure factors
         output_floor: Output floor configuration
         post_model_adjustments: Post-model adjustments (Basel 3.1 only)
         thresholds: Consolidated regulatory thresholds for exposure classification
@@ -931,7 +930,6 @@ class CalculationConfig:
     reporting_date: date
     base_currency: str = "GBP"
     apply_fx_conversion: bool = True  # Convert exposures to base_currency using fx_rates
-    supporting_factors: SupportingFactors = field(default_factory=SupportingFactors.crr)
     output_floor: OutputFloorConfig = field(default_factory=OutputFloorConfig.crr)
     post_model_adjustments: PostModelAdjustmentConfig = field(
         default_factory=PostModelAdjustmentConfig.crr
@@ -1108,7 +1106,6 @@ class CalculationConfig:
             framework=RegulatoryFramework.CRR,
             reporting_date=reporting_date,
             base_currency=base_currency,
-            supporting_factors=SupportingFactors.crr(),
             output_floor=OutputFloorConfig.crr(),
             post_model_adjustments=PostModelAdjustmentConfig.crr(),
             ccr=CCRConfig(
@@ -1210,7 +1207,6 @@ class CalculationConfig:
             framework=RegulatoryFramework.BASEL_3_1,
             reporting_date=reporting_date,
             base_currency=base_currency,
-            supporting_factors=SupportingFactors.basel_3_1(),
             output_floor=OutputFloorConfig.basel_3_1(
                 institution_type=institution_type,
                 reporting_basis=reporting_basis,

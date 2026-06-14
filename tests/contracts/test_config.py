@@ -226,7 +226,6 @@ class TestCalculationConfig:
         assert config.base_currency == "GBP"
 
         # Check sub-configurations
-        assert config.supporting_factors.enabled is True
         assert config.output_floor.enabled is False
 
     def test_basel_3_1_factory_method(self):
@@ -241,7 +240,6 @@ class TestCalculationConfig:
         assert config.reporting_date == date(2027, 3, 31)
 
         # Check sub-configurations
-        assert config.supporting_factors.enabled is False
         assert config.output_floor.enabled is True
 
     def test_config_immutable(self):

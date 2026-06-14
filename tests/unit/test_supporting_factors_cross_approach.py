@@ -32,6 +32,7 @@ from rwa_calc.engine.supporting_factors import (
     SupportingFactorCalculator,
     compute_e_star_group_drawn,
 )
+from rwa_calc.rulebook import RulepackV0
 
 
 @pytest.fixture()
@@ -284,10 +285,12 @@ class TestApplyFactorsReadsPreComputedColumn:
         result = SupportingFactorCalculator().apply_factors(sa_row, crr_config).collect()
 
         assert result["total_cp_drawn"][0] == pytest.approx(6_000_000.0)
-        # Blended factor derived from the actual config (threshold is GBP, not EUR).
+        # Blended factor derived from the actual config (threshold is GBP, not EUR)
+        # and the pack supporting-factor multipliers (S11e: moved off config).
         threshold = float(crr_config.thresholds.sme_exposure_threshold)
-        tier1_factor = float(crr_config.supporting_factors.sme_factor_under_threshold)
-        tier2_factor = float(crr_config.supporting_factors.sme_factor_above_threshold)
+        _sf = RulepackV0.from_config(crr_config).pack.formula("supporting_factors_values")
+        tier1_factor = float(_sf.params["sme_factor_under_threshold"])
+        tier2_factor = float(_sf.params["sme_factor_above_threshold"])
         e_star = 6_000_000.0
         expected_factor = (threshold * tier1_factor + (e_star - threshold) * tier2_factor) / e_star
         assert result["supporting_factor"][0] == pytest.approx(expected_factor, rel=1e-6)
