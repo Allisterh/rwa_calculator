@@ -111,6 +111,16 @@ class ResolvedRulepack:
         """Return a ``FormulaParams`` (raises ``TypeError`` if wrong shape)."""
         return self._typed(name, FormulaParams)
 
+    def schedule(self, name: str) -> Schedule:
+        """Return the ``Schedule`` entry itself (raises ``TypeError`` if wrong shape).
+
+        The entry-returning sibling of :meth:`schedule_value` (which resolves at
+        ``self.reporting_date``), for callers that need the step structure — e.g.
+        the equity transitional floor, which distinguishes "before the first step"
+        (no transition → None) from "resolved to the before-first value".
+        """
+        return self._typed(name, Schedule)
+
     def schedule_value(self, name: str) -> Decimal:
         """Resolve the named ``Schedule`` at ``self.reporting_date``."""
         return self._typed(name, Schedule).resolve(self.reporting_date)

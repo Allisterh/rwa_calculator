@@ -62,6 +62,9 @@ from rwa_calc.rulebook import RulepackV0
 from rwa_calc.rulebook.compile import scalar_value
 
 if TYPE_CHECKING:
+    from datetime import date
+    from decimal import Decimal
+
     from polars.expr.whenthen import ChainedThen, Then
 
     from rwa_calc.contracts.config import CalculationConfig
@@ -411,7 +414,7 @@ class EquityCalculator:
         # RW) instead of the _DEFAULT_HOLDING_RW fallback (the transitional
         # regime only applies to firms that held IRB equity permission, so
         # equity_transitional.enabled is the correct proxy here).
-        equity_holding_fallback_rw = self._equity_holding_higher_of_rw(config)
+        equity_holding_fallback_rw = self._equity_holding_higher_of_rw(config, pack=resolved_pack)
         if equity_holding_fallback_rw is not None:
             holding_rw_expr = (
                 pl.when(
@@ -499,7 +502,9 @@ class EquityCalculator:
     @cites("CRR Art. 155(2)")
     @cites("PS1/26, paragraph 4.8")
     @cites("PS1/26, paragraph 4.9")
-    def _equity_holding_higher_of_rw(self, config: CalculationConfig) -> float | None:
+    def _equity_holding_higher_of_rw(
+        self, config: CalculationConfig, *, pack: ResolvedRulepack | None = None
+    ) -> float | None:
         """Rules 4.7-4.8 higher-of RW for EQUITY-class CIU look-through holdings.
 
         Returns ``max(legacy Art. 155(2) "other equity" simple RW, Rule 4.2/4.3
@@ -525,8 +530,9 @@ class EquityCalculator:
         if config.equity_transitional.opt_out:
             return None
 
-        transitional_rw = config.equity_transitional.get_transitional_rw(
-            config.reporting_date, is_higher_risk=False
+        resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+        transitional_rw = _equity_transitional_rw(
+            resolved_pack, config.reporting_date, is_higher_risk=False
         )
         if transitional_rw is None:
             return None
@@ -949,8 +955,8 @@ class EquityCalculator:
         if not resolved_pack.feature("equity_transitional") or eq_config.opt_out:
             return exposures
 
-        std_rw = eq_config.get_transitional_rw(config.reporting_date, is_higher_risk=False)
-        hr_rw = eq_config.get_transitional_rw(config.reporting_date, is_higher_risk=True)
+        std_rw = _equity_transitional_rw(resolved_pack, config.reporting_date, is_higher_risk=False)
+        hr_rw = _equity_transitional_rw(resolved_pack, config.reporting_date, is_higher_risk=True)
 
         if std_rw is None or hr_rw is None:
             return exposures
@@ -1097,3 +1103,27 @@ def create_equity_calculator() -> EquityCalculator:
         EquityCalculator ready for use
     """
     return EquityCalculator()
+
+
+def _equity_transitional_rw(
+    pack: ResolvedRulepack, on: date, *, is_higher_risk: bool
+) -> Decimal | None:
+    """Transitional equity RW for ``on``, or None outside the transition window.
+
+    Pack twin of ``EquityTransitionalConfig.get_transitional_rw`` (Phase 5
+    S11e): the VALUES live in the ``equity_transitional_std_rw`` /
+    ``equity_transitional_hr_rw`` rulepack Schedules, gated by the
+    ``equity_transitional`` Feature. Returns ``None`` when the regime is off
+    or ``on`` precedes the first scheduled step — the Schedule's
+    ``before_first`` (0.0) would otherwise read as a real 0% floor, so the
+    explicit ``None`` preserves the config method's "no transition → skip"
+    contract byte-identically.
+    """
+    if not pack.feature("equity_transitional"):
+        return None
+    sched = pack.schedule(
+        "equity_transitional_hr_rw" if is_higher_risk else "equity_transitional_std_rw"
+    )
+    if on < sched.steps[0][0]:
+        return None
+    return sched.resolve(on)

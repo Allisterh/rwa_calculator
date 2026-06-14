@@ -390,6 +390,35 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "4.1", "PRA equity transitional regime (Rules 4.1-4.10)"),
     ),
+    # PRA Rules 4.2/4.3 transitional SA equity risk weights (2027-2030), the VALUES
+    # gated by the equity_transitional Feature above. Two Schedules — standard and
+    # higher-risk — mirror EquityTransitionalConfig.basel_3_1()'s
+    # {date: (standard_rw, higher_risk_rw)} schedule field-for-field. before_first=0.0
+    # marks "before the first step": the engine accessor maps that to None (no
+    # transition) so the floor is skipped, byte-identical with get_transitional_rw.
+    # Consumed in engine/equity/calculator.py::_equity_transitional_rw.
+    "equity_transitional_std_rw": Schedule(
+        name="equity_transitional_std_rw",
+        steps=(
+            (date(2027, 1, 1), Decimal("1.60")),
+            (date(2028, 1, 1), Decimal("1.90")),
+            (date(2029, 1, 1), Decimal("2.20")),
+            (date(2030, 1, 1), Decimal("2.50")),
+        ),
+        before_first=Decimal("0.0"),
+        citation=Citation("PS1/26", "4.2", "transitional standard equity RW (Rules 4.2/4.3)"),
+    ),
+    "equity_transitional_hr_rw": Schedule(
+        name="equity_transitional_hr_rw",
+        steps=(
+            (date(2027, 1, 1), Decimal("2.20")),
+            (date(2028, 1, 1), Decimal("2.80")),
+            (date(2029, 1, 1), Decimal("3.40")),
+            (date(2030, 1, 1), Decimal("4.00")),
+        ),
+        before_first=Decimal("0.0"),
+        citation=Citation("PS1/26", "4.3", "transitional higher-risk equity RW (Rules 4.2/4.3)"),
+    ),
     "post_model_adjustments": Feature(
         name="post_model_adjustments",
         enabled=True,
