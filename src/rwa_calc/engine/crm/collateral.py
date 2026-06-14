@@ -55,8 +55,9 @@ if TYPE_CHECKING:
 
 def airb_lgd_preserved_expr(
     config: CalculationConfig,
-    is_basel_3_1: bool,
     schema_names: set[str],
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> pl.Expr:
     """
     Build a boolean expression marking exposures whose modelled LGD is preserved.
@@ -79,10 +80,12 @@ def airb_lgd_preserved_expr(
     """
     is_airb = pl.col("approach") == ApproachType.AIRB.value
     airb_method = config.airb_collateral_method
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    airb_collateral_method_applies = resolved_pack.feature("airb_lgd_collateral_method_applicable")
 
-    if is_basel_3_1 and airb_method == AIRBCollateralMethod.FOUNDATION:
+    if airb_collateral_method_applies and airb_method == AIRBCollateralMethod.FOUNDATION:
         return pl.lit(False)
-    if is_basel_3_1 and airb_method == AIRBCollateralMethod.LGD_MODELLING:
+    if airb_collateral_method_applies and airb_method == AIRBCollateralMethod.LGD_MODELLING:
         if "has_sufficient_collateral_data" in schema_names:
             return is_airb & pl.col("has_sufficient_collateral_data").fill_null(True)
         return is_airb
@@ -93,7 +96,8 @@ def find_misdirected_airb_model_collateral(
     exposures: pl.LazyFrame,
     collateral: pl.LazyFrame,
     config: CalculationConfig,
-    is_basel_3_1: bool,
+    *,
+    pack: ResolvedRulepack | None = None,
 ) -> list[tuple[str, str]]:
     """
     Identify direct collateral rows flagged as ``is_airb_model_collateral`` but
@@ -120,7 +124,7 @@ def find_misdirected_airb_model_collateral(
     schema_names = set(exposures.collect_schema().names())
     pool_lookup = exposures.select(
         pl.col("exposure_reference"),
-        airb_lgd_preserved_expr(config, is_basel_3_1, schema_names).alias("_is_airb_pool"),
+        airb_lgd_preserved_expr(config, schema_names, pack=pack).alias("_is_airb_pool"),
     )
 
     bt_lower = pl.col("beneficiary_type").str.to_lowercase()
@@ -302,7 +306,6 @@ def apply_collateral(
     collateral: pl.LazyFrame,
     config: CalculationConfig,
     haircut_calculator: HaircutCalculator,
-    is_basel_3_1: bool,
     build_exposure_lookups_fn: Callable,
     join_collateral_to_lookups_fn: Callable,
     resolve_pledge_from_joined_fn: Callable,
@@ -322,7 +325,6 @@ def apply_collateral(
         collateral: Collateral data
         config: Calculation configuration
         haircut_calculator: HaircutCalculator instance
-        is_basel_3_1: Whether Basel 3.1 framework applies
         build_exposure_lookups_fn: Function to build exposure lookups
         join_collateral_to_lookups_fn: Function to join collateral to lookups
         resolve_pledge_from_joined_fn: Function to resolve pledge percentages
@@ -351,13 +353,22 @@ def apply_collateral(
         exposures = exposures.with_columns(fallback_cols)
         schema_names |= {expr.meta.output_name() for expr in fallback_cols}
 
+    # S9h: resolve the pack once; the collateral-LGD regime branches downstream
+    # (haircut maturity bands, AIRB pool membership, FSE split, Art. 230(2) sub-rows)
+    # read honest cited Features off it instead of a single config.is_basel_3_1 bool.
+    resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+
     # CRR Art. 223(5) FCCM exposure volatility haircut (HE). Computed once on
     # the exposure frame so the SA branch in ``_apply_collateral_unified`` can
     # gross E by (1 + HE). Non-SFT / cash / standard-loan rows yield HE = 0.
-    exposures = haircut_calculator.apply_exposure_haircut(exposures, is_basel_3_1, pack=pack)
+    exposures = haircut_calculator.apply_exposure_haircut(
+        exposures,
+        resolved_pack.feature("collateral_haircut_maturity_bands_revised"),
+        pack=resolved_pack,
+    )
 
     exposures = exposures.with_columns(
-        airb_lgd_preserved_expr(config, is_basel_3_1, schema_names).alias("_is_airb_pool")
+        airb_lgd_preserved_expr(config, schema_names, pack=resolved_pack).alias("_is_airb_pool")
     )
 
     # Pre-compute shared exposure lookups once
@@ -411,8 +422,7 @@ def apply_collateral(
         adjusted_collateral,
         config,
         cp_ead_totals,
-        is_basel_3_1,
-        pack=pack,
+        pack=resolved_pack,
     )
 
 
@@ -574,7 +584,6 @@ def _apply_collateral_unified(
     adjusted_collateral: pl.LazyFrame,
     config: CalculationConfig,
     cp_ead_totals: pl.LazyFrame,
-    is_basel_3_1: bool,
     *,
     pack: ResolvedRulepack | None = None,
 ) -> pl.LazyFrame:
@@ -592,6 +601,15 @@ def _apply_collateral_unified(
     -> other_physical.  This replaces the former pro-rata allocation.
     """
     resolved_pack = pack if pack is not None else RulepackV0.from_config(config).pack
+    # S9h: regime branches read honest cited Features off the resolved pack.
+    # firb_fse_senior_lgd_split → FSE 45/40 split; firb_overcollateralisation_divisor_
+    # applies → CRR Art. 230(2) subordinated secured-portion LGDS rows (B31 LGD* drops
+    # them); airb_lgd_collateral_method_applicable → B31 Art. 169A/169B AIRB method.
+    fse_senior_lgd_split = resolved_pack.feature("firb_fse_senior_lgd_split")
+    overcollateralisation_step_function = resolved_pack.feature(
+        "firb_overcollateralisation_divisor_applies"
+    )
+    airb_collateral_method_applies = resolved_pack.feature("airb_lgd_collateral_method_applicable")
     lgd_values = supervisory_lgd_values(resolved_pack)
     lgd_subordinated = subordinated_unsecured_lgd(resolved_pack)
     lgd_unsecured = lgd_values["unsecured"]
@@ -602,7 +620,9 @@ def _apply_collateral_unified(
     # Under Basel 3.1, FSE senior unsecured LGDU = 45% (Art. 161(1)(a));
     # non-FSE = 40% (Art. 161(1)(aa)). Under CRR, all = 45%.
     exposure_schema = exposures.collect_schema()
-    _has_fse_col = is_basel_3_1 and "cp_is_financial_sector_entity" in exposure_schema.names()
+    _has_fse_col = (
+        fse_senior_lgd_split and "cp_is_financial_sector_entity" in exposure_schema.names()
+    )
     if _has_fse_col:
         lgd_unsecured_fse = lgd_values["unsecured_fse"]
 
@@ -930,7 +950,7 @@ def _apply_collateral_unified(
     # secured portion (receivables 65%, RE 65%, other physical 70%).
     # Basel 3.1 Art. 230(2) removes the subordinated LGDS column entirely.
     _has_seniority = "seniority" in exposure_schema.names()
-    _build_sub = not is_basel_3_1 and _has_seniority
+    _build_sub = overcollateralisation_step_function and _has_seniority
 
     lgd_num = pl.lit(0.0)
     lgd_num_sub = pl.lit(0.0) if _build_sub else None
@@ -1010,9 +1030,13 @@ def _apply_collateral_unified(
     # ``_airb_uses_formula`` is the negation of the LGD-preserved condition:
     # AIRB rows that fall back to the supervisory formula under Foundation
     # election or Art. 169B insufficient-data fallback.
-    _airb_uses_formula = is_airb & ~airb_lgd_preserved_expr(config, is_basel_3_1, schema_names)
+    _airb_uses_formula = is_airb & ~airb_lgd_preserved_expr(
+        config, schema_names, pack=resolved_pack
+    )
     # Art. 169B(2)(c): use firm's own unsecured LGD when LGD-modelling falls back
-    _airb_own_lgdu = is_basel_3_1 and airb_method == AIRBCollateralMethod.LGD_MODELLING
+    _airb_own_lgdu = (
+        airb_collateral_method_applies and airb_method == AIRBCollateralMethod.LGD_MODELLING
+    )
 
     # Combined condition: FIRB OR qualifying AIRB exposures use the formula
     _uses_formula = (pl.col("approach") == ApproachType.FIRB.value) | _airb_uses_formula

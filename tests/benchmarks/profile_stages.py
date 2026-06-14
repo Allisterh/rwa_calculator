@@ -242,7 +242,6 @@ def profile_pipeline_stages(
                 adjusted_collateral,
                 config,
                 cp_ead_totals,
-                config.is_basel_3_1,
             ),
             "CRM: collateral allocation (lazy)",
             results,

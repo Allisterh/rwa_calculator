@@ -788,7 +788,7 @@ class CRMProcessor:
             assert collateral is not None  # narrowed by has_required_columns
             # Cheap no-op unless the collateral table actually carries the
             # is_airb_model_collateral flag (early-return inside the finder).
-            self._record_misdirected_airb_errors(exposures, collateral, config, errors)
+            self._record_misdirected_airb_errors(exposures, collateral, config, errors, pack=pack)
             exposures = self.apply_collateral(exposures, collateral, config, pack=pack)
             return exposures, True
         # No (valid) collateral path
@@ -822,10 +822,12 @@ class CRMProcessor:
         collateral: pl.LazyFrame,
         config: CalculationConfig,
         errors: list[CalculationError],
+        *,
+        pack: ResolvedRulepack | None = None,
     ) -> None:
         """Append warnings for AIRB-model-collateral pledged to non-AIRB exposures."""
         misdirected = collateral_mod.find_misdirected_airb_model_collateral(
-            exposures, collateral, config, config.is_basel_3_1
+            exposures, collateral, config, pack=pack
         )
         for coll_ref, exp_ref in misdirected:
             errors.append(
@@ -987,7 +989,6 @@ class CRMProcessor:
             collateral,
             config,
             haircut_calculator=self._haircut_calculator,
-            is_basel_3_1=config.is_basel_3_1,
             build_exposure_lookups_fn=_build_exposure_lookups,
             join_collateral_to_lookups_fn=_join_collateral_to_lookups,
             resolve_pledge_from_joined_fn=_resolve_pledge_from_joined,
