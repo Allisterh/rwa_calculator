@@ -258,6 +258,17 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=False,
         citation=Citation("CRR", "153(4)", "SME correlation converts GBP turnover to EUR"),
     ),
+    # SA-CCR transitional alpha add-on (PRA PS1/26 Art. 274(2A)): a Basel-3.1-only
+    # phase-in (2027-2029) of the α=1.4 uplift for legacy CVA-exempt non-financial
+    # counterparties carved out to α=1.0. CRR has no such add-on. The Feature gates
+    # the whole add-on branch in engine/ccr/pipeline_adapter.py::_attach_transitional_
+    # add_on (fed via the stage adapter); the phase fractions and the 0.4 alpha
+    # uplift stay engine/data constants.
+    "ccr_transitional_alpha_addon_applicable": Feature(
+        name="ccr_transitional_alpha_addon_applicable",
+        enabled=False,
+        citation=Citation("CRR", "274", "no SA-CCR transitional alpha add-on under CRR"),
+    ),
     # F-IRB collateral step-functions apply under CRR (Art. 230 Table 5): the
     # overcollateralisation divisor and the 30% C*/C** minimum threshold. Basel
     # 3.1 removes both (see packs/b31.py); the divisor/threshold values

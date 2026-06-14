@@ -236,6 +236,17 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "153(4)", "SME correlation uses GBP-native turnover, no FX"),
     ),
+    # SA-CCR transitional alpha add-on (PRA PS1/26 Art. 274(2A)): Basel-3.1-only
+    # phase-in (2027-2029) of the α=1.4 uplift for legacy CVA-exempt non-financial
+    # counterparties carved out to α=1.0. Overrides the CRR Feature; gates the
+    # add-on branch in engine/ccr/pipeline_adapter.py.
+    "ccr_transitional_alpha_addon_applicable": Feature(
+        name="ccr_transitional_alpha_addon_applicable",
+        enabled=True,
+        citation=Citation(
+            "PS1/26", "274(2A)", "transitional alpha add-on for legacy CVA-exempt counterparties"
+        ),
+    ),
     "output_floor": Feature(
         name="output_floor",
         enabled=True,
