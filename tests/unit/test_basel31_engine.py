@@ -2388,18 +2388,6 @@ class TestConfigFactoryMethods:
         assert config.lgd_floors.commercial_real_estate == Decimal("0.10")
         assert config.lgd_floors.other_physical == Decimal("0.15")
 
-    def test_crr_scaling_factor(self) -> None:
-        """CRR config has 1.06 scaling factor."""
-        config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))
-        assert config.scaling_factor == Decimal("1.06")
-
-    def test_basel31_scaling_factor_removed(self) -> None:
-        """Basel 3.1 config has 1.0 scaling factor (removed)."""
-        config = CalculationConfig.basel_3_1(
-            reporting_date=date(2028, 1, 1),
-        )
-        assert config.scaling_factor == Decimal("1.0")
-
     def test_crr_is_crr_property(self) -> None:
         """CRR config.is_crr is True."""
         config = CalculationConfig.crr(reporting_date=date(2024, 12, 31))

@@ -115,8 +115,8 @@ class RulepackV0:
     def scaling_factor(self) -> float:
         """Canonical IRB K scaling factor (CRR Art. 153(1)).
 
-        1.06 under CRR; 1.0 under Basel 3.1. The single source the four
-        inline ``1.06 if config.is_crr else 1.0`` reconstructions migrate
-        onto (Phase 4 namespace-retirement slice).
+        1.06 under CRR; 1.0 under Basel 3.1. Sourced from the resolved pack
+        (``irb_scaling_factor`` ScalarParam) — the ``config.scaling_factor``
+        field was deleted in the Phase 5 S11e carve.
         """
-        return float(self.config.scaling_factor)
+        return float(self.pack.scalar("irb_scaling_factor"))

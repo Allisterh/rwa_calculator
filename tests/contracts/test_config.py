@@ -224,7 +224,6 @@ class TestCalculationConfig:
         assert config.is_basel_3_1 is False
         assert config.reporting_date == date(2025, 12, 31)
         assert config.base_currency == "GBP"
-        assert config.scaling_factor == Decimal("1.06")
 
         # Check sub-configurations
         assert config.pd_floors.corporate == Decimal("0.0003")

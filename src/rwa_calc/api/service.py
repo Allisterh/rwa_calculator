@@ -317,17 +317,19 @@ def get_default_config(
         Dictionary of default configuration values
     """
     from rwa_calc.contracts.config import CalculationConfig
+    from rwa_calc.rulebook import RulepackV0
 
     if framework == "CRR":
         config = CalculationConfig.crr(reporting_date=reporting_date)
     else:
         config = CalculationConfig.basel_3_1(reporting_date=reporting_date)
+    pack = RulepackV0.from_config(config).pack
 
     return {
         "framework": config.framework.value,
         "reporting_date": config.reporting_date.isoformat(),
         "base_currency": config.base_currency,
-        "scaling_factor": str(config.scaling_factor),
+        "scaling_factor": str(pack.scalar("irb_scaling_factor")),
         "eur_gbp_rate": str(config.eur_gbp_rate),
         "pd_floors": {
             "corporate": str(config.pd_floors.corporate),

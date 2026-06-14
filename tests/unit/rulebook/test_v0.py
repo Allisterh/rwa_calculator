@@ -48,7 +48,6 @@ def test_pack_scaling_factor_matches_crr_config() -> None:
     rulepack = RulepackV0.from_config(config)
     # Assert — the pack value agrees with the config it was resolved from
     assert rulepack.pack.scalar("irb_scaling_factor") == Decimal("1.06")
-    assert float(rulepack.pack.scalar("irb_scaling_factor")) == float(config.scaling_factor)
 
 
 def test_pack_scaling_factor_matches_basel_3_1_config() -> None:
@@ -58,7 +57,6 @@ def test_pack_scaling_factor_matches_basel_3_1_config() -> None:
     rulepack = RulepackV0.from_config(config)
     # Assert
     assert rulepack.pack.scalar("irb_scaling_factor") == Decimal("1.0")
-    assert float(rulepack.pack.scalar("irb_scaling_factor")) == float(config.scaling_factor)
 
 
 def test_pack_id_carries_reporting_date() -> None:

@@ -922,7 +922,6 @@ class CalculationConfig:
         post_model_adjustments: Post-model adjustments (Basel 3.1 only)
         thresholds: Consolidated regulatory thresholds for exposure classification
         permission_mode: STANDARDISED (all SA) or IRB (model permissions drive routing)
-        scaling_factor: 1.06 scaling factor for IRB (CRR Art. 153), 1.0 for Basel 3.1
         use_investment_grade_assessment: Art. 122(6) election — IG=65% / non-IG=135%
         collect_engine: Polars engine for .collect() - 'cpu' (default) for
             in-memory processing, 'streaming' for batched lower-memory execution.
@@ -951,7 +950,6 @@ class CalculationConfig:
     # to reconstruct the master config from scratch.
     irb_permissions: IRBPermissions | None = None
     equity_transitional: EquityTransitionalConfig = field(default_factory=EquityTransitionalConfig)
-    scaling_factor: Decimal = Decimal("1.06")  # IRB K scaling (CRR Art. 153)
     eur_gbp_rate: Decimal = Decimal("0.8732")  # FX rate for EUR threshold conversion
     # When True, the pipeline replaces eur_gbp_rate (and rebuilds thresholds)
     # with the (EUR, GBP) row from the loaded fx_rates table, if present.
@@ -1128,7 +1126,6 @@ class CalculationConfig:
             ),
             thresholds=RegulatoryThresholds.crr(eur_gbp_rate=eur_gbp_rate),
             permission_mode=permission_mode,
-            scaling_factor=Decimal("1.06"),
             eur_gbp_rate=eur_gbp_rate,
             enable_double_default=enable_double_default,
             crm_collateral_method=crm_collateral_method,
@@ -1243,7 +1240,6 @@ class CalculationConfig:
             thresholds=RegulatoryThresholds.basel_3_1(eur_gbp_rate=Decimal("0.8732")),
             permission_mode=permission_mode,
             equity_transitional=EquityTransitionalConfig.basel_3_1(),
-            scaling_factor=Decimal("1.0"),  # Removed under Basel 3.1 (PRA PS1/26)
             eur_gbp_rate=Decimal("0.8732"),  # Used only to derive sme_balance_sheet_threshold
             use_investment_grade_assessment=use_investment_grade_assessment,
             crm_collateral_method=crm_collateral_method,
