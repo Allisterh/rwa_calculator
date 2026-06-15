@@ -28,25 +28,29 @@ import polars as pl
 from watchfire import cites
 
 from rwa_calc.domain.enums import CQS
-from rwa_calc.rulebook.resolve import resolve
+from rwa_calc.rulebook.resolve import ResolvedRulepack, resolve
 
 # SA risk-weight values now live in the common/CRR rulepack packs. They are read
 # back here as the canonical module-level dicts/scalars so this module stays a
 # thin pack-binding shim with one source of truth (the pack); every builder /
 # engine / guarantee consumer keeps indexing the same names unchanged.
 _SA_RW_PACK = resolve("crr", date(2026, 1, 1))
+# Basel-3.1 overlay — sources the B31 ECRA institution tables hosted in this
+# module (their VALUES live in packs/b31.py; the bindings stay here for now).
+_SA_RW_PACK_B31 = resolve("b31", date(2027, 1, 1))
 _RETAIL_RISK_WEIGHT_DEC: Decimal = _SA_RW_PACK.scalar_param("retail_risk_weight").value
 _OTHER_ITEMS_DEFAULT_RW_DEC: Decimal = _SA_RW_PACK.scalar_param("other_items_default_rw").value
 
 
-def _cqs_rw_from_pack(name: str) -> dict[CQS, Decimal]:
+def _cqs_rw_from_pack(name: str, pack: ResolvedRulepack = _SA_RW_PACK) -> dict[CQS, Decimal]:
     """Read a CQS-enum-keyed SA risk-weight LookupTable back from the rulepack.
 
     Returns the exact ``dict[CQS, Decimal]`` the former module-level literal
     held (the pack stores the same Decimals under the same CQS keys), so all
-    downstream consumers are byte-identical.
+    downstream consumers are byte-identical. ``pack`` selects the regime overlay
+    (CRR by default; pass ``_SA_RW_PACK_B31`` for the B31 ECRA tables).
     """
-    return cast("dict[CQS, Decimal]", dict(_SA_RW_PACK.lookup(name).entries))
+    return cast("dict[CQS, Decimal]", dict(pack.lookup(name).entries))
 
 
 # =============================================================================
@@ -134,51 +138,25 @@ def _create_cgcb_df() -> pl.DataFrame:
 # INSTITUTION RISK WEIGHTS (CRR Art. 120 Table 3 / PRA PS1/26 Art. 120 ECRA)
 # =============================================================================
 
-INSTITUTION_RISK_WEIGHTS_CRR: dict[CQS, Decimal] = {
-    CQS.CQS1: Decimal("0.20"),  # AAA to AA-
-    CQS.CQS2: Decimal("0.50"),  # A+ to A- (CRR Art. 120 Table 3)
-    CQS.CQS3: Decimal("0.50"),  # BBB+ to BBB-
-    CQS.CQS4: Decimal("1.00"),  # BB+ to BB-
-    CQS.CQS5: Decimal("1.00"),  # B+ to B-
-    CQS.CQS6: Decimal("1.50"),  # CCC+ and below
-    CQS.UNRATED: Decimal("1.00"),  # Art. 121 fallback when sovereign-derived lookup unavailable
-}
+INSTITUTION_RISK_WEIGHTS_CRR: dict[CQS, Decimal] = _cqs_rw_from_pack("institution_rw_crr")
 
-INSTITUTION_RISK_WEIGHTS_B31_ECRA: dict[CQS, Decimal] = {
-    CQS.CQS1: Decimal("0.20"),
-    CQS.CQS2: Decimal("0.30"),  # PRA PS1/26 Art. 120 Table 3 ECRA
-    CQS.CQS3: Decimal("0.50"),
-    CQS.CQS4: Decimal("1.00"),
-    CQS.CQS5: Decimal("1.00"),
-    CQS.CQS6: Decimal("1.50"),
-    CQS.UNRATED: Decimal("0.40"),  # SCRA Grade A fallback when ECRA rating absent
-}
+INSTITUTION_RISK_WEIGHTS_B31_ECRA: dict[CQS, Decimal] = _cqs_rw_from_pack(
+    "institution_rw_b31_ecra", _SA_RW_PACK_B31
+)
 
 # CRR Art. 120(2) Table 4: rated institution, residual maturity <= 3 months.
 # Numerically identical to PRA PS1/26 Art. 120(2) Table 4 ECRA short-term;
 # kept as a separate dict for symmetry with the long-term CRR/B31 split.
-INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR: dict[CQS, Decimal] = {
-    CQS.CQS1: Decimal("0.20"),
-    CQS.CQS2: Decimal("0.20"),
-    CQS.CQS3: Decimal("0.20"),
-    CQS.CQS4: Decimal("0.50"),
-    CQS.CQS5: Decimal("0.50"),
-    CQS.CQS6: Decimal("1.50"),
-    CQS.UNRATED: Decimal("0.20"),  # Art. 121(3): unrated short-term institution = 20%
-}
+INSTITUTION_SHORT_TERM_RISK_WEIGHTS_CRR: dict[CQS, Decimal] = _cqs_rw_from_pack(
+    "institution_short_term_rw_crr"
+)
 
 # PRA PS1/26 Art. 120(2) Table 4: short-term ECRA rated institution
 # (residual maturity <= 3 months). Numerically identical to CRR Table 4 across
 # CQS 1-6; the unrated fallback maps to SCRA Grade A short-term (20%).
-INSTITUTION_SHORT_TERM_RISK_WEIGHTS_B31_ECRA: dict[CQS, Decimal] = {
-    CQS.CQS1: Decimal("0.20"),
-    CQS.CQS2: Decimal("0.20"),
-    CQS.CQS3: Decimal("0.20"),
-    CQS.CQS4: Decimal("0.50"),
-    CQS.CQS5: Decimal("0.50"),
-    CQS.CQS6: Decimal("1.50"),
-    CQS.UNRATED: Decimal("0.20"),  # PS1/26 SCRA Grade A short-term fallback = 20%
-}
+INSTITUTION_SHORT_TERM_RISK_WEIGHTS_B31_ECRA: dict[CQS, Decimal] = _cqs_rw_from_pack(
+    "institution_short_term_rw_b31_ecra", _SA_RW_PACK_B31
+)
 
 # CRR Art. 121(3): unrated institution, original effective maturity <= 3 months.
 # Overrides the Table 5 sovereign-derived fallback.
@@ -191,14 +169,9 @@ INSTITUTION_SHORT_TERM_UNRATED_RW_CRR = Decimal("0.20")
 # country of incorporation. Numeric values match Art. 116(1) Table 2 / Art.
 # 115(1)(a) Table 1A by design — the sovereign-derived shape is shared across
 # institutions, PSEs and RGLAs in CRR.
-INSTITUTION_RISK_WEIGHTS_SOVEREIGN_DERIVED: dict[CQS, Decimal] = {
-    CQS.CQS1: Decimal("0.20"),
-    CQS.CQS2: Decimal("0.50"),
-    CQS.CQS3: Decimal("1.00"),
-    CQS.CQS4: Decimal("1.00"),
-    CQS.CQS5: Decimal("1.00"),
-    CQS.CQS6: Decimal("1.50"),
-}
+INSTITUTION_RISK_WEIGHTS_SOVEREIGN_DERIVED: dict[CQS, Decimal] = _cqs_rw_from_pack(
+    "institution_rw_sovereign_derived"
+)
 
 
 def _create_institution_df(is_basel_3_1: bool = False) -> pl.DataFrame:

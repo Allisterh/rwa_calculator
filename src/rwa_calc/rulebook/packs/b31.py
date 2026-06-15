@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from rwa_calc.domain.enums import EquityType
+from rwa_calc.domain.enums import CQS, EquityType
 from rwa_calc.rulebook.model import (
     Citation,
     DecisionTable,
@@ -773,5 +773,41 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation(
             "PS1/26", "224", "Basel 3.1 FCCM supervisory haircuts (5 maturity bands)"
         ),
+    ),
+    # =========================================================================
+    # SA INSTITUTION ECRA CQS RISK-WEIGHT TABLES (PRA PS1/26 Art. 120)
+    # CQS-enum-keyed; read back into data/tables as dict[CQS, Decimal]. These are
+    # the Basel-3.1 ECRA values (CQS2=30%, long-term unrated=40% SCRA Grade A),
+    # previously mis-homed as B31 literals inside data/tables/crr_risk_weights.py.
+    # =========================================================================
+    "institution_rw_b31_ecra": LookupTable(
+        name="institution_rw_b31_ecra",
+        entries={
+            CQS.CQS1: Decimal("0.20"),
+            CQS.CQS2: Decimal("0.30"),
+            CQS.CQS3: Decimal("0.50"),
+            CQS.CQS4: Decimal("1.00"),
+            CQS.CQS5: Decimal("1.00"),
+            CQS.CQS6: Decimal("1.50"),
+            CQS.UNRATED: Decimal("0.40"),
+        },
+        key="cqs",
+        citation=Citation("PS1/26", "120", "Table 3 ECRA institution RW (CQS2 30%, unrated 40%)"),
+        default=Decimal("0.40"),
+    ),
+    "institution_short_term_rw_b31_ecra": LookupTable(
+        name="institution_short_term_rw_b31_ecra",
+        entries={
+            CQS.CQS1: Decimal("0.20"),
+            CQS.CQS2: Decimal("0.20"),
+            CQS.CQS3: Decimal("0.20"),
+            CQS.CQS4: Decimal("0.50"),
+            CQS.CQS5: Decimal("0.50"),
+            CQS.CQS6: Decimal("1.50"),
+            CQS.UNRATED: Decimal("0.20"),
+        },
+        key="cqs",
+        citation=Citation("PS1/26", "120", "(2) Table 4 ECRA short-term institution RW"),
+        default=Decimal("0.20"),
     ),
 }

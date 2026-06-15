@@ -857,4 +857,50 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation("CRR", "117", "(1) Table 2B non-named MDB RW by CQS"),
         default=Decimal("0.50"),
     ),
+    # Institution RW tables (CRR Art. 120 Table 3 ECRA / Art. 120(2) Table 4
+    # short-term / Art. 121 Table 5 sovereign-derived). CQS-enum-keyed.
+    "institution_rw_crr": LookupTable(
+        name="institution_rw_crr",
+        entries={
+            CQS.CQS1: Decimal("0.20"),
+            CQS.CQS2: Decimal("0.50"),
+            CQS.CQS3: Decimal("0.50"),
+            CQS.CQS4: Decimal("1.00"),
+            CQS.CQS5: Decimal("1.00"),
+            CQS.CQS6: Decimal("1.50"),
+            CQS.UNRATED: Decimal("1.00"),
+        },
+        key="cqs",
+        citation=Citation("CRR", "120", "Table 3 institution RW by CQS (CQS2 50%)"),
+        default=Decimal("1.00"),
+    ),
+    "institution_short_term_rw_crr": LookupTable(
+        name="institution_short_term_rw_crr",
+        entries={
+            CQS.CQS1: Decimal("0.20"),
+            CQS.CQS2: Decimal("0.20"),
+            CQS.CQS3: Decimal("0.20"),
+            CQS.CQS4: Decimal("0.50"),
+            CQS.CQS5: Decimal("0.50"),
+            CQS.CQS6: Decimal("1.50"),
+            CQS.UNRATED: Decimal("0.20"),
+        },
+        key="cqs",
+        citation=Citation("CRR", "120", "(2) Table 4 short-term institution RW (<=3m)"),
+        default=Decimal("0.20"),
+    ),
+    "institution_rw_sovereign_derived": LookupTable(
+        name="institution_rw_sovereign_derived",
+        entries={
+            CQS.CQS1: Decimal("0.20"),
+            CQS.CQS2: Decimal("0.50"),
+            CQS.CQS3: Decimal("1.00"),
+            CQS.CQS4: Decimal("1.00"),
+            CQS.CQS5: Decimal("1.00"),
+            CQS.CQS6: Decimal("1.50"),
+        },
+        key="cqs",
+        citation=Citation("CRR", "121", "Table 5 sovereign-derived institution RW (unrated)"),
+        default=Decimal("1.00"),
+    ),
 }
