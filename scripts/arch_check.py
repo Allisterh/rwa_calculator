@@ -150,6 +150,30 @@ VALIDATION_ENUM_ALLOWLIST: dict[str, set[str]] = {
     "engine/aggregator/_securitisation.py": {"MONEY_COLS"},
 }
 
+# Engine modules permitted a direct regime-boolean read — ``config.is_crr`` /
+# ``config.is_basel_3_1`` as an attribute or the ``getattr`` form. Regime-
+# specific behaviour should read a cited rulepack Feature (``pack.feature(...)``)
+# so the regime seam stays in the rulebook; these are the sanctioned exceptions
+# (check 17). New entries require explicit justification.
+REGIME_BOOL_ALLOWLIST: dict[str, str] = {
+    # Dual-run config-type validation — asserts each framework config carries
+    # the expected regime before a parallel CRR-vs-B31 run, not a calc branch.
+    "engine/comparison.py": "dual-run config-type validation, not a calculation branch",
+    # CRR-only EUR->GBP threshold sync: CRR thresholds are EUR-denominated and
+    # converted via eur_gbp_rate; Basel 3.1 thresholds are GBP-native (PS1/26).
+    # A genuine regime asymmetry with no rulepack Feature analogue.
+    "engine/pipeline.py": "CRR-only EUR/GBP threshold-sync regime asymmetry",
+    # No-pack bootstrap fallback (unit-test path); production always threads the
+    # resolved rulepack and reads its Features. Retired when the pack becomes a
+    # mandatory argument on these entry points.
+    "engine/crm/haircuts.py": "no-pack bootstrap fallback (pack-mandatory pending)",
+    "engine/stages/hierarchy/facility_undrawn.py": (
+        "no-pack bootstrap fallback (pack-mandatory pending)"
+    ),
+}
+
+_REGIME_BOOL_ATTRS = frozenset({"is_crr", "is_basel_3_1"})
+
 # Pack Citations whose article is legitimately outside watchfire's bundled
 # credit-risk index — a documented soft-warn (not a fatal gap), keyed by
 # (instrument, article). Mirrors the PS / PRA pending-index soft policy of
@@ -693,6 +717,56 @@ def check_no_validation_enums_in_engine(path: Path) -> list[str]:
                 violations.append(
                     f"  {py_file}:{lineno}: {name} -- string-literal collection in engine/ "
                     "(move to src/rwa_calc/data/schemas.py or allowlist in arch_check.py)"
+                )
+    return violations
+
+
+def _regime_bool_violation(node: ast.AST) -> str | None:
+    """Return the offending regime-bool attr for an AST node, else None.
+
+    Catches ``<expr>.is_crr`` / ``<expr>.is_basel_3_1`` attribute reads and the
+    ``getattr(<expr>, "is_crr"|"is_basel_3_1"[, ...])`` form.
+    """
+    if isinstance(node, ast.Attribute) and node.attr in _REGIME_BOOL_ATTRS:
+        return node.attr
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) >= 2
+        and isinstance(node.args[1], ast.Constant)
+        and node.args[1].value in _REGIME_BOOL_ATTRS
+    ):
+        return f"getattr(..., {node.args[1].value!r})"
+    return None
+
+
+def check_no_regime_bool_in_engine(path: Path) -> list[str]:
+    """engine/** must not branch on ``config.is_crr`` / ``config.is_basel_3_1``.
+
+    Regime-specific behaviour reads a cited rulepack Feature
+    (``pack.feature(...)``), keeping the regime seam in the rulebook rather than
+    scattering ``is_crr`` / ``is_basel_3_1`` checks through the engine. Catches
+    both attribute reads and the ``getattr`` form; sanctioned exceptions
+    (dual-run validation, genuine regime asymmetries, no-pack bootstrap
+    fallbacks) are listed in REGIME_BOOL_ALLOWLIST.
+    """
+    violations: list[str] = []
+    for py_file in _iter_engine_files(path):
+        rel = py_file.relative_to(path).as_posix()
+        if rel in REGIME_BOOL_ALLOWLIST:
+            continue
+        try:
+            tree = ast.parse(py_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            offending = _regime_bool_violation(node)
+            if offending is not None:
+                violations.append(
+                    f"  {py_file}:{getattr(node, 'lineno', '?')}: reads {offending} -- "
+                    "regime branching belongs in a rulepack Feature (pack.feature(...)); "
+                    "allowlist in arch_check.py only for a genuine asymmetry / bootstrap"
                 )
     return violations
 
@@ -1496,6 +1570,10 @@ def main() -> int:
         (
             "No validation string-enums in engine/ (use data/schemas.py)",
             check_no_validation_enums_in_engine,
+        ),
+        (
+            "No config.is_crr/is_basel_3_1 in engine/ (use a rulepack Feature)",
+            check_no_regime_bool_in_engine,
         ),
         (
             "No inline `not in schema.names()` in engine/ (use ensure_columns)",

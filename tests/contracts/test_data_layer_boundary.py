@@ -58,3 +58,20 @@ def test_no_validation_enums_in_engine() -> None:
         "src/rwa_calc/data/schemas.py (or add to VALIDATION_ENUM_ALLOWLIST in "
         "scripts/arch_check.py with justification):\n" + "\n".join(violations)
     )
+
+
+def test_no_regime_bool_in_engine() -> None:
+    """engine/** must not branch on config.is_crr / config.is_basel_3_1.
+
+    Regime-specific behaviour reads a cited rulepack Feature (pack.feature(...))
+    so the regime seam stays in the rulebook. Genuine exceptions (dual-run
+    validation, EUR/GBP regime asymmetry, no-pack bootstrap fallbacks) live in
+    REGIME_BOOL_ALLOWLIST.
+    """
+    arch_check = _load_arch_check()
+    violations = arch_check.check_no_regime_bool_in_engine(SRC_ROOT)
+    assert not violations, (
+        "Regime boolean read in engine/** — branch on a rulepack Feature "
+        "(pack.feature(...)) instead, or add to REGIME_BOOL_ALLOWLIST in "
+        "scripts/arch_check.py with justification:\n" + "\n".join(violations)
+    )
