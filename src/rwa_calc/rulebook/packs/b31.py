@@ -1026,4 +1026,60 @@ ENTRIES: dict[str, RuleEntry] = {
         value=Decimal("0.90"),
         citation=Citation("PS1/26", "123B", "(2) multiplier waived when hedge coverage >= 90%"),
     ),
+    # SA B31 REAL-ESTATE EXPR SCALARS (PRA PS1/26 Art. 124I/124J/124K/124L)
+    "b31_cre_income_junior_rw_low": ScalarParam(
+        name="b31_cre_income_junior_rw_low",
+        value=Decimal("1.00"),
+        citation=Citation("PS1/26", "124I", "(3)(a) junior CRE LTV<=60% 100%"),
+    ),
+    "b31_cre_income_junior_rw_mid": ScalarParam(
+        name="b31_cre_income_junior_rw_mid",
+        value=Decimal("1.25"),
+        citation=Citation("PS1/26", "124I", "(3)(b) junior CRE 60-80% 125%"),
+    ),
+    "b31_cre_income_junior_rw_high": ScalarParam(
+        name="b31_cre_income_junior_rw_high",
+        value=Decimal("1.375"),
+        citation=Citation("PS1/26", "124I", "(3)(c) junior CRE LTV>80% 137.5%"),
+    ),
+    "b31_rre_residual_rw_natural_person": ScalarParam(
+        name="b31_rre_residual_rw_natural_person",
+        value=Decimal("0.75"),
+        citation=Citation("PS1/26", "124L", "(a) natural person / retail-SME 75%"),
+    ),
+    "b31_rre_residual_rw_retail_sme": ScalarParam(
+        name="b31_rre_residual_rw_retail_sme",
+        value=Decimal("0.75"),
+        citation=Citation("PS1/26", "124L", "(a) retail-qualifying SME 75%"),
+    ),
+    "b31_rre_residual_rw_other_sme": ScalarParam(
+        name="b31_rre_residual_rw_other_sme",
+        value=Decimal("0.85"),
+        citation=Citation("PS1/26", "124L", "(b) other SME 85%"),
+    ),
+    "b31_rre_residual_rw_social_housing_floor": ScalarParam(
+        name="b31_rre_residual_rw_social_housing_floor",
+        value=Decimal("0.75"),
+        citation=Citation("PS1/26", "124L", "(c) social housing floor 75%"),
+    ),
+    "b31_adc_risk_weight": ScalarParam(
+        name="b31_adc_risk_weight",
+        value=Decimal("1.50"),
+        citation=Citation("PS1/26", "124K", "(1) ADC 150%"),
+    ),
+    "b31_adc_presold_risk_weight": ScalarParam(
+        name="b31_adc_presold_risk_weight",
+        value=Decimal("1.00"),
+        citation=Citation("PS1/26", "124K", "(2) qualifying residential pre-sold ADC 100%"),
+    ),
+    "b31_other_re_income_dependent_rw": ScalarParam(
+        name="b31_other_re_income_dependent_rw",
+        value=Decimal("1.50"),
+        citation=Citation("PS1/26", "124J", "(1) other-RE income-dependent 150%"),
+    ),
+    "b31_other_re_cre_floor_rw": ScalarParam(
+        name="b31_other_re_cre_floor_rw",
+        value=Decimal("0.60"),
+        citation=Citation("PS1/26", "124J", "(3)(b) other-RE CRE floor 60%"),
+    ),
 }

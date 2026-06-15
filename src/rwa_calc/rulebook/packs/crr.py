@@ -978,4 +978,23 @@ ENTRIES: dict[str, RuleEntry] = {
         value=Decimal("0.20"),
         citation=Citation("CRR", "127", "20% provision threshold"),
     ),
+    # SA REAL-ESTATE RW PARAMETERS (CRR Art. 125/126)
+    "residential_mortgage_params": FormulaParams(
+        name="residential_mortgage_params",
+        params={
+            "ltv_threshold": Decimal("0.80"),
+            "rw_low_ltv": Decimal("0.35"),
+            "rw_high_ltv": Decimal("0.75"),
+        },
+        citation=Citation("CRR", "125", "residential mortgage LTV<=80% 35% / excess 75%"),
+    ),
+    "commercial_re_params": FormulaParams(
+        name="commercial_re_params",
+        params={
+            "ltv_threshold": Decimal("0.50"),
+            "rw_low_ltv": Decimal("0.50"),
+            "rw_standard": Decimal("1.00"),
+        },
+        citation=Citation("CRR", "126", "commercial RE LTV<=50%+income 50% / else 100%"),
+    ),
 }

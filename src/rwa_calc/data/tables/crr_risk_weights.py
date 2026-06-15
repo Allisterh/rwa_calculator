@@ -583,11 +583,9 @@ class ResidentialMortgageParams(TypedDict):
     rw_high_ltv: Decimal
 
 
-RESIDENTIAL_MORTGAGE_PARAMS: ResidentialMortgageParams = {
-    "ltv_threshold": Decimal("0.80"),
-    "rw_low_ltv": Decimal("0.35"),  # LTV <= 80%
-    "rw_high_ltv": Decimal("0.75"),  # Portion above 80% LTV
-}
+RESIDENTIAL_MORTGAGE_PARAMS: ResidentialMortgageParams = cast(
+    "ResidentialMortgageParams", dict(_SA_RW_PACK.formula("residential_mortgage_params").params)
+)
 
 
 def _create_residential_mortgage_df() -> pl.DataFrame:
@@ -629,11 +627,9 @@ class CommercialREParams(TypedDict):
     rw_standard: Decimal
 
 
-COMMERCIAL_RE_PARAMS: CommercialREParams = {
-    "ltv_threshold": Decimal("0.50"),
-    "rw_low_ltv": Decimal("0.50"),  # LTV <= 50% with income cover
-    "rw_standard": Decimal("1.00"),  # Otherwise
-}
+COMMERCIAL_RE_PARAMS: CommercialREParams = cast(
+    "CommercialREParams", dict(_SA_RW_PACK.formula("commercial_re_params").params)
+)
 
 
 def _create_commercial_re_df() -> pl.DataFrame:

@@ -99,10 +99,18 @@ B31_RESIDENTIAL_GENERAL_MAX_SECURED_RATIO = Decimal("0.55")  # 55% of property v
 B31_RRE_THREE_PROPERTY_LIMIT = 3
 
 # Art. 124L — Counterparty type table for RRE residual risk weight
-B31_RRE_RESIDUAL_RW_NATURAL_PERSON = Decimal("0.75")  # Art. 124L(a): natural person
-B31_RRE_RESIDUAL_RW_RETAIL_SME = Decimal("0.75")  # Art. 124L(a): retail-qualifying SME
-B31_RRE_RESIDUAL_RW_OTHER_SME = Decimal("0.85")  # Art. 124L(b): other SME (unrated)
-B31_RRE_RESIDUAL_RW_SOCIAL_HOUSING_FLOOR = Decimal("0.75")  # Art. 124L(c): floor for social housing
+B31_RRE_RESIDUAL_RW_NATURAL_PERSON = _scalar_dec(
+    "b31_rre_residual_rw_natural_person"
+)  # Art. 124L(a): natural person
+B31_RRE_RESIDUAL_RW_RETAIL_SME = _scalar_dec(
+    "b31_rre_residual_rw_retail_sme"
+)  # Art. 124L(a): retail-qualifying SME
+B31_RRE_RESIDUAL_RW_OTHER_SME = _scalar_dec(
+    "b31_rre_residual_rw_other_sme"
+)  # Art. 124L(b): other SME (unrated)
+B31_RRE_RESIDUAL_RW_SOCIAL_HOUSING_FLOOR = _scalar_dec(
+    "b31_rre_residual_rw_social_housing_floor"
+)  # Art. 124L(c): floor for social housing
 
 # =============================================================================
 # RESIDENTIAL REAL ESTATE — INCOME-PRODUCING (PRA PS1/26 Art. 124G, Table 6B)
@@ -137,9 +145,15 @@ B31_RESIDENTIAL_INCOME_LTV_BANDS: list[dict[str, Decimal]] = [
 # Art. 124I(3) junior-charge risk weights — absolute overrides, NOT multipliers.
 # Applying as multipliers on the 110% >80% base would produce 151.25% (= 110% × 1.375),
 # a +13.75pp over-capital error. PRA PS1/26 ps126app1.pdf p.57 specifies absolute values.
-B31_CRE_INCOME_JUNIOR_RW_LOW = Decimal("1.00")  # Art. 124I(3)(a): LTV ≤ 60%
-B31_CRE_INCOME_JUNIOR_RW_MID = Decimal("1.25")  # Art. 124I(3)(b): 60% < LTV ≤ 80%
-B31_CRE_INCOME_JUNIOR_RW_HIGH = Decimal("1.375")  # Art. 124I(3)(c): LTV > 80%
+B31_CRE_INCOME_JUNIOR_RW_LOW = _scalar_dec(
+    "b31_cre_income_junior_rw_low"
+)  # Art. 124I(3)(a): LTV ≤ 60%
+B31_CRE_INCOME_JUNIOR_RW_MID = _scalar_dec(
+    "b31_cre_income_junior_rw_mid"
+)  # Art. 124I(3)(b): 60% < LTV ≤ 80%
+B31_CRE_INCOME_JUNIOR_RW_HIGH = _scalar_dec(
+    "b31_cre_income_junior_rw_high"
+)  # Art. 124I(3)(c): LTV > 80%
 
 B31_COMMERCIAL_INCOME_LTV_BANDS: list[dict[str, Decimal]] = [
     {"ltv_lower": Decimal("0.00"), "ltv_upper": Decimal("0.80"), "risk_weight": Decimal("1.00")},
@@ -166,8 +180,8 @@ B31_COMMERCIAL_GENERAL_MAX_SECURED_RATIO = Decimal("0.55")  # 55% of property va
 # ADC EXPOSURES (CRE20.87-88)
 # =============================================================================
 
-B31_ADC_RISK_WEIGHT = Decimal("1.50")
-B31_ADC_PRESOLD_RISK_WEIGHT = Decimal("1.00")
+B31_ADC_RISK_WEIGHT = _scalar_dec("b31_adc_risk_weight")
+B31_ADC_PRESOLD_RISK_WEIGHT = _scalar_dec("b31_adc_presold_risk_weight")
 
 # =============================================================================
 # OTHER REAL ESTATE — NON-QUALIFYING RE (PRA PS1/26 Art. 124J)
@@ -178,8 +192,8 @@ B31_ADC_PRESOLD_RISK_WEIGHT = Decimal("1.00")
 #   - CRE non-dependent: max(60%, counterparty RW)
 # =============================================================================
 
-B31_OTHER_RE_INCOME_DEPENDENT_RW = Decimal("1.50")
-B31_OTHER_RE_CRE_FLOOR_RW = Decimal("0.60")
+B31_OTHER_RE_INCOME_DEPENDENT_RW = _scalar_dec("b31_other_re_income_dependent_rw")
+B31_OTHER_RE_CRE_FLOOR_RW = _scalar_dec("b31_other_re_cre_floor_rw")
 
 # =============================================================================
 # CORPORATE CQS-BASED RISK WEIGHTS — BASEL 3.1 (PRA PS1/26 Art. 122(2) Table 6)
