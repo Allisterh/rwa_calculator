@@ -368,4 +368,10 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation("CRR", "280", "Table 1 commodity SF by bucket"),
         default=Decimal("0.18"),
     ),
+    # SA-CCR specific wrong-way-risk LGD override (CRR Art. 291(5)(c)): 100%.
+    "ccr_wwr_specific_lgd_override": ScalarParam(
+        name="ccr_wwr_specific_lgd_override",
+        value=Decimal("1.0"),
+        citation=Citation("CRR", "291", "(5)(c) specific WWR LGD = 100% override"),
+    ),
 }
