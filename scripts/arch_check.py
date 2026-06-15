@@ -204,6 +204,9 @@ LOGGER_REQUIRED_EXEMPT: set[str] = {
     # Pure parameter module: derives the RE-split secured-LTV cap records from
     # the rulepack. No pipeline-stage telemetry (the stage is stage.py).
     "engine/stages/re_split/params.py",
+    # Pure expression-builder module: compiles the guarantor / entity SA-RW
+    # when/then chains from the rulepack. No pipeline-stage telemetry.
+    "engine/sa/guarantor_rw.py",
     "engine/supporting_factors.py",
     "engine/irb/adjustments.py",
     "engine/irb/formulas.py",
@@ -377,15 +380,13 @@ IMPORT_DIRECTION_ALLOWLIST: dict[str, set[str]] = {
     "reporting/corep/generator.py": {"rwa_calc.api.models"},
     "reporting/pillar3/generator.py": {"rwa_calc.api.service"},
     # Phase 5 / S12 maximalist migration (data/tables -> rulepack packs): these
-    # data/ modules read regulatory scalars back from the rulepack during the
-    # table-move so the pack is the single source of truth. guarantor_rw's
-    # expr builders relocate into engine/ in S12-12 (resolving its inversion);
-    # crr_risk_weights reads the moved SA invariant scalars for the test-only
-    # convenience helpers (lookup_risk_weight / _create_retail_df), pending the
-    # module's emptying in S12-11.
+    # data/ modules read their regulatory values back from the rulepack via the
+    # dict/scalar-alias bindings so the pack is the single source of truth. The
+    # CQS-RW dicts + DataFrame builders stay here (consumed by the SA/equity join
+    # builders + the test parity suite); their import-ban repoint is S12-13. The
+    # guarantor expr builders relocated into engine/sa/guarantor_rw.py in S12-12.
     "data/tables/crr_risk_weights.py": {"rwa_calc.rulebook.resolve"},
     "data/tables/b31_risk_weights.py": {"rwa_calc.rulebook.resolve"},
-    "data/tables/guarantor_rw.py": {"rwa_calc.rulebook"},
 }
 
 

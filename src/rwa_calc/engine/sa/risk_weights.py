@@ -105,7 +105,6 @@ from rwa_calc.data.tables.crr_risk_weights import (
     RGLA_RISK_WEIGHTS_SOVEREIGN_DERIVED,
     RGLA_UK_DEVOLVED_RW,
     RGLA_UNRATED_DEFAULT_RW,
-    build_institution_guarantor_rw_expr,
     get_combined_cqs_risk_weights,
 )
 from rwa_calc.data.tables.eu_sovereign import (
@@ -113,6 +112,7 @@ from rwa_calc.data.tables.eu_sovereign import (
     denomination_currency_expr,
 )
 from rwa_calc.domain.enums import CQS, EquityType
+from rwa_calc.engine.sa.guarantor_rw import build_institution_guarantor_rw_expr
 from rwa_calc.rulebook import RulepackV0
 from rwa_calc.rulebook.compile import lookup_float_map, scalar_value
 from rwa_calc.rulebook.resolve import resolve

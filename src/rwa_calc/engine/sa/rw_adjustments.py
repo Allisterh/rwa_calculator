@@ -44,8 +44,8 @@ from rwa_calc.data.tables.eu_sovereign import (
     build_domestic_cgcb_guarantor_expr,
     denomination_currency_expr,
 )
-from rwa_calc.data.tables.guarantor_rw import build_guarantor_rw_expr
 from rwa_calc.domain.enums import CRMCollateralMethod
+from rwa_calc.engine.sa.guarantor_rw import build_guarantor_rw_expr
 from rwa_calc.engine.sa.risk_weights import _SA_B31_RW
 from rwa_calc.rulebook import RulepackV0
 

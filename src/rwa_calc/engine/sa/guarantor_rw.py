@@ -1,29 +1,28 @@
 """
-Shared guarantor / entity SA risk-weight expression builder.
+Guarantor / entity SA risk-weight expression builders.
 
 Pipeline position:
-    Compiled by the guarantee-substitution stages — the IRB branch
+    Compiled by the guarantee-substitution paths — the IRB branch
     (``engine/irb/guarantee.py::_compute_guarantor_rw_sa``) and the SA
-    namespace (``engine/sa/namespace.py::_build_guarantor_rw_expr``) — and
+    branch (``engine/sa/rw_adjustments.py::_build_guarantor_rw_expr``) — and
     by the hierarchy facility-share selection
     (``engine/stages/hierarchy/facility_undrawn.py`` via
-    ``build_entity_rw_expr``). The builder is the single rulepack-compiled
-    source for "what SA risk weight does this guarantor / entity attract?".
+    ``build_entity_rw_expr``). This module is the single source for "what SA
+    risk weight does this guarantor / entity attract?".
 
 Key responsibilities:
-- Reproduce the SA-side guarantor branch chain and order exactly
-  (see ``engine/sa/namespace.py::_build_guarantor_rw_expr``), parameterised
-  on column names and caller-owned expressions so SA, IRB and the hierarchy
-  preview can all compile the same chain.
+- Reproduce the SA-side guarantor branch chain and order exactly so SA, IRB
+  and the hierarchy preview can all compile the same chain
+  (``build_guarantor_rw_expr``), parameterised on column names and
+  caller-owned expressions.
 - Provide the entity-level SA-RW preview (``build_entity_rw_expr``) that
   routes an entity-type column through the ``ENTITY_TYPES_BY_SA_CLASS``
   buckets for the hierarchy facility-share riskiest-counterparty selection.
-- Drive every regulatory value from the canonical table constants in
-  ``crr_risk_weights`` / ``b31_risk_weights`` — this module declares zero
-  new scalars.
-- Delegate institution and corporate pricing to the existing
-  ``build_institution_guarantor_rw_expr`` / ``build_corporate_guarantor_rw_expr``
-  builders so the CQS dicts remain the single source of truth.
+- Drive every regulatory value from the rulepack (CQS risk-weight
+  LookupTables + invariant scalars) so the pack is the single source of
+  truth and this module declares zero new regulatory literals.
+- Delegate institution and corporate pricing to
+  ``build_institution_guarantor_rw_expr`` / ``build_corporate_guarantor_rw_expr``.
 
 References:
 - CRR Art. 114: central govt / central bank risk weights (incl. 114(4)/(7)
@@ -49,25 +48,11 @@ References:
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import polars as pl
 from watchfire import cites
 
-from rwa_calc.data.tables.crr_risk_weights import (
-    CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS,
-    CORPORATE_RISK_WEIGHTS,
-    IO_ZERO_RW,
-    MDB_NAMED_ZERO_RW,
-    MDB_RISK_WEIGHTS_TABLE_2B,
-    MDB_UNRATED_RW,
-    PSE_RISK_WEIGHTS_OWN_RATING,
-    PSE_UNRATED_DEFAULT_RW,
-    RGLA_DOMESTIC_CURRENCY_RW,
-    RGLA_RISK_WEIGHTS_OWN_RATING,
-    build_corporate_guarantor_rw_expr,
-    build_institution_guarantor_rw_expr,
-)
 from rwa_calc.data.tables.entity_class_mapping import ENTITY_TYPES_BY_SA_CLASS
 from rwa_calc.domain.enums import CQS, ExposureClass
 from rwa_calc.rulebook.compile import scalar_value
@@ -76,13 +61,67 @@ from rwa_calc.rulebook.resolve import resolve
 if TYPE_CHECKING:
     from decimal import Decimal
 
-# Invariant SA risk weights resolved from the rulepack once at module load
-# (QCCP Art. 306, regulatory retail Art. 123, high-risk items Art. 128).
-_GRW_PACK = resolve("crr", date(2026, 1, 1))
-_QCCP_CLIENT_CLEARED_RW = scalar_value(_GRW_PACK.scalar_param("qccp_client_cleared_rw"))
-_QCCP_PROPRIETARY_RW = scalar_value(_GRW_PACK.scalar_param("qccp_proprietary_rw"))
-_RETAIL_RISK_WEIGHT = scalar_value(_GRW_PACK.scalar_param("retail_risk_weight"))
-_HIGH_RISK_RW = scalar_value(_GRW_PACK.scalar_param("high_risk_rw"))
+# =============================================================================
+# RULEPACK-SOURCED REGULATORY VALUES
+#
+# The CQS risk-weight LookupTables and invariant SA scalars live in the
+# common/CRR/B31 rulepack packs. They are read back here once at module load
+# as the canonical Decimal maps / scalars the builders index — keeping the
+# pack the single source of truth while the builder bodies stay byte-identical
+# (``float(table[key])`` at the same conversion boundary as before).
+# =============================================================================
+
+_CRR_PACK = resolve("crr", date(2026, 1, 1))
+_B31_PACK = resolve("b31", date(2027, 1, 1))
+
+# CQS-enum-keyed CRR risk-weight tables (Art. 114-122, 129).
+_CGCB_RW = cast("dict[CQS, Decimal]", dict(_CRR_PACK.lookup("cgcb_risk_weights").entries))
+_MDB_RW = cast("dict[CQS, Decimal]", dict(_CRR_PACK.lookup("mdb_risk_weights_table_2b").entries))
+_PSE_OWN_RW = cast(
+    "dict[CQS, Decimal]", dict(_CRR_PACK.lookup("pse_risk_weights_own_rating").entries)
+)
+_RGLA_OWN_RW = cast(
+    "dict[CQS, Decimal]", dict(_CRR_PACK.lookup("rgla_risk_weights_own_rating").entries)
+)
+_CORPORATE_RW = cast("dict[CQS, Decimal]", dict(_CRR_PACK.lookup("corporate_risk_weights").entries))
+_INSTITUTION_RW_CRR = cast(
+    "dict[CQS, Decimal]", dict(_CRR_PACK.lookup("institution_rw_crr").entries)
+)
+_INSTITUTION_SHORT_TERM_RW_CRR = cast(
+    "dict[CQS, Decimal]", dict(_CRR_PACK.lookup("institution_short_term_rw_crr").entries)
+)
+
+# Basel-3.1 institution ECRA tables (PS1/26 Art. 120) — sourced from the B31 overlay.
+_INSTITUTION_RW_B31_ECRA = cast(
+    "dict[CQS, Decimal]", dict(_B31_PACK.lookup("institution_rw_b31_ecra").entries)
+)
+_INSTITUTION_SHORT_TERM_RW_B31_ECRA = cast(
+    "dict[CQS, Decimal]", dict(_B31_PACK.lookup("institution_short_term_rw_b31_ecra").entries)
+)
+
+# Basel-3.1 SCRA grade -> RW (PS1/26 Art. 121, str-keyed) and corporate Table 6
+# (PS1/26 Art. 122(2), raw int|None keys).
+_B31_SCRA_RW = cast("dict[str, Decimal]", dict(_B31_PACK.lookup("b31_scra_risk_weights").entries))
+_B31_SCRA_SHORT_TERM_RW = cast(
+    "dict[str, Decimal]", dict(_B31_PACK.lookup("b31_scra_short_term_risk_weights").entries)
+)
+_B31_CORPORATE_RW = cast(
+    "dict[int | None, Decimal]", dict(_B31_PACK.lookup("b31_corporate_risk_weights").entries)
+)
+
+# Invariant SA risk-weight scalars (Decimal, float()-ed inline by the builders).
+_IO_ZERO_RW: Decimal = _CRR_PACK.scalar_param("io_zero_rw").value
+_MDB_NAMED_ZERO_RW: Decimal = _CRR_PACK.scalar_param("mdb_named_zero_rw").value
+_MDB_UNRATED_RW: Decimal = _CRR_PACK.scalar_param("mdb_unrated_rw").value
+_PSE_UNRATED_DEFAULT_RW: Decimal = _CRR_PACK.scalar_param("pse_unrated_default_rw").value
+_RGLA_DOMESTIC_CURRENCY_RW: Decimal = _CRR_PACK.scalar_param("rgla_domestic_currency_rw").value
+
+# Invariant SA risk weights pre-converted to float (QCCP Art. 306, regulatory
+# retail Art. 123, high-risk items Art. 128).
+_QCCP_CLIENT_CLEARED_RW = scalar_value(_CRR_PACK.scalar_param("qccp_client_cleared_rw"))
+_QCCP_PROPRIETARY_RW = scalar_value(_CRR_PACK.scalar_param("qccp_proprietary_rw"))
+_RETAIL_RISK_WEIGHT = scalar_value(_CRR_PACK.scalar_param("retail_risk_weight"))
+_HIGH_RISK_RW = scalar_value(_CRR_PACK.scalar_param("high_risk_rw"))
 
 
 @cites("CRR Art. 114")
@@ -110,7 +149,7 @@ def build_guarantor_rw_expr(
     ``ENTITY_TYPE_TO_SA_CLASS`` by the caller — e.g. the CRM processor)
     rather than regex on entity_type, ensuring all valid entity types are
     covered. Reproduces the SA-side reference chain
-    (``engine/sa/namespace.py::_build_guarantor_rw_expr``) branch-for-branch.
+    (``engine/sa/rw_adjustments.py::_build_guarantor_rw_expr``) branch-for-branch.
 
     Branch order (first match wins):
         no guarantee -> null (only when ``no_guarantee_expr`` is supplied)
@@ -170,7 +209,7 @@ def build_guarantor_rw_expr(
     # conservative 100% PSE/RGLA unrated default applies.
     sovereign_derived_unrated = _pse_rgla_unrated_fallback_expr(country_code_col)
 
-    cgcb_unrated = float(CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS[CQS.UNRATED])
+    cgcb_unrated = float(_CGCB_RW[CQS.UNRATED])
 
     is_domestic_guarantor = domestic_cgcb_expr if domestic_cgcb_expr is not None else pl.lit(False)
     skip_substitution = no_guarantee_expr if no_guarantee_expr is not None else pl.lit(False)
@@ -186,7 +225,7 @@ def build_guarantor_rw_expr(
         .then(
             _cqs_table_lookup_expr(
                 cqs_col,
-                CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS,
+                _CGCB_RW,
                 cgcb_unrated,
             )
         )
@@ -200,22 +239,22 @@ def build_guarantor_rw_expr(
         )
         # International Organisation (Art. 118): 0% unconditional.
         .when(gec == "international_organisation")
-        .then(pl.lit(float(IO_ZERO_RW)))
+        .then(pl.lit(float(_IO_ZERO_RW)))
         # Named MDB (Art. 117(2)): 0% unconditional.
         .when((gec == "mdb") & (pl.col(entity_type_col).fill_null("") == "mdb_named"))
-        .then(pl.lit(float(MDB_NAMED_ZERO_RW)))
+        .then(pl.lit(float(_MDB_NAMED_ZERO_RW)))
         # Rated / unrated non-named MDB — Table 2B (Art. 117(1)).
         .when(gec == "mdb")
         .then(
             _cqs_table_lookup_expr(
                 cqs_col,
-                MDB_RISK_WEIGHTS_TABLE_2B,
-                float(MDB_UNRATED_RW),
+                _MDB_RW,
+                float(_MDB_UNRATED_RW),
             )
         )
-        # Institution guarantors — RW driven from INSTITUTION_RISK_WEIGHTS_CRR /
-        # INSTITUTION_RISK_WEIGHTS_B31_ECRA so the dicts remain the single source
-        # of truth. When the short-term flag evaluates True (CRR/PS1/26
+        # Institution guarantors — RW driven from institution_rw_crr /
+        # institution_rw_b31_ecra so the pack remains the single source of
+        # truth. When the short-term flag evaluates True (CRR/PS1/26
         # Art. 120(2)), the short-term Table 4 dicts apply instead.
         .when(gec == "institution")
         .then(
@@ -231,7 +270,7 @@ def build_guarantor_rw_expr(
         .then(
             _cqs_table_lookup_expr(
                 cqs_col,
-                PSE_RISK_WEIGHTS_OWN_RATING,
+                _PSE_OWN_RW,
                 sovereign_derived_unrated,
             )
         )
@@ -240,7 +279,7 @@ def build_guarantor_rw_expr(
         .then(
             _cqs_table_lookup_expr(
                 cqs_col,
-                RGLA_RISK_WEIGHTS_OWN_RATING,
+                _RGLA_OWN_RW,
                 sovereign_derived_unrated,
             )
         )
@@ -299,7 +338,7 @@ def build_entity_rw_expr(
     Branch-parity notes (the pre-existing preview branches are preserved
     value-for-value):
 
-    - The corporate branch always prices from ``CORPORATE_RISK_WEIGHTS``
+    - The corporate branch always prices from ``corporate_risk_weights``
       (CRR Art. 122 Table 5), NOT the Basel 3.1 Table 6 — matching the
       historical preview. Covered bonds use the corporate-equivalent CQS RWs
       in the preview; the precise covered-bond table only applies in real
@@ -347,37 +386,37 @@ def build_entity_rw_expr(
         .then(
             _cqs_table_lookup_expr(
                 cqs_col,
-                CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS,
-                float(CENTRAL_GOVT_CENTRAL_BANK_RISK_WEIGHTS[CQS.UNRATED]),
+                _CGCB_RW,
+                float(_CGCB_RW[CQS.UNRATED]),
             )
         )
         # International Organisation (Art. 118): 0% unconditional.
         .when(et.is_in(io_types))
-        .then(pl.lit(float(IO_ZERO_RW)))
+        .then(pl.lit(float(_IO_ZERO_RW)))
         # Named MDB (Art. 117(2)): 0% unconditional — carved out ahead of Table 2B.
         .when(et == "mdb_named")
-        .then(pl.lit(float(MDB_NAMED_ZERO_RW)))
+        .then(pl.lit(float(_MDB_NAMED_ZERO_RW)))
         # Rated / unrated non-named MDB — Table 2B (Art. 117(1)).
         .when(et.is_in(mdb_types))
-        .then(_cqs_table_lookup_expr(cqs_col, MDB_RISK_WEIGHTS_TABLE_2B, float(MDB_UNRATED_RW)))
+        .then(_cqs_table_lookup_expr(cqs_col, _MDB_RW, float(_MDB_UNRATED_RW)))
         # Institution — Art. 120 Table 3 / PS1/26 ECRA via the shared builder
-        # so the dicts remain the single source of truth.
+        # so the pack remains the single source of truth.
         .when(et.is_in(institution_types))
         .then(build_institution_guarantor_rw_expr(cqs_col, is_basel_3_1))
         # PSE — Art. 116(2) Table 2A for rated, GB/other approximation for unrated.
         .when(et.is_in(pse_types))
-        .then(_cqs_table_lookup_expr(cqs_col, PSE_RISK_WEIGHTS_OWN_RATING, unrated_pse_rgla))
+        .then(_cqs_table_lookup_expr(cqs_col, _PSE_OWN_RW, unrated_pse_rgla))
         # RGLA — Art. 115(1)(b) Table 1B for rated, GB/other approximation for unrated.
         .when(et.is_in(rgla_types))
-        .then(_cqs_table_lookup_expr(cqs_col, RGLA_RISK_WEIGHTS_OWN_RATING, unrated_pse_rgla))
+        .then(_cqs_table_lookup_expr(cqs_col, _RGLA_OWN_RW, unrated_pse_rgla))
         # Corporate + covered bond — CRR Art. 122 Table 5 (preview parity:
         # not framework-switched; see docstring).
         .when(et.is_in(corporate_types + covered_bond_types))
         .then(
             _cqs_table_lookup_expr(
                 cqs_col,
-                CORPORATE_RISK_WEIGHTS,
-                float(CORPORATE_RISK_WEIGHTS[CQS.UNRATED]),
+                _CORPORATE_RW,
+                float(_CORPORATE_RW[CQS.UNRATED]),
             )
         )
         # Retail (Art. 123): flat 75%.
@@ -388,6 +427,152 @@ def build_entity_rw_expr(
         .then(pl.lit(_HIGH_RISK_RW))
         # Conservative preview default for unmatched entity types.
         .otherwise(pl.lit(1.0))
+    )
+
+
+@cites("CRR Art. 119")
+@cites("CRR Art. 120")
+@cites("CRR Art. 121")
+def build_institution_guarantor_rw_expr(
+    cqs_col: str,
+    is_basel_3_1: bool,
+    short_term_flag_col: str | None = None,
+    scra_grade_col: str | None = None,
+) -> pl.Expr:
+    """Build a CQS → institution risk weight expression from the canonical tables.
+
+    Used by SA and IRB guarantee substitution to look up the RW to apply to the
+    guaranteed portion when the guarantor is an institution. Drives values from
+    ``institution_rw_crr`` / ``institution_rw_b31_ecra`` (long-term, Art. 120
+    Table 3) or ``institution_short_term_rw_crr`` /
+    ``institution_short_term_rw_b31_ecra`` (short-term, Art. 120(2) Table 4) so
+    there is a single source of truth.
+
+    Args:
+        cqs_col: Name of the integer CQS column on the frame.
+        is_basel_3_1: Select PS1/26 ECRA table when True, CRR Art. 120 Table 3
+            when False.
+        short_term_flag_col: Optional name of a Boolean column. When provided,
+            rows where the column evaluates True route to the Art. 120(2)
+            Table 4 short-term dict (residual maturity ≤ 3 months); rows where
+            the column is False or null use the long-term Table 3 dict.
+        scra_grade_col: Optional name of a Utf8 column carrying the guarantor's
+            SCRA grade ("A" / "A_ENHANCED" / "B" / "C"). When provided AND
+            ``is_basel_3_1`` is True, rows whose CQS column is null (i.e.
+            unrated under ECRA) dispatch via PRA PS1/26 Art. 121 Table 5 SCRA
+            grades using ``b31_scra_risk_weights`` (long-term) or
+            ``b31_scra_short_term_risk_weights`` (short-term branch when the
+            ``short_term_flag_col`` evaluates True). A null/missing SCRA grade
+            falls back to ``b31_scra_risk_weights["C"]`` per CRE20.21
+            conservative-fallback. The CRR path and the rated B31 path
+            (CQS 1-6) are entirely unaffected.
+
+    Returns:
+        Float64 Polars expression evaluating to the institution RW.
+    """
+    long_term = _INSTITUTION_RW_B31_ECRA if is_basel_3_1 else _INSTITUTION_RW_CRR
+    short_term = (
+        _INSTITUTION_SHORT_TERM_RW_B31_ECRA if is_basel_3_1 else _INSTITUTION_SHORT_TERM_RW_CRR
+    )
+    col = pl.col(cqs_col)
+    use_scra = is_basel_3_1 and scra_grade_col is not None
+
+    def _scra_branch(table: dict[str, Decimal]) -> pl.Expr:
+        scra = pl.col(cast("str", scra_grade_col))
+        # CRE20.21 conservative fallback: null/missing SCRA grade -> Grade C.
+        return (
+            pl.when(scra == "A_ENHANCED")
+            .then(pl.lit(float(table["A_ENHANCED"])))
+            .when(scra == "A")
+            .then(pl.lit(float(table["A"])))
+            .when(scra == "B")
+            .then(pl.lit(float(table["B"])))
+            .otherwise(pl.lit(float(table["C"])))
+        )
+
+    def _branch(table: dict[CQS, Decimal], scra_table: dict[str, Decimal]) -> pl.Expr:
+        rated = (
+            pl.when(col == 1)
+            .then(pl.lit(float(table[CQS.CQS1])))
+            .when(col == 2)
+            .then(pl.lit(float(table[CQS.CQS2])))
+            .when(col == 3)
+            .then(pl.lit(float(table[CQS.CQS3])))
+            .when(col.is_in([4, 5]))
+            .then(pl.lit(float(table[CQS.CQS4])))
+            .when(col == 6)
+            .then(pl.lit(float(table[CQS.CQS6])))
+            .otherwise(pl.lit(float(table[CQS.UNRATED])))
+        )
+        if not use_scra:
+            return rated
+        # B31 + SCRA available: route unrated (null CQS) rows via SCRA grades.
+        return pl.when(col.is_null()).then(_scra_branch(scra_table)).otherwise(rated)
+
+    long_branch = _branch(long_term, _B31_SCRA_RW)
+    short_branch = _branch(short_term, _B31_SCRA_SHORT_TERM_RW)
+
+    if short_term_flag_col is None:
+        return long_branch
+
+    is_short_term = pl.col(short_term_flag_col).fill_null(False)
+    return pl.when(is_short_term).then(short_branch).otherwise(long_branch)
+
+
+@cites("CRR Art. 122")
+def build_corporate_guarantor_rw_expr(
+    cqs_col: str,
+    is_basel_3_1: bool,
+) -> pl.Expr:
+    """Build a CQS → corporate risk weight expression from the canonical tables.
+
+    Used by SA and IRB guarantee substitution to look up the RW to apply to the
+    guaranteed portion when the guarantor is a corporate. Drives values from
+    ``corporate_risk_weights`` (CRR Art. 122 Table 5) or
+    ``b31_corporate_risk_weights`` (PRA PS1/26 Art. 122(2) Table 6) so there is
+    a single source of truth — and B3.1 corporate CQS3 correctly maps to 75%
+    (Table 6) instead of CRR Table 5's 100%.
+
+    Args:
+        cqs_col: Name of the integer CQS column on the frame.
+        is_basel_3_1: Select PS1/26 Art. 122(2) Table 6 when True, CRR Art. 122
+            Table 5 when False.
+
+    Returns:
+        Float64 Polars expression evaluating to the corporate RW.
+    """
+    col = pl.col(cqs_col)
+    if is_basel_3_1:
+        rw_1 = float(_B31_CORPORATE_RW[1])
+        rw_2 = float(_B31_CORPORATE_RW[2])
+        rw_3 = float(_B31_CORPORATE_RW[3])
+        rw_4 = float(_B31_CORPORATE_RW[4])
+        rw_5 = float(_B31_CORPORATE_RW[5])
+        rw_6 = float(_B31_CORPORATE_RW[6])
+        rw_unrated = float(_B31_CORPORATE_RW[None])
+    else:
+        rw_1 = float(_CORPORATE_RW[CQS.CQS1])
+        rw_2 = float(_CORPORATE_RW[CQS.CQS2])
+        rw_3 = float(_CORPORATE_RW[CQS.CQS3])
+        rw_4 = float(_CORPORATE_RW[CQS.CQS4])
+        rw_5 = float(_CORPORATE_RW[CQS.CQS5])
+        rw_6 = float(_CORPORATE_RW[CQS.CQS6])
+        rw_unrated = float(_CORPORATE_RW[CQS.UNRATED])
+
+    return (
+        pl.when(col == 1)
+        .then(pl.lit(rw_1))
+        .when(col == 2)
+        .then(pl.lit(rw_2))
+        .when(col == 3)
+        .then(pl.lit(rw_3))
+        .when(col == 4)
+        .then(pl.lit(rw_4))
+        .when(col == 5)
+        .then(pl.lit(rw_5))
+        .when(col == 6)
+        .then(pl.lit(rw_6))
+        .otherwise(pl.lit(rw_unrated))
     )
 
 
@@ -407,11 +592,11 @@ def _pse_rgla_unrated_fallback_expr(country_code_col: str | None) -> pl.Expr:
     Table 1A sovereign-derived lookup.
     """
     if country_code_col is None:
-        return pl.lit(float(PSE_UNRATED_DEFAULT_RW))
+        return pl.lit(float(_PSE_UNRATED_DEFAULT_RW))
     return (
         pl.when(pl.col(country_code_col).fill_null("") == "GB")
-        .then(pl.lit(float(RGLA_DOMESTIC_CURRENCY_RW)))
-        .otherwise(pl.lit(float(PSE_UNRATED_DEFAULT_RW)))
+        .then(pl.lit(float(_RGLA_DOMESTIC_CURRENCY_RW)))
+        .otherwise(pl.lit(float(_PSE_UNRATED_DEFAULT_RW)))
     )
 
 
@@ -422,12 +607,10 @@ def _cqs_table_lookup_expr(
 ) -> pl.Expr:
     """Build a when/then chain mapping a CQS-bearing column to RW from a CQS table.
 
-    Mirrors ``engine/sa/namespace.py::_cqs_table_lookup_expr`` so the SA path
-    can adopt the shared builder byte-identically. Parameterised on the CQS
-    source column so it can drive any CQS-keyed regulatory table (CGCB
-    Art. 114, MDB Table 2B Art. 117(1), PSE Table 2A Art. 116(2), RGLA
-    Table 1B Art. 115(1)(b)). Caller controls the unrated fallback (constant
-    or Polars expression).
+    Parameterised on the CQS source column so it can drive any CQS-keyed
+    regulatory table (CGCB Art. 114, MDB Table 2B Art. 117(1), PSE Table 2A
+    Art. 116(2), RGLA Table 1B Art. 115(1)(b)). Caller controls the unrated
+    fallback (constant or Polars expression).
     """
     cqs_order: list[CQS] = [CQS.CQS1, CQS.CQS2, CQS.CQS3, CQS.CQS4, CQS.CQS5, CQS.CQS6]
     expr = pl.when(pl.col(cqs_col) == int(cqs_order[0])).then(pl.lit(float(table[cqs_order[0]])))

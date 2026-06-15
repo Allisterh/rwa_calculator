@@ -33,13 +33,13 @@ from rwa_calc.data.tables.eu_sovereign import (
     build_domestic_cgcb_guarantor_expr,
     denomination_currency_expr,
 )
-from rwa_calc.data.tables.guarantor_rw import build_guarantor_rw_expr
 from rwa_calc.engine.irb.formulas import (
     _double_default_multiplier_expr,
     _parametric_irb_risk_weight_expr,
     _pd_floor_expression,
     firb_supervisory_lgd_values,
 )
+from rwa_calc.engine.sa.guarantor_rw import build_guarantor_rw_expr
 from rwa_calc.engine.thresholds import regulatory_threshold
 from rwa_calc.rulebook import RulepackV0
 from rwa_calc.rulebook.compile import scalar_value

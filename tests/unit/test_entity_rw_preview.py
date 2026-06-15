@@ -36,8 +36,8 @@ import polars as pl
 import pytest
 
 from rwa_calc.data.tables.crr_risk_weights import CORPORATE_RISK_WEIGHTS
-from rwa_calc.data.tables.guarantor_rw import build_entity_rw_expr
 from rwa_calc.domain.enums import CQS
+from rwa_calc.engine.sa.guarantor_rw import build_entity_rw_expr
 
 # ---------------------------------------------------------------------------
 # Hand-pinned expectations (from the data tables, NOT from the engine)

@@ -37,8 +37,8 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from rwa_calc.data.tables.guarantor_rw import build_entity_rw_expr
 from rwa_calc.engine.ccf import sa_ccf_expression
+from rwa_calc.engine.sa.guarantor_rw import build_entity_rw_expr
 from rwa_calc.engine.stages.hierarchy.graph import (
     filter_mappings_by_child_type,
     resolve_to_root_facility,

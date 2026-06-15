@@ -23,37 +23,12 @@
   "rwa_calc.data.tables.crr_risk_weights::_create_rgla_df": [
     "CRR Art. 115"
   ],
-  "rwa_calc.data.tables.crr_risk_weights::build_corporate_guarantor_rw_expr": [
-    "CRR Art. 122"
-  ],
-  "rwa_calc.data.tables.crr_risk_weights::build_institution_guarantor_rw_expr": [
-    "CRR Art. 119",
-    "CRR Art. 120",
-    "CRR Art. 121"
-  ],
   "rwa_calc.data.tables.eu_sovereign::build_domestic_cgcb_guarantor_expr": [
     "CRR Art. 114"
   ],
   "rwa_calc.data.tables.eu_sovereign::build_eu_domestic_currency_expr": [
     "CRR Art. 114",
     "CRR Art. 141"
-  ],
-  "rwa_calc.data.tables.guarantor_rw::build_entity_rw_expr": [
-    "CRR Art. 114",
-    "CRR Art. 115",
-    "CRR Art. 116",
-    "CRR Art. 117",
-    "CRR Art. 118",
-    "CRR Art. 122",
-    "CRR Art. 123"
-  ],
-  "rwa_calc.data.tables.guarantor_rw::build_guarantor_rw_expr": [
-    "CRR Art. 114",
-    "CRR Art. 115",
-    "CRR Art. 116",
-    "CRR Art. 117",
-    "CRR Art. 118",
-    "CRR Art. 235"
   ],
   "rwa_calc.data.tables.haircuts::get_haircut_table": [
     "CRR Art. 224"
@@ -293,6 +268,31 @@
   ],
   "rwa_calc.engine.sa.factors_output::calculate_rwa": [
     "CRR Art. 113"
+  ],
+  "rwa_calc.engine.sa.guarantor_rw::build_corporate_guarantor_rw_expr": [
+    "CRR Art. 122"
+  ],
+  "rwa_calc.engine.sa.guarantor_rw::build_entity_rw_expr": [
+    "CRR Art. 114",
+    "CRR Art. 115",
+    "CRR Art. 116",
+    "CRR Art. 117",
+    "CRR Art. 118",
+    "CRR Art. 122",
+    "CRR Art. 123"
+  ],
+  "rwa_calc.engine.sa.guarantor_rw::build_guarantor_rw_expr": [
+    "CRR Art. 114",
+    "CRR Art. 115",
+    "CRR Art. 116",
+    "CRR Art. 117",
+    "CRR Art. 118",
+    "CRR Art. 235"
+  ],
+  "rwa_calc.engine.sa.guarantor_rw::build_institution_guarantor_rw_expr": [
+    "CRR Art. 119",
+    "CRR Art. 120",
+    "CRR Art. 121"
   ],
   "rwa_calc.engine.sa.risk_weights::_apply_b31_risk_weight_overrides": [
     "CRR Art. 134",
