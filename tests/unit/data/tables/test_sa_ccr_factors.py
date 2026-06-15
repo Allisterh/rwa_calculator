@@ -26,10 +26,10 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-import rwa_calc.data.tables.sa_ccr_factors as _mod
 from rwa_calc.rulebook.resolve import resolve
 
-# Scalars moved to the rulepack (S12-09b) are pinned via the resolved pack.
+# SA-CCR values moved to the rulepack (S12-09b scalars + S13-a integer counts)
+# are pinned via the resolved pack.
 _PACK = resolve("crr", date(2026, 1, 1))
 
 # =============================================================================
@@ -344,27 +344,27 @@ class TestMaturityFactorConstants:
     def test_mf_margined_floor_days_repo_sft_is_5(self) -> None:
         """Art. 285(2): MPOR floor for repo / SFT = 5 business days."""
         # Arrange
-        val = _mod.MF_MARGINED_FLOOR_DAYS_REPO_SFT
+        val = _PACK.int_param("mf_margined_floor_days_repo_sft").value
 
         # Assert
-        assert val == 5, f"MF_MARGINED_FLOOR_DAYS_REPO_SFT must be 5 per Art. 285(2), got {val!r}"
+        assert val == 5, f"mf_margined_floor_days_repo_sft must be 5 per Art. 285(2), got {val!r}"
 
     def test_mf_margined_floor_days_otc_is_10(self) -> None:
         """Art. 285(2): MPOR floor for standard OTC derivatives = 10 business days."""
         # Arrange
-        val = _mod.MF_MARGINED_FLOOR_DAYS_OTC
+        val = _PACK.int_param("mf_margined_floor_days_otc").value
 
         # Assert
-        assert val == 10, f"MF_MARGINED_FLOOR_DAYS_OTC must be 10 per Art. 285(2), got {val!r}"
+        assert val == 10, f"mf_margined_floor_days_otc must be 10 per Art. 285(2), got {val!r}"
 
     def test_mf_margined_floor_days_large_or_illiquid_is_20(self) -> None:
         """Art. 285(3): MPOR floor for large or illiquid netting sets = 20 business days."""
         # Arrange
-        val = _mod.MF_MARGINED_FLOOR_DAYS_LARGE_OR_ILLIQUID
+        val = _PACK.int_param("mf_margined_floor_days_large_or_illiquid").value
 
         # Assert
         assert val == 20, (
-            f"MF_MARGINED_FLOOR_DAYS_LARGE_OR_ILLIQUID must be 20 per Art. 285(3), got {val!r}"
+            f"mf_margined_floor_days_large_or_illiquid must be 20 per Art. 285(3), got {val!r}"
         )
 
     def test_pfe_multiplier_floor_f_is_0_05(self) -> None:
@@ -376,4 +376,3 @@ class TestMaturityFactorConstants:
         assert val == Decimal("0.05"), (
             f"PFE_MULTIPLIER_FLOOR_F must be Decimal('0.05') per Art. 278(3), got {val!r}"
         )
-

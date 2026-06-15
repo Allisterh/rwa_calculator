@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from rwa_calc.rulebook.model import Citation, LookupTable, RuleEntry, ScalarParam
+from rwa_calc.rulebook.model import Citation, IntParam, LookupTable, RuleEntry, ScalarParam
 
 ENTRIES: dict[str, RuleEntry] = {
     "fx_haircut": ScalarParam(
@@ -493,5 +493,43 @@ ENTRIES: dict[str, RuleEntry] = {
         name="io_zero_rw",
         value=Decimal("0.00"),
         citation=Citation("CRR", "118", "named international organisation 0%"),
+    ),
+    # SA-CCR margined maturity-factor integer counts (CRR Art. 285 MPOR cascade +
+    # Art. 279c(2) business-day-year basis). Regime-invariant integer counts —
+    # kept int end-to-end (the days-per-year divisor is float()-ed at the call site).
+    "mf_margined_floor_days_repo_sft": IntParam(
+        name="mf_margined_floor_days_repo_sft",
+        value=5,
+        citation=Citation("CRR", "285", "(2)(a) MPOR floor for all-SFT netting set = 5 BD"),
+    ),
+    "mf_margined_floor_days_otc": IntParam(
+        name="mf_margined_floor_days_otc",
+        value=10,
+        citation=Citation("CRR", "285", "(2)(b) MPOR floor for OTC derivative netting set = 10 BD"),
+    ),
+    "mf_margined_floor_days_large_or_illiquid": IntParam(
+        name="mf_margined_floor_days_large_or_illiquid",
+        value=20,
+        citation=Citation("CRR", "285", "(3) MPOR floor for large/illiquid netting set = 20 BD"),
+    ),
+    "mf_margined_large_netting_set_trade_count": IntParam(
+        name="mf_margined_large_netting_set_trade_count",
+        value=5000,
+        citation=Citation("CRR", "285", "(3)(a) large netting-set trade-count threshold = 5000"),
+    ),
+    "mf_margined_dispute_threshold": IntParam(
+        name="mf_margined_dispute_threshold",
+        value=2,
+        citation=Citation("CRR", "285", "(4) MPOR dispute-doubling threshold = more than 2"),
+    ),
+    "mf_margined_dispute_multiplier": IntParam(
+        name="mf_margined_dispute_multiplier",
+        value=2,
+        citation=Citation("CRR", "285", "(4) MPOR dispute-doubling multiplier = 2x"),
+    ),
+    "sa_ccr_business_days_per_year": IntParam(
+        name="sa_ccr_business_days_per_year",
+        value=250,
+        citation=Citation("CRR", "279c", "(2) business days per year in the MF sqrt divisor"),
     ),
 }

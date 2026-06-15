@@ -13,6 +13,7 @@ from rwa_calc.rulebook.model import (
     DecisionTable,
     Feature,
     FormulaParams,
+    IntParam,
     LookupTable,
     ScalarParam,
     Schedule,
@@ -79,6 +80,15 @@ def test_all_shapes_construct() -> None:
     assert decision.key_names == ("a",)
     assert formula.get("k") == Decimal("0.5")
     assert feature.enabled is True
+
+
+def test_int_param_constructs_and_holds_int() -> None:
+    # Arrange / Act
+    param = IntParam("mpor_floor_days", 5, Citation("CRR", "285"))
+
+    # Assert — the int sibling of ScalarParam keeps an integer value end-to-end
+    assert param.value == 5
+    assert isinstance(param.value, int)
 
 
 # ---------------------------------------------------------------------------

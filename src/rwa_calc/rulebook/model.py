@@ -11,8 +11,9 @@ Pipeline position:
 
 Key responsibilities:
 - Define the small fixed vocabulary of rule shapes (migration Phase 5
-  principle 2): ``ScalarParam``, ``LookupTable``, ``BandedTable``,
-  ``Schedule``, ``DecisionTable``, ``FormulaParams``, ``Feature``.
+  principle 2): ``ScalarParam``, ``IntParam``, ``LookupTable``,
+  ``BandedTable``, ``Schedule``, ``DecisionTable``, ``FormulaParams``,
+  ``Feature``. All are Decimal-valued except ``IntParam`` (integer counts).
 - Define ``Citation``, the framework + article provenance carried by every
   entry, with a string form matching the watchfire citation grammar.
 - Stay free of Polars and of any ``float(...)`` of a regulatory value —
@@ -80,6 +81,24 @@ class ScalarParam:
 
     name: str
     value: Decimal
+    citation: Citation
+
+
+@dataclass(frozen=True)
+class IntParam:
+    """A single cited integer-typed regulatory count.
+
+    The int sibling of :class:`ScalarParam`, for regulatory *counts* that must
+    stay integers end-to-end — MPOR business-day floors, settlement-band day
+    bounds, trade-count thresholds, property-count limits, the zero-haircut CQS
+    cap. There is no Decimal->float compile boundary for these: consumers read
+    ``int_param(name).value`` and use the raw ``int`` directly (a deliberate
+    float of one — e.g. the days-per-year divisor — happens at the call site,
+    never here).
+    """
+
+    name: str
+    value: int
     citation: Citation
 
 
@@ -217,5 +236,12 @@ class Feature:
 # =============================================================================
 
 type RuleEntry = (
-    ScalarParam | LookupTable | BandedTable | Schedule | DecisionTable | FormulaParams | Feature
+    ScalarParam
+    | IntParam
+    | LookupTable
+    | BandedTable
+    | Schedule
+    | DecisionTable
+    | FormulaParams
+    | Feature
 )

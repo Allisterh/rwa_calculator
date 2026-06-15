@@ -33,6 +33,7 @@ from rwa_calc.rulebook.model import (
     DecisionTable,
     Feature,
     FormulaParams,
+    IntParam,
     LookupTable,
     RuleEntry,
     ScalarParam,
@@ -90,6 +91,14 @@ class ResolvedRulepack:
         ``decision`` / ``formula``.
         """
         return self._typed(name, ScalarParam)
+
+    def int_param(self, name: str) -> IntParam:
+        """Return an ``IntParam`` entry (raises ``TypeError`` if wrong shape).
+
+        Consumers read ``.value`` for the raw ``int`` — there is no
+        Decimal->float compile boundary for integer counts.
+        """
+        return self._typed(name, IntParam)
 
     def feature(self, name: str) -> bool:
         """Return a ``Feature`` flag (raises ``TypeError`` if wrong shape)."""
@@ -232,6 +241,8 @@ def _value_repr(entry: RuleEntry) -> str:
     """A deterministic, process-stable value representation for hashing."""
     if isinstance(entry, ScalarParam):
         return str(entry.value)
+    if isinstance(entry, IntParam):
+        return str(entry.value)
     if isinstance(entry, Feature):
         return str(entry.enabled)
     if isinstance(entry, LookupTable):
@@ -256,6 +267,8 @@ def _manifest_value(entry: RuleEntry) -> object:
     """A stable manifest summary value for one rule entry."""
     if isinstance(entry, ScalarParam):
         return str(entry.value)
+    if isinstance(entry, IntParam):
+        return entry.value
     if isinstance(entry, Feature):
         return entry.enabled
     return _value_repr(entry)
