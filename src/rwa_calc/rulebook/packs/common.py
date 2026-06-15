@@ -168,4 +168,60 @@ ENTRIES: dict[str, RuleEntry] = {
         value=Decimal("12.5"),
         citation=Citation("CRR", "92", "(3)(ca) own-funds -> RWA conversion 1/0.08"),
     ),
+    # SA-CCR supervisory option volatilities (CRR Art. 279a(2) / BCBS CRE52.47
+    # Table 3) for the Black-Scholes Phi(d1) supervisory delta. Regime-invariant.
+    # The two commodity volatilities are carried for table completeness; the
+    # engine option-delta path does not yet distinguish commodity options.
+    "sa_ccr_option_volatility_ir": ScalarParam(
+        name="sa_ccr_option_volatility_ir",
+        value=Decimal("0.50"),
+        citation=Citation("CRR", "279a", "(2) Table 3 interest-rate option volatility"),
+    ),
+    "sa_ccr_option_volatility_fx": ScalarParam(
+        name="sa_ccr_option_volatility_fx",
+        value=Decimal("0.15"),
+        citation=Citation("CRR", "279a", "(2) Table 3 FX option volatility"),
+    ),
+    "sa_ccr_option_volatility_credit_sn": ScalarParam(
+        name="sa_ccr_option_volatility_credit_sn",
+        value=Decimal("1.00"),
+        citation=Citation("CRR", "279a", "(2) Table 3 single-name credit option volatility"),
+    ),
+    "sa_ccr_option_volatility_credit_idx": ScalarParam(
+        name="sa_ccr_option_volatility_credit_idx",
+        value=Decimal("0.80"),
+        citation=Citation("CRR", "279a", "(2) Table 3 index credit option volatility"),
+    ),
+    "sa_ccr_option_volatility_equity_sn": ScalarParam(
+        name="sa_ccr_option_volatility_equity_sn",
+        value=Decimal("1.20"),
+        citation=Citation("CRR", "279a", "(2) Table 3 single-name equity option volatility"),
+    ),
+    "sa_ccr_option_volatility_equity_idx": ScalarParam(
+        name="sa_ccr_option_volatility_equity_idx",
+        value=Decimal("0.75"),
+        citation=Citation("CRR", "279a", "(2) Table 3 index equity option volatility"),
+    ),
+    "sa_ccr_option_volatility_commodity_electricity": ScalarParam(
+        name="sa_ccr_option_volatility_commodity_electricity",
+        value=Decimal("1.50"),
+        citation=Citation("CRR", "279a", "(2) Table 3 electricity commodity option volatility"),
+    ),
+    "sa_ccr_option_volatility_commodity_other": ScalarParam(
+        name="sa_ccr_option_volatility_commodity_other",
+        value=Decimal("0.70"),
+        citation=Citation("CRR", "279a", "(2) Table 3 other commodity option volatility"),
+    ),
+    # CDO tranche supervisory-delta closed-form coefficients (CRR Art. 279a(3) /
+    # BCBS CRE52.43): |delta| = 15 / ((1 + 14*A) * (1 + 14*D)).
+    "sa_ccr_cdo_tranche_numerator": ScalarParam(
+        name="sa_ccr_cdo_tranche_numerator",
+        value=Decimal("15"),
+        citation=Citation("CRR", "279a", "(3) CDO tranche delta numerator"),
+    ),
+    "sa_ccr_cdo_tranche_coefficient": ScalarParam(
+        name="sa_ccr_cdo_tranche_coefficient",
+        value=Decimal("14"),
+        citation=Citation("CRR", "279a", "(3) CDO tranche delta attachment/detachment coefficient"),
+    ),
 }

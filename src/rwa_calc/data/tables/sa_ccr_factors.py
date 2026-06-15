@@ -175,32 +175,15 @@ CCR_WWR_SPECIFIC_LGD_OVERRIDE: Decimal = Decimal("1.0")
 
 
 # =============================================================================
-# SUPERVISORY OPTION VOLATILITY (CRR Art. 279a(2) / BCBS CRE52.47 Table 3)
+# SUPERVISORY OPTION VOLATILITY (Art. 279a(2)) + CDO TRANCHE DELTA (Art. 279a(3))
+# — moved to the rulepack
 #
-# Used by the Black-Scholes Phi(d1) supervisory delta for European options:
-#     d1 = (ln(P/K) + 0.5 * sigma^2 * T) / (sigma * sqrt(T))
+# The Black-Scholes Phi(d1) supervisory option volatilities (CRR Art. 279a(2) /
+# BCBS CRE52.47 Table 3) and the CDO tranche supervisory-delta closed-form
+# coefficients (Art. 279a(3) / CRE52.43, |delta| = 15 / ((1 + 14*A)*(1 + 14*D)))
+# now live in packs/common.py (``sa_ccr_option_volatility_*`` /
+# ``sa_ccr_cdo_tranche_*``); resolved in engine/ccr/supervisory_delta.py.
 # =============================================================================
-
-SA_CCR_OPTION_VOLATILITY_IR: Decimal = Decimal("0.50")
-SA_CCR_OPTION_VOLATILITY_FX: Decimal = Decimal("0.15")
-SA_CCR_OPTION_VOLATILITY_CREDIT_SN: Decimal = Decimal("1.00")
-SA_CCR_OPTION_VOLATILITY_CREDIT_IDX: Decimal = Decimal("0.80")
-SA_CCR_OPTION_VOLATILITY_EQUITY_SN: Decimal = Decimal("1.20")
-SA_CCR_OPTION_VOLATILITY_EQUITY_IDX: Decimal = Decimal("0.75")
-SA_CCR_OPTION_VOLATILITY_COMMODITY_ELECTRICITY: Decimal = Decimal("1.50")
-SA_CCR_OPTION_VOLATILITY_COMMODITY_OTHER: Decimal = Decimal("0.70")
-
-
-# =============================================================================
-# CDO TRANCHE SUPERVISORY DELTA (CRR Art. 279a(3) / BCBS CRE52.43)
-#
-# Closed-form |delta| = 15 / ((1 + 14 * A) * (1 + 14 * D)) where A and D are
-# the tranche attachment and detachment points respectively.
-# =============================================================================
-
-# CRR Art. 279a(3) / BCBS CRE52.43 — CDO tranche supervisory delta closed-form
-SA_CCR_CDO_TRANCHE_NUMERATOR: Decimal = Decimal("15")
-SA_CCR_CDO_TRANCHE_COEFFICIENT: Decimal = Decimal("14")
 
 
 # =============================================================================
