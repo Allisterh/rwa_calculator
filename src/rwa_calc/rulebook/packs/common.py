@@ -44,6 +44,13 @@ ENTRIES: dict[str, RuleEntry] = {
         value=Decimal("1.4"),
         citation=Citation("CRR", "274(2)"),
     ),
+    # CRR Art. 274(2) second sub-paragraph — alpha=1.0 carve-out for non-financial
+    # / pension-scheme counterparties (EMIR Art. 2(9)/2(10)). Regime-invariant.
+    "sa_ccr_alpha_carve_out": ScalarParam(
+        name="sa_ccr_alpha_carve_out",
+        value=Decimal("1.0"),
+        citation=Citation("CRR", "274(2)", "alpha=1.0 carve-out for NFC / pension-scheme"),
+    ),
     # Financial Collateral Simple Method (CRR Art. 222 / PRA PS1/26 Art. 222).
     # Single-regime: PS1/26 retains Art. 222 unchanged for SA exposures.
     "fcsm_rw_floor": ScalarParam(

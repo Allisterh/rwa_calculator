@@ -45,11 +45,7 @@ from rwa_calc.contracts.bundles import (
 from rwa_calc.contracts.config import CCRConfig
 from rwa_calc.data.column_spec import ensure_columns
 from rwa_calc.data.schemas import CCR_ALPHA_CARVE_OUT_COUNTERPARTY_TYPES, NETTING_SET_SCHEMA
-from rwa_calc.data.tables.sa_ccr_factors import (
-    SA_CCR_ALPHA,
-    SA_CCR_ALPHA_CARVE_OUT,
-    SA_CCR_TRANSITIONAL_ADDON_PHASE,
-)
+from rwa_calc.data.tables.sa_ccr_factors import SA_CCR_TRANSITIONAL_ADDON_PHASE
 from rwa_calc.engine.ccr.adjusted_notional import (
     compute_adjusted_notional_commodity,
     compute_adjusted_notional_credit,
@@ -63,8 +59,17 @@ from rwa_calc.engine.ccr.pfe import compute_addon_per_asset_class, compute_pfe
 from rwa_calc.engine.ccr.rc import compute_rc_margined, compute_rc_unmargined
 from rwa_calc.engine.ccr.sft_fccm import SFT_TRANSACTION_TYPE, sft_rows_to_exposures
 from rwa_calc.engine.ccr.supervisory_delta import compute_supervisory_delta_option
+from rwa_calc.rulebook.compile import scalar_value
+from rwa_calc.rulebook.resolve import resolve
 
 logger = logging.getLogger(__name__)
+
+# SA-CCR supervisory alpha resolved from the rulepack once at module load (CRR
+# Art. 274(2); regime-invariant, resolved against "crr"). Closes the prior
+# dual-maintenance with data/tables/sa_ccr_factors.py.
+_PACK = resolve("crr", date(2026, 1, 1))
+_SA_CCR_ALPHA = scalar_value(_PACK.scalar_param("sa_ccr_alpha"))
+_SA_CCR_ALPHA_CARVE_OUT = scalar_value(_PACK.scalar_param("sa_ccr_alpha_carve_out"))
 
 
 # =============================================================================
@@ -534,8 +539,8 @@ def _attach_alpha_applied(
         CRR Art. 274(2) second sub-paragraph; EMIR Art. 2(9) / 2(10);
         BCBS CRE52.1.
     """
-    carve_out = float(SA_CCR_ALPHA_CARVE_OUT)
-    standard = float(SA_CCR_ALPHA)
+    carve_out = _SA_CCR_ALPHA_CARVE_OUT
+    standard = _SA_CCR_ALPHA
 
     has_type = (
         counterparties is not None
@@ -608,8 +613,8 @@ def _attach_transitional_add_on(
     phase_factor = (
         float(SA_CCR_TRANSITIONAL_ADDON_PHASE.get(reporting_date.year, 0)) if is_basel_3_1 else 0.0
     )
-    alpha_uplift = float(SA_CCR_ALPHA) - float(SA_CCR_ALPHA_CARVE_OUT)
-    carve_out = float(SA_CCR_ALPHA_CARVE_OUT)
+    alpha_uplift = _SA_CCR_ALPHA - _SA_CCR_ALPHA_CARVE_OUT
+    carve_out = _SA_CCR_ALPHA_CARVE_OUT
 
     if phase_factor <= 0.0:
         # Framework / year gate closed — add-on is a constant 0.0 and ead_ccr

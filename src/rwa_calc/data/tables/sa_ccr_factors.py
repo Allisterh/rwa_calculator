@@ -108,24 +108,16 @@ MF_MARGINED_DISPUTE_MULTIPLIER: int = 2
 
 
 # =============================================================================
-# SUPERVISORY ALPHA (CRR Art. 274(2))
+# SUPERVISORY ALPHA — moved to the rulepack (CRR Art. 274(2))
 #
-# EAD = alpha * (RC + PFE). The default supervisory alpha is 1.4 (BCBS CRE52.1).
-# CRR Art. 274(2) second sub-paragraph applies an alpha = 1.0 carve-out where the
-# counterparty is a non-financial counterparty (EMIR Art. 2(9)), a pension scheme
-# arrangement (EMIR Art. 2(10)), or a pension-scheme default-fund-contribution
-# position. The per-row discriminator is the COUNTERPARTY_SCHEMA
-# ``counterparty_type`` column (see VALID_CCR_COUNTERPARTY_TYPES in schemas.py);
-# engine/ccr/pipeline_adapter.py joins it onto the netting-set frame to select
+# EAD = alpha * (RC + PFE). The default supervisory alpha (1.4, BCBS CRE52.1) and
+# the alpha = 1.0 carve-out for non-financial / pension-scheme counterparties
+# (CRR Art. 274(2) second sub-paragraph; EMIR Art. 2(9) / 2(10)) now live in
+# packs/common.py (``sa_ccr_alpha`` / ``sa_ccr_alpha_carve_out``). The per-row
+# discriminator remains the COUNTERPARTY_SCHEMA ``counterparty_type`` column;
+# engine/ccr/pipeline_adapter.py resolves the pack values and selects
 # ``alpha_applied`` before compute_pfe.
 # =============================================================================
-
-#: CRR Art. 274(2) / BCBS CRE52.1 — default supervisory alpha.
-SA_CCR_ALPHA: Decimal = Decimal("1.4")
-
-#: CRR Art. 274(2) second sub-paragraph — alpha carve-out for non-financial /
-#: pension-scheme counterparties (EMIR Art. 2(9) / 2(10)).
-SA_CCR_ALPHA_CARVE_OUT: Decimal = Decimal("1.0")
 
 
 # =============================================================================
