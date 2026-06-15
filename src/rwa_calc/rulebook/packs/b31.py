@@ -876,4 +876,76 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation("PS1/26", "129", "(5) unrated CB RW direct from issuer SCRA grade"),
         default=Decimal("1.00"),
     ),
+    # =========================================================================
+    # SA INSTITUTION SCRA / ECRA SHORT-TERM TABLES (PRA PS1/26 Art. 120 / 122)
+    # SCRA (unrated) tables are str-keyed by grade; ECRA short-term + dedicated
+    # short-term-ECAI tables are raw-int-keyed by CQS (1-6).
+    # =========================================================================
+    "b31_scra_risk_weights": LookupTable(
+        name="b31_scra_risk_weights",
+        entries={
+            "A": Decimal("0.40"),
+            "A_ENHANCED": Decimal("0.30"),
+            "B": Decimal("0.75"),
+            "C": Decimal("1.50"),
+        },
+        key="scra_grade",
+        citation=Citation("PS1/26", "120", "SCRA long-term institution RW by grade (CRE20.18-21)"),
+        default=Decimal("1.50"),
+    ),
+    "b31_scra_short_term_risk_weights": LookupTable(
+        name="b31_scra_short_term_risk_weights",
+        entries={
+            "A": Decimal("0.20"),
+            "A_ENHANCED": Decimal("0.20"),
+            "B": Decimal("0.50"),
+            "C": Decimal("1.50"),
+        },
+        key="scra_grade",
+        citation=Citation("PS1/26", "120", "Art. 120A SCRA short-term institution RW by grade"),
+        default=Decimal("1.50"),
+    ),
+    "b31_ecra_short_term_risk_weights": LookupTable(
+        name="b31_ecra_short_term_risk_weights",
+        entries={
+            1: Decimal("0.20"),
+            2: Decimal("0.20"),
+            3: Decimal("0.20"),
+            4: Decimal("0.50"),
+            5: Decimal("0.50"),
+            6: Decimal("1.50"),
+        },
+        key="cqs",
+        citation=Citation("PS1/26", "120", "(2) Table 4 ECRA short-term (long-term rating, <=3m)"),
+        default=Decimal("1.50"),
+    ),
+    "b31_ecra_short_term_ecai_risk_weights": LookupTable(
+        name="b31_ecra_short_term_ecai_risk_weights",
+        entries={
+            1: Decimal("0.20"),
+            2: Decimal("0.50"),
+            3: Decimal("1.00"),
+            4: Decimal("1.50"),
+            5: Decimal("1.50"),
+        },
+        key="cqs",
+        citation=Citation(
+            "PS1/26", "120", "(2B) Table 4A dedicated short-term ECAI institution RW"
+        ),
+        default=Decimal("1.50"),
+    ),
+    "b31_corporate_short_term_ecai_risk_weights": LookupTable(
+        name="b31_corporate_short_term_ecai_risk_weights",
+        entries={
+            1: Decimal("0.20"),
+            2: Decimal("0.50"),
+            3: Decimal("1.00"),
+            4: Decimal("1.50"),
+            5: Decimal("1.50"),
+            6: Decimal("1.50"),
+        },
+        key="cqs",
+        citation=Citation("PS1/26", "122", "(3) Table 6A dedicated short-term ECAI corporate RW"),
+        default=Decimal("1.50"),
+    ),
 }
