@@ -88,8 +88,10 @@ def _scalar_dec(name: str) -> Decimal:
 # Art. 124L defines counterparty-type-dependent residual risk weights.
 # =============================================================================
 
-B31_RESIDENTIAL_GENERAL_SECURED_RW = Decimal("0.20")
-B31_RESIDENTIAL_GENERAL_MAX_SECURED_RATIO = Decimal("0.55")  # 55% of property value
+B31_RESIDENTIAL_GENERAL_SECURED_RW = _scalar_dec("b31_residential_general_secured_rw")
+B31_RESIDENTIAL_GENERAL_MAX_SECURED_RATIO = _scalar_dec(
+    "b31_residential_general_max_secured_ratio"
+)  # 55% of property value
 
 # PRA PS1/26 Art. 124E(1)(b): the owner-occupied preferential RRE treatment is
 # only available where the borrower's total residential RE exposure is secured on
@@ -119,8 +121,12 @@ B31_RRE_RESIDUAL_RW_SOCIAL_HOUSING_FLOOR = _scalar_dec(
 # Art. 124G(2): 1.25x multiplier when junior lien AND LTV > 50%
 # =============================================================================
 
-B31_RESI_INCOME_JUNIOR_MULTIPLIER = Decimal("1.25")  # Art. 124G(2)
-B31_RESI_INCOME_JUNIOR_LTV_THRESHOLD = Decimal("0.50")  # Multiplier applies only above 50% LTV
+B31_RESI_INCOME_JUNIOR_MULTIPLIER = _scalar_dec(
+    "b31_residential_income_junior_multiplier"
+)  # Art. 124G(2)
+B31_RESI_INCOME_JUNIOR_LTV_THRESHOLD = _scalar_dec(
+    "b31_residential_income_junior_ltv_threshold"
+)  # Multiplier applies only above 50% LTV
 
 B31_RESIDENTIAL_INCOME_LTV_BANDS: list[dict[str, Decimal]] = [
     {"ltv_lower": Decimal("0.00"), "ltv_upper": Decimal("0.50"), "risk_weight": Decimal("0.30")},
@@ -173,8 +179,10 @@ B31_COMMERCIAL_INCOME_LTV_BANDS: list[dict[str, Decimal]] = [
 # CRE20.85 preferential min(60%, counterparty RW) approach.
 # =============================================================================
 
-B31_COMMERCIAL_GENERAL_SECURED_RW = Decimal("0.60")
-B31_COMMERCIAL_GENERAL_MAX_SECURED_RATIO = Decimal("0.55")  # 55% of property value
+B31_COMMERCIAL_GENERAL_SECURED_RW = _scalar_dec("b31_commercial_general_secured_rw")
+B31_COMMERCIAL_GENERAL_MAX_SECURED_RATIO = _scalar_dec(
+    "b31_commercial_general_max_secured_ratio"
+)  # 55% of property value
 
 # =============================================================================
 # ADC EXPOSURES (CRE20.87-88)
@@ -509,9 +517,13 @@ def b31_residential_rw_expr(
 
     # General residential (PRA PS1/26 Art. 124F) — loan-splitting
     # Art. 124F(2): Junior charges reduce the 55% threshold
-    effective_threshold = pl.max_horizontal(pl.lit(0.0), pl.lit(0.55) - prior_charge)
+    effective_threshold = pl.max_horizontal(
+        pl.lit(0.0), pl.lit(float(B31_RESIDENTIAL_GENERAL_MAX_SECURED_RATIO)) - prior_charge
+    )
     secured_share = pl.min_horizontal(pl.lit(1.0), effective_threshold / ltv)
-    general = pl.lit(0.20) * secured_share + cp_rw_for_rre * (pl.lit(1.0) - secured_share)
+    general = pl.lit(float(B31_RESIDENTIAL_GENERAL_SECURED_RW)) * secured_share + cp_rw_for_rre * (
+        pl.lit(1.0) - secured_share
+    )
 
     # Income-producing residential (PRA PS1/26 Art. 124G, Table 6B)
     base_income = (
@@ -533,7 +545,11 @@ def b31_residential_rw_expr(
     # The multiplied RW is NOT capped at the 105% table maximum — e.g.
     # LTV > 100% gives 105% × 1.25 = 131.25%. (Contrast with Art. 124I(3)
     # CRE, which uses absolute RWs rather than multipliers.)
-    junior_multiplier = pl.when(is_junior & (ltv > 0.50)).then(pl.lit(1.25)).otherwise(pl.lit(1.0))
+    junior_multiplier = (
+        pl.when(is_junior & (ltv > float(B31_RESI_INCOME_JUNIOR_LTV_THRESHOLD)))
+        .then(pl.lit(float(B31_RESI_INCOME_JUNIOR_MULTIPLIER)))
+        .otherwise(pl.lit(1.0))
+    )
     income = base_income * junior_multiplier
 
     return pl.when(is_income).then(income).otherwise(general)
@@ -598,15 +614,22 @@ def b31_commercial_rw_expr(counterparty_rw_col: str = "_cqs_risk_weight") -> pl.
 
     # General CRE — natural person/SME (Art. 124H(1-2)): loan-splitting
     # Art. 124F(2): Junior charges reduce the 55% threshold
-    effective_threshold = pl.max_horizontal(pl.lit(0.0), pl.lit(0.55) - prior_charge)
+    effective_threshold = pl.max_horizontal(
+        pl.lit(0.0), pl.lit(float(B31_COMMERCIAL_GENERAL_MAX_SECURED_RATIO)) - prior_charge
+    )
     secured_share = pl.min_horizontal(pl.lit(1.0), effective_threshold / ltv)
-    loan_split_rw = pl.lit(0.60) * secured_share + cp_rw_for_cre * (pl.lit(1.0) - secured_share)
+    loan_split_rw = pl.lit(
+        float(B31_COMMERCIAL_GENERAL_SECURED_RW)
+    ) * secured_share + cp_rw_for_cre * (pl.lit(1.0) - secured_share)
 
     # General CRE — other counterparties (Art. 124H(3)):
     # max(60%, min(counterparty_RW, Art. 124I income-producing RW))
     # Art. 124H(3) references Art. 124I(1)/(2) base table (not the Art. 124I(3)
     # junior override), so we reuse base_income_rw as the cap.
-    other_cp_rw = pl.max_horizontal(pl.lit(0.60), pl.min_horizontal(cp_rw, base_income_rw))
+    other_cp_rw = pl.max_horizontal(
+        pl.lit(float(B31_COMMERCIAL_GENERAL_SECURED_RW)),
+        pl.min_horizontal(cp_rw, base_income_rw),
+    )
 
     # Route general CRE based on counterparty type
     general = pl.when(is_person_or_sme).then(loan_split_rw).otherwise(other_cp_rw)

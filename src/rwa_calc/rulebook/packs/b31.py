@@ -1082,4 +1082,36 @@ ENTRIES: dict[str, RuleEntry] = {
         value=Decimal("0.60"),
         citation=Citation("PS1/26", "124J", "(3)(b) other-RE CRE floor 60%"),
     ),
+    # RE general loan-split secured portion RW + cap (RRE Art. 124F / CRE Art. 124H)
+    # and the income-RRE junior-charge multiplier + LTV gate (Art. 124G(2)).
+    "b31_residential_general_secured_rw": ScalarParam(
+        name="b31_residential_general_secured_rw",
+        value=Decimal("0.20"),
+        citation=Citation("PS1/26", "124F", "(1) RRE loan-split secured portion 20%"),
+    ),
+    "b31_residential_general_max_secured_ratio": ScalarParam(
+        name="b31_residential_general_max_secured_ratio",
+        value=Decimal("0.55"),
+        citation=Citation("PS1/26", "124F", "(1) RRE loan-split cap 55% of value"),
+    ),
+    "b31_residential_income_junior_multiplier": ScalarParam(
+        name="b31_residential_income_junior_multiplier",
+        value=Decimal("1.25"),
+        citation=Citation("PS1/26", "124G", "(2) junior income-RRE 1.25x multiplier"),
+    ),
+    "b31_residential_income_junior_ltv_threshold": ScalarParam(
+        name="b31_residential_income_junior_ltv_threshold",
+        value=Decimal("0.50"),
+        citation=Citation("PS1/26", "124G", "(2) junior multiplier applies above 50% LTV"),
+    ),
+    "b31_commercial_general_secured_rw": ScalarParam(
+        name="b31_commercial_general_secured_rw",
+        value=Decimal("0.60"),
+        citation=Citation("PS1/26", "124H", "(1) CRE loan-split secured portion 60%"),
+    ),
+    "b31_commercial_general_max_secured_ratio": ScalarParam(
+        name="b31_commercial_general_max_secured_ratio",
+        value=Decimal("0.55"),
+        citation=Citation("PS1/26", "124H", "(2) CRE loan-split cap 55% of value"),
+    ),
 }
