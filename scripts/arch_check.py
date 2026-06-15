@@ -284,6 +284,7 @@ RATCHET_MAX_METRICS = (
     "engine_presence_guard_sites",
     "engine_collect_schema_sites",
     "engine_eager_collect_sites",
+    "engine_data_tables_import_edges",
     "max_engine_module_loc",
 )
 
@@ -861,9 +862,39 @@ def _code_line_numbers(text: str) -> set[int] | None:
     return code_lines
 
 
+def _count_data_tables_import_edges(text: str) -> int:
+    """Count engine -> ``rwa_calc.data.tables`` import edges in one module.
+
+    Each name imported from a ``rwa_calc.data.tables`` submodule counts once;
+    module-level AND inline (in-function) ``from ... import`` both count
+    (``ast.walk`` sees every node). This is the S12 maximalist table-move
+    ratchet: the regulatory values now live in the rulepack packs, so the
+    engine should read the pack rather than import data/tables — the count is
+    forbidden from growing (RATCHET_MAX_METRICS) and falls toward zero as each
+    remaining table relocates into engine/ or is read straight from the pack.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return 0
+    total = 0
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and (
+                node.module == "rwa_calc.data.tables"
+                or node.module.startswith("rwa_calc.data.tables.")
+            )
+        ):
+            total += len(node.names)
+    return total
+
+
 def _measure_ratchet_metrics(path: Path) -> dict[str, int]:
     """Measure the defensive-surface metrics over `path` (the package root)."""
     fill_null = presence = collect_schema = eager_collects = max_loc = 0
+    data_tables_imports = 0
     for py_file in _iter_engine_files(path):
         try:
             text = py_file.read_text(encoding="utf-8")
@@ -874,6 +905,7 @@ def _measure_ratchet_metrics(path: Path) -> dict[str, int]:
         collect_schema += _count_pattern_lines(text, _COLLECT_SCHEMA_PATTERN)
         if py_file.name != "materialise.py":
             eager_collects += _count_pattern_lines(text, _EAGER_COLLECT_PATTERN)
+        data_tables_imports += _count_data_tables_import_edges(text)
         max_loc = max(max_loc, text.count("\n") + 1)
 
     cites = 0
@@ -891,6 +923,7 @@ def _measure_ratchet_metrics(path: Path) -> dict[str, int]:
         "engine_presence_guard_sites": presence,
         "engine_collect_schema_sites": collect_schema,
         "engine_eager_collect_sites": eager_collects,
+        "engine_data_tables_import_edges": data_tables_imports,
         "max_engine_module_loc": max_loc,
         "cites_decorators": cites,
     }
