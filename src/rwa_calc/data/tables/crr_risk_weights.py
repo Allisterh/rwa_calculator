@@ -431,15 +431,7 @@ def _create_io_df() -> pl.DataFrame:
 # CORPORATE RISK WEIGHTS (CRR Art. 122)
 # =============================================================================
 
-CORPORATE_RISK_WEIGHTS: dict[CQS, Decimal] = {
-    CQS.CQS1: Decimal("0.20"),  # AAA to AA-
-    CQS.CQS2: Decimal("0.50"),  # A+ to A-
-    CQS.CQS3: Decimal("1.00"),  # BBB+ to BBB-
-    CQS.CQS4: Decimal("1.00"),  # BB+ to BB-
-    CQS.CQS5: Decimal("1.50"),  # B+ to B-
-    CQS.CQS6: Decimal("1.50"),  # CCC+ and below
-    CQS.UNRATED: Decimal("1.00"),  # Unrated
-}
+CORPORATE_RISK_WEIGHTS: dict[CQS, Decimal] = _cqs_rw_from_pack("corporate_risk_weights")
 
 
 def _create_corporate_df() -> pl.DataFrame:
@@ -649,14 +641,7 @@ def _create_commercial_re_df() -> pl.DataFrame:
 # COVERED BOND RISK WEIGHTS (CRR Art. 129)
 # =============================================================================
 
-COVERED_BOND_RISK_WEIGHTS: dict[CQS, Decimal] = {
-    CQS.CQS1: Decimal("0.10"),  # AAA to AA-
-    CQS.CQS2: Decimal("0.20"),  # A+ to A-
-    CQS.CQS3: Decimal("0.20"),  # BBB+ to BBB-
-    CQS.CQS4: Decimal("0.50"),  # BB+ to BB-
-    CQS.CQS5: Decimal("0.50"),  # B+ to B-
-    CQS.CQS6: Decimal("1.00"),  # CCC+ and below
-}
+COVERED_BOND_RISK_WEIGHTS: dict[CQS, Decimal] = _cqs_rw_from_pack("covered_bond_risk_weights")
 
 # Unrated covered bond derivation from issuer institution risk weight.
 #

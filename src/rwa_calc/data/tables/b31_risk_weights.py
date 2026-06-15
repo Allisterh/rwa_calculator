@@ -38,12 +38,29 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
+from typing import cast
 
 import polars as pl
 import polars.selectors as cs
 from watchfire import cites
 
 from rwa_calc.domain.enums import PropertyType
+from rwa_calc.rulebook.resolve import resolve
+
+# Basel 3.1 SA risk-weight values now live in packs/b31.py; the int-keyed CQS
+# dicts below are read back from the pack so it is the single source of truth.
+_RW_PACK_B31 = resolve("b31", date(2027, 1, 1))
+
+
+def _int_cqs_rw_from_pack(name: str) -> dict[int | None, Decimal]:
+    """Read a raw-int-keyed (1-6, None=unrated) B31 RW LookupTable from the pack.
+
+    Returns the exact ``dict[int | None, Decimal]`` the former module-level
+    literal held, so ``_build_int_cqs_rw_df`` and every other consumer stay
+    byte-identical.
+    """
+    return cast("dict[int | None, Decimal]", dict(_RW_PACK_B31.lookup(name).entries))
+
 
 # =============================================================================
 # RESIDENTIAL REAL ESTATE — GENERAL (PRA PS1/26 Art. 124F)
@@ -154,15 +171,9 @@ B31_OTHER_RE_CRE_FLOOR_RW = Decimal("0.60")
 # Differs from CRR: CQS3 = 75% (was 100%). PRA retains CQS5 = 150% (BCBS: 100%).
 # =============================================================================
 
-B31_CORPORATE_RISK_WEIGHTS: dict[int | None, Decimal] = {
-    1: Decimal("0.20"),  # AAA to AA-
-    2: Decimal("0.50"),  # A+ to A-
-    3: Decimal("0.75"),  # BBB+ to BBB- (CRR: 100%)
-    4: Decimal("1.00"),  # BB+ to BB-
-    5: Decimal("1.50"),  # B+ to B- (PRA retains 150%, BCBS reduced to 100%)
-    6: Decimal("1.50"),  # CCC+ and below
-    None: Decimal("1.00"),  # Unrated
-}
+B31_CORPORATE_RISK_WEIGHTS: dict[int | None, Decimal] = _int_cqs_rw_from_pack(
+    "b31_corporate_risk_weights"
+)
 
 # Investment-grade corporate: 65% (PRA PS1/26 Art. 122(6)(a))
 # Qualifying: publicly traded + investment grade external rating
@@ -326,14 +337,9 @@ B31_DEFAULTED_RESI_RE_NON_INCOME_RW = Decimal("1.00")
 # reductions for CQS 2/4/5/6).
 # =============================================================================
 
-B31_COVERED_BOND_RISK_WEIGHTS: dict[int | None, Decimal] = {
-    1: Decimal("0.10"),  # AAA to AA-
-    2: Decimal("0.20"),  # A+ to A- (same as CRR)
-    3: Decimal("0.20"),  # BBB+ to BBB-
-    4: Decimal("0.50"),  # BB+ to BB-
-    5: Decimal("0.50"),  # B+ to B-
-    6: Decimal("1.00"),  # CCC+ and below (same as CRR)
-}
+B31_COVERED_BOND_RISK_WEIGHTS: dict[int | None, Decimal] = _int_cqs_rw_from_pack(
+    "b31_covered_bond_risk_weights"
+)
 
 # Unrated covered bond derivation from issuer SCRA grade via institution RW.
 # Art. 129(5): unrated CB RW is derived from the issuing institution's own RW.

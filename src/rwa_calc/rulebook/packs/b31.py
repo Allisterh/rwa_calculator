@@ -810,4 +810,38 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation("PS1/26", "120", "(2) Table 4 ECRA short-term institution RW"),
         default=Decimal("0.20"),
     ),
+    # =========================================================================
+    # SA CORPORATE / COVERED-BOND CQS RISK-WEIGHT TABLES (PRA PS1/26 Art. 122/129)
+    # Raw-int-keyed (1-6, None for unrated) to match the data/tables int-keyed
+    # dicts read back via _build_int_cqs_rw_df. Corporate CQS3=75% (vs CRR 100%).
+    # =========================================================================
+    "b31_corporate_risk_weights": LookupTable(
+        name="b31_corporate_risk_weights",
+        entries={
+            1: Decimal("0.20"),
+            2: Decimal("0.50"),
+            3: Decimal("0.75"),
+            4: Decimal("1.00"),
+            5: Decimal("1.50"),
+            6: Decimal("1.50"),
+            None: Decimal("1.00"),
+        },
+        key="cqs",
+        citation=Citation("PS1/26", "122", "(2) Table 6 corporate RW (CQS3 75%, CQS5 150%)"),
+        default=Decimal("1.00"),
+    ),
+    "b31_covered_bond_risk_weights": LookupTable(
+        name="b31_covered_bond_risk_weights",
+        entries={
+            1: Decimal("0.10"),
+            2: Decimal("0.20"),
+            3: Decimal("0.20"),
+            4: Decimal("0.50"),
+            5: Decimal("0.50"),
+            6: Decimal("1.00"),
+        },
+        key="cqs",
+        citation=Citation("PS1/26", "129", "(4) Table 7 covered-bond RW (= CRR Table 6A)"),
+        default=Decimal("1.00"),
+    ),
 }

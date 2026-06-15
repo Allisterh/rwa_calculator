@@ -903,4 +903,33 @@ ENTRIES: dict[str, RuleEntry] = {
         citation=Citation("CRR", "121", "Table 5 sovereign-derived institution RW (unrated)"),
         default=Decimal("1.00"),
     ),
+    "corporate_risk_weights": LookupTable(
+        name="corporate_risk_weights",
+        entries={
+            CQS.CQS1: Decimal("0.20"),
+            CQS.CQS2: Decimal("0.50"),
+            CQS.CQS3: Decimal("1.00"),
+            CQS.CQS4: Decimal("1.00"),
+            CQS.CQS5: Decimal("1.50"),
+            CQS.CQS6: Decimal("1.50"),
+            CQS.UNRATED: Decimal("1.00"),
+        },
+        key="cqs",
+        citation=Citation("CRR", "122", "Table 5 corporate RW by CQS"),
+        default=Decimal("1.00"),
+    ),
+    "covered_bond_risk_weights": LookupTable(
+        name="covered_bond_risk_weights",
+        entries={
+            CQS.CQS1: Decimal("0.10"),
+            CQS.CQS2: Decimal("0.20"),
+            CQS.CQS3: Decimal("0.20"),
+            CQS.CQS4: Decimal("0.50"),
+            CQS.CQS5: Decimal("0.50"),
+            CQS.CQS6: Decimal("1.00"),
+        },
+        key="cqs",
+        citation=Citation("CRR", "129", "Table 6A covered-bond RW by CQS (rated)"),
+        default=Decimal("1.00"),
+    ),
 }

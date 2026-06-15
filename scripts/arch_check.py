@@ -384,6 +384,7 @@ IMPORT_DIRECTION_ALLOWLIST: dict[str, set[str]] = {
     # convenience helpers (lookup_risk_weight / _create_retail_df), pending the
     # module's emptying in S12-11.
     "data/tables/crr_risk_weights.py": {"rwa_calc.rulebook.resolve"},
+    "data/tables/b31_risk_weights.py": {"rwa_calc.rulebook.resolve"},
     "data/tables/guarantor_rw.py": {"rwa_calc.rulebook"},
 }
 
