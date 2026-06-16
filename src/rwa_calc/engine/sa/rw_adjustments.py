@@ -28,6 +28,7 @@ References:
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -39,7 +40,6 @@ from rwa_calc.contracts.errors import (
     ErrorCategory,
     ErrorSeverity,
 )
-from rwa_calc.data.tables.b31_risk_weights import B31_EFFECTIVE_DATE
 from rwa_calc.domain.enums import CRMCollateralMethod
 from rwa_calc.engine.eu_sovereign import (
     build_domestic_cgcb_guarantor_expr,
@@ -48,12 +48,20 @@ from rwa_calc.engine.eu_sovereign import (
 from rwa_calc.engine.sa.guarantor_rw import build_guarantor_rw_expr
 from rwa_calc.engine.sa.risk_weights import _SA_B31_RW
 from rwa_calc.rulebook import RulepackV0
+from rwa_calc.rulebook.resolve import resolve
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
     from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
+
+# PRA PS1/26 Basel 3.1 commencement date, resolved from the b31 pack once at
+# module load. Reporting dates strictly before this fall under pre-Basel-3.1
+# treatment (the Art. 123B currency-mismatch multiplier this gates does not
+# apply). Raw date compared date-to-date (no coercion). (S13-g)
+_B31_PACK = resolve("b31", date(2027, 1, 1))
+_B31_EFFECTIVE_DATE = _B31_PACK.date_param("b31_effective_date").value
 
 
 @cites("CRR Art. 222")
@@ -299,7 +307,7 @@ def apply_currency_mismatch_multiplier(
     Basel 3.1 Art. 123B / CRE20.93.
 
     Art. 123B(3) transitional: the multiplier is a Basel-3.1-only measure that
-    commences on ``B31_EFFECTIVE_DATE`` (1 January 2027). Reporting dates strictly
+    commences on ``_B31_EFFECTIVE_DATE`` (1 January 2027). Reporting dates strictly
     before that fall under the pre-Basel-3.1 portfolio treatment and the frame is
     returned unchanged. The boundary date 1 January 2027 is in scope (strict ``<``).
     """
@@ -310,7 +318,7 @@ def apply_currency_mismatch_multiplier(
     # Art. 123B(3) transitional: pre-commencement reporting dates suppress the
     # multiplier entirely. Emit the reporting column as ``False`` (consistent with
     # the no-mismatch branch below) so downstream reporting always sees the flag.
-    if config.reporting_date < B31_EFFECTIVE_DATE:
+    if config.reporting_date < _B31_EFFECTIVE_DATE:
         return lf.with_columns(pl.lit(False).alias("currency_mismatch_multiplier_applied"))
 
     schema = lf.collect_schema()

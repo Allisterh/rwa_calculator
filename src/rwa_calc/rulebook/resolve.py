@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 from rwa_calc.rulebook.model import (
     BandedTable,
     CategoryMap,
+    DateParam,
     DecisionTable,
     Feature,
     FormulaParams,
@@ -100,6 +101,14 @@ class ResolvedRulepack:
         Decimal->float compile boundary for integer counts.
         """
         return self._typed(name, IntParam)
+
+    def date_param(self, name: str) -> DateParam:
+        """Return a ``DateParam`` entry (raises ``TypeError`` if wrong shape).
+
+        Consumers read ``.value`` for the raw ``date`` — there is no
+        Decimal->float compile boundary for calendar dates.
+        """
+        return self._typed(name, DateParam)
 
     def feature(self, name: str) -> bool:
         """Return a ``Feature`` flag (raises ``TypeError`` if wrong shape)."""
@@ -252,6 +261,8 @@ def _value_repr(entry: RuleEntry) -> str:
         return str(entry.value)
     if isinstance(entry, IntParam):
         return str(entry.value)
+    if isinstance(entry, DateParam):
+        return entry.value.isoformat()
     if isinstance(entry, Feature):
         return str(entry.enabled)
     if isinstance(entry, LookupTable):

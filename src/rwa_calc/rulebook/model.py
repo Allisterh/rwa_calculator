@@ -11,10 +11,11 @@ Pipeline position:
 
 Key responsibilities:
 - Define the small fixed vocabulary of rule shapes (migration Phase 5
-  principle 2): ``ScalarParam``, ``IntParam``, ``LookupTable``,
-  ``CategoryMap``, ``BandedTable``, ``Schedule``, ``DecisionTable``,
-  ``FormulaParams``, ``Feature``. All are Decimal-valued except ``IntParam``
-  (integer counts) and ``CategoryMap`` (string category labels).
+  principle 2): ``ScalarParam``, ``IntParam``, ``DateParam``,
+  ``LookupTable``, ``CategoryMap``, ``BandedTable``, ``Schedule``,
+  ``DecisionTable``, ``FormulaParams``, ``Feature``. All are Decimal-valued
+  except ``IntParam`` (integer counts), ``DateParam`` (calendar dates) and
+  ``CategoryMap`` (string category labels).
 - Define ``Citation``, the framework + article provenance carried by every
   entry, with a string form matching the watchfire citation grammar.
 - Stay free of Polars and of any ``float(...)`` of a regulatory value —
@@ -100,6 +101,21 @@ class IntParam:
 
     name: str
     value: int
+    citation: Citation
+
+
+@dataclass(frozen=True)
+class DateParam:
+    """A single cited calendar-date regulatory parameter.
+
+    For regime / amendment effective dates that gate behaviour by reporting date
+    (e.g. the Basel 3.1 commencement date). Like :class:`IntParam` there is no
+    Decimal->float compile boundary: consumers read ``date_param(name).value`` and
+    use the raw ``date`` directly (date comparisons / ``pl.lit(date)``).
+    """
+
+    name: str
+    value: date
     citation: Citation
 
 
@@ -261,6 +277,7 @@ class Feature:
 type RuleEntry = (
     ScalarParam
     | IntParam
+    | DateParam
     | LookupTable
     | CategoryMap
     | BandedTable

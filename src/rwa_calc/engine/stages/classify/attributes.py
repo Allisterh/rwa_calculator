@@ -46,7 +46,6 @@ from typing import TYPE_CHECKING
 import polars as pl
 from watchfire import cites
 
-from rwa_calc.data.tables.b31_risk_weights import B31_RETAIL_GRANULARITY_LIMIT
 from rwa_calc.domain.enums import ExposureClass
 from rwa_calc.engine.entity_class_maps import (
     ENTITY_TYPE_TO_IRB_CLASS,
@@ -69,6 +68,9 @@ logger = logging.getLogger(__name__)
 # int-to-int against ``cp_qualifying_property_count`` (no float coercion).
 _B31_PACK = resolve("b31", date(2027, 1, 1))
 _RRE_THREE_PROPERTY_LIMIT = _B31_PACK.int_param("b31_rre_three_property_limit").value
+# PRA PS1/26 Art. 123A(1)(b)(ii) single-obligor 0.2% retail-granularity cap
+# (Decimal, float()-ed at the call site below) — read direct from the b31 pack.
+_RETAIL_GRANULARITY_LIMIT = _B31_PACK.scalar("b31_retail_granularity_limit")
 
 
 # =========================================================================
@@ -588,7 +590,7 @@ def _build_qualifies_as_retail_expr(
     # population (``_sa_class``); the denominator counts each obligor once by
     # dividing the per-obligor aggregate (``lending_group_adjusted_exposure``)
     # by the obligor's line-count, masking non-retail rows to 0, then summing.
-    granularity_limit = float(B31_RETAIL_GRANULARITY_LIMIT)
+    granularity_limit = float(_RETAIL_GRANULARITY_LIMIT)
     is_retail_candidate = pl.col("_sa_class") == ExposureClass.RETAIL_OTHER.value
     obligor_agg = pl.col("lending_group_adjusted_exposure")
     # Guard the nullable ``counterparty_reference`` partition: a null key would

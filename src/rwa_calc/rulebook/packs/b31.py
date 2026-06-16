@@ -28,6 +28,7 @@ from rwa_calc.domain.enums import CQS, EquityType
 from rwa_calc.rulebook.model import (
     BandedTable,
     Citation,
+    DateParam,
     DecisionTable,
     Feature,
     FormulaParams,
@@ -1012,6 +1013,15 @@ ENTRIES: dict[str, RuleEntry] = {
         name="b31_retail_granularity_limit",
         value=Decimal("0.002"),
         citation=Citation("PS1/26", "123", "123A(1)(b)(ii) single-obligor 0.2% granularity cap"),
+    ),
+    # PRA PS1/26 commencement date — the Basel 3.1 SA framework (including the
+    # Art. 123B currency-mismatch multiplier this date gates) takes effect on
+    # 1 January 2027; reporting dates strictly before fall under pre-Basel-3.1
+    # treatment. Relocated from data/tables (S13-g) as the first DateParam.
+    "b31_effective_date": DateParam(
+        name="b31_effective_date",
+        value=date(2027, 1, 1),
+        citation=Citation("PS1/26", "123B", "Basel 3.1 commencement date (1 Jan 2027)"),
     ),
     "b31_currency_mismatch_multiplier": ScalarParam(
         name="b31_currency_mismatch_multiplier",

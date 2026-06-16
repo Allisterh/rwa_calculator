@@ -11,6 +11,7 @@ from rwa_calc.rulebook.model import (
     BandedTable,
     CategoryMap,
     Citation,
+    DateParam,
     DecisionTable,
     Feature,
     FormulaParams,
@@ -104,6 +105,15 @@ def test_category_map_constructs_and_holds_str_entries() -> None:
     # Assert — the string-valued sibling of LookupTable: category labels, no default
     assert cmap.entries["sovereign"] == "central_govt_central_bank"
     assert cmap.default is None
+
+
+def test_date_param_constructs_and_holds_date() -> None:
+    # Arrange / Act
+    param = DateParam("b31_effective_date", date(2027, 1, 1), Citation("PS1/26", "123B"))
+
+    # Assert — the date sibling of IntParam keeps a raw date value end-to-end
+    assert param.value == date(2027, 1, 1)
+    assert isinstance(param.value, date)
 
 
 # ---------------------------------------------------------------------------
