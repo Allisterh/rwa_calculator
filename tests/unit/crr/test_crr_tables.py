@@ -13,13 +13,6 @@ from decimal import Decimal
 
 import polars as pl
 
-from rwa_calc.data.tables.firb_lgd import (
-    CRR_MATURITY_CAP,
-    CRR_MATURITY_FLOOR,
-    CRR_PD_FLOOR,
-    apply_maturity_bounds,
-    apply_pd_floor,
-)
 from rwa_calc.domain.enums import CQS, SlottingCategory
 from rwa_calc.engine.crm.haircut_tables import (
     COLLATERAL_HAIRCUTS,
@@ -417,35 +410,3 @@ class TestSlottingShortMaturityWeights:
     def test_hvcre_short_satisfactory_one_forty(self) -> None:
         """Satisfactory <2.5yr HVCRE gets 140% RW."""
         assert SLOTTING_RISK_WEIGHTS_HVCRE_SHORT[SlottingCategory.SATISFACTORY] == Decimal("1.40")
-
-
-# =============================================================================
-# IRB PARAMETER FLOOR TESTS
-# =============================================================================
-
-
-class TestIRBParameterFloors:
-    """Tests for IRB parameter floors and caps."""
-
-    def test_pd_floor(self) -> None:
-        """PD floor is 0.03%."""
-        assert Decimal("0.0003") == CRR_PD_FLOOR
-
-    def test_maturity_floor(self) -> None:
-        """Maturity floor is 1 year."""
-        assert Decimal("1.0") == CRR_MATURITY_FLOOR
-
-    def test_maturity_cap(self) -> None:
-        """Maturity cap is 5 years."""
-        assert Decimal("5.0") == CRR_MATURITY_CAP
-
-    def test_apply_pd_floor(self) -> None:
-        """Test PD floor application."""
-        assert apply_pd_floor(Decimal("0.0001")) == Decimal("0.0003")
-        assert apply_pd_floor(Decimal("0.01")) == Decimal("0.01")
-
-    def test_apply_maturity_bounds(self) -> None:
-        """Test maturity bounds application."""
-        assert apply_maturity_bounds(Decimal("0.5")) == Decimal("1.0")
-        assert apply_maturity_bounds(Decimal("3.0")) == Decimal("3.0")
-        assert apply_maturity_bounds(Decimal("7.0")) == Decimal("5.0")

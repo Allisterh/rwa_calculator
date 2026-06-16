@@ -13,9 +13,10 @@ Key responsibilities:
 - Compute the FCCM E* formula at netting-set grain:
       E* = max(0, E·(1+HE) − CVA·(1−HC−HFX))    (Art. 223(5))
   using the standardised supervisory haircuts in
-  ``rwa_calc.data.tables.haircuts``. Haircut scalars and the 5-business-day
-  liquidation period for SFTs (Art. 224(2)(c)) are sourced from that table —
-  no regulatory scalars are declared here per the engine/data separation rule.
+  ``rwa_calc.engine.crm.haircut_tables`` (pack-bound). Haircut scalars and the
+  5-business-day liquidation period for SFTs (Art. 224(2)(c)) are sourced from
+  the rulepack via that module — no regulatory scalars are declared here per the
+  engine/data separation rule.
 - Emit one synthetic exposure row per SFT netting set with
   ``ccr_method == "fccm_sft"`` and ``risk_type == "CCR_SFT"`` so downstream
   Classifier / CRM / SA routing treats the row as a vanilla unsecured

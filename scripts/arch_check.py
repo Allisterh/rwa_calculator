@@ -38,6 +38,12 @@ Checks machine-verifiable invariants from CLAUDE.md:
     Known legacy inversions are allowlisted in
     ``IMPORT_DIRECTION_ALLOWLIST`` and retired by the architecture
     migration phases (docs/plans/target-architecture-migration.md).
+    Engine/** additionally must NOT import ``rwa_calc.data.tables`` at all
+    (hard ban, no allowlist — ``check_no_engine_data_tables_imports``): the
+    Phase 5 migration relocated every regulatory table module into engine/
+    with values sourced from the rulepack packs, so the former shrink-only
+    ``engine_data_tables_import_edges`` ratchet reached zero (S13-k) and is
+    now zero-tolerance.
 13. No bare ``pl.LazyFrame()`` / ``pl.DataFrame().lazy()`` sentinels in
     engine/** — optional frames are ``None`` (migration Phase 2).
 14. No Polars namespace registrations anywhere under src/ —
@@ -317,7 +323,6 @@ RATCHET_MAX_METRICS = (
     "engine_presence_guard_sites",
     "engine_collect_schema_sites",
     "engine_eager_collect_sites",
-    "engine_data_tables_import_edges",
     "max_engine_module_loc",
 )
 
@@ -937,39 +942,46 @@ def _code_line_numbers(text: str) -> set[int] | None:
     return code_lines
 
 
-def _count_data_tables_import_edges(text: str) -> int:
-    """Count engine -> ``rwa_calc.data.tables`` import edges in one module.
+def check_no_engine_data_tables_imports(path: Path) -> list[str]:
+    """Check 12 (hard ban) — engine/** must not import ``rwa_calc.data.tables``.
 
-    Each name imported from a ``rwa_calc.data.tables`` submodule counts once;
-    module-level AND inline (in-function) ``from ... import`` both count
-    (``ast.walk`` sees every node). This is the S12 maximalist table-move
-    ratchet: the regulatory values now live in the rulepack packs, so the
-    engine should read the pack rather than import data/tables — the count is
-    forbidden from growing (RATCHET_MAX_METRICS) and falls toward zero as each
-    remaining table relocates into engine/ or is read straight from the pack.
+    The Phase 5 migration relocated every regulatory table module out of
+    ``data/tables`` into ``engine/`` (values sourced from the rulepack packs via
+    ``rwa_calc.rulebook.resolve``), so ``data/tables`` holds no engine-facing
+    code. This was a shrink-only ratchet (``engine_data_tables_import_edges``)
+    until the count reached zero in S13-k; it is now a zero-tolerance ban with
+    no allowlist. A new ``from rwa_calc.data.tables[...] import ...`` in
+    engine/** is a regression — read the cited rulepack pack instead.
+
+    Module-level AND inline (in-function) imports both count (``ast.walk`` sees
+    every node).
     """
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return 0
-    total = 0
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.ImportFrom)
-            and node.module
-            and (
-                node.module == "rwa_calc.data.tables"
-                or node.module.startswith("rwa_calc.data.tables.")
-            )
-        ):
-            total += len(node.names)
-    return total
+    violations: list[str] = []
+    for py_file in _iter_engine_files(path):
+        try:
+            tree = ast.parse(py_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (
+                    node.module == "rwa_calc.data.tables"
+                    or node.module.startswith("rwa_calc.data.tables.")
+                )
+            ):
+                violations.append(
+                    f"  {py_file}:{node.lineno}: engine/ imports {node.module} — "
+                    "data/tables is retired; read the rulepack pack via "
+                    "rwa_calc.rulebook.resolve instead (check 12 hard ban)"
+                )
+    return violations
 
 
 def _measure_ratchet_metrics(path: Path) -> dict[str, int]:
     """Measure the defensive-surface metrics over `path` (the package root)."""
     fill_null = presence = collect_schema = eager_collects = max_loc = 0
-    data_tables_imports = 0
     for py_file in _iter_engine_files(path):
         try:
             text = py_file.read_text(encoding="utf-8")
@@ -980,7 +992,6 @@ def _measure_ratchet_metrics(path: Path) -> dict[str, int]:
         collect_schema += _count_pattern_lines(text, _COLLECT_SCHEMA_PATTERN)
         if py_file.name != "materialise.py":
             eager_collects += _count_pattern_lines(text, _EAGER_COLLECT_PATTERN)
-        data_tables_imports += _count_data_tables_import_edges(text)
         max_loc = max(max_loc, text.count("\n") + 1)
 
     cites = 0
@@ -998,7 +1009,6 @@ def _measure_ratchet_metrics(path: Path) -> dict[str, int]:
         "engine_presence_guard_sites": presence,
         "engine_collect_schema_sites": collect_schema,
         "engine_eager_collect_sites": eager_collects,
-        "engine_data_tables_import_edges": data_tables_imports,
         "max_engine_module_loc": max_loc,
         "cites_decorators": cites,
     }
@@ -1591,6 +1601,10 @@ def main() -> int:
         (
             "Architecture-debt ratchet vs scripts/arch_metrics.json",
             check_ratchet_metrics,
+        ),
+        (
+            "Engine does not import rwa_calc.data.tables (hard ban; read the pack)",
+            check_no_engine_data_tables_imports,
         ),
         (
             "Import direction points downward (contracts/engine/reporting/data/domain)",
