@@ -25,7 +25,6 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from rwa_calc.data.tables.ccf import OC_SHORT_MATURITY_THRESHOLD_DAYS
 from rwa_calc.rulebook.resolve import resolve
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -42,6 +41,7 @@ FIRB_TRADE_LC_CCF = _CRR.scalar_param("firb_trade_lc_ccf").value
 FIRB_CREDIT_LINE_CCF = _CRR.scalar_param("firb_credit_line_ccf").value
 SA_CCF_DEFAULT = _CRR.scalar_param("sa_ccf_default").value
 OC_SHORT_MATURITY_CCF = _CRR.scalar_param("oc_short_maturity_ccf").value
+OC_SHORT_MATURITY_THRESHOLD_DAYS = _CRR.int_param("oc_short_maturity_threshold_days").value
 
 
 # =============================================================================

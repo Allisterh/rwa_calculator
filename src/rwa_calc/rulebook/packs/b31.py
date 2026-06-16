@@ -31,6 +31,7 @@ from rwa_calc.rulebook.model import (
     DecisionTable,
     Feature,
     FormulaParams,
+    IntParam,
     LookupTable,
     RuleEntry,
     ScalarParam,
@@ -1082,6 +1083,15 @@ ENTRIES: dict[str, RuleEntry] = {
         name="b31_other_re_cre_floor_rw",
         value=Decimal("0.60"),
         citation=Citation("PS1/26", "124J", "(3)(b) other-RE CRE floor 60%"),
+    ),
+    # Art. 124E(1)(b) three-property limit: owner-occupied preferential RRE
+    # treatment is restricted to natural persons whose total residential RE
+    # exposure is secured on no more than three properties; a count strictly
+    # above this re-routes to the income-producing whole-loan track (Art. 124G).
+    "b31_rre_three_property_limit": IntParam(
+        name="b31_rre_three_property_limit",
+        value=3,
+        citation=Citation("PS1/26", "124E", "(1)(b) max residential properties for owner-occupied"),
     ),
     # RE general loan-split secured portion RW + cap (RRE Art. 124F / CRE Art. 124H)
     # and the income-RRE junior-charge multiplier + LTV gate (Art. 124G(2)).

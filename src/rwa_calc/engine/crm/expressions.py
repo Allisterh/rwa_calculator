@@ -11,9 +11,10 @@ fill in collateral.py.
 Sibling modules providing the data this module consumes:
 - data/schemas.py: input-domain collateral type-set lists and the
   canonical collateral_type -> category mapping
-- data/tables/crm_supervisory.py: regulatory values (supervisory LGD,
-  overcollateralisation ratios, minimum thresholds, zero-haircut
-  sovereign CQS cap)
+- rulebook/packs/{common,b31}.py: regulatory values (supervisory LGD,
+  overcollateralisation ratios, minimum collateralisation thresholds,
+  zero-haircut sovereign CQS cap) carrying citations, read per-run via
+  rulebook.resolve
 
 References:
     CRR Art. 161, 224, 230, 231: Supervisory LGD, haircuts,

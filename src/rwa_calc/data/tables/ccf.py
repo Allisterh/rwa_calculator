@@ -3,18 +3,17 @@ Off-balance-sheet product -> risk_type mapping (CRR Annex I / Art. 111(1)).
 
 Canonical home for the framework-INVARIANT structural mapping used by
 ``engine/ccf.py`` to resolve a concrete OBS *product* to its abstract Annex I
-``risk_type`` bucket, plus the OC short-maturity day threshold. The regulatory
-CCF *percentages* (SA Art. 111 / Table A1, F-IRB Art. 166(8)/(10)) live in the
-rulepack (``sa_ccf`` / ``firb_obs_fallback_ccf`` lookups + the bespoke scalars
-in packs/{common,crr,b31}.py); the risk_type -> CCF expressions live in
-``engine/ccf.py``.
+``risk_type`` bucket. The regulatory CCF *percentages* (SA Art. 111 / Table A1,
+F-IRB Art. 166(8)/(10)) live in the rulepack (``sa_ccf`` /
+``firb_obs_fallback_ccf`` lookups + the bespoke scalars in packs/{common,crr,
+b31}.py) — including the OC short-maturity day boundary
+(``oc_short_maturity_threshold_days`` in packs/common.py); the risk_type -> CCF
+expressions live in ``engine/ccf.py``.
 
 Module-level constants:
 
 - ``ANNEX1_PRODUCT_RISK_TYPE``: concrete OBS product -> Annex I risk_type
   bucket (framework-invariant; CRR Annex I == PRA PS1/26 Table A1).
-- ``OC_SHORT_MATURITY_THRESHOLD_DAYS``: CRR Art. 111 OC short-maturity day
-  boundary (365); the engine maps OC to the 20% MLR CCF at/below it.
 
 References:
     - CRR Art. 111: SA CCF categories (Annex I product bands)
@@ -54,11 +53,6 @@ ANNEX1_PRODUCT_RISK_TYPE: dict[str, str] = {
     "DOCUMENTARY_CREDIT": "MLR",
     "TRADE_LC": "MLR",
 }
-
-# CRR Art. 111: "other commitments" mapped to MLR (20%) when remaining maturity
-# <= 1 year. The day threshold is a structural int day count; the 20% CCF itself
-# lives in the rulepack (``oc_short_maturity_ccf`` in packs/common.py).
-OC_SHORT_MATURITY_THRESHOLD_DAYS: int = 365
 
 
 # CRR Annex I product bands are given regulatory effect by Art. 111(1); the

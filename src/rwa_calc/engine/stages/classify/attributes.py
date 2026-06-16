@@ -40,15 +40,13 @@ References:
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import TYPE_CHECKING
 
 import polars as pl
 from watchfire import cites
 
-from rwa_calc.data.tables.b31_risk_weights import (
-    B31_RETAIL_GRANULARITY_LIMIT,
-    B31_RRE_THREE_PROPERTY_LIMIT,
-)
+from rwa_calc.data.tables.b31_risk_weights import B31_RETAIL_GRANULARITY_LIMIT
 from rwa_calc.data.tables.entity_class_mapping import (
     ENTITY_TYPE_TO_IRB_CLASS,
     ENTITY_TYPE_TO_SA_CLASS,
@@ -57,12 +55,20 @@ from rwa_calc.domain.enums import ExposureClass
 from rwa_calc.engine.thresholds import regulatory_threshold
 from rwa_calc.engine.utils import partition_by_nullable
 from rwa_calc.rulebook import RulepackV0
+from rwa_calc.rulebook.resolve import resolve
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
     from rwa_calc.rulebook.resolve import ResolvedRulepack
 
 logger = logging.getLogger(__name__)
+
+# PRA PS1/26 Art. 124E(1)(b) three-property limit resolved from the b31 pack once
+# at module load (Basel-3.1-only; the consumer is gated on the
+# ``b31_art_124e_three_property_limit_applies`` Feature). Integer count compared
+# int-to-int against ``cp_qualifying_property_count`` (no float coercion).
+_B31_PACK = resolve("b31", date(2027, 1, 1))
+_RRE_THREE_PROPERTY_LIMIT = _B31_PACK.int_param("b31_rre_three_property_limit").value
 
 
 # =========================================================================
@@ -453,7 +459,7 @@ def _build_has_income_cover_expr() -> pl.Expr:
     residential treatment (Art. 124F loan-split / Art. 124L) to natural-person
     borrowers whose total residential RE exposure is secured on no more than
     three residential properties. When the count strictly exceeds three
-    (``cp_qualifying_property_count > B31_RRE_THREE_PROPERTY_LIMIT``), the
+    (``cp_qualifying_property_count > _RRE_THREE_PROPERTY_LIMIT``), the
     exposure is materially dependent on property cash flows (Art. 124E(2))
     and routes to the income-producing whole-loan track (Art. 124G).
 
@@ -471,7 +477,7 @@ def _build_has_income_cover_expr() -> pl.Expr:
     """
     is_natural_person = pl.col("cp_is_natural_person").fill_null(False)
     # Strict > 3: count=3 stays owner-occupied; count=4 re-routes (Art. 124E(1)(b)).
-    breaches_limit = pl.col("cp_qualifying_property_count") > B31_RRE_THREE_PROPERTY_LIMIT
+    breaches_limit = pl.col("cp_qualifying_property_count") > _RRE_THREE_PROPERTY_LIMIT
     materially_dependent = is_natural_person & breaches_limit
 
     explicit = pl.col("has_income_cover").fill_null(False)

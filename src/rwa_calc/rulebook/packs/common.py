@@ -559,4 +559,17 @@ ENTRIES: dict[str, RuleEntry] = {
         value=5,
         citation=Citation("CRR", "379", "(1) non-DvP free-delivery Column 4 t+5 lower bound"),
     ),
+    # CCF / CRM integer singletons relocated from data/tables (S13-c). Both are
+    # regime-invariant — CRR carries them unchanged into PS1/26 — so they live in
+    # the common pack and reach both the crr and b31 resolved packs.
+    "oc_short_maturity_threshold_days": IntParam(
+        name="oc_short_maturity_threshold_days",
+        value=365,
+        citation=Citation("CRR", "111", "(1) other-commitments <=1yr maturity day boundary"),
+    ),
+    "zero_haircut_max_sovereign_cqs": IntParam(
+        name="zero_haircut_max_sovereign_cqs",
+        value=1,
+        citation=Citation("CRR", "227", "(2)(a) max sovereign CQS for zero-haircut repo"),
+    ),
 }

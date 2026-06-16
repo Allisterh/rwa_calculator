@@ -68,7 +68,6 @@ from watchfire import cites
 
 from rwa_calc.data.schemas import RISK_TYPE_SYNONYMS
 from rwa_calc.data.tables.ccf import (
-    OC_SHORT_MATURITY_THRESHOLD_DAYS,
     build_product_to_risk_type_expr,
 )
 from rwa_calc.domain.enums import ApproachType
@@ -93,6 +92,10 @@ _SA_CCF_DEFAULT = scalar_value(_CRR_PACK.scalar_param("sa_ccf_default"))
 _FIRB_TRADE_LC_CCF = scalar_value(_CRR_PACK.scalar_param("firb_trade_lc_ccf"))
 _FIRB_CREDIT_LINE_CCF = scalar_value(_CRR_PACK.scalar_param("firb_credit_line_ccf"))
 _OC_SHORT_MATURITY_CCF = scalar_value(_CRR_PACK.scalar_param("oc_short_maturity_ccf"))
+# CRR Art. 111(1): "other commitments" remap to the 20% MLR CCF at/below this
+# remaining-maturity day boundary. Integer day count compared int-to-int against
+# ``.dt.total_days()`` (no float coercion) — sourced via IntParam (S13-c).
+_OC_SHORT_MATURITY_THRESHOLD_DAYS = _CRR_PACK.int_param("oc_short_maturity_threshold_days").value
 
 
 def _normalize_risk_type(risk_type_col: str) -> pl.Expr:
@@ -452,7 +455,7 @@ class CCFCalculator:
                     (
                         pl.col("maturity_date").cast(pl.Date) - pl.lit(config.reporting_date)
                     ).dt.total_days()
-                    <= OC_SHORT_MATURITY_THRESHOLD_DAYS
+                    <= _OC_SHORT_MATURITY_THRESHOLD_DAYS
                 )
                 exposures = exposures.with_columns(
                     pl.when(is_oc & is_short_maturity)

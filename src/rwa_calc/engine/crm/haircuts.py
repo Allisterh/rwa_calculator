@@ -36,7 +36,6 @@ from rwa_calc.data.schemas import (
     REAL_ESTATE_COLLATERAL_TYPES,
     RECEIVABLE_COLLATERAL_TYPES,
 )
-from rwa_calc.data.tables.crm_supervisory import ZERO_HAIRCUT_MAX_SOVEREIGN_CQS
 from rwa_calc.data.tables.haircuts import (
     LIQUIDATION_PERIOD_REPO,
     LIQUIDATION_PERIOD_SECURED_LENDING,
@@ -52,6 +51,14 @@ from rwa_calc.rulebook.resolve import resolve
 if TYPE_CHECKING:
     from rwa_calc.contracts.config import CalculationConfig
     from rwa_calc.rulebook.resolve import ResolvedRulepack
+
+# Art. 227(2)(a) zero-haircut sovereign-CQS cap resolved from the common pack once
+# at module load. Regime-invariant (CRR carries Art. 227 unchanged into PS1/26);
+# integer CQS compared int-to-int (Polars ``.le`` / Python ``<=``), no float
+# coercion. (S13-c)
+_ZERO_HAIRCUT_MAX_SOVEREIGN_CQS = (
+    resolve("crr", date(2026, 1, 1)).int_param("zero_haircut_max_sovereign_cqs").value
+)
 
 
 @dataclass
@@ -587,7 +594,7 @@ class HaircutCalculator:
         # Art. 227(2)(a): eligible for zero haircut if cash/deposit or CQS ≤ 1 sovereign bond
         _zero_type_eligible = pl.col("_lookup_type").is_in(["cash"]) | (
             (pl.col("_lookup_type") == "govt_bond")
-            & pl.col("issuer_cqs").fill_null(99).le(ZERO_HAIRCUT_MAX_SOVEREIGN_CQS)
+            & pl.col("issuer_cqs").fill_null(99).le(_ZERO_HAIRCUT_MAX_SOVEREIGN_CQS)
         )
 
         if has_zero_haircut_col:
@@ -971,7 +978,7 @@ def _is_art227_eligible(collateral_type: str, cqs: int | None) -> bool:
     if norm in ("cash", "deposit"):
         return True
     is_sovereign = norm in ("govt_bond", "sovereign_bond", "government_bond", "gilt")
-    return is_sovereign and cqs is not None and cqs <= ZERO_HAIRCUT_MAX_SOVEREIGN_CQS
+    return is_sovereign and cqs is not None and cqs <= _ZERO_HAIRCUT_MAX_SOVEREIGN_CQS
 
 
 def _build_ineligible_result(

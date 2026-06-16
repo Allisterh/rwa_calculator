@@ -38,8 +38,14 @@ import polars as pl
 import pytest
 
 from rwa_calc.data.schemas import ZERO_HAIRCUT_ELIGIBLE_TYPES
-from rwa_calc.data.tables.crm_supervisory import ZERO_HAIRCUT_MAX_SOVEREIGN_CQS
 from rwa_calc.engine.crm.haircuts import HaircutCalculator
+from rwa_calc.rulebook.resolve import resolve
+
+# Art. 227(2)(a) zero-haircut sovereign-CQS cap — resolved from the rulepack
+# (relocated from data/tables in S13-c). Regime-invariant (CRR -> PS1/26).
+ZERO_HAIRCUT_MAX_SOVEREIGN_CQS = (
+    resolve("crr", date(2026, 1, 1)).int_param("zero_haircut_max_sovereign_cqs").value
+)
 
 # =============================================================================
 # Constants
