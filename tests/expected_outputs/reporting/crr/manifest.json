@@ -990,6 +990,13 @@
           "TOTAL"
         ]
       },
+      "c34_01": null,
+      "c34_02": {
+        "kind": "dict",
+        "keys": []
+      },
+      "c34_04": null,
+      "c34_08": null,
       "framework": "CRR",
       "reporting_basis": null,
       "institution_type": null,
@@ -1028,6 +1035,10 @@
       },
       "cms1": null,
       "cms2": null,
+      "ccr1": null,
+      "ccr2": null,
+      "ccr3": null,
+      "ccr8": null,
       "framework": "CRR",
       "errors": []
     }

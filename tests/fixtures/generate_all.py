@@ -566,6 +566,56 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_ccr_a14,
         ),
+        (
+            "P8.43 (CCR-C1/C2/C3 DvP failed-trade Art. 378 band ladder — 3 distinct CPs)",
+            "ccr",
+            _generate_p843,
+        ),
+        (
+            "P8.55 / B31-CCR-FLOOR-1 (CCR-only SA portfolio — output floor S-TREA/U-TREA inclusion pin)",
+            "ccr",
+            _generate_ccr_floor1,
+        ),
+        (
+            "P8.49 (CCR-B2/B3/B4 default-fund-contribution capital stack — Art. 308/309)",
+            "ccr",
+            _generate_p849_dfc,
+        ),
+        (
+            "P8.42 / CCR-B5 (non-QCCP CCP trade exposure CQS-1 -> 20% institution RW)",
+            "ccr",
+            _generate_p842_nonqccp_b5,
+        ),
+        (
+            "P8.44 (CCR-D1/D2/D3 Simplified SA-CCR + OEM fall-through regression guards)",
+            "ccr",
+            _generate_ccr_d1_d3,
+        ),
+        (
+            "P8.45 (CCR-E1..E5 default-risk RWA routing — institution/corporate/sovereign x CRR/B3.1)",
+            "ccr",
+            _generate_p845_e1_e5,
+        ),
+        (
+            "P8.60 (CVA-A1 BA-CVA reduced-K vertical slice — single Financials IG counterparty)",
+            "p8_60",
+            _generate_p860_cva_a1,
+        ),
+        (
+            "P8.62 (CVA-HEDGE-A1 full BA-CVA — perfect single-name CDS hedge, beta=0.25 ratio pin)",
+            "p8_62",
+            _generate_p862_cva_hedge_a1,
+        ),
+        (
+            "P8.46 (CVA-A2 BA-CVA reduced-K two-counterparty diversification — ρ=0.5 cross-term)",
+            "p8_46",
+            _generate_p846_cva_a2,
+        ),
+        (
+            "P8.46 (CVA-A3 BA-CVA reduced-K one-counterparty two-netting-set SCVA aggregation)",
+            "p8_46",
+            _generate_p846_cva_a3,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -3056,6 +3106,234 @@ def _generate_ccr_a14(output_dir: Path) -> list[tuple[str, int]]:
             sys.modules.pop(mod, None)
 
 
+def _generate_p843(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.43 builder imports (Python-only builder — no persistent parquet output).
+
+    P8.43 tests three independent DvP failed-trade scenarios (CCR-C1 / C2 / C3),
+    each placed in a distinct Art. 378 Table 1 multiplier band:
+
+        CCR-C1: FT_C1, t+6,  dvp_5_15    (8%),  own_funds=8,000,    RWA=100,000
+        CCR-C2: FT_C2, t+35, dvp_31_45   (75%), own_funds=600,000,  RWA=7,500,000
+        CCR-C3: FT_C3, t+46, dvp_46_plus (100%), own_funds=500,000,  RWA=6,250,000
+
+    Portfolio total RWA = 13,850,000.
+
+    Each row carries a distinct counterparty reference (CP_FT_C1 / C2 / C3).
+    The fixture is a Python-only builder; test-writer imports constants and
+    ``make_c_failed_trades_frame()`` / ``make_minimal_counterparties_frame()`` directly.
+
+    Regulatory basis: CRR Art. 378 + Table 1 (DvP multiplier ladder).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p843_failed_trade_builder import (  # noqa: PLC0415
+            FT_C1_BAND,
+            FT_C1_DAYS,
+            FT_C1_ID,
+            FT_C1_MULTIPLIER,
+            FT_C1_OWN_FUNDS,
+            FT_C1_PRICE_DIFF,
+            FT_C1_RWA,
+            FT_C2_BAND,
+            FT_C2_ID,
+            FT_C2_OWN_FUNDS,
+            FT_C2_RWA,
+            FT_C3_BAND,
+            FT_C3_ID,
+            FT_C3_OWN_FUNDS,
+            FT_C3_RWA,
+            PORTFOLIO_TOTAL_RWA,
+            make_c_failed_trades_frame,
+            make_minimal_counterparties_frame,
+        )
+
+        # Smoke-check: frame must construct without raising.
+        lf = make_c_failed_trades_frame()
+        df = lf.collect()
+
+        # Invariant 1: exactly 3 rows.
+        if df.height != 3:
+            raise AssertionError(f"P8.43: frame must have 3 rows (got {df.height})")
+
+        # Invariant 2: all three trade IDs present.
+        ids = set(df["failed_trade_id"].to_list())
+        expected_ids = {FT_C1_ID, FT_C2_ID, FT_C3_ID}
+        if ids != expected_ids:
+            raise AssertionError(f"P8.43: expected trade IDs {expected_ids}, got {ids}")
+
+        # Invariant 3: all rows are dvp settlement type.
+        if df["settlement_type"].n_unique() != 1 or df["settlement_type"][0] != "dvp":
+            raise AssertionError("P8.43: all rows must have settlement_type='dvp'")
+
+        # Invariant 4: each row has a distinct counterparty reference.
+        cp_refs = set(df["counterparty_reference"].to_list())
+        if len(cp_refs) != 3:
+            raise AssertionError(
+                f"P8.43: expected 3 distinct counterparty references, got {cp_refs}"
+            )
+
+        # Invariant 5: DvP rows have null value_transferred and current_positive_exposure.
+        if df["value_transferred"].null_count() != 3:
+            raise AssertionError("P8.43: DvP rows must have null value_transferred")
+        if df["current_positive_exposure"].null_count() != 3:
+            raise AssertionError("P8.43: DvP rows must have null current_positive_exposure")
+        if df["agreed_settlement_price"].null_count() != 0:
+            raise AssertionError("P8.43: DvP rows must have non-null agreed_settlement_price")
+        if df["current_market_value"].null_count() != 0:
+            raise AssertionError("P8.43: DvP rows must have non-null current_market_value")
+
+        # Invariant 6: FT_C1 day count and band constant.
+        ft_c1 = df.filter(pl.col("failed_trade_id") == FT_C1_ID)
+        if ft_c1["working_days_past_due"][0] != FT_C1_DAYS:
+            raise AssertionError(
+                f"P8.43: FT_C1 days must be {FT_C1_DAYS} (got {ft_c1['working_days_past_due'][0]})"
+            )
+
+        # Invariant 7: all optional boolean flags default False.
+        for col in (
+            "is_repo_or_sec_lending",
+            "is_immaterial",
+            "elect_cet1_deduction",
+            "system_wide_failure_waiver",
+        ):
+            if col not in df.columns:
+                raise AssertionError(f"P8.43: column {col!r} must be present")
+            if df[col].sum() != 0:
+                raise AssertionError(f"P8.43: all rows must have {col}=False")
+
+        # Invariant 8: hand-calc spot-check — FT_C1 own-funds and RWA constants.
+        if abs(FT_C1_PRICE_DIFF * FT_C1_MULTIPLIER - FT_C1_OWN_FUNDS) > 0.01:
+            raise AssertionError(
+                f"P8.43: FT_C1 own_funds hand-calc mismatch: "
+                f"{FT_C1_PRICE_DIFF} × {FT_C1_MULTIPLIER} != {FT_C1_OWN_FUNDS}"
+            )
+        if abs(FT_C1_OWN_FUNDS * 12.5 - FT_C1_RWA) > 0.01:
+            raise AssertionError(
+                f"P8.43: FT_C1 RWA hand-calc mismatch: {FT_C1_OWN_FUNDS} × 12.5 != {FT_C1_RWA}"
+            )
+
+        # Invariant 9: own-funds and RWA constants for remaining rows.
+        for trade_id, of, rwa in [
+            (FT_C2_ID, FT_C2_OWN_FUNDS, FT_C2_RWA),
+            (FT_C3_ID, FT_C3_OWN_FUNDS, FT_C3_RWA),
+        ]:
+            if abs(of * 12.5 - rwa) > 0.01:
+                raise AssertionError(
+                    f"P8.43: {trade_id} RWA hand-calc mismatch: {of} × 12.5 != {rwa}"
+                )
+
+        # Invariant 10: portfolio total RWA constant matches sum of per-row RWAs.
+        row_rwa_sum = FT_C1_RWA + FT_C2_RWA + FT_C3_RWA
+        if abs(row_rwa_sum - PORTFOLIO_TOTAL_RWA) > 0.01:
+            raise AssertionError(
+                f"P8.43: PORTFOLIO_TOTAL_RWA {PORTFOLIO_TOTAL_RWA} != "
+                f"sum of per-row RWAs {row_rwa_sum}"
+            )
+
+        # Invariant 11: band string constants are correct non-empty strings.
+        for trade_id, band in [
+            (FT_C1_ID, FT_C1_BAND),
+            (FT_C2_ID, FT_C2_BAND),
+            (FT_C3_ID, FT_C3_BAND),
+        ]:
+            if not isinstance(band, str) or not band:
+                raise AssertionError(
+                    f"P8.43: band constant for {trade_id!r} must be a non-empty string"
+                )
+
+        # Invariant 12: minimal counterparties frame has 3 rows with correct references.
+        cp_lf = make_minimal_counterparties_frame()
+        cp_df = cp_lf.collect()
+        if cp_df.height != 3:
+            raise AssertionError(
+                f"P8.43: counterparties frame must have 3 rows (got {cp_df.height})"
+            )
+        cp_set = set(cp_df["counterparty_reference"].to_list())
+        expected_cps = {"CP_FT_C1", "CP_FT_C2", "CP_FT_C3"}
+        if cp_set != expected_cps:
+            raise AssertionError(f"P8.43: counterparties must be {expected_cps}, got {cp_set}")
+
+        # No parquet files written — report zero files, zero records.
+        return [(PYTHON_ONLY_NO_PARQUET, 0)]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in ("ccr.p843_failed_trade_builder",):
+            sys.modules.pop(mod, None)
+
+
+def _generate_ccr_floor1(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Generate P8.55 / B31-CCR-FLOOR-1 parquet files and smoke-check the bundle.
+
+    Writes four parquet files to the ``ccr/`` output directory:
+        ccr_floor1_trades.parquet             — 1 row (T_CCR_1, 5y GBP IR derivative)
+        ccr_floor1_netting_sets.parquet       — 1 row (NS_CCR_1, CP_CCR_1)
+        ccr_floor1_margin_agreements.parquet  — 0 rows (unmargined)
+        ccr_floor1_ccr_collateral.parquet     — 0 rows (no collateral)
+
+    Smoke-checks structural invariants on the bundle:
+    - trades: 1 row, T_CCR_1, interest_rate, mtm_value=10,000,000
+    - netting_sets: 1 row, NS_CCR_1, is_margined=False
+    - RawDataBundle constructs without error (no raise on build)
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.golden_ccr_floor1 import (
+            CCR_FLOOR1_MTM,
+            CCR_FLOOR1_NETTING_SET_ID,
+            CCR_FLOOR1_TRADE_ID,
+            build_raw_data_bundle_ccr_floor1,
+            save_ccr_floor1_fixtures,
+        )
+
+        # Write parquet artefacts.
+        saved = save_ccr_floor1_fixtures(output_dir)
+
+        # Smoke-check: bundle must construct without raising.
+        bundle = build_raw_data_bundle_ccr_floor1()
+        assert bundle.ccr is not None, "B31-CCR-FLOOR-1: ccr must not be None"
+
+        # Validate trades frame.
+        trades_df = bundle.ccr.trades.trades.collect()
+        if trades_df.height != 1:
+            raise AssertionError(f"B31-CCR-FLOOR-1: expected 1 trade row, got {trades_df.height}")
+        if trades_df["trade_id"][0] != CCR_FLOOR1_TRADE_ID:
+            raise AssertionError(
+                f"B31-CCR-FLOOR-1: trade_id must be {CCR_FLOOR1_TRADE_ID!r}, "
+                f"got {trades_df['trade_id'][0]!r}"
+            )
+        if trades_df["mtm_value"][0] != CCR_FLOOR1_MTM:
+            raise AssertionError(
+                f"B31-CCR-FLOOR-1: mtm_value must be {CCR_FLOOR1_MTM}, "
+                f"got {trades_df['mtm_value'][0]}"
+            )
+
+        # Validate netting sets frame.
+        ns_df = bundle.ccr.netting_sets.netting_sets.collect()
+        if ns_df.height != 1:
+            raise AssertionError(f"B31-CCR-FLOOR-1: expected 1 netting set row, got {ns_df.height}")
+        if ns_df["netting_set_id"][0] != CCR_FLOOR1_NETTING_SET_ID:
+            raise AssertionError(
+                f"B31-CCR-FLOOR-1: netting_set_id must be {CCR_FLOOR1_NETTING_SET_ID!r}"
+            )
+        if ns_df["is_margined"][0] is not False:
+            raise AssertionError("B31-CCR-FLOOR-1: netting set must be unmargined")
+
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.golden_ccr_floor1",
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
 def _generate_p839_ccp(output_dir: Path) -> list[tuple[str, int]]:
     """
     Validate P8.39 CCP-wiring bundles (Python-only — no persistent parquet output).
@@ -3309,6 +3587,300 @@ def print_data_integrity_check(fixtures_dir: Path) -> None:
     if not errors and not warnings:
         print("All integrity checks passed!")
     print("=" * 80)
+
+
+def _generate_p842_nonqccp_b5(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.42 CCR-B5 builder imports (Python-only builder — no persistent parquet output).
+
+    CCR-B5 pins the non-QCCP CCP trade exposure path through the institution SA
+    risk-weight ladder at CQS-1 -> 20% (CRR Art. 107(2)(a) + Art. 120(1) Table 3).
+    Trade economics are byte-identical to CCR-A1 (same dates, notional, MtM, delta)
+    so the EAD is the CCR-A1 golden value loaded from CCR-A1.json.
+    The new pin: risk_weight == 0.20, distinguishing CQS-1 from the CQS-2 fallback
+    at 50% already pinned by the P8.39 two-counterparty book.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p842_nonqccp_b5_builder import save_p842_fixtures  # noqa: PLC0415
+
+        return save_p842_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.p842_nonqccp_b5_builder",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_ccr_d1_d3(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.44 CCR-D1/D2/D3 fall-through guard bundles (Python-only — no persistent parquet).
+
+    P8.44 / CCR-D1, CCR-D2, CCR-D3 provide three orchestrator-ready RawDataBundles
+    that verify the engine always applies the full SA-CCR formula and never routes
+    through Simplified SA-CCR (Art. 281) or the Original Exposure Method (Art. 282).
+
+    The load-bearing scenario is CCR-D3: a margined OTM IR swap whose PFE multiplier
+    drops below 1.0 (0.6048...).  Simplified Art. 281 would force the multiplier to 1.0,
+    producing EAD 8,629,617.519 instead of the correct 6,464,360.391383706.
+
+        CCR-D1: unmargined 10y GBP IR swap  (CCR-A1 economics)  — multiplier=1.0
+        CCR-D2: unmargined 1y USD/GBP FX   (CCR-A2 economics)  — multiplier=1.0
+        CCR-D3: margined 10y GBP IR swap, MtM=-4m (CCR-A13 economics)
+                pfe_multiplier=0.6048083569079303 (PRIMARY PIN: != 1.0 proves full SA-CCR)
+
+    Regulatory basis: CRR Art. 273a(1)/(2) threshold not implemented (absent from engine);
+    Art. 278(3) multiplier always computed; Art. 279c(1) MF always applied (not OEM).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.golden_ccr_d1_d3 import save_ccr_d1_d3_fixtures  # noqa: PLC0415
+
+        return save_ccr_d1_d3_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.golden_ccr_d1_d3",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p849_dfc(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.49 builder imports (Python-only builder — no persistent parquet output).
+
+    P8.49 tests three independent DF-contribution scenarios (CCR-B2 / B3 / B4),
+    each exercising a distinct CRR Art. 308/309 regulatory branch:
+
+        CCR-B2: DFC_B2, QCCP pre-funded   (Art. 308), K_CM=1,000,000   RWEA=12,500,000
+        CCR-B3: DFC_B3, non-QCCP pre-funded(Art. 309), K_CM=750,000    RWEA=9,375,000
+        CCR-B4: DFC_B4, non-QCCP unfunded  (Art. 309), K_CM=400,000    RWEA=5,000,000
+
+    Portfolio total RWEA (B2+B3+B4) = 26,875,000.
+
+    Each row carries a distinct CCP counterparty reference.
+    The fixture is a Python-only builder; test-writer imports constants and
+    ``make_b2_frame()`` / ``make_combined_b2_b3_b4_frame()`` directly.
+
+    Regulatory basis: CRR Art. 308(2)/(3) + Art. 309(1)/(2).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p849_default_fund_builder import save_p849_fixtures  # noqa: PLC0415
+
+        return save_p849_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        sys.modules.pop("ccr.p849_default_fund_builder", None)
+
+
+def _generate_p845_e1_e5(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.45 / CCR-E1..E5 bundles (Python-only builder — no persistent parquet output).
+
+    P8.45 tests five independent default-risk RWA routing scenarios that share
+    identical trade economics (10y GBP IR swap, notional GBP 100m, EAD ~ 5,480,018)
+    but differ in counterparty class (institution / corporate / sovereign) and
+    regulatory framework (CRR / Basel 3.1):
+
+        CCR-E1 (CRR):  institution, CQS 2  -> RW 0.50  (CRR Art. 120(1) Table 3)
+        CCR-E2 (CRR):  corporate,   CQS 3  -> RW 1.00  (CRR Art. 122(1))
+        CCR-E3 (CRR):  sovereign BR, CQS 3 -> RW 0.50  (CRR Art. 114(1) Table 1, non-domestic)
+        CCR-E4 (B3.1): institution, CQS 2  -> RW 0.30  (PS1/26 Art. 120(2) T3 ECRA)
+        CCR-E5 (B3.1): corporate,   CQS 3  -> RW 0.75  (PS1/26 Art. 122(2) Table 6)
+
+    The fixture is a Python-only builder; test-writer imports the five
+    ``build_raw_data_bundle_ccr_eN()`` functions and the two config factories
+    ``make_crr_config()`` / ``make_b31_config()`` directly.
+
+    Regulatory basis: CRR Art. 114, 120, 122, 274(2); PS1/26 Art. 120, 122, 274(2).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p845_e1_e5_builder import save_p845_fixtures
+
+        return save_p845_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.p845_e1_e5_builder",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_p860_cva_a1(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Generate P8.60 / CVA-A1 fixtures — BA-CVA reduced-K vertical slice.
+
+    CVA-A1 tests the reduced version of BA-CVA (PS1/26 CVA Part 4.2-4.4) with a
+    single counterparty (CP_CVA_001, Financials IG, M=3.0 years) and a single
+    netting set (NS_CVA_001, 3-year GBP IR swap, GBP 100m notional).
+
+    Parquet files produced (5 files):
+        cva_a1_trades.parquet              1 row  (T_CVA_001, 3y GBP IR swap)
+        cva_a1_netting_sets.parquet        1 row  (NS_CVA_001, CP_CVA_001)
+        cva_a1_margin_agreements.parquet   0 rows (no CSA)
+        cva_a1_ccr_collateral.parquet      0 rows (no CCR collateral)
+        cva_a1_cva_counterparties.parquet  1 row  (FINANCIAL, IG, M=3.0, in_scope=True)
+
+    Confirmed regulatory scalars (ps126app1.pdf):
+        DSBA-CVA = 0.65       (page 399, section 4.2)
+        rho = 50%             (page 399, section 4.2)
+        DF = (1-e^-0.05M)/(0.05M)  (page 400, section 4.3)
+        RW_Financials_IG = 5.0%    (page 401, section 4.4 table)
+        x12.5 multiplier      (page 15, Own Funds Part 4(b))
+
+    CORRECTION vs scenario-architect proposal: the proposal omitted the
+    DSBA-CVA = 0.65 scalar. The correct RWEA formula is:
+        RWEA_CVA = 0.65 * K_reduced * 12.5
+
+    Regulatory basis: PS1/26 App.1 CVA Part 4.2-4.4; CRR Art. 274(2).
+    """
+    _REPO_ROOT_STR = str(_REPO_ROOT)
+    if _REPO_ROOT_STR not in sys.path:
+        sys.path.insert(0, _REPO_ROOT_STR)
+    try:
+        from tests.fixtures.p8_60.cva_a1_builder import save_p860_fixtures
+
+        return save_p860_fixtures(output_dir)
+    finally:
+        for mod in list(sys.modules.keys()):
+            if "p8_60" in mod or "cva_a1_builder" in mod:
+                sys.modules.pop(mod, None)
+
+
+def _generate_p862_cva_hedge_a1(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Generate P8.62 / CVA-HEDGE-A1 fixtures — full BA-CVA with perfect single-name CDS hedge.
+
+    CVA-HEDGE-A1 extends the P8.60 reduced-version baseline by adding one eligible
+    single-name CDS hedge (H_SN_CVA_001) that perfectly offsets the SCVA of
+    CP_CVA_001. The perfect-hedge condition is B_h = EAD_NS / alpha (NOT EAD_NS).
+
+    Key formula correction vs scenario-architect proposal:
+        The SNH_c formula (ps126app1.pdf 4.7, page 402) carries NO (1/alpha).
+        SCVA_c (4.3, page 400) does carry (1/alpha). For SNH_c == SCVA_c with
+        r_hc=1.0 and matching RW/M/DF, the hedge notional must satisfy:
+            B_h = EAD_NS / alpha  (i.e. EAD_NS / 1.4)
+
+    Parquet files produced (1 file):
+        cva_hedge_a1_single_name.parquet  1 row  (H_SN_CVA_001, IDENTICAL,
+                                                  FINANCIAL/IG, M=3.0,
+                                                  placeholder notional = EAD_ref/1.4)
+
+    NOTE: The parquet uses a placeholder notional (reference EAD / alpha). The
+    acceptance test rebuilds this row from the live pipeline EAD.
+
+    Confirmed regulatory scalars (ps126app1.pdf):
+        beta = 0.25                      (page 401, section 4.5)
+        r_hc IDENTICAL = 1.00            (page 403, section 4.10)
+        r_hc LEGALLY_RELATED = 0.80      (page 403, section 4.10)
+        r_hc SAME_SECTOR_REGION = 0.50   (page 403, section 4.10)
+        SNH_c formula (no 1/alpha)       (page 402, section 4.7)
+        index diversification = 0.70     (page 403, section 4.8)
+
+    Regulatory basis: PS1/26 App.1 CVA Part 4.5-4.10; CRR Art. 274(2).
+    """
+    _REPO_ROOT_STR = str(_REPO_ROOT)
+    if _REPO_ROOT_STR not in sys.path:
+        sys.path.insert(0, _REPO_ROOT_STR)
+    try:
+        from tests.fixtures.p8_62.cva_hedge_a1_builder import save_p862_fixtures
+
+        return save_p862_fixtures(output_dir)
+    finally:
+        for mod in list(sys.modules.keys()):
+            if "p8_62" in mod or "cva_hedge_a1_builder" in mod:
+                sys.modules.pop(mod, None)
+
+
+def _generate_p846_cva_a2(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Generate P8.46 / CVA-A2 fixtures — BA-CVA reduced-K two-counterparty diversification.
+
+    CVA-A2 tests the BA-CVA reduced-K formula with two counterparties so that the
+    ρ=0.5 cross-term genuinely differs from the single-counterparty identity.  Both
+    counterparties are GB institutions (CQS 2, Financials IG), unmargined, one 3-year
+    and one 5-year GBP vanilla IR swap.
+
+    Parquet files produced (5 files):
+        cva_a2_trades.parquet              2 rows  (T_CVA_A2_1 3y, T_CVA_A2_2 5y)
+        cva_a2_netting_sets.parquet        2 rows  (NS_CVA_A2_1 → CP1, NS_CVA_A2_2 → CP2)
+        cva_a2_margin_agreements.parquet   0 rows  (no CSA)
+        cva_a2_ccr_collateral.parquet      0 rows  (no CCR collateral)
+        cva_a2_cva_counterparties.parquet  2 rows  (CP1 M=3.0, CP2 M=5.0, FINANCIAL/IG)
+
+    Diversification invariant (strictly holds for positive EADs):
+        sqrt(SCVA_1^2 + SCVA_2^2) < K_reduced < SCVA_1 + SCVA_2
+
+    Regulatory basis: PS1/26 App.1 CVA Part 4.2-4.4; CRR Art. 274(2).
+    """
+    _REPO_ROOT_STR = str(_REPO_ROOT)
+    if _REPO_ROOT_STR not in sys.path:
+        sys.path.insert(0, _REPO_ROOT_STR)
+    try:
+        from tests.fixtures.p8_46.cva_a2_builder import save_p846_fixtures
+
+        return save_p846_fixtures(output_dir)
+    finally:
+        for mod in list(sys.modules.keys()):
+            if "p8_46" in mod or "cva_a2_builder" in mod:
+                sys.modules.pop(mod, None)
+
+
+def _generate_p846_cva_a3(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Generate P8.46 / CVA-A3 fixtures — BA-CVA one-counterparty two-netting-set aggregation.
+
+    CVA-A3 isolates the inner SUM_NS within a single counterparty's SCVA_c: one
+    counterparty CP_CVA_A3 with two netting sets (NS_CVA_A3_1 3-year, NS_CVA_A3_2
+    5-year), both carrying the same counterparty_reference.  The engine join keyed
+    by counterparty_reference propagates M=4.0 to both NS rows and sums the per-NS
+    SCVA contributions.  The single-CP K collapse (n=1) produces K_reduced = SCVA_c.
+
+    Parquet files produced (5 files):
+        cva_a3_trades.parquet              2 rows  (T_CVA_A3_1 3y, T_CVA_A3_2 5y)
+        cva_a3_netting_sets.parquet        2 rows  (NS_CVA_A3_1 → CP_CVA_A3,
+                                                     NS_CVA_A3_2 → CP_CVA_A3)
+        cva_a3_margin_agreements.parquet   0 rows  (no CSA)
+        cva_a3_ccr_collateral.parquet      0 rows  (no CCR collateral)
+        cva_a3_cva_counterparties.parquet  1 row   (CP_CVA_A3, M=4.0, FINANCIAL/IG)
+
+    Structural invariants:
+        scva_c == scva_ns1 + scva_ns2   (cross-NS additivity)
+        k_reduced == scva_c             (single-CP K collapse)
+        scva_ns1 / scva_ns2 == ead_ns1 / ead_ns2  (shared M*DF ratio preservation)
+
+    Regulatory basis: PS1/26 App.1 CVA Part 4.2-4.4; CRR Art. 274(2).
+    """
+    _REPO_ROOT_STR = str(_REPO_ROOT)
+    if _REPO_ROOT_STR not in sys.path:
+        sys.path.insert(0, _REPO_ROOT_STR)
+    try:
+        from tests.fixtures.p8_46.cva_a3_builder import save_p846_cva_a3_fixtures
+
+        return save_p846_cva_a3_fixtures(output_dir)
+    finally:
+        for mod in list(sys.modules.keys()):
+            if "p8_46" in mod or "cva_a3_builder" in mod:
+                sys.modules.pop(mod, None)
 
 
 if __name__ == "__main__":

@@ -1122,6 +1122,112 @@ FAILED_TRADE_SCHEMA: dict[str, ColumnSpec] = {
 }
 
 
+# =============================================================================
+# DEFAULT-FUND-CONTRIBUTION (CCP) INPUT SCHEMA — P8.49
+# =============================================================================
+# One row per clearing-member default-fund contribution consumed by
+# ``engine/ccr/default_fund.py``. Held under an optional frame on
+# ``RawCCRBundle.default_fund_contributions``; absent when the firm has no
+# CCP default-fund contributions.
+#
+# References:
+# - CRR Art. 308(2): K_CCP hypothetical capital + K_CM clearing-member
+#   allocation (K_CM = K_CCP x DF_i / DF_CM).
+# - CRR Art. 308(3): QCCP pre-funded own-funds (RWEA = K_CM x 12.5).
+# - CRR Art. 309(1)/(2): non-QCCP / unfunded treatment (same arithmetic).
+
+#: Default-fund-contribution input schema. ``is_qccp_ccp`` discriminates the
+#: Art. 308 (QCCP) vs Art. 309 (non-QCCP) branch; ``is_unfunded_commitment``
+#: selects the Art. 309 unfunded leg. The firm supplies ``k_ccp_published``
+#: (K_CCP), ``df_i_contribution_amount`` (DF_i) and
+#: ``df_cm_total_contributions`` (DF_CM); the engine derives K_CM and RWEA.
+#: Optional booleans default False per Art. 308/309 scope rules.
+DF_CONTRIBUTION_SCHEMA: dict[str, ColumnSpec] = {
+    # Required — primary key + CCP reference.
+    "contribution_id": ColumnSpec(pl.String),
+    "ccp_reference": ColumnSpec(pl.String),
+    # QCCP flag (CRR Art. 272 Def (88)): True -> Art. 308, False -> Art. 309.
+    "is_qccp_ccp": ColumnSpec(pl.Boolean, default=False, required=False),
+    # Art. 308(2) clearing-member allocation inputs.
+    "df_i_contribution_amount": ColumnSpec(pl.Float64),  # DF_i (>= 0)
+    "df_cm_total_contributions": ColumnSpec(pl.Float64),  # DF_CM (> 0 — denominator)
+    # Art. 308(2) K_CCP supplied by the firm (simulation out of scope).
+    "k_ccp_published": ColumnSpec(pl.Float64),  # K_CCP (>= 0)
+    # Art. 309 unfunded-commitment flag — meaningful only when is_qccp_ccp=False.
+    "is_unfunded_commitment": ColumnSpec(pl.Boolean, default=False, required=False),
+}
+
+
+# =============================================================================
+# BA-CVA COUNTERPARTY INPUT SCHEMA — P8.60
+# =============================================================================
+# One row per counterparty in scope of the Basic Approach to CVA risk
+# (PRA PS1/26 Credit Valuation Adjustment Risk Part, Chapter 4). Held under an
+# optional frame on ``RawDataBundle.cva_counterparties``; absent when the firm
+# has no CVA scope (the CVA stage then no-ops, leaving ``cva_rwa = None``).
+#
+# References:
+# - PS1/26 CVA Part 4.3: SCVA_c inputs (M_NS, EAD_NS, DF_NS, RW_c).
+# - PS1/26 CVA Part 4.4: sector x credit-quality supervisory RW table.
+
+#: Eligible ``cva_rw_sector`` keys — must match the first key of the
+#: ``cva_ba_supervisory_risk_weights`` DecisionTable in packs/b31.py.
+VALID_CVA_RW_SECTORS = {
+    "SOVEREIGN",
+    "LOCAL_GOVERNMENT",
+    "FINANCIAL",
+    "PENSION_FUND",
+    "BASIC_MATERIALS",
+    "CONSUMER",
+    "TECHNOLOGY",
+    "HEALTHCARE",
+    "OTHER",
+}
+
+#: Eligible ``cva_rw_rating_band`` keys — investment grade vs high-yield/non-rated
+#: (PS1/26 CVA Part 4.4 table columns).
+VALID_CVA_RW_RATING_BANDS = {"IG", "HY_NR"}
+
+#: BA-CVA counterparty input schema. ``counterparty_reference`` is the FK to the
+#: netting set's counterparty; ``cva_rw_sector`` / ``cva_rw_rating_band`` select
+#: RW_c from the Art. 4.4 table; ``cva_effective_maturity_years`` is M_NS;
+#: ``cva_in_scope`` gates BA-CVA inclusion (out-of-scope rows are dropped).
+CVA_COUNTERPARTY_SCHEMA: dict[str, ColumnSpec] = {
+    "counterparty_reference": ColumnSpec(pl.String),
+    "cva_rw_sector": ColumnSpec(pl.String),
+    "cva_rw_rating_band": ColumnSpec(pl.String),
+    "cva_effective_maturity_years": ColumnSpec(pl.Float64),
+    "cva_in_scope": ColumnSpec(pl.Boolean, default=True, required=False),
+}
+
+#: Eligible ``cva_hedge_type`` keys — single-name vs index CDS hedges
+#: (PS1/26 CVA Part 4.7 single-name / 4.8 index).
+VALID_CVA_HEDGE_TYPES = {"SINGLE_NAME", "INDEX"}
+
+#: Eligible ``cva_hedge_correlation_band`` keys — must match the key of the
+#: ``cva_ba_single_name_hedge_correlation`` DecisionTable in packs/b31.py
+#: (PS1/26 CVA Part 4.10 r_hc supervisory correlation table).
+VALID_CVA_HEDGE_CORRELATION_BANDS = {"IDENTICAL", "LEGALLY_RELATED", "SAME_SECTOR_REGION"}
+
+#: Full BA-CVA hedge input schema (P8.62). ``counterparty_reference`` is the FK
+#: to the hedged counterparty (null for INDEX hedges); ``cva_hedge_correlation_band``
+#: selects r_hc from the Part 4.10 table; ``cva_hedge_rw_sector`` /
+#: ``cva_hedge_rw_rating_band`` select RW_h from the Part 4.4 table;
+#: ``cva_hedge_residual_maturity_years`` is M_h; ``cva_hedge_notional`` is B_h;
+#: ``cva_hedge_eligible`` gates inclusion in K_hedged (ineligible rows are dropped).
+CVA_HEDGE_SCHEMA: dict[str, ColumnSpec] = {
+    "cva_hedge_reference": ColumnSpec(pl.String),
+    "cva_hedge_type": ColumnSpec(pl.String),
+    "counterparty_reference": ColumnSpec(pl.String, required=False),
+    "cva_hedge_correlation_band": ColumnSpec(pl.String, required=False),
+    "cva_hedge_rw_sector": ColumnSpec(pl.String),
+    "cva_hedge_rw_rating_band": ColumnSpec(pl.String),
+    "cva_hedge_residual_maturity_years": ColumnSpec(pl.Float64),
+    "cva_hedge_notional": ColumnSpec(pl.Float64),
+    "cva_hedge_eligible": ColumnSpec(pl.Boolean, default=True, required=False),
+}
+
+
 # Short-code mapping for the five SA-CCR asset classes used to compose the
 # stable ``hedging_set_id`` per CRR Art. 277(1) (e.g. "IR-NS-IR-01-GBP-GT_5Y").
 # Keys mirror the canonical ``TRADE_SCHEMA.asset_class`` input strings
@@ -1599,6 +1705,21 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
     "securitisation_allocations": {
         "exposure_type": VALID_SECURITISATION_EXPOSURE_TYPES,
         "transfer_type": VALID_TRANSFER_TYPES,
+    },
+    # P8.60 — BA-CVA counterparty sector / credit-quality discriminators
+    # (PS1/26 CVA Part 4.4 supervisory RW table).
+    "cva_counterparties": {
+        "cva_rw_sector": VALID_CVA_RW_SECTORS,
+        "cva_rw_rating_band": VALID_CVA_RW_RATING_BANDS,
+    },
+    # P8.62 — full BA-CVA hedge sector / credit-quality / correlation-band / type
+    # discriminators (PS1/26 CVA Part 4.4 RW table, 4.7/4.8 hedge types, 4.10
+    # r_hc correlation table).
+    "cva_hedges": {
+        "cva_hedge_type": VALID_CVA_HEDGE_TYPES,
+        "cva_hedge_correlation_band": VALID_CVA_HEDGE_CORRELATION_BANDS,
+        "cva_hedge_rw_sector": VALID_CVA_RW_SECTORS,
+        "cva_hedge_rw_rating_band": VALID_CVA_RW_RATING_BANDS,
     },
     # P8.33 — CRR Art. 277(3)(b) / CRE52.67 commodity hedging-set partition.
     # UPPER-CASE bucket keys to match ``SA_CCR_SUPERVISORY_FACTORS_COMMODITY``

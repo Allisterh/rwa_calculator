@@ -386,6 +386,16 @@ def _raw_table_edges() -> dict[str, EdgeContract]:
         "fx_rates": schemas.FX_RATES_SCHEMA,
         "model_permissions": schemas.MODEL_PERMISSIONS_SCHEMA,
         "securitisation_allocations": schemas.SECURITISATION_ALLOCATION_SCHEMA,
+        # P8.60 — BA-CVA counterparty inputs. A loader edge so the per-table
+        # coverage contract (one edge per RawDataBundle frame field) holds and
+        # the contract-derived test builders default it to None when absent.
+        # The field is intentionally NOT in SEALED_FRAME_FIELDS — callers that
+        # supply the CVA book directly attach an unbranded frame.
+        "cva_counterparties": schemas.CVA_COUNTERPARTY_SCHEMA,
+        # P8.62 — full BA-CVA hedge inputs. Same per-table coverage contract as
+        # cva_counterparties; not in SEALED_FRAME_FIELDS (callers attach an
+        # unbranded frame alongside the CVA book).
+        "cva_hedges": schemas.CVA_HEDGE_SCHEMA,
     }
     return {
         field_name: EdgeContract(name=f"raw_{field_name}", columns=edge_columns_from_specs(schema))
@@ -575,6 +585,12 @@ CCR_EXIT_EDGE: EdgeContract = EdgeContract(
         "alpha_applied": EdgeColumn(dtype=pl.Float64, citation="CRR Art. 274(2)"),
         "transitional_add_on": EdgeColumn(dtype=pl.Float64, citation="PS1/26 Art. 274(2A)"),
         "ead_ccr": EdgeColumn(dtype=pl.Float64, citation="CRR Art. 274(3)"),
+        # Settlement-risk / default-fund audit band — present only when the
+        # firm reports failed trades (Art. 378/379) or CCP default-fund
+        # contributions (Art. 308/309); absent on SA-CCR-only runs.
+        "regulatory_band": EdgeColumn(
+            dtype=pl.String, required=False, inject=False, citation="CRR Art. 308/309/378/379"
+        ),
     },
 )
 """The CCR stage exit: the hierarchy_exit shape plus the SA-CCR synthetic-row
@@ -1235,6 +1251,9 @@ def _calc_output_common_columns() -> dict[str, EdgeColumn]:
         "provision_on_nominal": EdgeColumn(dtype=pl.Float64, required=False),
         "source_netting_set_id": EdgeColumn(dtype=pl.String, required=False, inject=False),
         "ccr_method": EdgeColumn(dtype=pl.String, required=False, inject=False),
+        # Settlement-risk / default-fund audit band (Art. 308/309/378/379) —
+        # conditional pass-through on the synthetic CCR rows.
+        "regulatory_band": EdgeColumn(dtype=pl.String, required=False, inject=False),
         "wwr_lgd_override": EdgeColumn(dtype=pl.Float64, required=False, inject=False),
         "addon_aggregate": EdgeColumn(dtype=pl.Float64, required=False, inject=False),
         "addon_by_asset_class": EdgeColumn(
@@ -1411,6 +1430,11 @@ AGGREGATOR_EXIT_EDGE: EdgeContract = EdgeContract(
         "risk_weight_irb_original": EdgeColumn(dtype=pl.Float64, required=False, inject=False),
         "rw_direct": EdgeColumn(dtype=pl.Float64, required=False, inject=False),
         "rwa_irb_original": EdgeColumn(dtype=pl.Float64, required=False, inject=False),
+        # Portfolio BA-CVA RWEA, broadcast as a constant column by the
+        # aggregation stage's CVA roll-up so the COREP C 34.04 (P8.50) and
+        # Pillar III CCR2 (P8.51) consumers can read the scalar from the results
+        # LazyFrame (PRA PS1/26 Own Funds Part 4(b); CVA Part 4.2-4.4).
+        "cva_rwa": EdgeColumn(dtype=pl.Float64, required=False, inject=False),
     },
 )
 
