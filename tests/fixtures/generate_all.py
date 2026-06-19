@@ -571,6 +571,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_p849_dfc,
         ),
+        (
+            "P8.42 / CCR-B5 (non-QCCP CCP trade exposure CQS-1 -> 20% institution RW)",
+            "ccr",
+            _generate_p842_nonqccp_b5,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -3492,6 +3497,35 @@ def print_data_integrity_check(fixtures_dir: Path) -> None:
     if not errors and not warnings:
         print("All integrity checks passed!")
     print("=" * 80)
+
+
+def _generate_p842_nonqccp_b5(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.42 CCR-B5 builder imports (Python-only builder — no persistent parquet output).
+
+    CCR-B5 pins the non-QCCP CCP trade exposure path through the institution SA
+    risk-weight ladder at CQS-1 -> 20% (CRR Art. 107(2)(a) + Art. 120(1) Table 3).
+    Trade economics are byte-identical to CCR-A1 (same dates, notional, MtM, delta)
+    so the EAD is the CCR-A1 golden value loaded from CCR-A1.json.
+    The new pin: risk_weight == 0.20, distinguishing CQS-1 from the CQS-2 fallback
+    at 50% already pinned by the P8.39 two-counterparty book.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.p842_nonqccp_b5_builder import save_p842_fixtures  # noqa: PLC0415
+
+        return save_p842_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.p842_nonqccp_b5_builder",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
 
 
 def _generate_p849_dfc(output_dir: Path) -> list[tuple[str, int]]:
