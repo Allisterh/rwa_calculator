@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - (Next release changes will go here)
 
+### Fixed (Tier 8 — Counterparty Credit Risk; batch 20260619-0822)
+- **Failed/unsettled DvP-trade RWA now reaches firm totals (CRR Art. 378; conversion Art. 92(3)(ca)).** `compute_failed_trade_rwa` was implemented (P8.24) but never invoked in the pipeline, so settlement-risk RWA was silently omitted from the aggregated totals. It is now wired through the CCR stage as synthetic SA exposure rows (`risk_type='SETTLEMENT_FAILED_TRADE'`, `risk_weight=12.5` read from the common pack's `own_funds_to_rwa_factor`), applying the Art. 378 Table 1 escalating multiplier ladder (8% / 50% / 75% / 100% by business days past settlement). Pinned by `tests/acceptance/ccr/test_ccr_c1_c3_failed_trades.py` (CCR-C1/C2/C3; P8.43).
+- **SA-CCR EAD now contributes to the output-floor S-TREA / U-TREA numerators (PRA PS1/26 Art. 92(3A)).** SA-routed CCR exposures were tagged `approach_applied='standardised'` and thus excluded from `FLOOR_ELIGIBLE_APPROACHES`, so a CCR-only portfolio produced `s_trea = u_trea = 0` — yet Art. 92(3A) does not exclude SA-CCR from S-TREA. CCR rows are now re-tagged into a floor-eligible approach (CCR-specific; ordinary SA exposures still cancel out of S-TREA) with the total RWA unchanged (no double-count). Pinned by `tests/acceptance/ccr/test_ccr_floor1_output_floor.py` (B31-CCR-FLOOR-1; P8.55).
+
 ---
 
 ## [0.3.1] - 2026-06-18
