@@ -154,6 +154,25 @@ class RawDataBundle:
             netting set / margin agreement / CCR collateral). None
             when the firm has no CCR scope; the CCR stage no-ops in
             that case. See CRR Art. 271-272.
+        cva_counterparties: Optional BA-CVA counterparty inputs
+            (``CVA_COUNTERPARTY_SCHEMA``). One row per counterparty in
+            scope of the Basic Approach to CVA risk, carrying the
+            sector / credit-quality RW keys, the effective maturity
+            (M_NS) and the in-scope flag. None when the firm has no CVA
+            scope; the CVA stage then no-ops and ``cva_rwa`` stays None.
+            Basel-3.1-only (gated on the ``cva_ba_cva`` pack Feature).
+            See PRA PS1/26 CVA Part Chapter 4.
+        cva_hedges: Optional full BA-CVA hedge inputs
+            (``CVA_HEDGE_SCHEMA``). One row per eligible single-name /
+            index CDS hedge, carrying the correlation band (r_hc), the
+            sector / credit-quality RW keys, the residual maturity
+            (M_h), the notional (B_h) and the eligibility flag. None or
+            empty when the firm uses no eligible CVA hedges; the CVA
+            stage then computes the reduced BA-CVA charge. When eligible
+            hedges are present the full BA-CVA path runs (K_full =
+            beta.K_reduced + (1-beta).K_hedged). Basel-3.1-only (gated on
+            the ``cva_ba_cva`` pack Feature). See PRA PS1/26 CVA Part
+            4.5-4.10.
         errors: Validation errors found during loading
     """
 
@@ -178,6 +197,15 @@ class RawDataBundle:
     model_permissions: pl.LazyFrame | None = None
     securitisation_allocations: pl.LazyFrame | None = None
     ccr: RawCCRBundle | None = None
+    # BA-CVA counterparty inputs (P8.60). Not a loader-sealed frame — the
+    # firm supplies it alongside the CCR book; the CVA stage reads it after
+    # aggregation. None when the firm has no CVA scope.
+    cva_counterparties: pl.LazyFrame | None = None
+    # Full BA-CVA hedge inputs (P8.62). Like ``cva_counterparties`` it is not a
+    # loader-sealed frame — the firm supplies it alongside the CCR/CVA book; the
+    # CVA stage reads it after aggregation. None when the firm uses no eligible
+    # CVA hedges (the reduced BA-CVA charge then applies). Basel-3.1-only.
+    cva_hedges: pl.LazyFrame | None = None
     errors: list[CalculationError] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -504,6 +532,8 @@ class RawCCRBundle:
     - ``margin_agreements``: per-CSA rows (CRR Art. 272(7))
     - ``ccr_collateral``: netting-set-keyed collateral (CRR Art. 275(1))
     - ``failed_trades``: optional failed-settlement rows (Art. 378-380)
+    - ``default_fund_contributions``: optional CCP default-fund
+      contribution rows (Art. 308-309)
 
     Each leaf bundle's LazyFrame may be empty (zero rows, schema
     present) when the firm has no instances of that domain — e.g.
@@ -522,6 +552,10 @@ class RawCCRBundle:
         margin_agreements: Margin-agreement (CSA) inputs for SA-CCR
         ccr_collateral: Netting-set-keyed collateral inputs
         failed_trades: Optional failed-settlement inputs (Art. 378-380)
+        default_fund_contributions: Optional CCP default-fund contribution
+            inputs (Art. 308-309). One row per clearing-member contribution
+            (``DF_CONTRIBUTION_SCHEMA``); ``None`` when the firm has no
+            default-fund contributions and the DFC sub-stage is skipped.
         errors: Bundle-level wiring errors (e.g. missing leaf file,
             cross-leaf consistency failures). Row-level data-quality
             errors live on the individual leaf bundles.
@@ -532,6 +566,7 @@ class RawCCRBundle:
     - CRR Art. 272(4) (netting set), 272(7) (margin agreement),
       272(9) (margin period of risk)
     - CRR Art. 378-380 (settlement risk — failed trades)
+    - CRR Art. 308-309 (CCP default-fund contributions)
     """
 
     trades: TradeBundle
@@ -539,6 +574,7 @@ class RawCCRBundle:
     margin_agreements: MarginAgreementBundle
     ccr_collateral: CCRCollateralBundle
     failed_trades: FailedTradesBundle | None = None
+    default_fund_contributions: pl.LazyFrame | None = None
     errors: list[CalculationError] = field(default_factory=list)
 
 
@@ -723,6 +759,40 @@ class AggregatedResultBundle:
         securitisation_audit: Per-exposure reconciliation showing the parent
             EAD, residual portion, sum of pool slices, and any validation
             status flags from the allocator stage (CRR Art. 244-246).
+        rwa_ccr_default_fund: Bundle-level roll-up of CCP default-fund
+            contribution RWEA (sum of ``rwa_final`` over the synthetic
+            ``risk_type == "CCR_DEFAULT_FUND"`` rows; CRR Art. 308/309).
+            ``None`` when the portfolio carries no default-fund contributions.
+        ead_ccr_total: Portfolio-level roll-up of counterparty-credit-risk
+            exposure value (sum of ``ead_final`` over the synthetic
+            ``ccr__``-prefixed rows; CRR Art. 274(2) SA-CCR EAD =
+            alpha x (RC + PFE)). ``None`` when the portfolio carries no CCR
+            derivative / SFT exposures.
+        rwa_ccr_default: Portfolio-level roll-up of non-QCCP CCR default-risk
+            RWA (sum of ``rwa_final`` over ``ccr__`` rows that are NOT QCCP
+            trade-leg rows; CRR Art. 107(2)(a) SA RW on the SA-CCR EAD).
+            ``None`` when no non-QCCP CCR exposures are present.
+        rwa_ccr_qccp_trade: Portfolio-level roll-up of QCCP trade-leg RWA (sum
+            of ``rwa_final`` over ``ccr__`` rows weighted at the 2% / 4% QCCP
+            risk weight; CRR Art. 306(1)/(4)). ``None`` when no QCCP trade-leg
+            exposures are present.
+        failed_trades_rwa: Portfolio-level roll-up of settlement / failed-trade
+            RWA (sum of ``rwa_final`` over the synthetic
+            ``risk_type == "SETTLEMENT_FAILED_TRADE"`` rows; CRR Art. 378-380,
+            Art. 92(3)(ca) own-funds x 12.5). ``None`` when no failed trades
+            are present.
+        cva_rwa: Portfolio-level BA-CVA risk-weighted exposure amount
+            (RWEA_CVA = DS_BA-CVA x K_reduced x 12.5; PS1/26 CVA Part 4.2-4.4).
+            ``None`` when no CVA counterparties were supplied or the regime is
+            CRR (the CVA stage is a Basel-3.1-only no-op otherwise).
+        cva_method: BA-CVA variant label — ``"BA-CVA"`` whenever a non-None
+            ``cva_rwa`` is produced (both the reduced and full sub-cases carry
+            the same label; the reduced-vs-full distinction lives on
+            ``cva_hedges_recognised``). ``None`` when CVA is out of scope
+            (PS1/26 CVA Part Ch.4).
+        cva_hedges_recognised: ``True`` when at least one eligible CVA hedge fed
+            the full-K path (PS1/26 CVA Part 4.5), ``False`` for the reduced
+            path. ``None`` when CVA is out of scope.
         errors: All errors accumulated throughout pipeline
     """
 
@@ -742,6 +812,14 @@ class AggregatedResultBundle:
     el_summary: ELPortfolioSummary | None = None
     securitisation_summary: pl.LazyFrame | None = None
     securitisation_audit: pl.LazyFrame | None = None
+    rwa_ccr_default_fund: float | Decimal | None = None
+    ead_ccr_total: float | None = None
+    rwa_ccr_default: float | None = None
+    rwa_ccr_qccp_trade: float | None = None
+    failed_trades_rwa: float | None = None
+    cva_rwa: float | None = None
+    cva_method: str | None = None
+    cva_hedges_recognised: bool | None = None
     errors: list[CalculationError] = field(default_factory=list)
 
     def __post_init__(self) -> None:
