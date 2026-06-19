@@ -576,6 +576,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "ccr",
             _generate_p842_nonqccp_b5,
         ),
+        (
+            "P8.44 (CCR-D1/D2/D3 Simplified SA-CCR + OEM fall-through regression guards)",
+            "ccr",
+            _generate_ccr_d1_d3,
+        ),
     ]
 
     for group_name, subdir, generator_func in generators:
@@ -3520,6 +3525,44 @@ def _generate_p842_nonqccp_b5(output_dir: Path) -> list[tuple[str, int]]:
         sys.path.remove(fixtures_root)
         for mod in (
             "ccr.p842_nonqccp_b5_builder",
+            CCR_GOLDEN_A1_MODULE,
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_ccr_d1_d3(output_dir: Path) -> list[tuple[str, int]]:
+    """
+    Validate P8.44 CCR-D1/D2/D3 fall-through guard bundles (Python-only — no persistent parquet).
+
+    P8.44 / CCR-D1, CCR-D2, CCR-D3 provide three orchestrator-ready RawDataBundles
+    that verify the engine always applies the full SA-CCR formula and never routes
+    through Simplified SA-CCR (Art. 281) or the Original Exposure Method (Art. 282).
+
+    The load-bearing scenario is CCR-D3: a margined OTM IR swap whose PFE multiplier
+    drops below 1.0 (0.6048...).  Simplified Art. 281 would force the multiplier to 1.0,
+    producing EAD 8,629,617.519 instead of the correct 6,464,360.391383706.
+
+        CCR-D1: unmargined 10y GBP IR swap  (CCR-A1 economics)  — multiplier=1.0
+        CCR-D2: unmargined 1y USD/GBP FX   (CCR-A2 economics)  — multiplier=1.0
+        CCR-D3: margined 10y GBP IR swap, MtM=-4m (CCR-A13 economics)
+                pfe_multiplier=0.6048083569079303 (PRIMARY PIN: != 1.0 proves full SA-CCR)
+
+    Regulatory basis: CRR Art. 273a(1)/(2) threshold not implemented (absent from engine);
+    Art. 278(3) multiplier always computed; Art. 279c(1) MF always applied (not OEM).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.golden_ccr_d1_d3 import save_ccr_d1_d3_fixtures  # noqa: PLC0415
+
+        return save_ccr_d1_d3_fixtures()
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.golden_ccr_d1_d3",
             CCR_GOLDEN_A1_MODULE,
             CCR_TRADE_BUILDER_MODULE,
             CCR_NETTING_SET_BUILDER_MODULE,
