@@ -89,8 +89,23 @@ def _seal_sft_collateral(df: pl.DataFrame) -> pl.LazyFrame:
     return sealed
 
 
-def _sft_trade_df(trade_id: str, netting_set_id: str) -> pl.DataFrame:
-    """One-row SFT trade frame mirroring the CCR-A11/A12 corp-bond exposure."""
+def _sft_trade_df(
+    trade_id: str,
+    netting_set_id: str,
+    *,
+    is_margined: bool = False,
+    remargining_frequency_days: int = 1,
+    mpor_floor_category: str = "repo_only",
+    has_margin_dispute_doubling: bool = False,
+    mpor_days_override: int | None = None,
+) -> pl.DataFrame:
+    """One-row SFT trade frame mirroring the CCR-A11/A12 corp-bond exposure.
+
+    The Art. 285 margining columns (SFT/FCCM separation Phase 0b) default to the
+    UNMARGINED branch, so the existing A11/A12 builders are unaffected. Pass the
+    margining keywords to make a margined SFT representable (carry-only — the
+    engine does not read these fields yet).
+    """
     row = {
         "trade_id": trade_id,
         "netting_set_id": netting_set_id,
@@ -104,6 +119,11 @@ def _sft_trade_df(trade_id: str, netting_set_id: str) -> pl.DataFrame:
         "exposure_security_residual_maturity_years": (
             CCR_A11_A12_EXPOSURE_SECURITY_RESIDUAL_MATURITY_YEARS
         ),
+        "is_margined": is_margined,
+        "remargining_frequency_days": remargining_frequency_days,
+        "mpor_floor_category": mpor_floor_category,
+        "has_margin_dispute_doubling": has_margin_dispute_doubling,
+        "mpor_days_override": mpor_days_override,
     }
     return pl.DataFrame([row], schema=dtypes_of(SFT_TRADE_SCHEMA))
 
@@ -145,6 +165,45 @@ def build_sft_bundle_a12() -> RawSFTBundle:
         collateral=SftCollateralBundle(
             sft_collateral=_seal_sft_collateral(_sft_collateral_df(SFT_DL_A12_NETTING_SET_ID))
         ),
+    )
+
+
+def build_margined_sft_bundle(
+    *,
+    trade_id: str = "SFT_T_MARGINED",
+    netting_set_id: str = "NS_SFT_MARGINED",
+    remargining_frequency_days: int = 1,
+    mpor_floor_category: str = "repo_only",
+    has_margin_dispute_doubling: bool = False,
+    mpor_days_override: int | None = None,
+) -> RawSFTBundle:
+    """A MARGINED SFT bundle carrying the Art. 285 MPOR inputs (Phase 0b).
+
+    Mirrors the A11 corp-bond exposure but with ``is_margined=True`` and the
+    supplied margin-period inputs denormalised onto the trade row. Carry-only:
+    no engine math reads these fields yet, so this bundle's E* is identical to
+    the unmargined A11 result — the fields exist to make a margined SFT
+    representable for the math phases that follow.
+
+    References:
+        - CRR Art. 285(2)-(5) — MPOR floors / derivation
+        - CRR Art. 224(2) final sub-para — margined holding period
+    """
+    return RawSFTBundle(
+        trades=SftTradeBundle(
+            sft_trades=_seal_sft_trades(
+                _sft_trade_df(
+                    trade_id,
+                    netting_set_id,
+                    is_margined=True,
+                    remargining_frequency_days=remargining_frequency_days,
+                    mpor_floor_category=mpor_floor_category,
+                    has_margin_dispute_doubling=has_margin_dispute_doubling,
+                    mpor_days_override=mpor_days_override,
+                )
+            )
+        ),
+        collateral=None,
     )
 
 
