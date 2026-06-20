@@ -56,6 +56,30 @@ def test_firb_sft_supervisory_maturity_years_value() -> None:
     assert float(entry.value) == 0.5
 
 
+def test_irb_maturity_floor_repo_sft_years_is_five_over_365() -> None:
+    # Act
+    entry = _CRR_PACK.scalar_param("irb_maturity_floor_repo_sft_years")
+    # Assert — 5-day repo/SFT floor is a CALENDAR /365 fraction (NOT 5/250=0.02);
+    # 5/365≈0.0137 is the value an MNA repo's M floors to (Art. 162(2)(d)).
+    assert isinstance(entry, ScalarParam)
+    assert float(entry.value) == 5 / 365
+
+
+def test_irb_maturity_floor_collateralised_deriv_years_is_ten_over_365() -> None:
+    # Act
+    entry = _CRR_PACK.scalar_param("irb_maturity_floor_collateralised_deriv_years")
+    # Assert — 10-day collateralised-deriv/margin-lending floor, /365 (Art. 162(2)(c))
+    assert isinstance(entry, ScalarParam)
+    assert float(entry.value) == 10 / 365
+
+
+def test_mna_intermediate_floor_daily_condition_feature_regime_split() -> None:
+    # Assert — CRR: 5BD/10BD floors apply on MNA alone (no daily condition);
+    # B31 162(2A)(c)/(d): the daily-re-margin/revaluation condition IS required.
+    assert _CRR_PACK.feature("mna_intermediate_floor_requires_daily_condition") is False
+    assert _B31_PACK.feature("mna_intermediate_floor_requires_daily_condition") is True
+
+
 # ---------------------------------------------------------------------------
 # New cited feature (declared in BOTH regime packs — no KeyError)
 # ---------------------------------------------------------------------------
@@ -76,8 +100,11 @@ def test_new_entries_carry_citations() -> None:
     # Act / Assert — every new entry exposes a non-empty Citation
     for name in (
         "one_day_maturity_floor_years",
+        "irb_maturity_floor_repo_sft_years",
+        "irb_maturity_floor_collateralised_deriv_years",
         "firb_sft_supervisory_maturity_years",
         "ccr_synthetic_maturity",
+        "mna_intermediate_floor_requires_daily_condition",
     ):
         citation = _CRR_PACK.entry(name).citation
         assert isinstance(citation, Citation)

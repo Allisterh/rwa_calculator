@@ -621,17 +621,45 @@ ENTRIES: dict[str, RuleEntry] = {
     # lives in the common pack and reaches both resolved packs. The 0.5y F-IRB SFT
     # supervisory M is CRR-only (Basel 3.1 deleted Art. 162(1); its regime gate is the
     # firb_sft_supervisory_maturity Feature, off under B31, so only CRR reads it), but
-    # it is value-safe in the common pack. The intermediate MNA floors REUSE the
-    # existing scalars (liquidation_period_repo 5 BD, mf_margined_floor_days_otc 10 BD,
-    # sa_ccr_business_days_per_year 250) — no new floor literal is added here.
-    # Decimal(1)/Decimal(365) round-trips byte-identically to float(1.0/365.0).
+    # it is value-safe in the common pack. The intermediate MNA floors are dedicated
+    # cited scalars below (irb_maturity_floor_repo_sft_years 5/365,
+    # irb_maturity_floor_collateralised_deriv_years 10/365). They use the SAME /365
+    # CALENDAR day-count as the one-day floor — NOT the SA-CCR 250-business-day-per-
+    # year convention: the Art. 162 maturity floors are calendar-day year-fractions
+    # (the 90-day receivables floor is 90/365≈0.25y, a quarter; /250 would give a
+    # wrong 0.36y). All four floors are MINIMUMS applied to the remaining maturity
+    # (M = clip(remaining, floor, 5y)), never fixed values — except the F-IRB 0.5y,
+    # which IS a fixed value (Art. 162(1)).
+    # Decimal(N)/Decimal(365) round-trips byte-identically to float(N/365.0).
     # Phase 4 will REPLACE the engine literal _ONE_DAY_YEARS in
-    # engine/irb/transforms.py with this scalar.
+    # engine/irb/transforms.py with the one-day scalar.
     "one_day_maturity_floor_years": ScalarParam(
         name="one_day_maturity_floor_years",
         value=Decimal(1) / Decimal(365),
         citation=Citation(
             "CRR", "162(3)", "one-day (~1/365 y) maturity floor (PS1/26 162(3) retains it)"
+        ),
+    ),
+    # CRR Art. 162(2)(d) / PS1/26 162(2A)(d): 5-day FLOOR on the (weighted-average)
+    # remaining maturity for repos / securities-or-commodities lending under a master
+    # netting agreement. M = clip(remaining, 5/365, 5y) — a minimum, not a fixed
+    # value. Same /365 calendar day-count as the one-day floor. Under CRR the floor
+    # applies on MNA alone; under B31 it also needs the 162(2A)(d) daily condition
+    # (gated by the mna_intermediate_floor_requires_daily_condition Feature).
+    "irb_maturity_floor_repo_sft_years": ScalarParam(
+        name="irb_maturity_floor_repo_sft_years",
+        value=Decimal(5) / Decimal(365),
+        citation=Citation("CRR", "162(2)", "(d) 5-day M floor for repo/SFT under an MNA"),
+    ),
+    # CRR Art. 162(2)(c) / PS1/26 162(2A)(c)+(da): 10-day FLOOR on the remaining
+    # maturity for fully/nearly-fully collateralised derivatives + margin lending
+    # under an MNA (and the B31 mixed-MNA set, 162(2A)(da)). M = clip(remaining,
+    # 10/365, 5y) — a minimum, not a fixed value.
+    "irb_maturity_floor_collateralised_deriv_years": ScalarParam(
+        name="irb_maturity_floor_collateralised_deriv_years",
+        value=Decimal(10) / Decimal(365),
+        citation=Citation(
+            "CRR", "162(2)", "(c) 10-day M floor for collateralised derivs/margin lending under MNA"
         ),
     ),
     # CRR Art. 162(1): fixed 0.5y supervisory M for repo-style SFTs under F-IRB. A

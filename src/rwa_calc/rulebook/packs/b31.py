@@ -104,6 +104,19 @@ ENTRIES: dict[str, RuleEntry] = {
         enabled=True,
         citation=Citation("PS1/26", "162", "CCR/SFT synthetic-row MNA & one-day maturity floors"),
     ),
+    # PS1/26 Art. 162(2A)(c)/(d): Basel 3.1 gates the 10BD/5BD intermediate maturity
+    # floors on a "daily re-margining OR revaluation AND prompt-liquidation/set-off"
+    # documentation condition (the OR is distinct from 162(3)'s AND). So the daily
+    # condition IS required under B31 (enabled=True); an MNA repo/deriv lacking
+    # qualifies_mna_intermediate_floor falls to the 162(2A)(f) 1-year catch-all.
+    # CRR (crr.py) sets this False (floors apply on MNA alone).
+    "mna_intermediate_floor_requires_daily_condition": Feature(
+        name="mna_intermediate_floor_requires_daily_condition",
+        enabled=True,
+        citation=Citation(
+            "PS1/26", "162", "(2A)(c)/(d) B31 gates 5BD/10BD floors on a daily condition"
+        ),
+    ),
     # Basel 3.1 removed the CRR Art. 153(3) double-default treatment.
     "double_default_treatment": Feature(
         name="double_default_treatment",
