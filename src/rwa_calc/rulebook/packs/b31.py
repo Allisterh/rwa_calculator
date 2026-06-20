@@ -93,6 +93,17 @@ ENTRIES: dict[str, RuleEntry] = {
             "PS1/26", "162", "(2A)(k) revolving facilities use the facility termination date for M"
         ),
     ),
+    # CCR/SFT synthetic-row effective-maturity rung (PS1/26 Art. 162) — see
+    # packs/crr.py. Enabled under BOTH regimes: Basel 3.1 deleted only the CRR
+    # Art. 162(1) fixed 0.5y SFT supervisory M (gated separately by
+    # firb_sft_supervisory_maturity, off here); the sub-1y MNA floors (162(2A)(c)/(d))
+    # and the daily-re-margin one-day override (162(3)) survive. Declared here so
+    # pack.feature("ccr_synthetic_maturity") never KeyErrors under b31.
+    "ccr_synthetic_maturity": Feature(
+        name="ccr_synthetic_maturity",
+        enabled=True,
+        citation=Citation("PS1/26", "162", "CCR/SFT synthetic-row MNA & one-day maturity floors"),
+    ),
     # Basel 3.1 removed the CRR Art. 153(3) double-default treatment.
     "double_default_treatment": Feature(
         name="double_default_treatment",

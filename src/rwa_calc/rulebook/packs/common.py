@@ -615,6 +615,34 @@ ENTRIES: dict[str, RuleEntry] = {
         value=20,
         citation=Citation("CRR", "224", "(2) secured-lending liquidation period = 20 BD"),
     ),
+    # IRB effective-maturity (Art. 162) day-counts homed off engine literals. The
+    # one-day floor is regime-invariant — CRR Art. 162(3) and PRA PS1/26 Art. 162(3)
+    # both retain the daily-re-margin+revaluation one-day (~1/365 y) override — so it
+    # lives in the common pack and reaches both resolved packs. The 0.5y F-IRB SFT
+    # supervisory M is CRR-only (Basel 3.1 deleted Art. 162(1); its regime gate is the
+    # firb_sft_supervisory_maturity Feature, off under B31, so only CRR reads it), but
+    # it is value-safe in the common pack. The intermediate MNA floors REUSE the
+    # existing scalars (liquidation_period_repo 5 BD, mf_margined_floor_days_otc 10 BD,
+    # sa_ccr_business_days_per_year 250) — no new floor literal is added here.
+    # Decimal(1)/Decimal(365) round-trips byte-identically to float(1.0/365.0).
+    # Phase 4 will REPLACE the engine literal _ONE_DAY_YEARS in
+    # engine/irb/transforms.py with this scalar.
+    "one_day_maturity_floor_years": ScalarParam(
+        name="one_day_maturity_floor_years",
+        value=Decimal(1) / Decimal(365),
+        citation=Citation(
+            "CRR", "162(3)", "one-day (~1/365 y) maturity floor (PS1/26 162(3) retains it)"
+        ),
+    ),
+    # CRR Art. 162(1): fixed 0.5y supervisory M for repo-style SFTs under F-IRB. A
+    # FIXED value, NOT 0.4y and NOT a floor. Deleted under Basel 3.1 — only CRR reads
+    # it (gated by the firb_sft_supervisory_maturity Feature). Phase 4 will REPLACE
+    # the inline pl.lit(0.5) in engine/irb/transforms.py with this scalar.
+    "firb_sft_supervisory_maturity_years": ScalarParam(
+        name="firb_sft_supervisory_maturity_years",
+        value=Decimal("0.5"),
+        citation=Citation("CRR", "162(1)", "F-IRB fixed 0.5y supervisory M for repo-style SFTs"),
+    ),
     # Entity-type -> exposure-class classification maps (CRR Art. 112 SA / Art.
     # 147 IRB), relocated from data/tables (S13-d). Category labels, not rates —
     # consumed in Python via Expr.replace_strict (engine/entity_class_maps.py

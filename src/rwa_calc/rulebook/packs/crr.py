@@ -89,6 +89,18 @@ ENTRIES: dict[str, RuleEntry] = {
             "CRR", "162", "revolving facilities use the standard M derivation under CRR"
         ),
     ),
+    # CCR/SFT synthetic-row effective-maturity rung (Art. 162). Gates the new
+    # ccr_effective_maturity carrier rung in engine/irb/transforms.py (the MNA &
+    # one-day maturity floors for FCCM-SFT / SA-CCR synthetic IRB rows). Enabled
+    # under BOTH regimes — only the CRR Art. 162(1) fixed 0.5y is regime-specific
+    # (gated by firb_sft_supervisory_maturity); the sub-1y MNA floors and the
+    # one-day override survive under Basel 3.1 (only Art. 162(1)/162(4) were deleted).
+    # Declared in both packs (crr.py + b31.py) so pack.feature() never KeyErrors.
+    "ccr_synthetic_maturity": Feature(
+        name="ccr_synthetic_maturity",
+        enabled=True,
+        citation=Citation("CRR", "162", "CCR/SFT synthetic-row MNA & one-day maturity floors"),
+    ),
     # CRR Art. 153(3)/202-203 double-default treatment for guaranteed exposures —
     # removed under Basel 3.1. The election (config.enable_double_default) and the
     # 0.15+160xPD multiplier constant stay engine-side; only the regime gate moves.
