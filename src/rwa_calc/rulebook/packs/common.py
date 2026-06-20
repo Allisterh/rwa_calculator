@@ -631,8 +631,8 @@ ENTRIES: dict[str, RuleEntry] = {
     # (M = clip(remaining, floor, 5y)), never fixed values — except the F-IRB 0.5y,
     # which IS a fixed value (Art. 162(1)).
     # Decimal(N)/Decimal(365) round-trips byte-identically to float(N/365.0).
-    # Phase 4 will REPLACE the engine literal _ONE_DAY_YEARS in
-    # engine/irb/transforms.py with the one-day scalar.
+    # Phase 4 homed the former engine literal _ONE_DAY_YEARS in
+    # engine/irb/transforms.py onto this one-day scalar.
     "one_day_maturity_floor_years": ScalarParam(
         name="one_day_maturity_floor_years",
         value=Decimal(1) / Decimal(365),
