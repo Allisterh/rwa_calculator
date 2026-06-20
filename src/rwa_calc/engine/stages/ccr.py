@@ -68,16 +68,29 @@ def run(
         apply_legal_enforceability_gate,
         apply_wwr_gate,
         ccr_rows_to_exposures,
+        partition_out_sft_rows,
     )
 
     resolved = ctx.get(RESOLVED_HIERARCHY)
+
+    # SFT/FCCM separation (Phase 6): the SA-CCR Art. 274 chain is
+    # derivatives-only. SFT EAD (CRR Art. 271(2), Art. 220-223 FCCM) is
+    # computed by the peer ``sft_fccm`` stage from ``RawDataBundle.sft``.
+    # Strip — and flag via the unified error channel — any mis-placed
+    # ``transaction_type == "sft"`` row that still arrives in
+    # ``RawDataBundle.ccr`` so it cannot be silently mis-priced as a
+    # derivative. This single invariant subsumes the double-count guard:
+    # forbidding SFT in ``raw.ccr`` removes the only path to compute the same
+    # SFT EAD twice (here AND in ``sft_fccm``).
+    derivatives_only, sft_input_errors = partition_out_sft_rows(data.ccr)
+    ctx = append_stage_errors(ctx, *sft_input_errors)
 
     # Apply the Art. 272(4) legal-enforceability gate first so
     # non-enforceable netting sets are split into single-trade synthetic
     # NSes before the EAD chain runs, then the Art. 291(4)-(5) WWR gate so
     # specific-WWR trades break out into their own synthetic netting sets
     # (LGD = 100%).
-    raw_ccr_gated = apply_wwr_gate(apply_legal_enforceability_gate(data.ccr))
+    raw_ccr_gated = apply_wwr_gate(apply_legal_enforceability_gate(derivatives_only))
     # Unified error channel: the gates' CCR001/CCR010/CCR011 diagnostics
     # reach the result verbatim — original code/severity/category preserved.
     ctx = append_stage_errors(ctx, *raw_ccr_gated.errors)
@@ -96,10 +109,6 @@ def run(
         # fires under CRR. The add-on branch keeps its ``is_basel_3_1`` bool
         # plumbing param; only this regime read moves to the pack (S9a).
         is_basel_3_1=rulepack.pack.feature("ccr_transitional_alpha_addon_applicable"),
-        # CRR Art. 271(2): SFT EAD method now lives on the peer SFTConfig
-        # (SFT/FCCM separation, Phase 3). "fccm" routes SFT trades through
-        # FCCM (Art. 220-223); reserved "var"/"imm" fail loud in the adapter.
-        sft_method=run_config.sft.method,
     )
     # Inherit the resolved counterparty rating columns onto each CCR
     # synthetic row so the downstream SA Institution lookup (CRR

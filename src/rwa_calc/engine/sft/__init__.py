@@ -2,8 +2,8 @@
 Securities Financing Transaction (SFT) engine subpackage — FCCM EAD.
 
 Pipeline position:
-    HierarchyResolver -> [CCR pipeline adapter] -> sft_rows_to_exposures
-        -> Classifier -> CRMProcessor -> SA/IRB/Slotting Calculators
+    HierarchyResolver -> ccr_sa_ccr -> sft_fccm -> Classifier
+        -> CRMProcessor -> SA/IRB/Slotting Calculators
 
 Key responsibilities:
 - Compute SFT Exposure at Default (EAD) via the Financial Collateral
@@ -33,9 +33,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from rwa_calc.engine.sft.fccm import SFT_TRANSACTION_TYPE, sft_rows_to_exposures  # noqa: E402
+from rwa_calc.engine.sft.fccm import sft_bundle_to_exposures  # noqa: E402
 
 __all__ = [
-    "SFT_TRANSACTION_TYPE",
-    "sft_rows_to_exposures",
+    "sft_bundle_to_exposures",
 ]

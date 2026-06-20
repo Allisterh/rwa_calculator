@@ -55,10 +55,14 @@ from .golden_ccr_a11_a12 import (
     CCR_A11_A12_MATURITY_DATE,
     CCR_A11_A12_NOTIONAL,
     CCR_A11_A12_START_DATE,
+    CCR_A11_NETTING_SET_ID,
+    CCR_A11_TRADE_ID,
     CCR_A12_COLLATERAL_CURRENCY,
     CCR_A12_COLLATERAL_MARKET_VALUE,
     CCR_A12_COLLATERAL_REF,
     CCR_A12_COLLATERAL_TYPE,
+    CCR_A12_NETTING_SET_ID,
+    CCR_A12_TRADE_ID,
 )
 
 # SFT trade / netting-set identifiers for the dark-launch scenarios. Distinct
@@ -140,5 +144,53 @@ def build_sft_bundle_a12() -> RawSFTBundle:
         ),
         collateral=SftCollateralBundle(
             sft_collateral=_seal_sft_collateral(_sft_collateral_df(SFT_DL_A12_NETTING_SET_ID))
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CCR-A11 / CCR-A12 acceptance SFT bundles (Phase 6 source flip).
+#
+# After the SFT/FCCM separation Phase 6, the CCR-A11/A12 golden acceptance
+# scenarios drive through ``RawDataBundle.sft`` (the peer ``sft_fccm`` stage)
+# rather than ``RawDataBundle.ccr`` (the deleted in-CCR FCCM branch). These
+# builders reuse the EXACT CCR-A11/A12 trade / netting-set / collateral
+# identifiers (``CCR_A11_TRADE_ID`` / ``CCR_A11_NETTING_SET_ID`` / …) so the
+# emitted synthetic exposure references (``ccr__NS_SFT_001`` /
+# ``ccr__NS_SFT_002``) — and therefore every acceptance assertion in
+# ``test_ccr_a11_a12_sft_fccm_ead.py`` — are byte-identical to the legacy
+# in-CCR result. The E* math is identical: the SFT bundle and the old CCR
+# bundle feed the same ``_build_sft_exposure_rows`` core.
+# ---------------------------------------------------------------------------
+
+
+def build_sft_bundle_ccr_a11() -> RawSFTBundle:
+    """CCR-A11 SFT bundle (uncollateralised), keyed on the golden A11 ids.
+
+    Reproduces ``build_raw_data_bundle_ccr_a11``'s SFT trade via ``raw.sft``:
+    one GBP 60.7m SFT (corp bond CQS 1, residual 7y) in netting set
+    ``NS_SFT_001`` against ``CP_INST_001``. No collateral → E* = E·(1+HE).
+    """
+    return RawSFTBundle(
+        trades=SftTradeBundle(
+            sft_trades=_seal_sft_trades(_sft_trade_df(CCR_A11_TRADE_ID, CCR_A11_NETTING_SET_ID))
+        ),
+        collateral=None,
+    )
+
+
+def build_sft_bundle_ccr_a12() -> RawSFTBundle:
+    """CCR-A12 SFT bundle (GBP 60m cash collateral), keyed on the golden A12 ids.
+
+    Reproduces ``build_raw_data_bundle_ccr_a12``'s SFT trade + collateral via
+    ``raw.sft``: the same SFT in ``NS_SFT_002`` plus GBP 60m cash collateral
+    (HC=0, HFX=0) → E* = E·(1+HE) − 60m.
+    """
+    return RawSFTBundle(
+        trades=SftTradeBundle(
+            sft_trades=_seal_sft_trades(_sft_trade_df(CCR_A12_TRADE_ID, CCR_A12_NETTING_SET_ID))
+        ),
+        collateral=SftCollateralBundle(
+            sft_collateral=_seal_sft_collateral(_sft_collateral_df(CCR_A12_NETTING_SET_ID))
         ),
     )

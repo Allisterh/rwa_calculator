@@ -2,14 +2,13 @@
 SFT EAD via the Financial Collateral Comprehensive Method (FCCM).
 
 Pipeline position:
-    HierarchyResolver -> [CCR pipeline adapter] -> sft_rows_to_exposures
-        -> Classifier -> CRMProcessor -> SA/IRB/Slotting Calculators
+    HierarchyResolver -> ccr_sa_ccr -> sft_fccm -> Classifier
+        -> CRMProcessor -> SA/IRB/Slotting Calculators
 
 Key responsibilities:
-- Detect SFT rows (``transaction_type == "sft"``) inside the CCR bundle and
-  apply the Financial Collateral Comprehensive Method (FCCM) per CRR Art.
-  271(2) and Art. 220-223 — rather than the SA-CCR derivative chain
-  (Art. 274 / Art. 278).
+- Consume the dedicated ``RawSFTBundle`` (``RawDataBundle.sft``) and apply the
+  Financial Collateral Comprehensive Method (FCCM) per CRR Art. 271(2) and
+  Art. 220-223 — rather than the SA-CCR derivative chain (Art. 274 / Art. 278).
 - Compute the FCCM E* formula at netting-set grain:
       E* = max(0, E·(1+HE) − CVA·(1−HC−HFX))    (Art. 223(5))
   using the standardised supervisory haircuts in
@@ -57,7 +56,7 @@ from rwa_calc.engine.crm.haircut_tables import (
 from rwa_calc.rulebook.resolve import resolve
 
 if TYPE_CHECKING:
-    from rwa_calc.contracts.bundles import RawCCRBundle, RawSFTBundle
+    from rwa_calc.contracts.bundles import RawSFTBundle
 
 logger = logging.getLogger(__name__)
 
@@ -67,90 +66,10 @@ logger = logging.getLogger(__name__)
 _PACK = resolve("crr", date(2026, 1, 1))
 _LIQUIDATION_PERIOD_REPO = _PACK.int_param("liquidation_period_repo").value
 
-# ``"sft"`` is the canonical TRADE_SCHEMA.transaction_type discriminator for
-# securities financing transactions per Art. 220(1)(a). Defined once so the
-# pipeline adapter and this module agree on the routing token.
-SFT_TRANSACTION_TYPE: str = "sft"
-
 
 # =============================================================================
 # Public API
 # =============================================================================
-
-
-@cites("CRR Art. 220")
-@cites("CRR Art. 223")
-@cites("CRR Art. 224")
-@cites("CRR Art. 226")
-@cites("CRR Art. 271")
-def sft_rows_to_exposures(
-    raw_ccr: RawCCRBundle,
-    reporting_date: date,
-) -> pl.LazyFrame:
-    """Shape FCCM SFT EADs into synthetic exposure rows.
-
-    For each netting set whose trades are flagged ``transaction_type == "sft"``,
-    compute ``E* = max(0, E·(1+HE) − CVA·(1−HC−HFX))`` (Art. 223(5)) using the
-    Art. 224 Table 1 supervisory haircuts scaled to the 5-business-day SFT
-    liquidation period (Art. 224(2)(c), Art. 226(2)).
-
-    The function expects ``raw_ccr.trades`` to contain only SFT rows (the
-    pipeline adapter splits derivative vs SFT before calling). Each emitted
-    synthetic exposure row carries:
-
-        exposure_reference    = "ccr__<netting_set_id>"
-        exposure_type         = "ccr_netting_set"
-        counterparty_reference= from NETTING_SET_SCHEMA
-        risk_type             = "CCR_SFT"
-        drawn_amount          = E*  (FCCM EAD)
-        interest              = 0.0
-        undrawn_amount        = 0.0
-        nominal_amount        = 0.0
-        currency              = first trade currency in the NS
-        value_date            = reporting_date
-        maturity_date         = max(trade maturity in the NS)
-        seniority             = "senior"
-        source_netting_set_id = <netting_set_id>
-        ccr_method            = "fccm_sft"
-        ead_ccr               = E*  (mirrors drawn_amount for consistency)
-
-    The SA-CCR derivative component columns (``rc_unmargined``, ``pfe_addon``,
-    ``pfe_multiplier``, ``addon_aggregate``) are intentionally NOT projected
-    here so the downstream ``diagonal_relaxed`` concat at the pipeline level
-    fills them as null on SFT rows.
-
-    Args:
-        raw_ccr: CCR bundle pre-filtered to SFT trades (and the netting sets
-            that own them). Non-SFT rows are tolerated but ignored.
-        reporting_date: As-of date; written to ``value_date``.
-
-    Returns:
-        LazyFrame at netting-set grain. Empty (zero-row) frame when the
-        filtered trades bundle is empty.
-
-    References:
-        CRR Art. 271(2); Art. 220(1)(a); Art. 223(5); Art. 224 Table 1;
-        Art. 224(2)(c); Art. 226(2).
-    """
-    trades_lf = raw_ccr.trades.trades
-    netting_sets_lf = raw_ccr.netting_sets.netting_sets
-    ccr_collateral_lf = raw_ccr.ccr_collateral.ccr_collateral
-
-    # The in-CCR path discriminates SFT rows by ``transaction_type``; the
-    # netting-set ``counterparty_reference`` lives on the separate netting-set
-    # table. Pre-filter to SFT trades and supply the NS-grain counterparty
-    # frame to the shared E* core (Art. 223(5)). The core does the single
-    # trade collect the eager HE loop needs.
-    sft_trades_lf = trades_lf.filter(pl.col("transaction_type") == SFT_TRANSACTION_TYPE)
-    ns_counterparty_lf = netting_sets_lf.select(
-        pl.col("netting_set_id"), pl.col("counterparty_reference")
-    )
-    return _build_sft_exposure_rows(
-        sft_trades_lf=sft_trades_lf,
-        ns_counterparty_lf=ns_counterparty_lf,
-        ccr_collateral_lf=ccr_collateral_lf,
-        reporting_date=reporting_date,
-    )
 
 
 @cites("CRR Art. 220")
@@ -164,14 +83,13 @@ def sft_bundle_to_exposures(
 ) -> pl.LazyFrame:
     """Shape FCCM SFT EADs into synthetic exposure rows from the lean SFT bundle.
 
-    The peer-subsystem entry point (SFT/FCCM separation Phase 5): consumes the
-    dedicated :class:`RawSFTBundle` rather than the co-mingled
-    :class:`RawCCRBundle`. The E* math is identical to
-    :func:`sft_rows_to_exposures` — only the input plumbing differs:
+    The sole FCCM entry point (SFT/FCCM separation): consumes the dedicated
+    :class:`RawSFTBundle` (``RawDataBundle.sft``). The SFT/derivative
+    discrimination lives in the *input bundle* now, not in any in-engine
+    ``transaction_type`` split:
 
-    - Every trade row is an SFT (no ``transaction_type`` filter): the SFT/
-      derivative discrimination has moved out of the engine and into the input
-      bundle, so the whole ``raw_sft.trades`` frame is in scope.
+    - Every trade row is an SFT (no ``transaction_type`` filter): the whole
+      ``raw_sft.trades`` frame is in scope.
     - The netting-set ``counterparty_reference`` is denormalised onto the trade
       row (FCCM scope is single-trade single-counterparty netting sets,
       Art. 220(1)(a)), so the NS-grain counterparty frame is derived from the
@@ -179,12 +97,11 @@ def sft_bundle_to_exposures(
     - Collateral is OPTIONAL (``raw_sft.collateral is None`` for an
       uncollateralised SFT, the common case): a missing collateral leaf yields a
       zero collateral term (CVA·(1−HC−HFX) = 0), exactly as an empty
-      ``ccr_collateral`` frame does on the in-CCR path.
+      ``ccr_collateral`` frame would.
 
-    Each emitted synthetic exposure row carries the same provenance as
-    :func:`sft_rows_to_exposures` (``exposure_reference = "ccr__<netting_set_id>"``,
-    ``risk_type = "CCR_SFT"``, ``ccr_method = "fccm_sft"``, ``drawn_amount = E*``,
-    ``ead_ccr = E*``).
+    Each emitted synthetic exposure row carries the FCCM provenance:
+    ``exposure_reference = "ccr__<netting_set_id>"``, ``risk_type = "CCR_SFT"``,
+    ``ccr_method = "fccm_sft"``, ``drawn_amount = E*``, ``ead_ccr = E*``.
 
     Args:
         raw_sft: The SFT (FCCM) input bundle — every trade row is an SFT with the
@@ -231,11 +148,11 @@ def _build_sft_exposure_rows(
 ) -> pl.LazyFrame:
     """Compute the FCCM E* per netting set and shape the synthetic rows.
 
-    The single home of the Art. 223(5) E* arithmetic, shared by both the
-    in-CCR (:func:`sft_rows_to_exposures`) and peer-subsystem
-    (:func:`sft_bundle_to_exposures`) entry points so the regulatory core is
-    declared once — including the single trade ``collect()`` the eager HE loop
-    requires. The two callers differ only in how they shape the three inputs.
+    The single home of the Art. 223(5) E* arithmetic, consumed by the
+    :func:`sft_bundle_to_exposures` entry point — including the single trade
+    ``collect()`` the eager HE loop requires. Kept as a separate core so the
+    regulatory math is declared once and the entry point reads as pure input
+    plumbing.
 
     Args:
         sft_trades_lf: SFT trade rows (already filtered to SFTs), carrying
@@ -256,7 +173,7 @@ def _build_sft_exposure_rows(
         CRR Art. 223(5); Art. 224 Table 1; Art. 224(2)(c); Art. 226(2).
     """
     # Materialise the SFT trade frame once for the per-row HE lookup (the eager
-    # divergence both entry points share — kept in one place).
+    # HE divergence, kept in one place).
     sft_trades_df = sft_trades_lf.collect()
     trade_schema = sft_trades_df.columns
     coll_schema = (

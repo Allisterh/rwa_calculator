@@ -75,6 +75,23 @@ def run(
         logger.debug("no SFT inputs - skipping SFT FCCM stage")
         return ctx
 
+    # Reserved-but-unimplemented SFT EAD methods (CRR Art. 221 "var" / Art. 283
+    # "imm"). Fail loud rather than silently dropping every SFT row (which would
+    # under-report exposure). Only ``"fccm"`` (Art. 220-223) is implemented. The
+    # guard lives on the peer SFT stage now that the SFT input is the dedicated
+    # ``RawDataBundle.sft`` (SFT/FCCM separation, Phase 6) — moved verbatim from
+    # the former in-CCR ``ccr_rows_to_exposures`` so the fail-loud behaviour is
+    # preserved. A programming/configuration error, so a raised exception (not the
+    # data-quality CalculationError channel) is the correct convention.
+    sft_method = run_config.sft.method
+    if sft_method != "fccm":
+        msg = (
+            f"SFT EAD method {sft_method!r} is reserved but not implemented "
+            "(CRR Art. 221 'var' / Art. 283 'imm'). Only 'fccm' (Art. 220-223) "
+            "is supported. Set SFTConfig.method='fccm' or remove the SFT book."
+        )
+        raise NotImplementedError(msg)
+
     resolved = ctx.get(RESOLVED_HIERARCHY)
 
     sft_exposure_rows = sft_bundle_to_exposures(data.sft, run_config.reporting_date)

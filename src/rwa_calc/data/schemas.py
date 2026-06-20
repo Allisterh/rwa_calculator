@@ -884,16 +884,23 @@ SECURITISATION_ALLOCATION_SCHEMA: dict[str, ColumnSpec] = {
 # - CRR Art. 285(2)(b) (10 business-day MPOR minimum)
 # - CRR Art. 295-297 (contractual netting recognition)
 
-#: Trade-level input for SA-CCR. One row per OTC derivative / long-settlement
-#: trade or SFT (discriminated by ``transaction_type``). Consumed by the
-#: CCR calculator stage.
+#: Trade-level input for SA-CCR (OTC derivatives / long-settlement trades).
+#: One row per derivative trade. Consumed by the ``ccr_sa_ccr`` derivative
+#: stage. SFTs are NOT carried here since the SFT/FCCM separation — securities
+#: financing transactions have their own lean ``SFT_TRADE_SCHEMA`` input
+#: (``RawDataBundle.sft``), priced by the peer ``sft_fccm`` FCCM stage
+#: (CRR Art. 271(2), Art. 220-223).
 TRADE_SCHEMA: dict[str, ColumnSpec] = {
     # Required (8) — primary key + core economic terms.
     "trade_id": ColumnSpec(pl.String),
     "netting_set_id": ColumnSpec(pl.String),
     # "interest_rate" | "fx" | "credit" | "equity" | "commodity"
     "asset_class": ColumnSpec(pl.String),
-    # "derivative" | "sft"
+    # "derivative" — REQUIRED on every CCR (derivative) trade row. The "sft"
+    # value remains valid in VALID_TRANSACTION_TYPES (the guard detects it), but
+    # SFT rows belong in SFT_TRADE_SCHEMA / RawDataBundle.sft, not here — a "sft"
+    # row reaching this frame is flagged CCR020 and excluded from the Art. 274
+    # chain. See partition_out_sft_rows (engine/ccr/pipeline_adapter.py).
     "transaction_type": ColumnSpec(pl.String),
     "notional": ColumnSpec(pl.Float64),
     "currency": ColumnSpec(pl.String),

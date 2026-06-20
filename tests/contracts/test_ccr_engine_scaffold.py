@@ -60,6 +60,10 @@ _CCR_PUBLIC_FUNCTIONS: tuple[str, ...] = (
     "compute_supervisory_delta_cdo_tranche",
     "compute_supervisory_delta_linear",
     "compute_supervisory_delta_option",
+    # SFT/FCCM separation (Phase 6): the SFT-in-raw.ccr guard. Excludes
+    # mis-placed transaction_type=='sft' rows from the Art. 274 derivative
+    # chain and flags them via CCR020 (data-quality error channel).
+    "partition_out_sft_rows",
 )
 
 # Full list including __init__ (represented by the empty string sentinel).

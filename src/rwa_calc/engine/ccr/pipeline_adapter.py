@@ -43,8 +43,10 @@ from rwa_calc.contracts.bundles import (
     TradeBundle,
 )
 from rwa_calc.contracts.config import CCRConfig
+from rwa_calc.contracts.errors import CalculationError
 from rwa_calc.data.column_spec import ensure_columns
 from rwa_calc.data.schemas import CCR_ALPHA_CARVE_OUT_COUNTERPARTY_TYPES, NETTING_SET_SCHEMA
+from rwa_calc.domain.enums import ErrorCategory, ErrorSeverity
 from rwa_calc.engine.ccr.adjusted_notional import (
     compute_adjusted_notional_commodity,
     compute_adjusted_notional_credit,
@@ -60,7 +62,6 @@ from rwa_calc.engine.ccr.maturity_factor import (
 from rwa_calc.engine.ccr.pfe import compute_addon_per_asset_class, compute_pfe
 from rwa_calc.engine.ccr.rc import compute_rc_margined, compute_rc_unmargined
 from rwa_calc.engine.ccr.supervisory_delta import compute_supervisory_delta_option
-from rwa_calc.engine.sft.fccm import SFT_TRANSACTION_TYPE, sft_rows_to_exposures
 from rwa_calc.rulebook.compile import lookup_float_map, scalar_value
 from rwa_calc.rulebook.resolve import resolve
 
@@ -78,6 +79,25 @@ _SA_CCR_ALPHA_CARVE_OUT = scalar_value(_PACK.scalar_param("sa_ccr_alpha_carve_ou
 _B31_PACK = resolve("b31", date(2027, 1, 1))
 _TRANSITIONAL_ADDON_PHASE = lookup_float_map(_B31_PACK.lookup("sa_ccr_transitional_addon_phase"))
 
+# ``"sft"`` is the TRADE_SCHEMA.transaction_type token for securities-financing
+# transactions (CRR Art. 220(1)(a)). After the SFT/FCCM separation (Phase 6) the
+# SA-CCR derivative chain in this module is derivatives-only: SFT EAD is computed
+# by the peer ``sft_fccm`` stage from ``RawDataBundle.sft``. Any ``"sft"`` row
+# that still arrives in ``RawDataBundle.ccr`` is mis-placed input — the
+# ``partition_out_sft_rows`` guard below excludes it from the Art. 274 chain and
+# raises a data-quality ``CalculationError`` rather than mis-pricing it as a
+# derivative. Declared locally as a literal routing token (not a regulatory
+# scalar; arch_check check 6 allows the value, mirroring the prior
+# ``engine/sft/fccm.py::SFT_TRANSACTION_TYPE``).
+_SFT_TRANSACTION_TYPE: str = "sft"
+
+#: Error code emitted by :func:`partition_out_sft_rows` when an SFT row survives
+#: in ``RawDataBundle.ccr`` after the Phase 6 source flip.
+CCR_SFT_IN_DERIVATIVE_INPUT_ERROR_CODE = "CCR020"
+
+#: Regulatory citation attached to the CCR020 data-quality error.
+CCR_SFT_IN_DERIVATIVE_INPUT_REG_REF = "CRR Art. 271(2); Art. 220-223"
+
 
 # =============================================================================
 # Public API
@@ -93,13 +113,21 @@ def ccr_rows_to_exposures(
     fx_rates: pl.LazyFrame | None = None,
     counterparties: pl.LazyFrame | None = None,
     is_basel_3_1: bool = False,
-    sft_method: str = "fccm",
 ) -> pl.LazyFrame:
     """Shape SA-CCR netting-set EADs into synthetic exposure rows.
 
-    Drives the full SA-CCR chain over the legally-enforceable trades and
-    netting sets in ``raw_ccr`` and emits one row per netting set with
-    columns compatible with the unified ``RAW_EXPOSURE_SCHEMA``:
+    Drives the full SA-CCR Art. 274 chain over the legally-enforceable trades
+    and netting sets in ``raw_ccr`` and emits one row per netting set with
+    columns compatible with the unified ``RAW_EXPOSURE_SCHEMA``.
+
+    DERIVATIVES-ONLY (SFT/FCCM separation, Phase 6). SFT EAD (CRR Art. 271(2),
+    Art. 220-223 FCCM) is now computed by the peer ``sft_fccm`` stage from the
+    dedicated ``RawDataBundle.sft`` input — never here. Callers are expected to
+    pass a derivatives-only bundle; the stage applies :func:`partition_out_sft_rows`
+    first to strip (and flag) any mis-placed ``transaction_type == "sft"`` rows so
+    they cannot be mis-priced through the Art. 274 chain.
+
+    Each emitted synthetic exposure row carries the columns:
 
         exposure_reference    = "ccr__<netting_set_id>"
         exposure_type         = "ccr_netting_set"
@@ -159,16 +187,6 @@ def ccr_rows_to_exposures(
             transitional alpha add-on. The add-on is Basel 3.1 only — under CRR
             (the default ``False``) it never fires regardless of the reporting
             date or the ``is_legacy_cva_exempt`` trade flag.
-        sft_method: SFT EAD method (CRR Art. 271(2)), sourced from
-            ``SFTConfig.method`` (SFT/FCCM separation, Phase 3). ``"fccm"``
-            (default, Art. 220-223) routes SFT trades through the FCCM branch;
-            the reserved ``"var"`` (Art. 221) and ``"imm"`` (Art. 283) methods
-            are unimplemented and raise ``NotImplementedError`` rather than
-            silently dropping SFT rows.
-
-    Raises:
-        NotImplementedError: when ``sft_method`` is a reserved-but-unimplemented
-            method (``"var"`` / ``"imm"``) and the bundle carries SFT trades.
 
     Returns:
         LazyFrame at netting-set grain with one synthetic exposure row per
@@ -178,130 +196,6 @@ def ccr_rows_to_exposures(
     References:
         CRR Art. 271; CRR Art. 274; CRR Art. 277-279c; CRR Art. 278;
         PRA PS1/26 Art. 274(2A).
-    """
-    # SFT vs derivative split (CRR Art. 271(2)). Trades flagged as ``"sft"``
-    # exit the SA-CCR Art. 274 chain and are routed through the FCCM SFT
-    # branch (Art. 220-223). The two sub-bundles are processed independently
-    # and their synthetic exposure rows are stitched back together via a
-    # ``diagonal_relaxed`` concat so the SA-CCR component columns
-    # (rc_unmargined, pfe_addon, ...) are filled with nulls on SFT rows.
-    derivative_bundle, sft_bundle, has_sft_rows = _split_ccr_bundle_by_transaction_type(raw_ccr)
-    derivative_rows = _derivative_rows_to_exposures(
-        derivative_bundle,
-        config_ccr,
-        reporting_date,
-        base_currency=base_currency,
-        fx_rates=fx_rates,
-        counterparties=counterparties,
-        is_basel_3_1=is_basel_3_1,
-    )
-    if sft_method == "fccm":
-        sft_rows = sft_rows_to_exposures(sft_bundle, reporting_date)
-        return pl.concat([derivative_rows, sft_rows], how="diagonal_relaxed")
-    # Reserved-but-unimplemented SFT methods (Art. 221 "var" / Art. 283 "imm").
-    # Fail loud rather than silently returning derivative-only rows (which would
-    # drop every SFT exposure and under-report EAD). Only raise when the bundle
-    # actually carries SFT trades — a pure derivative book is method-agnostic.
-    # ``has_sft_rows`` is derived from the split's existing collect (no new
-    # eager materialisation).
-    if has_sft_rows:
-        msg = (
-            f"SFT EAD method {sft_method!r} is reserved but not implemented "
-            "(CRR Art. 221 'var' / Art. 283 'imm'). Only 'fccm' (Art. 220-223) "
-            "is supported. Set SFTConfig.method='fccm' or remove SFT trades."
-        )
-        raise NotImplementedError(msg)
-    return derivative_rows
-
-
-def _split_ccr_bundle_by_transaction_type(
-    raw_ccr: RawCCRBundle,
-) -> tuple[RawCCRBundle, RawCCRBundle, bool]:
-    """Partition a CCR bundle into derivative-only and SFT-only sub-bundles.
-
-    The split is keyed on ``trades.transaction_type``. Each side carries the
-    netting sets and netting-set-keyed CCR collateral whose ``netting_set_id``
-    appears in its trade set (so an SFT-only NS is not seen by the SA-CCR
-    derivative chain and vice versa).
-
-    Margin agreements ride along on both sides — they are CSA-level (Art.
-    272(7)) and may cover trades on either side; downstream consumers join
-    on ``margin_agreement_id`` so the duplication is harmless.
-
-    Returns:
-        ``(derivative_bundle, sft_bundle, has_sft_rows)`` where ``has_sft_rows``
-        is derived from the already-materialised SFT netting-set-id list (no new
-        eager collect) and lets the caller fail loud on reserved SFT methods only
-        when the book actually carries SFT trades.
-
-    References:
-        CRR Art. 271(2) — SFT EAD via FCCM, not SA-CCR Art. 274.
-    """
-    trades_lf = raw_ccr.trades.trades
-    netting_sets_lf = raw_ccr.netting_sets.netting_sets
-    ccr_collateral_lf = raw_ccr.ccr_collateral.ccr_collateral
-
-    is_sft = pl.col("transaction_type") == SFT_TRANSACTION_TYPE
-    sft_trades = trades_lf.filter(is_sft)
-    derivative_trades = trades_lf.filter(~is_sft)
-
-    # Materialise per-side NS-id lists so the netting-set / collateral filters
-    # are simple ``is_in`` predicates. Trade frames are firm-scale; this is
-    # cheap compared to a self-join.
-    sft_ns_ids = (
-        sft_trades.select(pl.col("netting_set_id").unique()).collect()["netting_set_id"].to_list()
-    )
-    deriv_ns_ids = (
-        derivative_trades.select(pl.col("netting_set_id").unique())
-        .collect()["netting_set_id"]
-        .to_list()
-    )
-
-    sft_bundle = RawCCRBundle(
-        trades=TradeBundle(trades=sft_trades),
-        netting_sets=NettingSetBundle(
-            netting_sets=netting_sets_lf.filter(pl.col("netting_set_id").is_in(sft_ns_ids)),
-        ),
-        margin_agreements=raw_ccr.margin_agreements,
-        ccr_collateral=CCRCollateralBundle(
-            ccr_collateral=ccr_collateral_lf.filter(pl.col("netting_set_id").is_in(sft_ns_ids)),
-        ),
-        failed_trades=raw_ccr.failed_trades,
-        errors=list(raw_ccr.errors),
-    )
-    derivative_bundle = RawCCRBundle(
-        trades=TradeBundle(trades=derivative_trades),
-        netting_sets=NettingSetBundle(
-            netting_sets=netting_sets_lf.filter(pl.col("netting_set_id").is_in(deriv_ns_ids)),
-        ),
-        margin_agreements=raw_ccr.margin_agreements,
-        ccr_collateral=CCRCollateralBundle(
-            ccr_collateral=ccr_collateral_lf.filter(pl.col("netting_set_id").is_in(deriv_ns_ids)),
-        ),
-        failed_trades=raw_ccr.failed_trades,
-        errors=list(raw_ccr.errors),
-    )
-    # ``bool(sft_ns_ids)`` reuses the SFT-side collect above: a non-empty list
-    # means at least one ``transaction_type == "sft"`` trade is present (the
-    # unique() of an SFT trade's netting_set_id is non-empty even if null).
-    return derivative_bundle, sft_bundle, bool(sft_ns_ids)
-
-
-def _derivative_rows_to_exposures(
-    raw_ccr: RawCCRBundle,
-    config_ccr: CCRConfig,
-    reporting_date: date,
-    *,
-    base_currency: str,
-    fx_rates: pl.LazyFrame | None,
-    counterparties: pl.LazyFrame | None = None,
-    is_basel_3_1: bool = False,
-) -> pl.LazyFrame:
-    """Drive the SA-CCR chain over derivative trades only.
-
-    Identical to the original :func:`ccr_rows_to_exposures` body; extracted
-    so the public entry point can apply the Art. 271(2) SFT / derivative
-    routing without touching the derivative chain.
 
     The optional ``counterparties`` frame supplies the per-netting-set
     supervisory-alpha discriminator: its ``counterparty_type`` column is joined
@@ -315,9 +209,6 @@ def _derivative_rows_to_exposures(
     netting sets that also carry the α=1.0 carve-out and a non-zero phase
     fraction for ``reporting_date.year`` — a PRA PS1/26 Art. 274(2A)
     transitional add-on is computed and folded into ``ead_ccr``.
-
-    References:
-        CRR Art. 274; CRR Art. 277-279c; CRR Art. 278; PRA PS1/26 Art. 274(2A).
     """
     trades_lf = raw_ccr.trades.trades
     netting_sets_lf = raw_ccr.netting_sets.netting_sets
@@ -576,6 +467,107 @@ def _derivative_rows_to_exposures(
             pl.col("ead_ccr"),
         ]
     )
+
+
+def partition_out_sft_rows(
+    raw_ccr: RawCCRBundle,
+) -> tuple[RawCCRBundle, list[CalculationError]]:
+    """Exclude mis-placed SFT trades from the SA-CCR derivative input.
+
+    SFT/FCCM separation (Phase 6): SFT EAD (CRR Art. 271(2), Art. 220-223 FCCM)
+    is computed by the peer ``sft_fccm`` stage from ``RawDataBundle.sft``. The
+    SA-CCR Art. 274 chain in this module is derivatives-only. Any
+    ``transaction_type == "sft"`` trade still present in ``RawDataBundle.ccr`` is
+    mis-placed input that the derivative chain would silently mis-price (treating
+    a securities-financing transaction as a directional derivative — typically
+    yielding ≈£0 EAD for a credit-asset-class SFT with no add-on input, hence
+    under-reported exposure).
+
+    Following the project error convention (CLAUDE.md): a data-quality issue is
+    reported via the ``list[CalculationError]`` channel, **never** a raised
+    exception. This helper returns a derivative-only bundle (the SFT trades, and
+    the netting sets / CCR collateral keyed only by those SFT trades, removed) so
+    the offending rows cannot reach the Art. 274 chain, plus one
+    ``CalculationError(code="CCR020", severity=ERROR, category=DATA_QUALITY)`` per
+    offending netting set.
+
+    This single "no SFT rows in ``raw.ccr``" invariant subsumes the
+    "both ``raw.ccr`` (with SFT rows) and ``raw.sft`` populated → double-count"
+    guard the migration plan listed separately: forbidding SFT trades in
+    ``raw.ccr`` removes the only path by which the same SFT EAD could be computed
+    twice (once via this chain, once via the ``sft_fccm`` stage), so there is no
+    residual double-count path to guard against.
+
+    Args:
+        raw_ccr: The CCR input bundle (derivatives expected; SFT rows are the
+            mis-placed input this guard strips).
+
+    Returns:
+        ``(derivative_only_bundle, errors)``. When the bundle carries no SFT
+        trades the input bundle is returned unchanged with an empty error list
+        (fast path, no rebuild).
+
+    References:
+        CRR Art. 271(2) — SFT EAD via FCCM, not SA-CCR Art. 274.
+    """
+    trades_lf = raw_ccr.trades.trades
+    # ``transaction_type`` is a required TRADE_SCHEMA column (the loader seals it
+    # onto every CCR trade frame), so no presence guard is needed.
+    is_sft = pl.col("transaction_type") == _SFT_TRANSACTION_TYPE
+    # Materialise the SFT side once to enumerate the offending netting sets and
+    # build one error per NS. Trade frames are firm-scale; this collect is cheap.
+    sft_ns_ids = (
+        trades_lf.filter(is_sft)
+        .select(pl.col("netting_set_id").unique())
+        .collect()["netting_set_id"]
+        .to_list()
+    )
+    if not sft_ns_ids:
+        # Fast path: derivatives-only bundle, nothing to strip.
+        return raw_ccr, []
+
+    netting_sets_lf = raw_ccr.netting_sets.netting_sets
+    ccr_collateral_lf = raw_ccr.ccr_collateral.ccr_collateral
+
+    derivative_only = RawCCRBundle(
+        trades=TradeBundle(trades=trades_lf.filter(~is_sft)),
+        netting_sets=NettingSetBundle(
+            netting_sets=netting_sets_lf.filter(~pl.col("netting_set_id").is_in(sft_ns_ids)),
+        ),
+        margin_agreements=raw_ccr.margin_agreements,
+        ccr_collateral=CCRCollateralBundle(
+            ccr_collateral=ccr_collateral_lf.filter(~pl.col("netting_set_id").is_in(sft_ns_ids)),
+        ),
+        failed_trades=raw_ccr.failed_trades,
+        default_fund_contributions=raw_ccr.default_fund_contributions,
+        errors=list(raw_ccr.errors),
+    )
+
+    errors = [
+        CalculationError(
+            code=CCR_SFT_IN_DERIVATIVE_INPUT_ERROR_CODE,
+            message=(
+                f"Netting set {ns_id} carries transaction_type='sft' trades in the "
+                "SA-CCR derivative input (RawDataBundle.ccr). SFT EAD must be supplied "
+                "via RawDataBundle.sft and computed by the FCCM sft_fccm stage "
+                "(CRR Art. 271(2), Art. 220-223). The offending rows are excluded "
+                "from the Art. 274 derivative chain to avoid mis-pricing."
+            ),
+            severity=ErrorSeverity.ERROR,
+            category=ErrorCategory.DATA_QUALITY,
+            regulatory_reference=CCR_SFT_IN_DERIVATIVE_INPUT_REG_REF,
+            field_name="transaction_type",
+            expected_value="derivative (route SFTs via RawDataBundle.sft)",
+            actual_value="sft",
+        )
+        for ns_id in sft_ns_ids
+    ]
+    logger.warning(
+        "excluded %d netting set(s) carrying transaction_type='sft' from the SA-CCR "
+        "derivative chain (route SFTs via RawDataBundle.sft / sft_fccm stage)",
+        len(sft_ns_ids),
+    )
+    return derivative_only, errors
 
 
 def _attach_mpor_cascade_inputs(
