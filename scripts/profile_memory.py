@@ -44,7 +44,12 @@ from typing import Any
 # Make the sibling helper importable when this script is invoked directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _validate import validate_iso_date  # noqa: E402
+from _validate import (  # noqa: E402
+    FRAMEWORKS,
+    validate_framework,
+    validate_iso_date,
+    validate_temp_output_path,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,7 +75,7 @@ def main() -> int:
     """Run both modes in subprocesses, sample RSS, print the comparison."""
     args = _parse_args()
 
-    if args.worker_mode:
+    if args.worker_mode is not None:
         return _run_worker(args)
 
     try:
@@ -113,19 +118,29 @@ def _profile_mode(mode: str, args: argparse.Namespace, *, rss_available: bool) -
     """Spawn a worker for one mode, sample its RSS until exit, read its result."""
     with tempfile.TemporaryDirectory(prefix="rwa_profile_") as tmp:
         result_json = Path(tmp) / "result.json"
+        # Sanitise each operator-supplied value into a LOCAL here, at the
+        # subprocess sink, so the argparse-source -> sanitizer -> argv dataflow
+        # is a single straight line inside one function. (SonarCloud's Python
+        # taint engine is not documented to be field-sensitive across functions,
+        # so validating args.* in _parse_args is not relied on to clear this
+        # sink.) `mode` and `result_json` are program-controlled, never argv.
+        framework = validate_framework(args.framework)  # allowlist -> constant literal
+        date_arg = validate_iso_date(args.date)  # parsed + reformatted to canonical ISO
+        rows = str(int(args.rows))  # int() is a recognised numeric coercion/sanitizer
+        seed = str(int(args.seed))
         cmd = [
             sys.executable,
             str(Path(__file__).resolve()),
             "--worker-mode",
             mode,
             "--rows",
-            str(args.rows),
+            rows,
             "--seed",
-            str(args.seed),
+            seed,
             "--framework",
-            args.framework,
+            framework,
             "--date",
-            args.date,
+            date_arg,
             "--result-json",
             str(result_json),
         ]
@@ -211,6 +226,11 @@ def _run_worker(args: argparse.Namespace) -> int:
     from tests.benchmarks.data_generators import generate_benchmark_dataset
     from tests.benchmarks.test_pipeline_benchmark import create_raw_data_bundle
 
+    # Resolve + confine the result path up front, into a LOCAL, so the
+    # argv-source -> sanitizer -> write_text dataflow stays inside this function
+    # and a bad path fails before the (expensive) pipeline run.
+    result_path = validate_temp_output_path(args.result_json)
+
     n_counterparties = max(args.rows // LOANS_PER_COUNTERPARTY, 10)
     dataset = generate_benchmark_dataset(n_counterparties=n_counterparties, seed=args.seed)
     # Materialise the generated inputs before timing so dataset generation is
@@ -255,7 +275,7 @@ def _run_worker(args: argparse.Namespace) -> int:
         "table_rows": table_rows,
         "edge_map": manifest["materialisation_map"],
     }
-    Path(args.result_json).write_text(json.dumps(payload), encoding="utf-8")
+    result_path.write_text(json.dumps(payload), encoding="utf-8")
     return 0
 
 
@@ -330,7 +350,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--framework",
-        choices=["crr", "basel31"],
+        choices=list(FRAMEWORKS),
         default="crr",
         help="Regulatory framework (default: crr)",
     )
@@ -344,9 +364,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--worker-mode", choices=list(MODES), default=None, help=argparse.SUPPRESS)
     parser.add_argument("--result-json", type=str, default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    # Validate the free-form reporting date in the PARENT, before it is placed on
-    # the worker's argv (the worker's own date.fromisoformat runs after the spawn).
-    args.date = validate_iso_date(args.date)
+    # Operator-supplied values are sanitised at their sink sites — the parent's
+    # worker argv in _profile_mode, the worker's result path in _run_worker — so
+    # each source -> sanitizer -> sink dataflow stays inside one function. Here we
+    # only enforce the internal worker-mode CLI contract.
+    if args.worker_mode is not None and args.result_json is None:
+        parser.error("--result-json is required with --worker-mode")
     return args
 
 

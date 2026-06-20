@@ -1,13 +1,17 @@
 """Unit tests for the CLI-input validators shared by the developer scripts.
 
-These guard the ``subprocess`` argv interpolation points in deploy.py,
-worktree.py, and profile_memory.py: a valid value is returned unchanged, an
-invalid one fails fast via ``SystemExit`` before any command is built.
+These guard the ``subprocess`` argv interpolation and filesystem-path
+interpolation points in deploy.py, worktree.py, and profile_memory.py: a valid
+value is returned in sanitised form (unchanged for the semver/git-ref/framework
+allowlists, canonicalised for the ISO date and temp path), an invalid one fails
+fast via ``SystemExit`` before any command is built or file is written.
 """
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -17,9 +21,11 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from _validate import (  # noqa: E402  # ty: ignore[unresolved-import]
+    validate_framework,
     validate_git_ref,
     validate_iso_date,
     validate_semver,
+    validate_temp_output_path,
 )
 
 
@@ -69,6 +75,11 @@ class TestValidateIsoDate:
     def test_accepts_iso_date(self, value: str) -> None:
         assert validate_iso_date(value) == value
 
+    def test_returns_canonical_form(self) -> None:
+        # The value is reformatted from the parsed date (a derived value), not
+        # echoed back; canonical input is therefore idempotent.
+        assert validate_iso_date("2026-01-01") == "2026-01-01"
+
     @pytest.mark.parametrize(
         "value",
         ["2026-13-40", "01/01/2026", "not-a-date", "2026-01-01; rm -rf /", ""],
@@ -76,3 +87,36 @@ class TestValidateIsoDate:
     def test_rejects_non_iso_date(self, value: str) -> None:
         with pytest.raises(SystemExit):
             validate_iso_date(value)
+
+
+class TestValidateFramework:
+    @pytest.mark.parametrize("value", ["crr", "basel31"])
+    def test_accepts_known_framework(self, value: str) -> None:
+        assert validate_framework(value) == value
+
+    @pytest.mark.parametrize(
+        "value",
+        ["ifrs9", "CRR", "basel31 ", "crr; rm -rf /", "--bump", ""],
+    )
+    def test_rejects_unknown_framework(self, value: str) -> None:
+        with pytest.raises(SystemExit):
+            validate_framework(value)
+
+
+class TestValidateTempOutputPath:
+    def test_accepts_path_under_temp_root(self) -> None:
+        candidate = os.path.join(tempfile.gettempdir(), "rwa_probe_test", "result.json")
+        resolved = validate_temp_output_path(candidate)
+        assert isinstance(resolved, Path)
+        assert str(resolved) == os.path.realpath(candidate)
+
+    def test_rejects_path_outside_temp_root(self) -> None:
+        # The test file itself lives in the repo tree, never under system temp.
+        with pytest.raises(SystemExit):
+            validate_temp_output_path(str(Path(__file__).resolve()))
+
+    def test_rejects_traversal_out_of_temp_root(self) -> None:
+        # realpath normalises the `..`, then containment rejects the escape.
+        escape = os.path.join(tempfile.gettempdir(), "..", "rwa_escape.json")
+        with pytest.raises(SystemExit):
+            validate_temp_output_path(escape)
