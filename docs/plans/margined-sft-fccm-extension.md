@@ -109,10 +109,19 @@ into a single pipeline item (worktree-merge safety, mirroring the repo's shared-
 - **Acceptance:** schema/bundle/edge contract tests green; existing SFT tests unchanged (fields default to
   unmargined); arch_check + ruff + ty + contracts pass.
 
-### Phase 1 — Pack scalars
-- Add cited MPOR-floor + dispute-doubling scalars to `packs/common.py` with `Citation` to Art. 285;
-  resolve through the pack (no engine-scope scalars; checks 5/6/12).
-- **Acceptance:** `tests/unit/rulebook/` resolves the new scalars for both regimes; arch_check pass.
+### Phase 1 — Pack scalars — **DONE via reuse (no new scalars)**
+The Art. 285 MPOR floors + dispute-doubling already exist in `packs/common.py` (added for the SA-CCR
+margined maturity-factor cascade; values/citations are regime-invariant). Phase 2 consumes these:
+- `mf_margined_floor_days_repo_sft=5` (285(2)(a)) ← `mpor_floor_category='repo_only'`
+- `mf_margined_floor_days_otc=10` (285(2)(b)) ← `'other'`
+- `mf_margined_floor_days_large_or_illiquid=20` (285(3)) ← `'illiquid_or_large'`
+- `mf_margined_dispute_multiplier=2` (285(4)) ← `has_margin_dispute_doubling`
+- `liquidation_period_repo=5` (224(2)(b)) ← unmargined branch (a) `T_M`
+- `zero_haircut_max_sovereign_cqs=1` (227(2)(a)) ← optional 2c carve-out
+Verified: all resolve identically for `crr` and `b31`; already covered by `test_sa_ccr_factors.py` /
+`test_liquidation_period_haircuts.py`. **Naming note for Phase 2:** the `mf_margined_*` prefix is
+SA-CCR-flavoured; reuse as-is (values/citations are authoritative) and add a clarifying comment — a
+neutral `mpor_floor_days_*` alias is optional cleanup, out of scope.
 
 ### Phase 2 — Engine (the core)
 - **2a:** add the Art. 226(1) non-daily helper to `haircut_tables.py` with unit tests pinning
