@@ -5,17 +5,18 @@ Pipeline position:
     fixture-builder output -> test-writer (tests/unit/ccr/test_maturity_factor_margined.py)
     -> engine-implementer (engine/ccr/maturity_factor.py)
 
-Scenario design (4 rows, all is_margined=True, all remargining_frequency_days=1):
+Scenario design (3 rows, all is_margined=True, all remargining_frequency_days=1):
+
+    NOTE: ``compute_maturity_factor_margined`` is derivatives-only since the
+    SFT/FCCM separation — SFTs are priced by the FCCM ``sft_fccm`` stage and
+    never enter the SA-CCR chain — so the former all-SFT base-5 scenario
+    (the old T2, Art. 285(2)(a)) has been removed. Every netting set reaching
+    this function is an OTC derivative netting set (Art. 285(2)(b) 10-BD base).
 
     T1 / NS1 — derivative, 10 trades, no illiquid collateral, 0 disputes
         MPOR base = 10 (OTC derivative, < 5000 trades, no illiquid)
         MPOR_eff  = max(base + 1 - 1, mpor_days_input) = max(10, 5) = 10
         MF        = 1.5 × sqrt(10 / 250) = 0.3
-
-    T2 / NS2 — sft (repo/margin-lending), 10 trades, no illiquid, 0 disputes
-        MPOR base = 5  (all trades are SFT — Art. 285(2)(a))
-        MPOR_eff  = max(5 + 1 - 1, 5) = max(5, 5) = 5
-        MF        = 1.5 × sqrt(5 / 250) = 0.21213203435596426
 
     T3 / NS3 — derivative, 7000 trades, no illiquid, 0 disputes
         MPOR base = 20 (number_of_trades > 5000 — Art. 285(3)(b))
@@ -29,7 +30,9 @@ Scenario design (4 rows, all is_margined=True, all remargining_frequency_days=1)
         MF        = 1.5 × sqrt(20 / 250) = 0.42426406871192857
 
 The MPOR cascade (Art. 285) implemented by ``compute_maturity_factor_margined``:
-    Step 1 — base:     5  if ALL trades in NS are sft/repo/margin-lending else 10
+    Step 1 — base:     10 (OTC derivative netting set, Art. 285(2)(b)). The
+                       Art. 285(2)(a) 5-BD SFT/repo base is not modelled
+                       (derivatives-only since the SFT/FCCM separation).
     Step 2 — upgrade:  20 if number_of_trades > 5000
                        OR has_illiquid_collateral_or_hard_to_replace_otc
     Step 3 — dispute:  base × 2 if dispute_count_qtr > 2  (Art. 285(4))
@@ -89,7 +92,6 @@ def _mf(mpor_eff: int) -> float:
 # Keys match the trade_id / netting_set_id columns below.
 EXPECTED_MF: dict[str, float] = {
     "T1": _mf(10),  # derivative, base=10, MPOR_eff=10
-    "T2": _mf(5),  # sft, base=5,  MPOR_eff=5
     "T3": _mf(20),  # derivative, > 5000 trades → base=20, MPOR_eff=20
     "T4": _mf(20),  # derivative, dispute_count_qtr=3 > 2 → 2×base=20, MPOR_eff=20
 }
@@ -115,18 +117,6 @@ MARGINED_MF_ROWS: list[dict[str, Any]] = [
         "remargining_frequency_days": 1,
         "expected_mpor_eff": 10,
         "expected_mf": EXPECTED_MF["T1"],
-    },
-    {
-        "trade_id": "T2",
-        "netting_set_id": "NS2",
-        "transaction_type": "sft",
-        "mpor_days_input": 5,  # meets SFT floor exactly
-        "number_of_trades": 10,
-        "has_illiquid": False,
-        "dispute_count_qtr": 0,
-        "remargining_frequency_days": 1,
-        "expected_mpor_eff": 5,
-        "expected_mf": EXPECTED_MF["T2"],
     },
     {
         "trade_id": "T3",
@@ -161,11 +151,13 @@ MARGINED_MF_ROWS: list[dict[str, Any]] = [
 
 def make_margined_mf_trades() -> pl.DataFrame:
     """
-    Return a 4-row trades DataFrame for the P8.14 margined MF scenarios.
+    Return a 3-row trades DataFrame for the P8.14 margined MF scenarios.
 
-    Each row has a unique trade_id and netting_set_id.  The ``transaction_type``
-    column exercises the SFT-base-5 branch (T2) and the OTC-base-10 branch
-    (T1, T3, T4).  All other TRADE_SCHEMA columns use sensible defaults.
+    Each row has a unique trade_id and netting_set_id.  All three are
+    ``transaction_type == "derivative"`` (OTC-base-10): T1 plain, T3 large NS
+    (>5000 trades → 20-BD), T4 dispute-doubling (→ 20-BD). The former all-SFT
+    base-5 row was removed (compute_maturity_factor_margined is derivatives-only
+    since the SFT/FCCM separation). All other TRADE_SCHEMA columns use defaults.
 
     Returns:
         ``pl.DataFrame`` with schema ``TRADE_SCHEMA``.
@@ -188,7 +180,7 @@ def make_margined_mf_trades() -> pl.DataFrame:
 
 def make_margined_mf_netting_sets() -> pl.DataFrame:
     """
-    Return a 4-row netting-sets DataFrame for the P8.14 margined MF scenarios.
+    Return a 3-row netting-sets DataFrame for the P8.14 margined MF scenarios.
 
     Each netting set is margined (``is_margined=True``) and legally enforceable.
     The ``number_of_trades`` and ``has_illiquid_collateral_or_hard_to_replace_otc``
@@ -216,7 +208,7 @@ def make_margined_mf_netting_sets() -> pl.DataFrame:
 
 def make_margined_mf_margin_agreements() -> pl.DataFrame:
     """
-    Return a 4-row margin-agreements DataFrame for the P8.14 margined MF scenarios.
+    Return a 3-row margin-agreements DataFrame for the P8.14 margined MF scenarios.
 
     One CSA per netting set.  ``dispute_count_qtr`` exercises Art. 285(4) dispute
     doubling (T4: 3 > 2 → double).  ``remargining_frequency_days=1`` keeps the
@@ -248,9 +240,9 @@ def save_margined_mf_fixtures(output_dir: Path | None = None) -> dict[str, Path]
     Write the three P8.14 margined MF parquet files to *output_dir*.
 
     Files produced:
-        margined_mf_trades.parquet          — 4 rows (T1-T4)
-        margined_mf_netting_sets.parquet    — 4 rows (NS1-NS4, all margined)
-        margined_mf_margin_agreements.parquet — 4 rows (MA_NS1-MA_NS4)
+        margined_mf_trades.parquet          — 3 rows (T1, T3, T4)
+        margined_mf_netting_sets.parquet    — 3 rows (NS1, NS3, NS4, all margined)
+        margined_mf_margin_agreements.parquet — 3 rows (MA_NS1, MA_NS3, MA_NS4)
 
     Args:
         output_dir: Target directory.  Defaults to the directory containing

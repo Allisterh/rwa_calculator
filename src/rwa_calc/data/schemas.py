@@ -884,16 +884,23 @@ SECURITISATION_ALLOCATION_SCHEMA: dict[str, ColumnSpec] = {
 # - CRR Art. 285(2)(b) (10 business-day MPOR minimum)
 # - CRR Art. 295-297 (contractual netting recognition)
 
-#: Trade-level input for SA-CCR. One row per OTC derivative / long-settlement
-#: trade or SFT (discriminated by ``transaction_type``). Consumed by the
-#: CCR calculator stage.
+#: Trade-level input for SA-CCR (OTC derivatives / long-settlement trades).
+#: One row per derivative trade. Consumed by the ``ccr_sa_ccr`` derivative
+#: stage. SFTs are NOT carried here since the SFT/FCCM separation — securities
+#: financing transactions have their own lean ``SFT_TRADE_SCHEMA`` input
+#: (``RawDataBundle.sft``), priced by the peer ``sft_fccm`` FCCM stage
+#: (CRR Art. 271(2), Art. 220-223).
 TRADE_SCHEMA: dict[str, ColumnSpec] = {
     # Required (8) — primary key + core economic terms.
     "trade_id": ColumnSpec(pl.String),
     "netting_set_id": ColumnSpec(pl.String),
     # "interest_rate" | "fx" | "credit" | "equity" | "commodity"
     "asset_class": ColumnSpec(pl.String),
-    # "derivative" | "sft"
+    # "derivative" — REQUIRED on every CCR (derivative) trade row. The "sft"
+    # value remains valid in VALID_TRANSACTION_TYPES (the guard detects it), but
+    # SFT rows belong in SFT_TRADE_SCHEMA / RawDataBundle.sft, not here — a "sft"
+    # row reaching this frame is flagged CCR020 and excluded from the Art. 274
+    # chain. See partition_out_sft_rows (engine/ccr/pipeline_adapter.py).
     "transaction_type": ColumnSpec(pl.String),
     "notional": ColumnSpec(pl.Float64),
     "currency": ColumnSpec(pl.String),
@@ -1074,6 +1081,88 @@ CCR_COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
     "residual_maturity_years": ColumnSpec(pl.Float64, required=False),
     "haircut_override": ColumnSpec(pl.Float64, required=False),
 }
+
+
+# =============================================================================
+# SECURITIES FINANCING TRANSACTION (SFT) INPUT SCHEMAS — SFT/FCCM separation
+# =============================================================================
+# Dedicated, lean input schemas for SFTs priced via the Financial Collateral
+# Comprehensive Method (FCCM, CRR Art. 220-223). Today SFTs are tunnelled
+# through the SA-CCR ``TRADE_SCHEMA`` / ``CCR_COLLATERAL_SCHEMA`` (discriminated
+# by ``transaction_type == "sft"``), carrying ~25 derivative-only columns they
+# never use and three HE-input columns that ``TRADE_SCHEMA`` never declared.
+# These schemas declare the FCCM input contract first-class so a developer can
+# see exactly what an SFT row needs.
+#
+# Declaration-only at this phase — the loader / bundle / stage wiring lands in
+# later phases of docs/plans/sft-fccm-separation.md. The current engine path
+# still reads SFT rows out of the shared CCR bundle.
+#
+# Scope: single-trade, single-counterparty netting sets (Art. 220(1)(a)), so
+# the netting-set ``counterparty_reference`` is denormalised onto the trade
+# row and no separate SFT netting-set table is needed.
+#
+# References:
+# - CRR Art. 220(1)(a) — single-counterparty SFT / master-netting-set scope
+# - CRR Art. 223(5) — E* = max(0, E·(1+HE) − CVA·(1−HC−HFX))
+# - CRR Art. 224 Table 1 — supervisory haircuts (H_10) by type / CQS / maturity
+# - CRR Art. 271(2) — SFT EAD via FCCM, not SA-CCR Art. 274
+
+#: Trade-level FCCM input. One row per SFT (repo / securities-lending). The
+#: netting-set counterparty is denormalised onto the trade (single-trade-NS
+#: scope, Art. 220(1)(a)) so FCCM needs no separate SFT netting-set table.
+#: The ``exposure_*`` columns carry the Art. 223(5) exposure-side volatility
+#: haircut (HE) inputs — declared first-class here, where they were previously
+#: tunnelled undeclared through ``TRADE_SCHEMA``. Same dtypes as the identically
+#: named LOAN_SCHEMA / CONTINGENTS_SCHEMA lending-side declarations.
+SFT_TRADE_SCHEMA: dict[str, ColumnSpec] = {
+    # Required (7) — primary key + core economic terms + denormalised CP.
+    "trade_id": ColumnSpec(pl.String),
+    "netting_set_id": ColumnSpec(pl.String),
+    # Denormalised from the netting set; becomes the synthetic exposure row's
+    # ``counterparty_reference`` and drives the SA institution risk-weight lookup
+    # (CRR Art. 120(1) Table 3).
+    "counterparty_reference": ColumnSpec(pl.String),
+    # E — the exposure amount lent / sold under the SFT (Art. 223(5)).
+    "notional": ColumnSpec(pl.Float64),
+    "currency": ColumnSpec(pl.String),
+    "maturity_date": ColumnSpec(pl.Date),
+    "start_date": ColumnSpec(pl.Date),
+    # Optional nullable (3) — Art. 223(5) exposure-side HE inputs, keyed into the
+    # Art. 224 Table 1 supervisory-haircut lookup. Null when the exposure side is
+    # cash / a standard loan (HE = 0; engine treats null as no haircut).
+    "exposure_collateral_type": ColumnSpec(pl.String, required=False),
+    "exposure_security_cqs": ColumnSpec(pl.Int8, required=False),
+    "exposure_security_residual_maturity_years": ColumnSpec(pl.Float64, required=False),
+}
+
+#: Netting-set-keyed collateral received against an SFT, feeding the
+#: ``CVA·(1−HC−HFX)`` term of the FCCM E* formula (Art. 223(5)). A lean subset
+#: of ``CCR_COLLATERAL_SCHEMA`` — the SA-CCR-only columns (``is_posted_by_firm``,
+#: ``is_segregated``, ``issuer_type``, ``haircut_override``) are intentionally
+#: dropped. Optional table: an uncollateralised SFT carries no collateral row.
+SFT_COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
+    # Required (3).
+    "sft_collateral_reference": ColumnSpec(pl.String),
+    "netting_set_id": ColumnSpec(pl.String),
+    "collateral_type": ColumnSpec(pl.String),
+    # Optional with default (1) — CVA (collateral market value) in the E*
+    # formula; 0.0 when unknown (no collateral credit).
+    "market_value": ColumnSpec(pl.Float64, default=0.0, required=False),
+    # Optional nullable (3) — Art. 224 Table 1 HC lookup inputs + the HFX
+    # same-currency shortcut (Art. 224 Table 4: HFX = 0 when collateral and
+    # exposure currencies match).
+    "currency": ColumnSpec(pl.String, required=False),
+    "issuer_cqs": ColumnSpec(pl.Int8, required=False),
+    "residual_maturity_years": ColumnSpec(pl.Float64, required=False),
+}
+
+#: Valid values for the CCR/SFT trade discriminator ``transaction_type``
+#: (TRADE_SCHEMA). A bad value silently mis-routes an SFT into the SA-CCR
+#: Art. 274 chain (≈0 EAD) instead of FCCM (Art. 271(2)), so it is value-
+#: constrained via ``COLUMN_VALUE_CONSTRAINTS`` below. Enforced once the CCR/SFT
+#: trade frame is wired into ``validate_bundle_values`` (later separation phase).
+VALID_TRANSACTION_TYPES: set[str] = {"derivative", "sft"}
 
 
 # =============================================================================
@@ -1726,6 +1815,10 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
     # in ``data/tables/sa_ccr_factors.py`` — load-bearing for the P8.37
     # supervisory-factor join.
     "trades": {
+        # SFT/FCCM separation — the CCR/SFT trade discriminator. Dormant until
+        # the CCR/SFT trade frame is added to validate_bundle_values'
+        # frame_mapping (like commodity_type/credit_quality below today).
+        "transaction_type": VALID_TRANSACTION_TYPES,
         "commodity_type": {"ELECTRICITY", "OIL_GAS", "METALS", "AGRICULTURAL", "OTHER"},
         # P8.35 — CRR Art. 280 Table 2 credit-quality discriminator: keyed off
         # ``SA_CCR_SUPERVISORY_FACTORS_CREDIT_SN`` / ``..._CREDIT_IDX`` in

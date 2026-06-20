@@ -34,11 +34,13 @@ logger = logging.getLogger(__name__)
 # load: the margined-MF float scalars (CRR Art. 279c) plus the integer MPOR
 # cascade counts (Art. 285 floor business-days, large-netting-set trade count,
 # dispute threshold/multiplier) and the 250-business-day-year divisor basis.
+# The Art. 285(2)(a) 5-BD SFT/repo base (``mf_margined_floor_days_repo_sft``) is
+# NOT read here: this function is derivatives-only since the SFT/FCCM separation,
+# so the only base used is the Art. 285(2)(b) 10-BD OTC floor.
 _PACK = resolve("crr", date(2026, 1, 1))
 _MF_MARGINED_SCALAR = scalar_value(_PACK.scalar_param("mf_margined_scalar"))
 _MF_UNMARGINED_CAP_YEARS = scalar_value(_PACK.scalar_param("mf_unmargined_cap_years"))
 _MF_UNMARGINED_DENOM_YEARS = scalar_value(_PACK.scalar_param("mf_unmargined_denom_years"))
-_MF_FLOOR_DAYS_REPO_SFT = _PACK.int_param("mf_margined_floor_days_repo_sft").value
 _MF_FLOOR_DAYS_OTC = _PACK.int_param("mf_margined_floor_days_otc").value
 _MF_FLOOR_DAYS_LARGE_OR_ILLIQUID = _PACK.int_param("mf_margined_floor_days_large_or_illiquid").value
 _MF_LARGE_NETTING_SET_TRADE_COUNT = _PACK.int_param(
@@ -92,15 +94,12 @@ def compute_maturity_factor_margined(trades: pl.LazyFrame) -> pl.LazyFrame:
 
     ``MPOR_eff`` is derived per the CRR Art. 285 cascade:
 
-    1. Base MPOR (Art. 285(2)):
-        - 5 BD when ALL trades in the netting set are SFT/repo/margin-lending
-          (Art. 285(2)(a)) — DOCUMENTED-BUT-INERT in production: the pipeline
-          adapter splits SFTs out to the FCCM branch
-          (``pipeline_adapter._split_ccr_bundle_by_transaction_type``) before
-          this function ever sees them, so the derivative-only sub-bundle makes
-          ``all_sft_in_ns`` always False. The branch is retained for the unit
-          tests (which feed SFT rows directly) and for spec completeness.
-        - 10 BD otherwise (OTC derivative netting set, Art. 285(2)(b))
+    1. Base MPOR (Art. 285(2)): 10 BD (OTC derivative netting set,
+       Art. 285(2)(b)). The Art. 285(2)(a) 5-BD SFT/repo/margin-lending base is
+       NOT modelled here: this function is derivatives-only since the SFT/FCCM
+       separation (SFTs are priced by the FCCM ``sft_fccm`` stage from
+       ``RawDataBundle.sft`` and never enter the SA-CCR chain), so every netting
+       set reaching this function is an OTC derivative netting set.
     2. Upgrade to 20 BD (Art. 285(3)) when either:
         - ``number_of_trades > 5000`` (Art. 285(3)(a)), or
         - ``has_illiquid_collateral_or_hard_to_replace_otc`` is True
@@ -115,8 +114,7 @@ def compute_maturity_factor_margined(trades: pl.LazyFrame) -> pl.LazyFrame:
         trades: LazyFrame with one row per trade carrying the Art. 285 cascade
             inputs as columns:
 
-            - ``netting_set_id``                — group key for the all-SFT check
-            - ``transaction_type``              — "sft" vs "derivative" (etc.)
+            - ``netting_set_id``                — group key
             - ``number_of_trades``              — count of trades in the NS
             - ``has_illiquid`` — bool flag (aliased from the netting-set
               column ``has_illiquid_collateral_or_hard_to_replace_otc`` at
@@ -138,19 +136,12 @@ def compute_maturity_factor_margined(trades: pl.LazyFrame) -> pl.LazyFrame:
     References:
         CRR Art. 279c(2); CRR Art. 285(2)-(5); BCBS CRE52.51-52.
     """
-    # Step 1 — base MPOR per Art. 285(2): 5 BD if all trades in the netting
-    # set are SFT, otherwise 10 BD. We broadcast the group-level decision
-    # back to each row via ``.over("netting_set_id")``. NOTE: in production the
-    # all-SFT branch is inert — SFTs are routed to FCCM upstream so the
-    # derivative-only sub-bundle never satisfies ``all_sft_in_ns`` (see the
-    # docstring Step 1 note).
-    all_sft_in_ns = pl.col("transaction_type").eq("sft").min().over("netting_set_id")
-
-    base_post_step1 = (
-        pl.when(all_sft_in_ns)
-        .then(pl.lit(_MF_FLOOR_DAYS_REPO_SFT))
-        .otherwise(pl.lit(_MF_FLOOR_DAYS_OTC))
-    )
+    # Step 1 — base MPOR per Art. 285(2)(b): 10 BD for the OTC derivative
+    # netting set. The Art. 285(2)(a) 5-BD SFT/repo base is not modelled here:
+    # this function is derivatives-only since the SFT/FCCM separation, so every
+    # netting set reaching it is an OTC derivative netting set (SFTs are priced
+    # by the FCCM ``sft_fccm`` stage and never enter the SA-CCR chain).
+    base_post_step1 = pl.lit(_MF_FLOOR_DAYS_OTC)
 
     # Step 2 — upgrade to 20 BD when the netting set is large
     # (Art. 285(3)(a)) or contains illiquid collateral / hard-to-replace

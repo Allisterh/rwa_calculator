@@ -12,7 +12,7 @@ Regenerate after annotation changes:
 uv run python scripts/generate_citation_matrix.py
 ```
 
-Last generated: 2026-06-19.
+Last generated: 2026-06-20.
 
 ## CRR (Capital Requirements Regulation)
 
@@ -720,9 +720,9 @@ Last generated: 2026-06-19.
 
 ### CRR Art. 220 — Using the Supervisory Volatility Adjustments Approach or the Own Estimates Volatility Adjustments Approach for master netting agreements
 
-??? quote "`sft_rows_to_exposures` — src/rwa_calc/engine/sft/fccm.py:78"
+??? quote "`sft_bundle_to_exposures` — src/rwa_calc/engine/sft/fccm.py:75"
     ```python
-    --8<-- "src/rwa_calc/engine/sft/fccm.py:78:263"
+    --8<-- "src/rwa_calc/engine/sft/fccm.py:75:135"
     ```
 
 
@@ -751,9 +751,9 @@ Last generated: 2026-06-19.
     --8<-- "src/rwa_calc/engine/crm/collateral.py:300:426"
     ```
 
-??? quote "`sft_rows_to_exposures` — src/rwa_calc/engine/sft/fccm.py:79"
+??? quote "`sft_bundle_to_exposures` — src/rwa_calc/engine/sft/fccm.py:76"
     ```python
-    --8<-- "src/rwa_calc/engine/sft/fccm.py:78:263"
+    --8<-- "src/rwa_calc/engine/sft/fccm.py:75:135"
     ```
 
 
@@ -774,17 +774,17 @@ Last generated: 2026-06-19.
     --8<-- "src/rwa_calc/engine/crm/haircuts.py:121:308"
     ```
 
-??? quote "`sft_rows_to_exposures` — src/rwa_calc/engine/sft/fccm.py:80"
+??? quote "`sft_bundle_to_exposures` — src/rwa_calc/engine/sft/fccm.py:77"
     ```python
-    --8<-- "src/rwa_calc/engine/sft/fccm.py:78:263"
+    --8<-- "src/rwa_calc/engine/sft/fccm.py:75:135"
     ```
 
 
 ### CRR Art. 226 — Scaling up of volatility adjustment under the Financial Collateral Comprehensive Method
 
-??? quote "`sft_rows_to_exposures` — src/rwa_calc/engine/sft/fccm.py:81"
+??? quote "`sft_bundle_to_exposures` — src/rwa_calc/engine/sft/fccm.py:78"
     ```python
-    --8<-- "src/rwa_calc/engine/sft/fccm.py:78:263"
+    --8<-- "src/rwa_calc/engine/sft/fccm.py:75:135"
     ```
 
 
@@ -861,9 +861,9 @@ Last generated: 2026-06-19.
 
 ### CRR Art. 271 — Determination of the exposure value
 
-??? quote "`sft_rows_to_exposures` — src/rwa_calc/engine/sft/fccm.py:82"
+??? quote "`sft_bundle_to_exposures` — src/rwa_calc/engine/sft/fccm.py:79"
     ```python
-    --8<-- "src/rwa_calc/engine/sft/fccm.py:78:263"
+    --8<-- "src/rwa_calc/engine/sft/fccm.py:75:135"
     ```
 
 
@@ -920,14 +920,14 @@ Last generated: 2026-06-19.
     --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:338:386"
     ```
 
-??? quote "`compute_maturity_factor_unmargined` — src/rwa_calc/engine/ccr/maturity_factor.py:55"
+??? quote "`compute_maturity_factor_unmargined` — src/rwa_calc/engine/ccr/maturity_factor.py:57"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:55:81"
+    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:57:83"
     ```
 
-??? quote "`compute_maturity_factor_margined` — src/rwa_calc/engine/ccr/maturity_factor.py:87"
+??? quote "`compute_maturity_factor_margined` — src/rwa_calc/engine/ccr/maturity_factor.py:89"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:87:211"
+    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:89:202"
     ```
 
 

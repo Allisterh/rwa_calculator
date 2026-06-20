@@ -2563,7 +2563,11 @@ def _generate_ccr_a10(output_dir: Path) -> list[tuple[str, int]]:
 
 
 def _generate_ccr_a11_a12(output_dir: Path) -> list[tuple[str, int]]:
-    """Generate CCR-A11/A12 golden fixtures (SA-CCR SFT FCCM EAD branch, Art. 271(2)).
+    """Generate CCR-A11/A12 golden fixtures (SFT FCCM EAD via raw.sft, Art. 271(2)).
+
+    SFT/FCCM separation (Phase 6): the inputs are now SFT-shaped
+    (SFT_TRADE_SCHEMA / SFT_COLLATERAL_SCHEMA → RawDataBundle.sft), priced by the
+    peer sft_fccm stage — NOT the deleted in-CCR transaction_type=='sft' branch.
 
     CCR-A11: uncollateralised SFT — EAD = E·(1+HE).
     CCR-A12: cash-collateralised SFT — EAD = max(0, E·(1+HE) − CVA).
@@ -2580,6 +2584,7 @@ def _generate_ccr_a11_a12(output_dir: Path) -> list[tuple[str, int]]:
         sys.path.remove(fixtures_root)
         for mod in (
             "ccr.golden_ccr_a11_a12",
+            "ccr.sft_bundle_builder",
             CCR_TRADE_BUILDER_MODULE,
             CCR_NETTING_SET_BUILDER_MODULE,
             CCR_MARGIN_BUILDER_MODULE,
