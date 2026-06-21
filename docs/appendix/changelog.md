@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- (Next release changes will go here)
+
+### Changed
+- (Next release changes will go here)
+
+---
+
+## [0.3.4] - 2026-06-21
+
 ### Fixed (Tier 8 — Counterparty Credit Risk; SA-CCR commodity same-commodity netting, CRR Art. 280c)
 - **The SA-CCR commodity add-on now nets trades referencing the same individual commodity into one effective notional *before* the within-bucket correlation, instead of treating every trade as a distinct commodity.** Previously `engine/ccr/pfe.py::_compute_addon_commodity` grouped only by the five `commodity_type` buckets and applied the ρ=0.40 idiosyncratic term per trade (`sum_e²_b = Σ_i e_i²`), so several trades on the *same* underlying were never fully offset — **understating the add-on, and hence EAD,** for same-direction books concentrated in one commodity. This is contrary to CRR Art. 280c / BCBS CRE52.68, where the individual commodity reference `k` is the unit of the formula (same-commodity legs net first; the ρ=0.40 partial correlation applies *across distinct commodities* within a bucket). A new nullable **`commodity_reference`** column on `TRADE_SCHEMA` identifies the individual commodity; the add-on now nets each reference into `D_k` first, then aggregates `AddOn_b = SF_CM[b]·√(ρ²·D_b² + (1−ρ²)·Σ_k D_k²)` — mirroring how the credit / equity add-ons net by `reference_entity`. **Fully backward-compatible:** a null `commodity_reference` falls back to `trade_id`, so each trade is its own reference and the prior per-trade result is reproduced bit-for-bit (the single-trade-per-bucket CCR-A7/A8/A9 goldens are unchanged). New unit tests in `tests/unit/ccr/test_commodity_reference_netting.py` (same-reference netting raises the add-on for same-direction legs; equal-and-opposite legs on one commodity fully offset to zero; null reference preserves per-trade behaviour). (CRR Art. 280c; BCBS CRE52.68.)
 

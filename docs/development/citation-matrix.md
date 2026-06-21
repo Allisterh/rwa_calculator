@@ -930,14 +930,14 @@ Last generated: 2026-06-21.
     --8<-- "src/rwa_calc/engine/ccr/adjusted_notional.py:338:386"
     ```
 
-??? quote "`compute_maturity_factor_unmargined` — src/rwa_calc/engine/ccr/maturity_factor.py:57"
+??? quote "`compute_maturity_factor_unmargined` — src/rwa_calc/engine/ccr/maturity_factor.py:65"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:57:83"
+    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:65:120"
     ```
 
-??? quote "`compute_maturity_factor_margined` — src/rwa_calc/engine/ccr/maturity_factor.py:89"
+??? quote "`compute_maturity_factor_margined` — src/rwa_calc/engine/ccr/maturity_factor.py:126"
     ```python
-    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:89:202"
+    --8<-- "src/rwa_calc/engine/ccr/maturity_factor.py:126:239"
     ```
 
 
