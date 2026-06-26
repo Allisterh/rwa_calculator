@@ -511,7 +511,9 @@ class ReconciliationRunner:
                 )
             )
 
-        affected = {a.spec.name: row[f"_nf_{a.spec.name}"] for a in numeric if row[f"_nf_{a.spec.name}"]}
+        affected = {
+            a.spec.name: row[f"_nf_{a.spec.name}"] for a in numeric if row[f"_nf_{a.spec.name}"]
+        }
         if affected:
             detail = ", ".join(f"{name}={count}" for name, count in affected.items())
             errors.append(

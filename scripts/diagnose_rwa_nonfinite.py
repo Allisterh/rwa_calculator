@@ -83,16 +83,20 @@ def main() -> int:
         return 0
 
     non_finite = pl.any_horizontal(
-        [pl.col(c).cast(pl.Float64, strict=False).is_nan().fill_null(False)
-         | pl.col(c).cast(pl.Float64, strict=False).is_infinite().fill_null(False)
-         for c in present_results]
+        [
+            pl.col(c).cast(pl.Float64, strict=False).is_nan().fill_null(False)
+            | pl.col(c).cast(pl.Float64, strict=False).is_infinite().fill_null(False)
+            for c in present_results
+        ]
     )
     bad = df.filter(non_finite)
 
     print(f"\nrows with non-finite {present_results}: {bad.height} of {df.height}")
     if bad.height == 0:
-        print("no non-finite RWA — your NaN total must come from elsewhere "
-              "(check ead_final and any summary fields).")
+        print(
+            "no non-finite RWA — your NaN total must come from elsewhere "
+            "(check ead_final and any summary fields)."
+        )
         return 0
 
     key = "exposure_reference" if "exposure_reference" in bad.columns else bad.columns[0]
@@ -100,7 +104,8 @@ def main() -> int:
 
     # Per-row, which driver columns are themselves non-finite (the likely cause).
     numeric_drivers = [
-        c for c in show_cols
+        c
+        for c in show_cols
         if c != key and bad.schema[c] in (pl.Float64, pl.Float32, pl.Int64, pl.Int32)
     ]
     bad = bad.with_columns(
@@ -135,8 +140,7 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data-path", required=True)
     p.add_argument("--framework", default="CRR", choices=["CRR", "Basel 3.1"])
-    p.add_argument("--permission-mode", default="standardised",
-                   choices=["standardised", "irb"])
+    p.add_argument("--permission-mode", default="standardised", choices=["standardised", "irb"])
     p.add_argument("--date", default="2025-01-01", help="reporting date (YYYY-MM-DD)")
     p.add_argument("--format", default="parquet", choices=["parquet", "csv"])
     p.add_argument("--limit", type=int, default=50, help="max bad rows to print")

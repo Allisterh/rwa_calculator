@@ -489,9 +489,7 @@ class TestDataQualityWarnings:
     def test_zero_key_overlap_warns_rec005(self) -> None:
         # Arrange: legacy ids share NO values with our exposure_reference (the
         # classic "legacy feeds through, ours blank" key-mapping mistake).
-        legacy = pl.LazyFrame(
-            {"loan_id": ["X1", "X2", "X3"], "legacy_rwa": [50.0, 150.0, 250.0]}
-        )
+        legacy = pl.LazyFrame({"loan_id": ["X1", "X2", "X3"], "legacy_rwa": [50.0, 150.0, 250.0]})
 
         # Act
         bundle = _recon(_ours(), legacy, _mapping())
