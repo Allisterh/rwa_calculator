@@ -112,18 +112,26 @@ def run(
         # SA already calculated by calculate_unified above — add
         # aggregator columns that calculate_branch normally provides.
         #
-        # SA-CCR rows (synthetic netting-set rows, risk_type == "CCR_DERIVATIVE")
-        # are risk-weighted via the SA but, unlike ordinary SA exposures, must
+        # Counterparty-credit-risk rows (synthetic netting-set rows) are
+        # risk-weighted via the SA but, unlike ordinary SA exposures, must
         # enter the output-floor S-TREA / U-TREA numerators (PS1/26 Art. 92(3A):
-        # SA-CCR is NOT on the S-TREA exclusion list). They carry the distinct
-        # ``SA_CCR_APPROACH`` label so the aggregator's single ``approach_applied``
-        # discriminator routes them into FLOOR_ELIGIBLE_APPROACHES (floor numerator)
-        # and out of SA_APPROACHES (plain-SA total) — moving the RWA into the floor
-        # buckets without double-counting. The underlying ``approach`` column is
-        # left untouched, so SA risk-weight routing and COREP reporting are
-        # unaffected. Only applies under the output-floor (Basel 3.1) path.
+        # CCR exposures are NOT on the S-TREA exclusion list). Two families
+        # qualify:
+        #   - SA-CCR OTC derivatives (risk_type == "CCR_DERIVATIVE"), and
+        #   - FCCM SFTs (risk_type == "CCR_SFT"; SFTs are likewise absent from
+        #     the Art. 92(3A) exclusion list — both are CCR exposures whose EAD
+        #     is computed under Part Three, Title II, Chapter 6).
+        # Both carry the distinct ``SA_CCR_APPROACH`` label so the aggregator's
+        # single ``approach_applied`` discriminator routes them into
+        # FLOOR_ELIGIBLE_APPROACHES (floor numerator) and out of SA_APPROACHES
+        # (plain-SA total) — moving the RWA into the floor buckets without
+        # double-counting. The underlying ``approach`` column is left untouched,
+        # so SA risk-weight routing and COREP reporting are unaffected. Only
+        # applies under the output-floor (Basel 3.1) path.
         sa_result = ensure_columns(sa_branch, _SA_CCR_TAG_SCHEMA).with_columns(
-            pl.when(pl.col("risk_type") == RiskType.CCR_DERIVATIVE.value)
+            pl.when(
+                pl.col("risk_type").is_in([RiskType.CCR_DERIVATIVE.value, RiskType.CCR_SFT.value])
+            )
             .then(pl.lit(SA_CCR_APPROACH))
             .otherwise(pl.col("approach"))
             .alias("approach_applied"),

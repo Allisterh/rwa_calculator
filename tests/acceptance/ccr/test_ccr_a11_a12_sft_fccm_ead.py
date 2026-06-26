@@ -2,18 +2,24 @@
 CCR-A11 and CCR-A12: SFT EAD via FCCM (CRR Art. 271(2) + Art. 220-223).
 
 Pipeline position:
-    Loader -> HierarchyResolver -> CCRAdapter (SFT FCCM branch)
+    Loader -> HierarchyResolver -> ccr_sa_ccr -> sft_fccm (FCCM SFT stage)
     -> Classifier -> CRMProcessor -> SACalculator -> OutputAggregator
 
-Plan item: P8.38 (line 237) — SA-CCR SFT EAD branch per CRR Art. 271(2)
-    and Art. 220-223 FCCM.
+Plan item: P8.38 — SFT EAD per CRR Art. 271(2) and Art. 220-223 FCCM.
+
+SFT/FCCM separation (Phase 6): the SFT inputs arrive via the dedicated
+``RawDataBundle.sft`` (the lean ``RawSFTBundle``) and are priced by the peer
+``sft_fccm`` stage — NOT the deleted in-CCR ``transaction_type == "sft"`` branch.
+The synthetic exposure references (``ccr__NS_SFT_001`` / ``ccr__NS_SFT_002``) and
+every numeric result are byte-identical to the legacy in-CCR result (same ids,
+same Art. 223(5) E* core).
 
 Key responsibilities:
-- Validate that SFTs (transaction_type="sft") are routed to the FCCM SFT
-  branch (Art. 271(2)) rather than the SA-CCR derivative branch (Art. 274).
+- Validate that SFTs supplied via ``raw.sft`` are priced by the FCCM SFT stage
+  (Art. 271(2)) rather than the SA-CCR derivative chain (Art. 274).
 - Validate the FCCM haircut mechanics:
     H_10 = 0.08 (corp bond CQS 1, residual > 5y, Art. 224 Table 1)
-    HE   = H_10 × √(5/10) = 0.05656854249492381 (Art. 224(2)(c) + Art. 226(2))
+    HE   = H_10 × √(5/10) = 0.05656854249492381 (Art. 224(2)(b) + Art. 226)
     E*   = max(0, E·(1+HE) − CVA·(1−HC−HFX))    (Art. 223(5))
 - Validate that the synthetic CCR row carries ccr_method="fccm_sft" and
   risk_type="CCR_SFT" (not "sa_ccr" / "CCR_DERIVATIVE").
@@ -43,9 +49,9 @@ References:
     - CRR Art. 220(1)(a) — single-CP SFT / master-netting-set scope.
     - CRR Art. 220(3)(a)(i) — standardised supervisory haircuts.
     - CRR Art. 223(5) — E* = max(0, E·(1+HE) − CVA·(1−HC−HFX)).
-    - CRR Art. 224(2)(c) — 5-BD liquidation period floor for SFTs.
+    - CRR Art. 224(2)(b) — 5-BD liquidation period for repo/SFT.
     - CRR Art. 224 Table 1 — H_10 = 0.08 (corp bond CQS 1, residual > 5y).
-    - CRR Art. 226(2) — H_m = H_10 × √(T_m / 10) haircut scaling.
+    - CRR Art. 224(2) — H_m = H_10 × √(T_m / 10) period rescale; Art. 226 non-daily revaluation.
     - CRR Art. 120 Table 3 — institution CQS 2 → 50% SA risk weight.
     - tests/fixtures/ccr/golden_ccr_a11_a12.py: fixture builder and constants.
 """
@@ -107,11 +113,11 @@ def ccr_a11_result() -> dict:
           notional GBP 60.7m, corp bond exposure CQS 1 residual 7y, no collateral.
         - 1 netting set (NS_SFT_001): CP_INST_001 (institution, CQS 2, GB),
           legally enforceable, unmargined.
-        - CCRConfig.sft_method="fccm" routes SFT trades to Art. 271(2) FCCM.
+        - SFT supplied via raw.sft; SFTConfig.method="fccm" (Art. 271(2)).
         - CalculationConfig.crr(), permission_mode=STANDARDISED.
 
     References:
-        CRR Art. 271(2), 223(5), 224 Table 1, 226(2), 120 Table 3.
+        CRR Art. 271(2), 223(5), 224 Table 1, 224(2)(b), 226, 120 Table 3.
     """
     # Arrange
     bundle = build_raw_data_bundle_ccr_a11()
@@ -145,11 +151,11 @@ def ccr_a12_result() -> dict:
         - 1 SFT trade (T_SFT_002): same corp bond exposure as A11.
         - 1 netting set (NS_SFT_002): CP_INST_001, legally enforceable, unmargined.
         - 1 CCR collateral row (COLL_SFT_001): cash GBP 60m received, HC=0, HFX=0.
-        - CCRConfig.sft_method="fccm" routes SFT trades to Art. 271(2) FCCM.
+        - SFT supplied via raw.sft; SFTConfig.method="fccm" (Art. 271(2)).
         - CalculationConfig.crr(), permission_mode=STANDARDISED.
 
     References:
-        CRR Art. 271(2), 223(5), 224 Table 1, 226(2), 120 Table 3.
+        CRR Art. 271(2), 223(5), 224 Table 1, 224(2)(b), 226, 120 Table 3.
     """
     # Arrange
     bundle = build_raw_data_bundle_ccr_a12()
@@ -253,9 +259,9 @@ class TestCCRA11UncollateralisedSFT:
 
         References:
             CRR Art. 223(5): E* = max(0, E·(1+HE) − 0) = E·(1+HE).
-            CRR Art. 224(2)(c): 5-BD liquidation period.
+            CRR Art. 224(2)(b): 5-BD liquidation period (repo/SFT).
             CRR Art. 224 Table 1: H_10=0.08 for corp bond CQS 1, residual > 5y.
-            CRR Art. 226(2): H_m = H_10 × √(T_m / 10).
+            CRR Art. 224(2): H_m = H_10 × √(T_m / 10) (period rescale); Art. 226 non-daily revaluation.
         """
         # Arrange
         expected = CCR_A11_EAD  # 64_133_710.52944188
@@ -271,7 +277,14 @@ class TestCCRA11UncollateralisedSFT:
         """SA-CCR derivative columns (rc_unmargined, pfe_addon, pfe_multiplier, addon_aggregate)
         must all be null on an FCCM SFT row — the FCCM path does not produce them.
 
-        Arrange: SFT routed via FCCM.
+        SFT/FCCM separation (Phase 6): the SFT row now arrives via the typed
+        ``RawDataBundle.sft`` input and the peer ``sft_fccm`` stage. These
+        SA-CCR component columns are null because the FCCM path never PROJECTS
+        them (they are declared by ``CCR_EXIT_EDGE`` and filled null on SFT rows
+        when the frame is re-sealed to ``ccr_exit``) — not because of any shared
+        intra-adapter concat (the deleted in-CCR FCCM branch).
+
+        Arrange: SFT supplied via raw.sft, priced by the sft_fccm FCCM stage.
         Act:     full CRR SA+CCR pipeline.
         Assert:  all four SA-CCR component columns are null.
 

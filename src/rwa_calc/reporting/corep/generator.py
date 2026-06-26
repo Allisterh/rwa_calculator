@@ -279,7 +279,14 @@ class COREPGenerator:
         cols = _available_columns(results)
 
         # SA templates (C 07.00)
-        sa_data = _filter_by_approach(results, "standardised", cols)
+        # FCCM SFTs are SA-risk-weighted but carry the CCR-via-SA
+        # ``approach_applied`` tag (``standardised_ccr``) under the output floor,
+        # so a plain ``approach_applied == "standardised"`` filter would drop
+        # them under Basel 3.1. Admit them explicitly via ``risk_type ==
+        # "CCR_SFT"`` so the SFT EAD lands in C 07.00 (total row 0010 + the
+        # SFT-netting breakdown row 0090, PS1/26 App. 17). SA-CCR derivatives are
+        # NOT admitted here — they report under C 34 (CRR Art. 274).
+        sa_data = _c07_sa_data(results, cols)
         c07_00 = self._generate_all_c07(sa_data, cols, framework, errors)
 
         # IRB templates (C 08.01, C 08.02, C 08.03, C 08.06)
@@ -2991,13 +2998,25 @@ def _collect_ccr_rows(results: pl.LazyFrame, cols: set[str]) -> pl.DataFrame | N
     ``exposure_reference`` is ``ccr__{netting_set_id}``). Returns None when the
     discriminating columns are absent (CCR-free portfolio).
 
+    FCCM SFT rows (``risk_type == "CCR_SFT"`` / ``ccr_method == "fccm_sft"``)
+    share the ``ccr__`` reference prefix but are EXCLUDED here: per PS1/26
+    App. 17 they are reported under SA template C 07.00 row 0090
+    ("SFT netting sets"), not the SA-CCR templates (C 34.01/02/08). Only OTC
+    derivatives (``risk_type == "CCR_DERIVATIVE"``) and CCP exposures belong in
+    the SA-CCR templates (CRR Art. 274/306). The exclusion is gated on the
+    ``risk_type`` column being present so a portfolio that predates the column
+    is unaffected.
+
     References:
         CRR Art. 274(2): the synthetic SA-CCR rows carry EAD = alpha * (RC + PFE).
+        PS1/26 App. 17: SFTs report under C 07.00 row 0090, not C 34.
     """
     if not ({"exposure_reference", "ead_final", "rwa_final"} <= cols):
         return None
+    is_ccr = pl.col("exposure_reference").str.starts_with("ccr__")
+    not_sft = pl.col("risk_type") != "CCR_SFT" if "risk_type" in cols else pl.lit(True)
     ccr = (
-        results.filter(pl.col("exposure_reference").str.starts_with("ccr__"))
+        results.filter(is_ccr & not_sft)
         .with_columns(
             pl.col("exposure_reference").str.strip_prefix("ccr__").alias("netting_set_id")
         )
@@ -4032,6 +4051,45 @@ def _c07_section1_subset(
     return None
 
 
+def _c07_sa_data(results: pl.LazyFrame, cols: set[str]) -> pl.LazyFrame:
+    """Select the rows that populate C 07.00 (SA credit risk).
+
+    Plain SA exposures (``approach_applied == "standardised"``) plus FCCM SFT
+    synthetic rows (``risk_type == "CCR_SFT"``). The latter are SA-risk-weighted
+    but tagged ``standardised_ccr`` under the Basel 3.1 output floor, so they
+    would otherwise be dropped by the bare approach filter. SA-CCR derivatives
+    are deliberately excluded — they report under C 34 (CRR Art. 274), not C 07.
+
+    References:
+        PS1/26 App. 17: FCCM SFTs report under C 07.00 row 0090.
+    """
+    sa = _filter_by_approach(results, "standardised", cols)
+    if "risk_type" not in cols:
+        return sa
+    sft = results.filter(pl.col("risk_type") == "CCR_SFT")
+    return pl.concat([sa, sft], how="diagonal_relaxed").unique(
+        subset=["exposure_reference"] if "exposure_reference" in cols else None,
+        keep="first",
+    )
+
+
+@cites("PS1/26")
+def _filter_sft(class_data: pl.DataFrame, cols: set[str]) -> pl.DataFrame:
+    """Filter to the FCCM SFT synthetic rows (C 07.00 row 0090 — SFT netting sets).
+
+    SFTs carry ``risk_type == "CCR_SFT"`` (set by the ``sft_fccm`` stage). Their
+    exposure value (col 0200) and RWEA (col 0215/0220) populate the SFT-netting
+    breakdown row under the row's exposure-class sheet. Returns an empty frame
+    when the discriminator is absent (no SFT book).
+
+    References:
+        PS1/26 App. 17: C 07.00 row 0090 — SFT netting sets.
+    """
+    if "risk_type" not in cols:
+        return class_data.clear()
+    return class_data.filter(pl.col("risk_type") == "CCR_SFT")
+
+
 def _c07_section2_subset(
     row_ref: str, class_data: pl.DataFrame, cols: set[str]
 ) -> pl.DataFrame | None:
@@ -4040,7 +4098,12 @@ def _c07_section2_subset(
         return _filter_on_bs(class_data, cols)
     if row_ref == "0080":
         return _filter_off_bs(class_data, cols)
-    # CCR rows (0090-0130) not implemented
+    if row_ref == "0090":
+        # SFT netting sets (FCCM SFT EAD; PS1/26 App. 17). The "of which: QCCP"
+        # sub-row 0100 and the derivative / CCP netting-set rows 0110-0130 stay
+        # unimplemented (those exposures report under C 34).
+        return _filter_sft(class_data, cols)
+    # Derivative / CCP netting-set rows (0100-0130) report under C 34.
     return None
 
 

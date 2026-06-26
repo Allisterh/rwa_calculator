@@ -41,7 +41,10 @@ from rwa_calc.engine.ccr.maturity_factor import (  # noqa: E402
     compute_maturity_factor_unmargined,
 )
 from rwa_calc.engine.ccr.pfe import compute_addon_per_asset_class  # noqa: E402
-from rwa_calc.engine.ccr.pipeline_adapter import ccr_rows_to_exposures  # noqa: E402
+from rwa_calc.engine.ccr.pipeline_adapter import (  # noqa: E402
+    ccr_rows_to_exposures,
+    partition_out_sft_rows,
+)
 from rwa_calc.engine.ccr.rc import compute_rc_margined, compute_rc_unmargined  # noqa: E402
 from rwa_calc.engine.ccr.sa_ccr import (  # noqa: E402
     apply_legal_enforceability_gate,
@@ -70,4 +73,5 @@ __all__ = [
     "compute_supervisory_delta_cdo_tranche",
     "compute_supervisory_delta_linear",
     "compute_supervisory_delta_option",
+    "partition_out_sft_rows",
 ]

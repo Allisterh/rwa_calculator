@@ -1273,6 +1273,13 @@ def _ccr_rows(results: pl.LazyFrame, cols: set[str]) -> pl.DataFrame | None:
     The CCR disclosure tables read the same synthetic netting-set rows the
     aggregator rolls up (CRR Art. 274(2)). Returns ``None`` when the results
     frame carries no ``exposure_reference`` column.
+
+    FCCM SFT rows (``risk_type == "CCR_SFT"``) share the ``ccr__`` prefix but are
+    EXCLUDED here: they are SFT exposures reported under the SA template (COREP
+    C 07.00 row 0090), not the SA-CCR / CCP disclosure tables (CCR1/CCR8). Only
+    OTC derivatives and CCP exposures belong in these CCR templates. The
+    exclusion is gated on ``risk_type`` being present so a portfolio that
+    predates the column is unaffected.
     """
     ref_col = _pick(cols, "exposure_reference")
     if not ref_col:
@@ -1280,7 +1287,9 @@ def _ccr_rows(results: pl.LazyFrame, cols: set[str]) -> pl.DataFrame | None:
     # An empty / all-null results frame can carry exposure_reference as a Null
     # dtype; ``.str.starts_with`` only operates on String. Cast defensively so
     # the CCR filter degenerates to an empty selection rather than raising.
-    return results.filter(pl.col(ref_col).cast(pl.String).str.starts_with("ccr__")).collect()
+    is_ccr = pl.col(ref_col).cast(pl.String).str.starts_with("ccr__")
+    not_sft = pl.col("risk_type") != "CCR_SFT" if "risk_type" in cols else pl.lit(True)
+    return results.filter(is_ccr & not_sft).collect()
 
 
 def _ccr_qccp_trade_predicate() -> pl.Expr:

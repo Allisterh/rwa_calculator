@@ -8,10 +8,13 @@ Pipeline position:
 
 Key responsibilities:
 - Declare frozen ColumnSpec schemas for every input bundle (Loan, Facility, ...)
-- Declare COLUMN_VALUE_CONSTRAINTS — single source of truth for input-domain
-  string enums (per arch_check check 6); used by validate_bundle_values to
-  catch invalid input values early
-- Publish reference-data tables (risk weights, CCFs, haircuts, LGD/PD floors)
+- Declare the VALID_* enum sets and COLUMN_VALUE_CONSTRAINTS (the input-validation
+  map built from them) consumed by validate_bundle_values to catch invalid input
+  values early; engine/** may not redeclare these string collections (arch_check check 6)
+- Declare the column-shape of the reference / lookup tables (risk weights, CCFs,
+  haircuts, LGD/PD floors). NOTE: shape declarations only — the regulatory VALUES
+  now live in the rulepack packs (rwa_calc/rulebook/packs/{common,crr,b31}.py) and
+  are read through the resolved pack, not from these dicts
 - Declare the Calculation_output schema (full RWA audit trail)
 
 Key Data Inputs:
@@ -19,19 +22,25 @@ Key Data Inputs:
 - Facility                  # Committed credit limits (parent nodes) with seniority, risk_type
 - Contingents               # Off-balance sheet commitments with CCF category
 - Counterparty              # Borrower/obligor with entity flags (PSE, MDB, institution, etc.)
-- Collateral                # Security items with RE-specific fields (LTV, property type, ADC)
-- Guarantee                 # Guarantees and credit protection
-- Provision                 # IFRS 9 provisions/impairments (SCRA, GCRA)
-- Ratings                   # Internal and external credit ratings
+- Collateral                # Security items with RE-specific fields (LTV, property type, ADC);
+                            # linked to its beneficiary via beneficiary_type/beneficiary_reference
+- Collateral_links          # Optional M:N side table splitting one collateral item across many
+                            # beneficiaries (sub-limit + priority); FK to Collateral. Logical key
+                            # (collateral_reference, beneficiary_type, beneficiary_reference) (Art. 230-231)
+- Guarantee                 # Guarantees and credit protection; linked via beneficiary_type/beneficiary_reference
+- Provision                 # IFRS 9 provisions/impairments (SCRA, GCRA); linked via beneficiary_type/beneficiary_reference
+- Ratings                   # Internal and external credit ratings; linked to counterparty via counterparty_reference
 - Specialised_lending       # Slotting approach for PF, OF, CF, IPRE (CRE33)
 - Equity_exposure           # Equity holdings - SA only under Basel 3.1 (CRE20.58-62)
 - CIU_holdings              # Fund look-through holdings for the CIU look-through approach (Art. 132)
 - FX_rates                  # Currency conversion table (currency_from, currency_to, rate)
 
 Counterparty Credit Risk (CCR) Inputs:
-- Trade                     # OTC derivative / long-settlement / SFT row for SA-CCR (Art. 271-279a)
+- Trade                     # OTC derivative / long-settlement row for SA-CCR (Art. 271-279a).
                             # Carries asset_class, notional, MtM, supervisory delta, option / CDO
-                            # inputs, QCCP client-clearing flag, and specific-WWR flag
+                            # inputs, the client-cleared-to-QCCP flag (is_client_cleared, Art. 307),
+                            # and the specific-WWR flag. SFTs are NOT carried here since the
+                            # SFT/FCCM split — see SFT_trade below
 - Netting_set               # Per-netting-set row with legal-enforceability flag (Art. 295),
                             # margined / unmargined toggle, large-NS / illiquid-collateral MPOR
                             # cascade inputs (Art. 285), and general-WWR flag
@@ -39,6 +48,24 @@ Counterparty Credit Risk (CCR) Inputs:
                             # separable from netting set so one CSA can cover multiple sets
 - CCR_collateral            # CCR-specific collateral keyed by netting_set_id (vs the
                             # exposure-keyed Collateral schema); haircut lookup via Art. 224
+- DF_contribution           # Optional clearing-member default-fund contribution to a (Q)CCP;
+                            # is_qccp_ccp discriminates the Art. 308 (QCCP) vs Art. 309
+                            # (non-QCCP) capital branch
+
+Securities Financing Transaction (SFT) Inputs:
+- SFT_trade                 # Lean SFT row (RawDataBundle.sft) priced via the Financial
+                            # Collateral Comprehensive Method (Art. 271(2), 220-223). Carries the
+                            # Art. 223(5) exposure-side volatility-haircut (HE) inputs first-class
+                            # and the netting-set counterparty denormalised onto the trade
+                            # (single-trade-NS scope, Art. 220(1)(a)); optional margined / MPOR flags
+- SFT_collateral            # Optional SFT collateral keyed by netting_set_id; market_value +
+                            # Art. 224 haircut (HC/HFX) inputs feeding the FCCM E* formula
+
+CVA Risk Inputs (Basel 3.1 / PS1/26 only — BA-CVA):
+- CVA_counterparty          # Optional BA-CVA counterparty row (sector x credit-quality RW_c,
+                            # M_NS); gates BA-CVA inclusion via cva_in_scope (PS1/26 CVA Part Ch.4)
+- CVA_hedge                 # Optional BA-CVA single-name / index CDS hedge feeding K_hedged
+                            # (correlation band, RW_h, M_h, notional B_h); PS1/26 CVA Part Ch.4
 
 Settlement Risk Inputs:
 - Failed_trade              # One row per failed DvP or non-DvP free-delivery settlement
@@ -56,13 +83,17 @@ Mappings:
 - Facility_mappings         # Mappings between Facilities, Loans and Contingents
 - Org_mapping               # Mapping between counterparties (parents to children) for rating/turnover inheritance
 - Lending_mapping           # Mapping between connected counterparties for Retail threshold aggregation
-- Ratings_mapping           # Mapping between Internal and External Ratings to Counterparties
-- Collateral_mapping        # Mapping between Collateral and Exposures/Counterparties
-- Provision_mapping         # Mapping between Provision and Exposures/Counterparties
-- Guarantee_mapping         # Mapping between Guarantee and Exposures/Counterparties
 - Exposure_class_mapping    # Mapping of counterparty/exposure attributes to SA/IRB exposure classes
 
-Reference/Lookup Data:
+  Note: ratings, collateral, provisions and guarantees do NOT use standalone
+  *_mapping tables. Ratings link to their counterparty via a counterparty_reference
+  column on the Ratings schema; collateral / provision / guarantee each link to
+  their beneficiary via embedded beneficiary_type + beneficiary_reference columns
+  (constrained by VALID_BENEFICIARY_TYPES). The only standalone collateral side
+  table is the optional M:N Collateral_links frame above.
+
+Reference/Lookup Data (column-shape declarations only — VALUES live in the rulepack
+packs, read via the resolved pack; not consumed from these dicts):
 - Central_govt_central_bank_risk_weights  # CQS to risk weight mapping for central govts/central banks (0%-150%)
 - Institution_risk_weights  # CQS to risk weight mapping (ECRA) with UK CQS2=30% deviation
 - Corporate_risk_weights    # CQS to risk weight mapping for corporates
@@ -74,7 +105,7 @@ Reference/Lookup Data:
 - PD_floors                 # PD floors by exposure class (Corporate 0.03%, Retail 0.05%, QRRE 0.10%)
 - Correlation_parameters    # Asset correlation formulas/values by exposure class
 
-Configuration:
+Configuration (column-shape declarations; runtime config is the CalculationConfig dataclass):
 - IRB_permissions           # Which exposure classes can use IRB (SA/FIRB/AIRB)
 - Model_permissions         # Per-model approach + geography / book-code scoping
                             # (model_id, exposure_class, approach, country_codes,
@@ -102,16 +133,22 @@ References:
 - CRR Art. 153(5): Specialised-lending slotting categories (PF, OF, CF, IPRE)
 - CRR Art. 197-200: Eligible collateral types (basis for collateral_type enum)
 - CRR Art. 213-217: Eligible guarantor types (basis for guarantor_type enum)
+- CRR Art. 220-223: Financial Collateral Comprehensive Method (basis for SFT_trade / SFT_collateral)
 - CRR Art. 223-230: Collateral valuation / supervisory haircut categories
+- CRR Art. 230-231: Collateral substitution / sequential allocation (basis for Collateral_links)
 - CRR Art. 244-246: Securitisation significant risk transfer (basis for Securitisation_allocation)
+- CRR Art. 271(2): SFT exposure value via FCCM under the CCR framework (basis for SFT_trade)
 - CRR Art. 271-279a: SA-CCR scope and exposure-value methodology (basis for Trade schema)
+- CRR Art. 272(7), 285(5): Margin agreement (CSA) parameters (basis for Margin_agreement schema)
 - CRR Art. 285, 295: MPOR cascade and netting-set legal enforceability (basis for Netting_set schema)
 - CRR Art. 291: Wrong-way risk flags (general + specific) on Trade / Netting_set
 - CRR Art. 306-307: QCCP proprietary vs client-cleared routing (``is_client_cleared``)
+- CRR Art. 308-309: CCP default-fund contribution capital (basis for DF_contribution)
 - CRR Art. 378-380: Settlement risk treatment (basis for Failed_trade schema)
 - CRR Art. 501 / 501a: SME and infrastructure supporting-factor eligibility fields
 - PRA PS1/26 (Basel 3.1): LTV bands, ADC flag, IPRE flags, equity SA-only treatment
   (CRE20.58-62), and revised SA input fields effective 1 Jan 2027
+- PRA PS1/26 CVA Part Ch.4: Basic Approach for CVA (BA-CVA) — basis for CVA_counterparty / CVA_hedge
 """
 
 from __future__ import annotations
@@ -884,16 +921,23 @@ SECURITISATION_ALLOCATION_SCHEMA: dict[str, ColumnSpec] = {
 # - CRR Art. 285(2)(b) (10 business-day MPOR minimum)
 # - CRR Art. 295-297 (contractual netting recognition)
 
-#: Trade-level input for SA-CCR. One row per OTC derivative / long-settlement
-#: trade or SFT (discriminated by ``transaction_type``). Consumed by the
-#: CCR calculator stage.
+#: Trade-level input for SA-CCR (OTC derivatives / long-settlement trades).
+#: One row per derivative trade. Consumed by the ``ccr_sa_ccr`` derivative
+#: stage. SFTs are NOT carried here since the SFT/FCCM separation — securities
+#: financing transactions have their own lean ``SFT_TRADE_SCHEMA`` input
+#: (``RawDataBundle.sft``), priced by the peer ``sft_fccm`` FCCM stage
+#: (CRR Art. 271(2), Art. 220-223).
 TRADE_SCHEMA: dict[str, ColumnSpec] = {
     # Required (8) — primary key + core economic terms.
     "trade_id": ColumnSpec(pl.String),
     "netting_set_id": ColumnSpec(pl.String),
     # "interest_rate" | "fx" | "credit" | "equity" | "commodity"
     "asset_class": ColumnSpec(pl.String),
-    # "derivative" | "sft"
+    # "derivative" — REQUIRED on every CCR (derivative) trade row. The "sft"
+    # value remains valid in VALID_TRANSACTION_TYPES (the guard detects it), but
+    # SFT rows belong in SFT_TRADE_SCHEMA / RawDataBundle.sft, not here — a "sft"
+    # row reaching this frame is flagged CCR020 and excluded from the Art. 274
+    # chain. See partition_out_sft_rows (engine/ccr/pipeline_adapter.py).
     "transaction_type": ColumnSpec(pl.String),
     "notional": ColumnSpec(pl.Float64),
     "currency": ColumnSpec(pl.String),
@@ -960,6 +1004,15 @@ TRADE_SCHEMA: dict[str, ColumnSpec] = {
     # OTHER. UPPER-CASE to match ``SA_CCR_SUPERVISORY_FACTORS_COMMODITY``
     # keys in ``data/tables/sa_ccr_factors.py``. See COLUMN_VALUE_CONSTRAINTS.
     "commodity_type": ColumnSpec(pl.String, required=False),
+    # CRR Art. 280c / CRE52.68: the individual commodity reference within a
+    # bucket (e.g. a specific power product or delivery hub). Trades that share
+    # a ``commodity_reference`` are fully netted into one effective notional
+    # ``D_k`` BEFORE the within-bucket ρ=0.40 aggregation — mirroring how
+    # ``reference_entity`` partitions the credit / equity add-ons. Free-text
+    # (no COLUMN_VALUE_CONSTRAINTS entry). Nullable: when null the commodity
+    # add-on falls back to per-trade (``trade_id``) granularity, preserving the
+    # pre-existing behaviour for inputs that do not populate the column.
+    "commodity_reference": ColumnSpec(pl.String, required=False),
     # CRR Art. 280a / 280b / CRE52.61: discriminator for single-name vs index
     # in credit / equity asset classes. Default None (not False) — null means
     # "not applicable" (IR / FX / commodity rows); False would be a load-bearing
@@ -980,6 +1033,31 @@ TRADE_SCHEMA: dict[str, ColumnSpec] = {
     # see no transitional add-on. See SA_CCR_TRANSITIONAL_ADDON_PHASE in
     # data/tables/sa_ccr_factors.py.
     "is_legacy_cva_exempt": ColumnSpec(pl.Boolean, default=False, required=False),
+    # IRB effective-maturity (Art. 162) input flags (3) — CCR/SFT IRB
+    # effective-maturity fix Phase 2. SA-CCR derivatives are IN SCOPE for the
+    # carrier (an internally-rated CP routes the synthetic CCR_DERIVATIVE row to
+    # FIRB/AIRB and hits the Art. 162 chain). Mirror of the SFT_TRADE_SCHEMA
+    # flags — CARRY-ONLY this phase; the producer (engine/ccr/pipeline_adapter.py)
+    # reads them in Phase 3 alongside the NS-grain margining cascade
+    # (_attach_mpor_cascade_inputs, which sources is_margined /
+    # remargining_frequency_days from NETTING_SET_SCHEMA / MARGIN_AGREEMENT_SCHEMA,
+    # not from this trade schema). All three are Boolean (no
+    # COLUMN_VALUE_CONSTRAINTS entry needed) and default conservatively to False:
+    # an absent flag NEVER unlocks a sub-1y floor, so a derivative omitting them
+    # falls to the Art. 162(2)(f) / 162(2A)(f) 1-year catch-all.
+    #
+    # under_master_netting_agreement: Art. 162(2) MNA precondition for any sub-1y
+    # floor. (CRR Art. 162(2); PS1/26 Art. 162(2A).)
+    "under_master_netting_agreement": ColumnSpec(pl.Boolean, default=False, required=False),
+    # qualifies_one_day_maturity_floor: all three Art. 162(3) conditions
+    # conjunctively (daily re-margin AND revaluation AND prompt-liquidation docs).
+    # (CRR Art. 162(3); PS1/26 Art. 162(3).)
+    "qualifies_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
+    # qualifies_mna_intermediate_floor: B31 Art. 162(2A)(c)/(d) "daily re-margin
+    # OR revaluation AND prompt-liquidation" documentation condition gating the
+    # 5BD/10BD intermediate floors UNDER B31 ONLY (unused under CRR, where the
+    # 5BD/10BD apply on MNA alone). (PS1/26 Art. 162(2A)(c)/(d).)
+    "qualifies_mna_intermediate_floor": ColumnSpec(pl.Boolean, default=False, required=False),
 }
 
 #: Netting-set-level input for SA-CCR. One row per netting set keyed by
@@ -1074,6 +1152,159 @@ CCR_COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
     "residual_maturity_years": ColumnSpec(pl.Float64, required=False),
     "haircut_override": ColumnSpec(pl.Float64, required=False),
 }
+
+
+# =============================================================================
+# SECURITIES FINANCING TRANSACTION (SFT) INPUT SCHEMAS — SFT/FCCM separation
+# =============================================================================
+# Dedicated, lean input schemas for SFTs priced via the Financial Collateral
+# Comprehensive Method (FCCM, CRR Art. 220-223). Today SFTs are tunnelled
+# through the SA-CCR ``TRADE_SCHEMA`` / ``CCR_COLLATERAL_SCHEMA`` (discriminated
+# by ``transaction_type == "sft"``), carrying ~25 derivative-only columns they
+# never use and three HE-input columns that ``TRADE_SCHEMA`` never declared.
+# These schemas declare the FCCM input contract first-class so a developer can
+# see exactly what an SFT row needs.
+#
+# Declaration-only at this phase — the loader / bundle / stage wiring lands in
+# later phases of docs/plans/sft-fccm-separation.md. The current engine path
+# still reads SFT rows out of the shared CCR bundle.
+#
+# Scope: single-trade, single-counterparty netting sets (Art. 220(1)(a)), so
+# the netting-set ``counterparty_reference`` is denormalised onto the trade
+# row and no separate SFT netting-set table is needed.
+#
+# References:
+# - CRR Art. 220(1)(a) — single-counterparty SFT / master-netting-set scope
+# - CRR Art. 223(5) — E* = max(0, E·(1+HE) − CVA·(1−HC−HFX))
+# - CRR Art. 224 Table 1 — supervisory haircuts (H_10) by type / CQS / maturity
+# - CRR Art. 271(2) — SFT EAD via FCCM, not SA-CCR Art. 274
+
+#: Trade-level FCCM input. One row per SFT (repo / securities-lending). The
+#: netting-set counterparty is denormalised onto the trade (single-trade-NS
+#: scope, Art. 220(1)(a)) so FCCM needs no separate SFT netting-set table.
+#: The ``exposure_*`` columns carry the Art. 223(5) exposure-side volatility
+#: haircut (HE) inputs — declared first-class here, where they were previously
+#: tunnelled undeclared through ``TRADE_SCHEMA``. Same dtypes as the identically
+#: named LOAN_SCHEMA / CONTINGENTS_SCHEMA lending-side declarations.
+SFT_TRADE_SCHEMA: dict[str, ColumnSpec] = {
+    # Required (7) — primary key + core economic terms + denormalised CP.
+    "trade_id": ColumnSpec(pl.String),
+    "netting_set_id": ColumnSpec(pl.String),
+    # Denormalised from the netting set; becomes the synthetic exposure row's
+    # ``counterparty_reference`` and drives the SA institution risk-weight lookup
+    # (CRR Art. 120(1) Table 3).
+    "counterparty_reference": ColumnSpec(pl.String),
+    # E — the exposure amount lent / sold under the SFT (Art. 223(5)).
+    "notional": ColumnSpec(pl.Float64),
+    "currency": ColumnSpec(pl.String),
+    "maturity_date": ColumnSpec(pl.Date),
+    "start_date": ColumnSpec(pl.Date),
+    # Optional nullable (3) — Art. 223(5) exposure-side HE inputs, keyed into the
+    # Art. 224 Table 1 supervisory-haircut lookup. Null when the exposure side is
+    # cash / a standard loan (HE = 0; engine treats null as no haircut).
+    "exposure_collateral_type": ColumnSpec(pl.String, required=False),
+    "exposure_security_cqs": ColumnSpec(pl.Int8, required=False),
+    "exposure_security_residual_maturity_years": ColumnSpec(pl.Float64, required=False),
+    # Optional margining inputs (5) — SFT/FCCM separation Phase 0b. These make a
+    # margined SFT under a qualifying Art. 285(2)-(4) margin agreement
+    # REPRESENTABLE. NO engine math reads them yet (carry-only this phase): an
+    # SFT row that omits them seals to the unmargined defaults below, so the
+    # FCCM E* is bit-identical to today's path. All denormalised onto the trade
+    # row (single-CP single-trade NS scope, Art. 220(1)(a)).
+    #
+    # is_margined: True => this SFT is under a qualifying Art. 285(2)-(4) margin
+    # agreement (margined branch (b): T_M = MPOR, Art. 226 non-daily term
+    # suppressed). False/absent => unmargined branch (a) = today's behaviour.
+    "is_margined": ColumnSpec(pl.Boolean, default=False, required=False),
+    # remargining_frequency_days: dual-purpose revaluation/remargin period in
+    # business days. Branch (a): N_R feeding the Art. 226 √((N_R+T_M−1)/T_M)
+    # term (1 => daily => term 1.0). Branch (b): N feeding Art. 285(5)
+    # MPOR = F + N − 1. Default 1 keeps both branches at the daily minimum.
+    "remargining_frequency_days": ColumnSpec(pl.Int16, default=1, required=False),
+    # mpor_floor_category: selects the Art. 285(2)-(3) floor F (branch (b) only):
+    # 'repo_only' => F=5 (Art. 285(2)(a)); 'other' => F=10 (Art. 285(2)(b));
+    # 'illiquid_or_large' => F=20 (Art. 285(3)). The actual F is read from cited
+    # pack scalars — never hardcoded in engine. Value-constrained via
+    # VALID_MPOR_FLOOR_CATEGORIES in COLUMN_VALUE_CONSTRAINTS['sft_trades'].
+    "mpor_floor_category": ColumnSpec(pl.String, default="repo_only", required=False),
+    # has_margin_dispute_doubling: True => apply the Art. 285(4) doubling of F
+    # (> 2 margin-call disputes over the preceding two quarters, each exceeding
+    # the applicable MPOR). Pre-computed upstream; the engine does not track
+    # quarters. When True: F → 2·F before MPOR = 2F + N − 1.
+    "has_margin_dispute_doubling": ColumnSpec(pl.Boolean, default=False, required=False),
+    # mpor_days_override: optional explicit MPOR (business days) that SUPERSEDES
+    # the F + N − 1 derivation (branch (b) only). Null (the common case) => the
+    # engine derives MPOR from the fields above; non-null => used directly as
+    # T_M. No default-fill — null is the 'derive me' signal.
+    "mpor_days_override": ColumnSpec(pl.Int16, default=None, required=False),
+    # IRB effective-maturity (Art. 162) input flags (3) — CCR/SFT IRB
+    # effective-maturity fix Phase 2. CARRY-ONLY this phase: declared so a
+    # margined / netted SFT routing to FIRB/AIRB is REPRESENTABLE; the producer
+    # (engine/sft/fccm.py) and the IRB maturity chain that read them land in
+    # Phases 3-4. All three are Boolean — no COLUMN_VALUE_CONSTRAINTS entry is
+    # needed (the dtype is the constraint). All default conservatively to False:
+    # an absent flag NEVER unlocks a sub-1y maturity floor (anti-conservative
+    # trap), so an SFT omitting them falls to the Art. 162(2)(f) / 162(2A)(f)
+    # 1-year catch-all — bit-identical to today's behaviour.
+    #
+    # under_master_netting_agreement: Art. 162(2) MNA precondition. ANY sub-1y
+    # maturity floor (one-day, 5BD, 10BD) requires this True; without it the row
+    # falls to the 1-year catch-all. (CRR Art. 162(2); PS1/26 Art. 162(2A).)
+    "under_master_netting_agreement": ColumnSpec(pl.Boolean, default=False, required=False),
+    # qualifies_one_day_maturity_floor: carries ALL THREE Art. 162(3) conditions
+    # conjunctively — (i) daily re-margining AND (ii) daily revaluation AND
+    # (iii) documentation provisions for prompt liquidation / set-off. True =>
+    # the ~1-day (1/365 y) floor is available. Default False: NEVER inferred
+    # from remargining_frequency_days (absent ≠ qualifying). (CRR Art. 162(3);
+    # PS1/26 Art. 162(3) — the AND condition is unchanged under B31.)
+    "qualifies_one_day_maturity_floor": ColumnSpec(pl.Boolean, default=False, required=False),
+    # qualifies_mna_intermediate_floor: the B31 Art. 162(2A)(c)/(d) documentation
+    # condition — "daily re-margining OR revaluation AND prompt-liquidation /
+    # set-off" (note the OR, distinct from 162(3)'s AND) — that gates the
+    # 5BD / 10BD intermediate MNA floors UNDER B31 ONLY. Under CRR the 5BD/10BD
+    # floors apply on MNA alone (Art. 162(2)(c)/(d): "subject to an MNA" is the
+    # only condition), so this flag is unused under CRR; under B31 a repo/deriv
+    # under an MNA but lacking it falls to the 162(2A)(f) 1-year catch-all.
+    # Default False (conservative). (PS1/26 Art. 162(2A)(c)/(d).)
+    "qualifies_mna_intermediate_floor": ColumnSpec(pl.Boolean, default=False, required=False),
+}
+
+#: Netting-set-keyed collateral received against an SFT, feeding the
+#: ``CVA·(1−HC−HFX)`` term of the FCCM E* formula (Art. 223(5)). A lean subset
+#: of ``CCR_COLLATERAL_SCHEMA`` — the SA-CCR-only columns (``is_posted_by_firm``,
+#: ``is_segregated``, ``issuer_type``, ``haircut_override``) are intentionally
+#: dropped. Optional table: an uncollateralised SFT carries no collateral row.
+SFT_COLLATERAL_SCHEMA: dict[str, ColumnSpec] = {
+    # Required (3).
+    "sft_collateral_reference": ColumnSpec(pl.String),
+    "netting_set_id": ColumnSpec(pl.String),
+    "collateral_type": ColumnSpec(pl.String),
+    # Optional with default (1) — CVA (collateral market value) in the E*
+    # formula; 0.0 when unknown (no collateral credit).
+    "market_value": ColumnSpec(pl.Float64, default=0.0, required=False),
+    # Optional nullable (3) — Art. 224 Table 1 HC lookup inputs + the HFX
+    # same-currency shortcut (Art. 224 Table 4: HFX = 0 when collateral and
+    # exposure currencies match).
+    "currency": ColumnSpec(pl.String, required=False),
+    "issuer_cqs": ColumnSpec(pl.Int8, required=False),
+    "residual_maturity_years": ColumnSpec(pl.Float64, required=False),
+}
+
+#: Valid values for the CCR/SFT trade discriminator ``transaction_type``
+#: (TRADE_SCHEMA). A bad value silently mis-routes an SFT into the SA-CCR
+#: Art. 274 chain (≈0 EAD) instead of FCCM (Art. 271(2)), so it is value-
+#: constrained via ``COLUMN_VALUE_CONSTRAINTS`` below. Enforced once the CCR/SFT
+#: trade frame is wired into ``validate_bundle_values`` (later separation phase).
+VALID_TRANSACTION_TYPES: set[str] = {"derivative", "sft"}
+
+#: Valid values for the margined-SFT MPOR floor selector ``mpor_floor_category``
+#: (SFT_TRADE_SCHEMA, SFT/FCCM separation Phase 0b). Selects the Art. 285(2)-(3)
+#: floor F (branch (b) only): ``repo_only`` => F=5 (Art. 285(2)(a)); ``other`` =>
+#: F=10 (Art. 285(2)(b)); ``illiquid_or_large`` => F=20 (Art. 285(3)). A bad value
+#: would silently mis-floor the MPOR, so it is value-constrained via
+#: ``COLUMN_VALUE_CONSTRAINTS['sft_trades']`` below. The actual F value is read
+#: from cited pack scalars in the engine — this set only constrains the input.
+VALID_MPOR_FLOOR_CATEGORIES: set[str] = {"repo_only", "other", "illiquid_or_large"}
 
 
 # =============================================================================
@@ -1230,11 +1461,13 @@ CVA_HEDGE_SCHEMA: dict[str, ColumnSpec] = {
 
 # Short-code mapping for the five SA-CCR asset classes used to compose the
 # stable ``hedging_set_id`` per CRR Art. 277(1) (e.g. "IR-NS-IR-01-GBP-GT_5Y").
-# Keys mirror the canonical ``TRADE_SCHEMA.asset_class`` input strings
-# (see line 659 above). Values are the BCBS / CRR conventional short codes.
+# Keys are the canonical ``TRADE_SCHEMA.asset_class`` input strings; values are the
+# BCBS / CRR conventional short codes. NOTE: only the ``interest_rate`` entry is
+# currently consumed (engine/ccr/hedging_sets.py looks up ``asset_short`` for the IR
+# hedging-set id); the FX / credit / equity / commodity ids use hardcoded literals.
 ASSET_CLASS_SHORT_CODE: dict[str, str] = {
     "interest_rate": "IR",
-    "foreign_exchange": "FX",
+    "fx": "FX",
     "credit": "CR",
     "equity": "EQ",
     "commodity": "CO",
@@ -1726,11 +1959,23 @@ COLUMN_VALUE_CONSTRAINTS: dict[str, dict[str, set[str]]] = {
     # in ``data/tables/sa_ccr_factors.py`` — load-bearing for the P8.37
     # supervisory-factor join.
     "trades": {
+        # SFT/FCCM separation — the CCR/SFT trade discriminator. Dormant until
+        # the CCR/SFT trade frame is added to validate_bundle_values'
+        # frame_mapping (like commodity_type/credit_quality below today).
+        "transaction_type": VALID_TRANSACTION_TYPES,
         "commodity_type": {"ELECTRICITY", "OIL_GAS", "METALS", "AGRICULTURAL", "OTHER"},
         # P8.35 — CRR Art. 280 Table 2 credit-quality discriminator: keyed off
         # ``SA_CCR_SUPERVISORY_FACTORS_CREDIT_SN`` / ``..._CREDIT_IDX`` in
         # ``data/tables/sa_ccr_factors.py``.
         "credit_quality": {"IG", "HY", "NON_RATED"},
+    },
+    # SFT/FCCM separation Phase 0b — the margined-SFT MPOR floor selector. A bad
+    # value would silently mis-floor the Art. 285 margin period of risk. Dormant
+    # until the SFT trade frame is added to validate_bundle_values' frame_mapping
+    # (mirrors the 'trades' entry above), but declared here as the single source
+    # of truth for the input domain.
+    "sft_trades": {
+        "mpor_floor_category": VALID_MPOR_FLOOR_CATEGORIES,
     },
 }
 

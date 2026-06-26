@@ -406,6 +406,36 @@ def _raw_table_edges() -> dict[str, EdgeContract]:
 RAW_TABLE_EDGES: dict[str, EdgeContract] = _raw_table_edges()
 
 
+def _sft_table_edges() -> dict[str, EdgeContract]:
+    """Per-table loader edge contracts for the SFT (FCCM) raw input frames.
+
+    SFT/FCCM separation Phase 4: the SFT trade / collateral frames load
+    through the SAME standard seal path (``seal_lenient`` + edge contract)
+    as the 18 traditional tables — ending CCR's status as the lone
+    seal-bypassing input family. They live in a dedicated registry rather
+    than ``RAW_TABLE_EDGES`` because the latter is contract-pinned to the
+    ``RawDataBundle`` LazyFrame fields (``test_edge_contracts.py::
+    test_covers_every_raw_data_bundle_frame_field``); the SFT frames hang
+    off the composite ``RawSFTBundle`` leaf bundles, not off
+    ``RawDataBundle`` directly. Keys are the leaf-bundle frame field names;
+    edge names carry the ``raw_`` prefix to match the brands registered in
+    ``contracts.bundles.SEALED_FRAME_FIELDS``.
+    """
+    from rwa_calc.data import schemas
+
+    table_schemas = {
+        "sft_trades": schemas.SFT_TRADE_SCHEMA,
+        "sft_collateral": schemas.SFT_COLLATERAL_SCHEMA,
+    }
+    return {
+        field_name: EdgeContract(name=f"raw_{field_name}", columns=edge_columns_from_specs(schema))
+        for field_name, schema in table_schemas.items()
+    }
+
+
+SFT_TABLE_EDGES: dict[str, EdgeContract] = _sft_table_edges()
+
+
 # ---------------------------------------------------------------------------
 # Edge definitions — hierarchy exit
 # ---------------------------------------------------------------------------
@@ -564,6 +594,24 @@ CCR_EXIT_EDGE: EdgeContract = EdgeContract(
         "ccr_method": EdgeColumn(dtype=pl.String),
         "cp_is_ccp_client_cleared": EdgeColumn(dtype=pl.Boolean),
         "wwr_lgd_override": EdgeColumn(dtype=pl.Float64),
+        # IRB effective-maturity carrier for CCR/SFT synthetic rows (Art. 162).
+        # Producer-computed M (years) for the FCCM-SFT / SA-CCR-derivative rows
+        # that route to FIRB/AIRB; null on lending rows and off-carve-out CCR
+        # rows (conform injects a typed null). Read by the IRB maturity chain
+        # (engine/irb/transforms.py) — never overloads is_sft / effective_maturity.
+        # required=False with NO default (a default on a required column, or on
+        # a True default for an optional Float carrier, is rejected /
+        # anti-conservative). Optional so date-derived M survives off-carve-out.
+        # Declared HERE on CCR_EXIT_EDGE ONLY (NOT on HIERARCHY_EXIT_EDGE) so it
+        # survives the CCR-only spread comprehension into CLASSIFIER_EXIT_CCR /
+        # CRM_EXIT_CCR / RE_SPLIT_EXIT_CCR rather than being filtered out by the
+        # ``c not in HIERARCHY_EXIT_EDGE.columns`` guard.
+        "ccr_effective_maturity": EdgeColumn(
+            dtype=pl.Float64,
+            required=False,
+            citation="CRR Art. 162",
+            null_meaning="null = lending row / off-carve-out CCR row — date-derived M applies",
+        ),
         "addon_aggregate": EdgeColumn(dtype=pl.Float64, citation="CRR Art. 278"),
         "addon_by_asset_class": EdgeColumn(
             dtype=pl.Struct(

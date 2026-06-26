@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def cmd_create(name: str, base_ref: str, force: bool) -> int:
-    _validate_name(name)
+    name = _validate_name(name)
     base_ref = validate_git_ref(base_ref)
     branch = _branch_for(name)
     worktree_path = _worktree_path_for(name)
@@ -159,7 +159,7 @@ def cmd_create(name: str, base_ref: str, force: bool) -> int:
 
 
 def cmd_remove(name: str, delete_branch: bool, force: bool) -> int:
-    _validate_name(name)
+    name = _validate_name(name)
     branch = _branch_for(name)
     worktree_path = _worktree_path_for(name)
     registered = _worktree_registered(worktree_path)
@@ -267,12 +267,13 @@ def cmd_list() -> None:
         )
 
 
-def _validate_name(name: str) -> None:
+def _validate_name(name: str) -> str:
     if not NAME_PATTERN.match(name):
         raise SystemExit(
             f"error: invalid name {name!r}. "
             f"Use lowercase letters, digits, and dashes (must start with a letter or digit)."
         )
+    return name
 
 
 def _branch_for(name: str) -> str:

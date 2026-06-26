@@ -432,6 +432,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_ccr_a11_a12,
         ),
         (
+            "CCR-A15..A18 (margined / non-daily / FX SFT FCCM EAD — Art. 224(2)/226/285)",
+            "ccr",
+            _generate_ccr_a15_a18,
+        ),
+        (
             "P1.30(e) (CRR Art. 234 mezzanine partial-protection tranching attachment/detachment)",
             "p1_30e",
             _generate_p130e,
@@ -555,6 +560,16 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             "P8.31 (CCR-IRB-1 — 5y GBP IR swap, F-IRB corporate CP_IRB_001, MOD_CORP_FIRB)",
             "ccr",
             _generate_ccr_irb1,
+        ),
+        (
+            "CCR-A13 golden (single 10y GBP IR swap, margined NS, daily remargin, MF=0.30)",
+            "ccr",
+            _generate_ccr_a13,
+        ),
+        (
+            "P8.54 / CCR-A14 (margined NS, 126d remargin, MF=1.10227 — EAD rises branch)",
+            "ccr",
+            _generate_ccr_a14,
         ),
         (
             "P8.43 (CCR-C1/C2/C3 DvP failed-trade Art. 378 band ladder — 3 distinct CPs)",
@@ -2553,7 +2568,11 @@ def _generate_ccr_a10(output_dir: Path) -> list[tuple[str, int]]:
 
 
 def _generate_ccr_a11_a12(output_dir: Path) -> list[tuple[str, int]]:
-    """Generate CCR-A11/A12 golden fixtures (SA-CCR SFT FCCM EAD branch, Art. 271(2)).
+    """Generate CCR-A11/A12 golden fixtures (SFT FCCM EAD via raw.sft, Art. 271(2)).
+
+    SFT/FCCM separation (Phase 6): the inputs are now SFT-shaped
+    (SFT_TRADE_SCHEMA / SFT_COLLATERAL_SCHEMA → RawDataBundle.sft), priced by the
+    peer sft_fccm stage — NOT the deleted in-CCR transaction_type=='sft' branch.
 
     CCR-A11: uncollateralised SFT — EAD = E·(1+HE).
     CCR-A12: cash-collateralised SFT — EAD = max(0, E·(1+HE) − CVA).
@@ -2570,9 +2589,41 @@ def _generate_ccr_a11_a12(output_dir: Path) -> list[tuple[str, int]]:
         sys.path.remove(fixtures_root)
         for mod in (
             "ccr.golden_ccr_a11_a12",
+            "ccr.sft_bundle_builder",
             CCR_TRADE_BUILDER_MODULE,
             CCR_NETTING_SET_BUILDER_MODULE,
             CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_ccr_a15_a18(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate CCR-A15..A18 margined / non-daily SFT FCCM golden fixtures.
+
+    SFT/FCCM margined extension: cash exposure side (HE=0, E=10m) against a
+    govt_bond CQS 1 0.5y collateral (H_10=0.005), priced by the peer sft_fccm
+    stage via the FCCM margined / non-daily revaluation branch.
+
+    CCR-A15D: unmargined daily repo (anchor)         — E* = 35,355.34.
+    CCR-A15:  unmargined 3-day remargin (Art. 226)   — E* = 41,833.00.
+    CCR-A16:  margined repo-only N=2 ⇒ MPOR=6        — E* = 38,729.83.
+    CCR-A17:  unmargined daily + FX mismatch (USD)   — E* = 601,040.76.
+    CCR-A18:  margined repo-only N=2 + dispute ⇒ 11  — E* = 52,440.44.
+    All: counterparty CP_INST_SFT_M01 (institution, CQS 2, GB) → 50% SA RW.
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.golden_ccr_a15_a18_margined_sft import save_ccr_a15_a18_fixtures
+
+        saved = save_ccr_a15_a18_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.golden_ccr_a15_a18_margined_sft",
+            "ccr.golden_ccr_a11_a12",
+            "ccr.sft_bundle_builder",
         ):
             sys.modules.pop(mod, None)
 
@@ -3030,6 +3081,65 @@ def _generate_ccr_irb1(output_dir: Path) -> list[tuple[str, int]]:
         sys.path.remove(fixtures_root)
         for mod in (
             "ccr.golden_ccr_irb1",
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_ccr_a13(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate CCR-A13 golden fixtures (margined IR swap, daily remargin, MF=0.30).
+
+    Writes four parquet files to the ``ccr/`` output directory:
+        ccr_a13_trades.parquet              — 1 row (T_MGN_001, 10y GBP IR swap, MtM=-4m)
+        ccr_a13_netting_sets.parquet        — 1 row (NS_MGN_001, CP_001, margined)
+        ccr_a13_margin_agreements.parquet   — 1 row (MA_MGN_001, freq=1d)
+        ccr_a13_collateral.parquet          — 0 rows
+
+    P8.19 (rc_margined fix) + P8.54 (MF_margined=0.30 re-pin, daily remargin).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.golden_ccr_a13 import save_golden_fixtures
+
+        saved = save_golden_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.golden_ccr_a13",
+            CCR_TRADE_BUILDER_MODULE,
+            CCR_NETTING_SET_BUILDER_MODULE,
+            CCR_MARGIN_BUILDER_MODULE,
+        ):
+            sys.modules.pop(mod, None)
+
+
+def _generate_ccr_a14(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P8.54 / CCR-A14 golden fixtures (margined IR swap, 126d remargin, MF=1.10227).
+
+    Writes four parquet files to the ``ccr/`` output directory:
+        ccr_a14_trades.parquet              — 1 row (T_MGN_002, 10y GBP IR swap, MtM=-4m)
+        ccr_a14_netting_sets.parquet        — 1 row (NS_MGN_002, CP_001, margined)
+        ccr_a14_margin_agreements.parquet   — 1 row (MA_MGN_002, freq=126d)
+        ccr_a14_collateral.parquet          — 0 rows
+
+    The 126-day remargin frequency produces MPOR_eff=135 → MF_margined=1.10227 > 1.0,
+    demonstrating the "EAD rises" branch of the margined maturity-factor wiring (P8.54).
+    """
+    fixtures_root = str(output_dir.parent)
+    sys.path.insert(0, fixtures_root)
+    try:
+        from ccr.golden_ccr_a14 import save_golden_fixtures as save_ccr_a14_fixtures
+
+        saved = save_ccr_a14_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(fixtures_root)
+        for mod in (
+            "ccr.golden_ccr_a14",
             CCR_TRADE_BUILDER_MODULE,
             CCR_NETTING_SET_BUILDER_MODULE,
             CCR_MARGIN_BUILDER_MODULE,

@@ -7,7 +7,11 @@ Pins the expected behaviour of the margined MF formula per CRR Art. 279c(2):
 
 where MPOR_eff is derived by the Art. 285 cascade:
 
-    Step 1 — base:     5  if ALL trades in NS are SFT/repo else 10
+    Step 1 — base:     10 (OTC derivative netting set, Art. 285(2)(b)). The
+                          Art. 285(2)(a) 5-BD SFT/repo base is NOT modelled —
+                          compute_maturity_factor_margined is derivatives-only
+                          since the SFT/FCCM separation (SFTs are priced by the
+                          FCCM sft_fccm stage and never enter the SA-CCR chain).
     Step 2 — upgrade:  20 if number_of_trades > 5000
                           OR has_illiquid_collateral_or_hard_to_replace_otc
     Step 3 — dispute:  base × 2 if dispute_count_qtr > 2  (Art. 285(4))
@@ -16,7 +20,6 @@ where MPOR_eff is derived by the Art. 285 cascade:
 
 References:
 - CRR Art. 279c(2): MF = (3/2) × sqrt(MPOR_eff / 250)
-- CRR Art. 285(2)(a): 5-BD MPOR floor for SFT / repo netting sets
 - CRR Art. 285(2)(b): 10-BD MPOR floor for OTC derivative netting sets
 - CRR Art. 285(3)(b): 20-BD floor for > 5000 trades or illiquid collateral
 - CRR Art. 285(4): double MPOR_base when dispute_count_qtr > 2
@@ -81,6 +84,12 @@ def _build_denormalised_lf() -> pl.LazyFrame:
                 "number_of_trades",
                 pl.col("has_illiquid_collateral_or_hard_to_replace_otc").alias("has_illiquid"),
                 "margin_agreement_id",
+                # is_margined=True for all P8.14 rows (all netting sets are margined).
+                # P8.54 adds an internal is_margined gate to compute_maturity_factor_margined
+                # so the column must be present in the denormalised frame. Adding it now is
+                # harmless on the current engine (extra column ignored) and is the only safe
+                # ordering — the gate lands before the existing P8.14 unit tests run.
+                "is_margined",
             ]
         ),
         on="netting_set_id",
@@ -143,50 +152,7 @@ def test_t1_canonical_bcbs_cre52_otc_floor_10bd() -> None:
 
 
 # ===========================================================================
-# 2. T2 — SFT netting set, 5-day MPOR floor (Art. 285(2)(a))
-# ===========================================================================
-
-
-def test_t2_sft_netting_set_floor_5bd() -> None:
-    """SFT netting set (T2): MPOR base=5 (all trades are SFT, Art. 285(2)(a)).
-
-    Arrange:
-        T2 / NS2 — sft, 10 trades, no illiquid, 0 disputes,
-        remargining_frequency_days=1, mpor_days_input=5.
-        base = 5 (SFT, Art. 285(2)(a))
-        MPOR_eff = base + 1 − 1 = 5, max(5, 5) = 5
-        MF = 1.5 × sqrt(5 / 250) = 0.21213203435596426.
-
-    Act: compute_maturity_factor_margined(lf).collect().
-
-    Assert: maturity_factor[T2] ≈ 0.21213203435596426 (rel=1e-12).
-
-    References: CRR Art. 279c(2), Art. 285(2)(a).
-    """
-    # Arrange
-    if compute_maturity_factor_margined is None:
-        pytest.fail(
-            "compute_maturity_factor_margined not importable from "
-            "rwa_calc.engine.ccr.maturity_factor — P8.14 (margined) not yet implemented."
-        )
-
-    lf = _build_denormalised_lf()
-
-    # Act
-    result = compute_maturity_factor_margined(lf).collect()
-
-    # Assert
-    row = result.filter(pl.col("trade_id") == "T2")
-    actual = row["maturity_factor"][0]
-    expected = EXPECTED_MF["T2"]  # 0.21213203435596426
-    assert actual == pytest.approx(expected, rel=1e-12), (
-        f"T2 (SFT, MPOR_eff=5): expected MF={expected!r}, got {actual!r}. "
-        "CRR Art. 279c(2): MF = 1.5 × sqrt(5/250). Art. 285(2)(a): SFT base=5."
-    )
-
-
-# ===========================================================================
-# 3. T3 — large netting set (> 5000 trades), 20-day floor (Art. 285(3)(b))
+# 2. T3 — large netting set (> 5000 trades), 20-day floor (Art. 285(3)(b))
 # ===========================================================================
 
 
