@@ -41,7 +41,10 @@ from rwa_calc.analysis.reconciliation import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from rwa_calc.api.models import ReconciliationResponse
+    from rwa_calc.ui.app.recon_signoff import Decision
 
 # The default mapping shown in the page's TOML editor. Kept as the single source
 # the page route, the REST default and the tests all reference. ``legacy_file``
@@ -109,6 +112,23 @@ BUCKET_CHOICES: tuple[str, ...] = (
     BUCKET_MISSING_RIGHT,
 )
 
+# Sign-off status vocabulary. ``open`` is an un-actioned difference; ``accepted`` /
+# ``rejected`` are the analyst's two terminal dispositions (both clear the row from
+# the default Open worklist); ``matched`` is the implicit status of an exact-match
+# row (never a difference, never sign-off-able). ``all`` is the pseudo-filter that
+# imposes no status constraint. The on-screen explorer filter offers Open first.
+SIGNOFF_OPEN = "open"
+SIGNOFF_ACCEPTED = "accepted"
+SIGNOFF_REJECTED = "rejected"
+SIGNOFF_MATCHED = "matched"
+SIGNOFF_ALL = "all"
+SIGNOFF_STATUS_CHOICES: tuple[str, ...] = (
+    SIGNOFF_OPEN,
+    SIGNOFF_ACCEPTED,
+    SIGNOFF_REJECTED,
+    SIGNOFF_ALL,
+)
+
 # On-screen forensic row cap; the full frame is available via the CSV export.
 _FORENSIC_LIMIT = 200
 
@@ -129,6 +149,7 @@ _FILTER_COLUMNS: dict[str, str] = {
     "exposure_class": "our_exposure_class",
     "approach": "our_approach",
     "worst_component": "worst_component",
+    "status": "signoff_status",
 }
 
 # The order an analyst reads a single loan's RWA build. ``loan_detail`` orders the
@@ -185,6 +206,7 @@ class ForensicFilters:
     exposure_class: str | None = None
     approach: str | None = None
     worst_component: str | None = None
+    status: str | None = None
     query: str | None = None
     sort: str | None = None
     descending: bool = True
@@ -291,16 +313,66 @@ def forensic_table(
 
 
 def biggest_breaks(
-    response: ReconciliationResponse, *, limit: int = BIGGEST_BREAKS_LIMIT
+    response: ReconciliationResponse,
+    decisions: Mapping[str, Decision] | None = None,
+    current_fps: Mapping[str, str] | None = None,
+    *,
+    limit: int = BIGGEST_BREAKS_LIMIT,
 ) -> pl.DataFrame:
-    """Overview worklist — the ``limit`` most material breaks, ranked.
+    """Overview worklist — the ``limit`` most material *open* breaks, ranked.
 
     ``breaks_detail`` is already sorted by ``|abs_delta|`` descending in the
     engine, so a ``head`` is the top-N. Reads the worker-warmed ``breaks_detail``
     cache (not the wide per-key frame), so the overview never materialises the
-    full diff for a large portfolio.
+    full diff for a large portfolio. A break whose key carries an **unchanged**
+    sign-off decision is dropped (the worklist burns down); a **stale** decision —
+    one whose difference has moved since sign-off — is kept, so the regression is
+    re-reviewed rather than silently waved through.
     """
-    return response.collect_breaks_detail().head(limit).fill_nan(None)
+    df = response.collect_breaks_detail()
+    decisions = decisions or {}
+    current_fps = current_fps or {}
+    if decisions and "_recon_key" in df.columns:
+        settled = [k for k, d in decisions.items() if not is_signoff_stale(d, current_fps.get(k))]
+        if settled:
+            df = df.filter(~pl.col("_recon_key").is_in(settled))
+    return df.head(limit).fill_nan(None)
+
+
+def breaks_signoff_progress(
+    response: ReconciliationResponse,
+    decisions: Mapping[str, Decision] | None = None,
+    current_fps: Mapping[str, str] | None = None,
+) -> dict[str, int]:
+    """Burndown of the break worklist: how many distinct breaking keys are reviewed.
+
+    Counts distinct ``_recon_key`` in the warmed ``breaks_detail`` (the primary
+    worklist) and how many carry an **unchanged** decision, so the overview /
+    explorer can show "X of Y reviewed — Z open" without touching the wide per-key
+    frame. A **stale** decision (the difference moved since sign-off) counts as open,
+    not reviewed, and is also surfaced separately as ``changed``.
+    """
+    decisions = decisions or {}
+    current_fps = current_fps or {}
+    df = response.collect_breaks_detail()
+    if "_recon_key" not in df.columns:
+        return {"total": 0, "reviewed": 0, "open": 0, "accepted": 0, "rejected": 0, "changed": 0}
+    break_keys = set(df.get_column("_recon_key").unique().to_list())
+    decided = [k for k in break_keys if k in decisions]
+    changed = [k for k in decided if is_signoff_stale(decisions[k], current_fps.get(k))]
+    reviewed_keys = [k for k in decided if k not in changed]
+    accepted = sum(1 for k in reviewed_keys if decisions[k].status == SIGNOFF_ACCEPTED)
+    rejected = sum(1 for k in reviewed_keys if decisions[k].status == SIGNOFF_REJECTED)
+    total = len(break_keys)
+    reviewed = len(reviewed_keys)
+    return {
+        "total": total,
+        "reviewed": reviewed,
+        "open": total - reviewed,
+        "accepted": accepted,
+        "rejected": rejected,
+        "changed": len(changed),
+    }
 
 
 def forensic_filter_options(response: ReconciliationResponse) -> dict[str, list[str]]:
@@ -317,21 +389,38 @@ def forensic_filter_options(response: ReconciliationResponse) -> dict[str, list[
         "worst_component": _summary_values(
             response.collect_summary_by_component(), col="component"
         ),
+        "status": list(SIGNOFF_STATUS_CHOICES),
     }
 
 
-def forensic_page(response: ReconciliationResponse, filters: ForensicFilters) -> ForensicPage:
+def forensic_page(
+    response: ReconciliationResponse,
+    filters: ForensicFilters,
+    decisions: Mapping[str, Decision] | None = None,
+    current_fps: Mapping[str, str] | None = None,
+) -> ForensicPage:
     """Tier B explorer — one filtered, sorted, paged window of the per-key frame.
 
     Collects the wide ``component_reconciliation`` frame once (cached on the
-    response), applies the filters, validates ``filters.sort`` against the
-    projected display columns (unknown -> ``ValueError``), then sorts and slices
-    a single page — so the browser only ever receives ``page_size`` rows.
+    response), annotates each row with its sign-off ``signoff_status`` /
+    ``signoff_reason`` / ``signoff_stale`` from *decisions* (re-flagging a decision
+    whose difference has moved), applies the filters (including the ``status``
+    dimension), validates ``filters.sort`` against the projected display columns
+    (unknown -> ``ValueError``), then sorts and slices a single page — so the browser
+    only ever receives ``page_size`` rows. *current_fps* is computed when not
+    supplied; the route passes it to avoid a second filtered collect.
     """
+    decisions = decisions or {}
+    if current_fps is None:
+        current_fps = current_fingerprints(response, decisions)
     df = response.collect_component_reconciliation()
+    df = annotate_signoff(df, decisions, current_fps)
     df = _apply_forensic_filters(df, filters)
     total = df.height
     columns = _readable_recon_columns(df)
+    # signoff_stale / signoff_prior_status ride along in the row dicts (for the badge
+    # + the "was accepted, now changed" hint) without becoming visible table columns.
+    extra = [c for c in ("signoff_stale", "signoff_prior_status") if c in df.columns]
 
     sort_col = filters.sort or None
     if sort_col is not None and sort_col not in columns:
@@ -343,7 +432,7 @@ def forensic_page(response: ReconciliationResponse, filters: ForensicFilters) ->
     pages = max(1, math.ceil(total / page_size)) if total else 1
     page = min(max(1, filters.page), pages)
     offset = (page - 1) * page_size
-    rows = df.select(columns).slice(offset, page_size).fill_nan(None).to_dicts()
+    rows = df.select([*columns, *extra]).slice(offset, page_size).fill_nan(None).to_dicts()
     return ForensicPage(
         columns=columns,
         rows=rows,
@@ -432,6 +521,126 @@ def loan_detail(response: ReconciliationResponse, recon_key: str) -> dict | None
     }
 
 
+def annotate_signoff(
+    df: pl.DataFrame,
+    decisions: Mapping[str, Decision],
+    current_fps: Mapping[str, str] | None = None,
+) -> pl.DataFrame:
+    """Attach ``signoff_status`` / ``signoff_reason`` / ``signoff_stale`` to a frame.
+
+    Left-joins the analyst's stored decisions onto ``component_reconciliation`` by
+    ``_recon_key`` and derives ``signoff_status`` per row:
+
+    - ``matched`` for an exact-match row (never a difference — keeps matches out of
+      the Open worklist, even if an old decision lingers because the break was
+      fixed),
+    - ``open`` when the row is a difference the analyst hasn't actioned — **or** has
+      actioned but the difference has since *moved* (``signoff_stale=True``), so a
+      changed difference is re-reviewed rather than waved through under an old
+      approval,
+    - the decision's status (``accepted`` / ``rejected``) when one exists and the
+      difference is unchanged.
+
+    Staleness compares each decision's stored ``fingerprint`` against *current_fps*
+    (``{recon_key: current fingerprint}``); a key absent from *current_fps*, or a
+    decision with no stored fingerprint, is treated as *not* stale. ``signoff_reason``
+    / ``signoff_prior_status`` carry the decision's reason / status (so a stale row
+    can show what it was signed off as, and why). The frame is returned unchanged
+    when it has no ``_recon_key`` column.
+    """
+    if "_recon_key" not in df.columns:
+        return df
+    dec_df = _decisions_frame(decisions, current_fps or {})
+    has_row_bucket = "row_bucket" in df.columns
+    is_exact = (pl.col("row_bucket") == BUCKET_EXACT) if has_row_bucket else pl.lit(value=False)
+    # A row is "resolved" once it is exact OR within-tolerance — neither needs
+    # sign-off, so a decision on a row that improved into either must NOT be
+    # re-flagged stale (only rows that are STILL a material difference can go stale).
+    is_resolved = (
+        pl.col("row_bucket").is_in([BUCKET_EXACT, BUCKET_WITHIN])
+        if has_row_bucket
+        else pl.lit(value=False)
+    )
+    has_decision = pl.col("_decision_status").is_not_null()
+    stale = (
+        has_decision
+        & ~is_resolved
+        & pl.col("_current_fp").is_not_null()
+        & (pl.col("_decision_fp").fill_null("") != "")
+        & (pl.col("_decision_fp") != pl.col("_current_fp"))
+    )
+    return (
+        df.join(dec_df, on="_recon_key", how="left", maintain_order="left")
+        .with_columns(
+            signoff_status=pl.when(is_exact)
+            .then(pl.lit(SIGNOFF_MATCHED))
+            .when(stale)
+            .then(pl.lit(SIGNOFF_OPEN))
+            .when(has_decision)
+            .then(pl.col("_decision_status"))
+            .otherwise(pl.lit(SIGNOFF_OPEN)),
+            signoff_stale=stale.fill_null(value=False),
+            signoff_prior_status=pl.col("_decision_status").fill_null(""),
+            signoff_reason=pl.col("_decision_reason").fill_null(""),
+        )
+        .drop("_decision_status", "_decision_reason", "_decision_fp", "_current_fp")
+    )
+
+
+def recon_fingerprint(response: ReconciliationResponse, recon_key: str) -> str:
+    """The current fingerprint of one row's difference (stored at sign-off time).
+
+    Reads the *cached* wide per-key frame (shared with the explorer render) and
+    filters to the single key. Returns ``""`` when the frame has no ``_recon_key``
+    column (a failed / empty reconciliation) or no row matches — so a sign-off on a
+    failed run can never raise.
+    """
+    df = response.collect_component_reconciliation()
+    if "_recon_key" not in df.columns:
+        return ""
+    match = df.filter(pl.col("_recon_key") == recon_key).fill_nan(None)
+    if match.height == 0:
+        return ""
+    return _row_fingerprint(match.row(0, named=True), _component_names(df.columns))
+
+
+def current_fingerprints(
+    response: ReconciliationResponse, decisions: Mapping[str, Decision]
+) -> dict[str, str]:
+    """Map ``{recon_key: current fingerprint}`` for just the *decided* keys.
+
+    Returns ``{}`` immediately when there are no decisions (so a run with no
+    sign-offs never touches the wide frame). Otherwise reads the *cached* wide per-key
+    frame (``collect_component_reconciliation`` memoises on the response, so the
+    explorer / overview / AJAX paths share one collect for the run's lifetime) and
+    filters to the decided keys. A column-less frame (failed / empty reconciliation)
+    yields ``{}`` rather than raising.
+    """
+    keys = list(decisions.keys())
+    if not keys:
+        return {}
+    df = response.collect_component_reconciliation()
+    if "_recon_key" not in df.columns:
+        return {}
+    components = _component_names(df.columns)
+    sub = df.filter(pl.col("_recon_key").is_in(keys)).fill_nan(None)
+    return {
+        str(row["_recon_key"]): _row_fingerprint(row, components)
+        for row in sub.iter_rows(named=True)
+    }
+
+
+def is_signoff_stale(decision: Decision, current_fp: str | None) -> bool:
+    """Whether *decision* no longer matches the row's current difference.
+
+    A decision with no stored fingerprint (pre-fingerprint, or saved against a
+    now-absent row) cannot be judged and is treated as *not* stale.
+    """
+    if not decision.fingerprint or current_fp is None:
+        return False
+    return decision.fingerprint != current_fp
+
+
 def tie_out_chart_items(response: ReconciliationResponse) -> list[tuple[str, float, float]]:
     """Grouped-bar items (component, legacy_total, our_total) for the tie-out chart."""
     tie = response.collect_totals_tie_out()
@@ -477,7 +686,101 @@ def _readable_recon_columns(df: pl.DataFrame) -> list[str]:
     for rollup in ("worst_component", "row_bucket"):
         if rollup in present and rollup not in cols:
             cols.append(rollup)
+    for extra in ("signoff_status", "signoff_reason"):
+        if extra in present and extra not in cols:
+            cols.append(extra)
     return cols or present
+
+
+def _decisions_frame(
+    decisions: Mapping[str, Decision], current_fps: Mapping[str, str]
+) -> pl.DataFrame:
+    """A frame ``{_recon_key, _decision_status, _decision_reason, _decision_fp, _current_fp}``.
+
+    Built from the stored decisions for a left-join onto the per-key frame;
+    ``_current_fp`` is each key's *current* fingerprint (``None`` when the key is not
+    in *current_fps*, so staleness can't be judged). An empty mapping yields an empty
+    (correctly-typed) frame so the join is a no-op.
+    """
+    keys = list(decisions.keys())
+    return pl.DataFrame(
+        {
+            "_recon_key": keys,
+            "_decision_status": [decisions[k].status for k in keys],
+            "_decision_reason": [decisions[k].reason for k in keys],
+            "_decision_fp": [decisions[k].fingerprint for k in keys],
+            "_current_fp": [current_fps.get(k) for k in keys],
+        },
+        schema={
+            "_recon_key": pl.String,
+            "_decision_status": pl.String,
+            "_decision_reason": pl.String,
+            "_decision_fp": pl.String,
+            "_current_fp": pl.String,
+        },
+    )
+
+
+def _row_fingerprint(row: dict, components: list[str]) -> str:
+    """A stable, float-noise-robust signature of one row's *difference*.
+
+    Captures the row bucket plus, for every component that is a material difference
+    (a break or missing — exact and within-tolerance are ignored), a
+    ``name:bucket:our~legacy`` segment where each value is tokenised by
+    :func:`_value_token` — numbers to 4 significant figures (so float-sum noise never
+    flips it, while a real >0.01% move does), categoricals normalised (casefold +
+    strip). Banding *both sides' values* (not just ``abs_delta``) is essential: a
+    categorical break, or a one-sided break, has a null ``abs_delta`` — so a legacy
+    reclassification (e.g. retail → sovereign) on an already-accepted class break
+    must still change the fingerprint, or the old approval would silently wave the
+    moved difference through. The fingerprint therefore changes when a break moves to
+    a different component, appears / disappears, changes either side's value
+    materially, or the row bucket changes — but not on an identical re-run.
+    """
+    parts = [str(row.get("row_bucket") or "")]
+    for name in sorted(components):
+        bucket = row.get(f"{name}_bucket")
+        if bucket and bucket not in (BUCKET_EXACT, BUCKET_WITHIN):
+            our_token = _value_token(row.get(f"our_{name}"))
+            legacy_token = _value_token(row.get(f"legacy_{name}"))
+            parts.append(f"{name}:{bucket}:{our_token}~{legacy_token}")
+    return "|".join(parts)
+
+
+def _value_token(value: object) -> str:
+    """A stable token for one component value: a banded number or a normalised string.
+
+    Numbers go through :func:`_delta_band` (4 sig figs, noise-robust); strings
+    (categoricals such as exposure class) are casefolded + stripped; ``None`` → "".
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return str(value).casefold()
+    if isinstance(value, (int, float)):
+        return _delta_band(value)
+    return str(value).strip().casefold()
+
+
+def _delta_band(value: object, *, sig_figs: int = 4) -> str:
+    """A number rounded to *sig_figs* significant figures, as a canonical string.
+
+    Significant-figure (not decimal) rounding so it is scale-correct across money,
+    ratios and probabilities, and coarse enough that non-deterministic float-sum
+    noise (~12+ sig figs down) never flips it, while a real >0.01% move does. Uses
+    Python's normalised scientific notation (mantissa always in ``[1, 10)``), so a
+    value sitting a hair below a power of ten (``999.999999999``) and the power of
+    ten itself (``1000.0``) both render ``1.000e+03`` — no false break at a decade
+    boundary.
+    """
+    if not isinstance(value, (int, float)):
+        return ""
+    x = float(value)
+    if not math.isfinite(x):
+        return "inf"
+    # No float-equality check for zero: format() bands any finite value, and adding
+    # 0.0 collapses -0.0 to +0.0 so both render the same canonical "0.000e+00".
+    return format(x + 0.0, f".{sig_figs - 1}e")
 
 
 def _component_names(columns: list[str]) -> list[str]:

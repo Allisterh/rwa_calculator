@@ -29,6 +29,7 @@ import urllib.parse
 from datetime import date
 from pathlib import Path
 
+import httpx
 import polars as pl
 import pytest
 from fastapi.testclient import TestClient
@@ -223,7 +224,7 @@ def test_reconciliation_overview_offers_explorer_and_worklist(
     report = client.get(f"/reconciliation/{job_id}")
     assert report.status_code == 200
     assert "Worklist" in report.text
-    assert "Explore all" in report.text
+    assert "Explore open differences" in report.text
     assert f"/reconciliation/{job_id}/rows" in report.text
 
 
@@ -345,3 +346,289 @@ def test_reset_restores_defaults_and_clears_saved_run(client: TestClient, recon_
     assert "# MY-CUSTOM-MARKER" not in form.text
     assert "./legacy_output.csv" in form.text  # the default mapping TOML
     assert "/reconciliation/reset" not in form.text  # nothing left to reset
+
+
+# =============================================================================
+# Sign-off — accept / reject a difference, persist, filter it out
+# =============================================================================
+
+
+def _open_break_key(client: TestClient, job_id: str) -> str:
+    """The _recon_key of an open break, read from the default (Open) explorer."""
+    explorer = client.get(f"/reconciliation/{job_id}/rows")
+    match = re.search(r"/reconciliation/[^/]+/loan\?key=([^\"&]+)", explorer.text)
+    assert match, "expected an open break with a loan link in the default explorer"
+    return urllib.parse.unquote(match.group(1))
+
+
+def _signoff(
+    client: TestClient, job_id: str, key: str, status: str, reason: str = ""
+) -> httpx.Response:
+    return client.post(
+        f"/reconciliation/{job_id}/signoff",
+        data={
+            "key": key,
+            "status": status,
+            "reason": reason,
+            "return_to": f"/reconciliation/{job_id}/rows",
+        },
+        follow_redirects=False,
+    )
+
+
+def test_signoff_accept_clears_open_and_shows_under_accepted(
+    client: TestClient, recon_dir: str
+) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+
+    posted = _signoff(client, job_id, key, "accepted", "FX timing immaterial")
+    assert posted.status_code == 303
+
+    # The accepted break drops out of the default (Open) worklist...
+    open_view = client.get(f"/reconciliation/{job_id}/rows")
+    assert "No rows match" in open_view.text
+
+    # ...and returns under the Accepted filter, with its reason.
+    accepted_view = client.get(f"/reconciliation/{job_id}/rows", params={"status": "accepted"})
+    assert "FX timing immaterial" in accepted_view.text
+    assert "badge-accepted" in accepted_view.text
+
+
+def test_signoff_reject_requires_a_reason(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+
+    # Reject with only whitespace -> re-rendered loan page with a 400 + error callout.
+    resp = client.post(
+        f"/reconciliation/{job_id}/signoff",
+        data={"key": key, "status": "rejected", "reason": "   ", "return_to": ""},
+    )
+    assert resp.status_code == 400
+    assert "reason is required" in resp.text.lower()
+
+
+def test_signoff_reject_persists_with_reason(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+
+    posted = _signoff(client, job_id, key, "rejected", "legacy applied wrong LGD floor")
+    assert posted.status_code == 303
+
+    rejected_view = client.get(f"/reconciliation/{job_id}/rows", params={"status": "rejected"})
+    assert "legacy applied wrong LGD floor" in rejected_view.text
+    assert "badge-rejected" in rejected_view.text
+
+
+def test_signoff_accept_allows_empty_reason(client: TestClient, recon_dir: str) -> None:
+    # Mirrors the explorer's inline quick-accept (no reason typed).
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+
+    posted = _signoff(client, job_id, key, "accepted", "")
+    assert posted.status_code == 303
+    assert "No rows match" in client.get(f"/reconciliation/{job_id}/rows").text
+
+
+def test_signoff_reopen_returns_row_to_open(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+    _signoff(client, job_id, key, "accepted", "on reflection, recheck")
+    assert "No rows match" in client.get(f"/reconciliation/{job_id}/rows").text
+
+    # Reopen -> the break is back on the Open worklist.
+    reopened = _signoff(client, job_id, key, "open")
+    assert reopened.status_code == 303
+    assert (
+        f"/reconciliation/{job_id}/loan?key=" in client.get(f"/reconciliation/{job_id}/rows").text
+    )
+
+
+def test_signoff_rejects_cross_site_request(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+    resp = client.post(
+        f"/reconciliation/{job_id}/signoff",
+        data={"key": key, "status": "accepted", "reason": "x", "return_to": ""},
+        headers={"sec-fetch-site": "cross-site"},
+    )
+    assert resp.status_code == 400
+
+
+def test_signoff_unknown_recon_is_404(client: TestClient) -> None:
+    resp = client.post(
+        "/reconciliation/does-not-exist/signoff",
+        data={"key": "X", "status": "accepted", "reason": "", "return_to": ""},
+    )
+    assert resp.status_code == 404
+
+
+def test_inline_accept_via_fetch_returns_json_progress(client: TestClient, recon_dir: str) -> None:
+    # The explorer's inline Accept posts with X-Requested-With: fetch and expects a
+    # small JSON payload (fresh burndown) rather than a 303 — so the row can be
+    # dropped client-side without a full reload.
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+
+    resp = client.post(
+        f"/reconciliation/{job_id}/signoff",
+        data={"key": key, "status": "accepted", "reason": "", "return_to": ""},
+        headers={"x-requested-with": "fetch"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "accepted"
+    assert body["progress"]["open"] == 0  # the only break is now reviewed
+    assert body["progress"]["accepted"] == 1
+
+    # The decision still persisted: the break is off the Open worklist.
+    assert "No rows match" in client.get(f"/reconciliation/{job_id}/rows").text
+
+
+def test_explorer_loads_inline_signoff_script(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    explorer = client.get(f"/reconciliation/{job_id}/rows")
+    assert "/static/recon-signoff.js" in explorer.text
+    assert 'data-signoff-status="open"' in explorer.text
+    # The script is actually served (vendored under static/, shipped as package data).
+    assert client.get("/static/recon-signoff.js").status_code == 200
+
+
+def test_signoff_persists_across_rerun_of_same_dataset(client: TestClient, recon_dir: str) -> None:
+    # Arrange — accept the break on the first run.
+    job_id_1 = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id_1)
+    _signoff(client, job_id_1, key, "accepted", "known data-vendor diff")
+
+    # Act — re-run the *same* dataset + mapping (a fresh recon_id, same workspace).
+    job_id_2 = _dispatch_and_wait(client, _form_data(recon_dir))
+    assert job_id_2 != job_id_1
+
+    # Assert — the decision (keyed by the stable _recon_key) carries over: the break
+    # is already off the new run's Open worklist and visible under Accepted.
+    assert "No rows match" in client.get(f"/reconciliation/{job_id_2}/rows").text
+    accepted = client.get(f"/reconciliation/{job_id_2}/rows", params={"status": "accepted"})
+    assert "known data-vendor diff" in accepted.text
+
+
+def _move_break(data_path: str) -> None:
+    """Make the (already-breaking) first legacy row break *more*, so its difference
+    moves materially on the next run — without changing the keys or file path (the
+    sign-off workspace is unchanged, so prior decisions still load)."""
+    path = Path(data_path) / "legacy_output.csv"
+    df = pl.read_csv(path)
+    moved = (
+        df.with_row_index("_i")
+        .with_columns(
+            pl.when(pl.col("_i") == 0)
+            .then(pl.col("RWA") * 2.0)
+            .otherwise(pl.col("RWA"))
+            .alias("RWA")
+        )
+        .drop("_i")
+    )
+    moved.write_csv(path)
+
+
+def test_signoff_goes_stale_when_difference_moves_on_rerun(
+    client: TestClient, recon_dir: str
+) -> None:
+    # Arrange — accept the break, confirm it left the Open worklist.
+    job_id_1 = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id_1)
+    _signoff(client, job_id_1, key, "accepted", "looked immaterial")
+    assert "No rows match" in client.get(f"/reconciliation/{job_id_1}/rows").text
+
+    # Act — the SAME break grows on a re-run (one issue "fixed", this one worsened).
+    _move_break(recon_dir)
+    job_id_2 = _dispatch_and_wait(client, _form_data(recon_dir))
+
+    # Assert — the stale decision is back on the Open worklist, flagged "changed",
+    # rather than silently waved through under the old approval.
+    open_view = client.get(f"/reconciliation/{job_id_2}/rows")
+    assert f"/reconciliation/{job_id_2}/loan?key=" in open_view.text
+    assert "badge-stale" in open_view.text
+
+    # The loan page warns it changed since sign-off.
+    loan = client.get(f"/reconciliation/{job_id_2}/loan", params={"key": key})
+    assert "changed since" in loan.text.lower()
+
+
+def test_clear_all_returns_every_break_to_open(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+    _signoff(client, job_id, key, "accepted", "ok")
+    assert "No rows match" in client.get(f"/reconciliation/{job_id}/rows").text
+    assert "clear-all-signoff" in client.get(f"/reconciliation/{job_id}/rows").text
+
+    # Clear all -> 303 back, and the break is on the Open worklist again.
+    cleared = client.post(
+        f"/reconciliation/{job_id}/signoff/clear-all",
+        data={"return_to": f"/reconciliation/{job_id}/rows"},
+        follow_redirects=False,
+    )
+    assert cleared.status_code == 303
+    back = client.get(f"/reconciliation/{job_id}/rows")
+    assert f"/reconciliation/{job_id}/loan?key=" in back.text
+    assert "clear-all-signoff" not in back.text  # no decisions left -> button gone
+
+
+def test_clear_all_rejects_cross_site_request(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    resp = client.post(
+        f"/reconciliation/{job_id}/signoff/clear-all",
+        data={"return_to": ""},
+        headers={"sec-fetch-site": "cross-site"},
+    )
+    assert resp.status_code == 400
+
+
+def test_re_accepting_a_stale_row_clears_the_changed_flag(
+    client: TestClient, recon_dir: str
+) -> None:
+    job_id_1 = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id_1)
+    _signoff(client, job_id_1, key, "accepted", "looked immaterial")
+
+    _move_break(recon_dir)
+    job_id_2 = _dispatch_and_wait(client, _form_data(recon_dir))
+    assert "badge-stale" in client.get(f"/reconciliation/{job_id_2}/rows").text
+
+    # Re-review and re-accept on the new run -> the fingerprint is re-stamped to the
+    # current difference, so it is no longer stale and leaves the Open worklist.
+    _signoff(client, job_id_2, key, "accepted", "re-reviewed, still acceptable")
+    after = client.get(f"/reconciliation/{job_id_2}/rows")
+    assert "No rows match" in after.text
+    assert "badge-stale" not in after.text
+
+
+def test_overview_shows_changed_state_after_difference_moves(
+    client: TestClient, recon_dir: str
+) -> None:
+    job_id_1 = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id_1)
+    _signoff(client, job_id_1, key, "accepted", "ok")
+
+    _move_break(recon_dir)
+    job_id_2 = _dispatch_and_wait(client, _form_data(recon_dir))
+
+    overview = client.get(f"/reconciliation/{job_id_2}")
+    assert "changed since sign-off" in overview.text
+    # The stale break is back on the overview worklist (a per-loan drill link present).
+    assert f"/reconciliation/{job_id_2}/loan?key=" in overview.text
+
+
+def test_clear_all_from_the_overview(client: TestClient, recon_dir: str) -> None:
+    job_id = _dispatch_and_wait(client, _form_data(recon_dir))
+    key = _open_break_key(client, job_id)
+    _signoff(client, job_id, key, "accepted", "ok")
+    assert "clear-all-signoff" in client.get(f"/reconciliation/{job_id}").text
+
+    cleared = client.post(
+        f"/reconciliation/{job_id}/signoff/clear-all",
+        data={"return_to": f"/reconciliation/{job_id}"},
+        follow_redirects=False,
+    )
+    assert cleared.status_code == 303
+    assert "clear-all-signoff" not in client.get(f"/reconciliation/{job_id}").text
