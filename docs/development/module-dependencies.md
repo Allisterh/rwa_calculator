@@ -17,7 +17,7 @@ Inspect a single module's dependencies and dependents directly:
 uv run curfew report rwa_calc.engine.classifier
 ```
 
-Last generated: 2026-06-26.
+Last generated: 2026-06-27.
 
 
 ## Package overview
@@ -80,7 +80,7 @@ flowchart LR
 
 The complete graph, one node per module, exactly as `curfew show --mermaid` emits it.
 
-??? note "Full module-level graph (197 modules)"
+??? note "Full module-level graph (185 modules)"
 
     ```mermaid
     flowchart LR
@@ -265,23 +265,10 @@ The complete graph, one node per module, exactly as `curfew show --mermaid` emit
         n178["rwa_calc.ui.app.main"]
         n179["rwa_calc.ui.app.progress"]
         n180["rwa_calc.ui.app.recon_state"]
-        n181["rwa_calc.ui.marimo"]
-        n182["rwa_calc.ui.marimo.shared.sidebar"]
-        n183["rwa_calc.ui.marimo.workspaces"]
-        n184["rwa_calc.ui.marimo.workspaces.local"]
-        n185["rwa_calc.ui.marimo.workspaces.local.book_1"]
-        n186["rwa_calc.ui.marimo.workspaces.local.df"]
-        n187["rwa_calc.ui.marimo.workspaces.local.my_workbook"]
-        n188["rwa_calc.ui.marimo.workspaces.local.my_workbook_1"]
-        n189["rwa_calc.ui.marimo.workspaces.local.my_workbook_2"]
-        n190["rwa_calc.ui.marimo.workspaces.local.new_folder"]
-        n191["rwa_calc.ui.marimo.workspaces.local.new_folder.my_workbook"]
-        n192["rwa_calc.ui.marimo.workspaces.local.test_book"]
-        n193["rwa_calc.ui.marimo.workspaces.local.tests"]
-        n194["rwa_calc.ui.views"]
-        n195["rwa_calc.ui.views.charts"]
-        n196["rwa_calc.ui.views.comparison"]
-        n197["rwa_calc.ui.views.reconciliation"]
+        n181["rwa_calc.ui.views"]
+        n182["rwa_calc.ui.views.charts"]
+        n183["rwa_calc.ui.views.comparison"]
+        n184["rwa_calc.ui.views.reconciliation"]
         n2 --> n20
         n3 --> n2
         n3 --> n20
@@ -966,19 +953,14 @@ The complete graph, one node per module, exactly as `curfew show --mermaid` emit
         n178 --> n148
         n178 --> n179
         n178 --> n180
-        n178 --> n195
-        n178 --> n196
-        n178 --> n197
+        n178 --> n182
+        n178 --> n183
+        n178 --> n184
         n179 --> n96
-        n186 --> n182
-        n187 --> n182
-        n188 --> n182
-        n189 --> n182
-        n193 --> n182
-        n196 --> n20
-        n197 --> n5
-        n197 --> n11
+        n183 --> n20
+        n184 --> n5
+        n184 --> n11
         classDef first_party fill:#e8f0fe,stroke:#1a73e8,color:#202124
-        class n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12,n13,n14,n15,n16,n17,n18,n19,n20,n21,n22,n23,n24,n25,n26,n27,n28,n29,n30,n31,n32,n33,n34,n35,n36,n37,n38,n39,n40,n41,n42,n43,n44,n45,n46,n47,n48,n49,n50,n51,n52,n53,n54,n55,n56,n57,n58,n59,n60,n61,n62,n63,n64,n65,n66,n67,n68,n69,n70,n71,n72,n73,n74,n75,n76,n77,n78,n79,n80,n81,n82,n83,n84,n85,n86,n87,n88,n89,n90,n91,n92,n93,n94,n95,n96,n97,n98,n99,n100,n101,n102,n103,n104,n105,n106,n107,n108,n109,n110,n111,n112,n113,n114,n115,n116,n117,n118,n119,n120,n121,n122,n123,n124,n125,n126,n127,n128,n129,n130,n131,n132,n133,n134,n135,n136,n137,n138,n139,n140,n141,n142,n143,n144,n145,n146,n147,n148,n149,n150,n151,n152,n153,n154,n155,n156,n157,n158,n159,n160,n161,n162,n163,n164,n165,n166,n167,n168,n169,n170,n171,n172,n173,n174,n175,n176,n177,n178,n179,n180,n181,n182,n183,n184,n185,n186,n187,n188,n189,n190,n191,n192,n193,n194,n195,n196,n197 first_party
+        class n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12,n13,n14,n15,n16,n17,n18,n19,n20,n21,n22,n23,n24,n25,n26,n27,n28,n29,n30,n31,n32,n33,n34,n35,n36,n37,n38,n39,n40,n41,n42,n43,n44,n45,n46,n47,n48,n49,n50,n51,n52,n53,n54,n55,n56,n57,n58,n59,n60,n61,n62,n63,n64,n65,n66,n67,n68,n69,n70,n71,n72,n73,n74,n75,n76,n77,n78,n79,n80,n81,n82,n83,n84,n85,n86,n87,n88,n89,n90,n91,n92,n93,n94,n95,n96,n97,n98,n99,n100,n101,n102,n103,n104,n105,n106,n107,n108,n109,n110,n111,n112,n113,n114,n115,n116,n117,n118,n119,n120,n121,n122,n123,n124,n125,n126,n127,n128,n129,n130,n131,n132,n133,n134,n135,n136,n137,n138,n139,n140,n141,n142,n143,n144,n145,n146,n147,n148,n149,n150,n151,n152,n153,n154,n155,n156,n157,n158,n159,n160,n161,n162,n163,n164,n165,n166,n167,n168,n169,n170,n171,n172,n173,n174,n175,n176,n177,n178,n179,n180,n181,n182,n183,n184 first_party
     ```
 
