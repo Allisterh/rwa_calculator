@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - (Next release changes will go here)
 
+### Fixed
+- **The CRR vs Basel 3.1 comparison charts no longer clip long category labels off the left edge of the card.** The server-rendered SVG chart builders (`ui/views/charts.py`) drew every category label right-aligned inside a fixed ~142-unit left gutter (`text-anchor="end"` at `x = _LABEL_W - 8`), so any label wider than ~20 monospace characters overran the viewBox left edge and was clipped — most visibly the capital-impact **waterfall driver names** (`"Methodology & parameter changes"`, `"Supporting factor removal (SME/infrastructure)"`), which showed only their tail (e.g. just "& parameter changes"). The three builders (`horizontal_bar_svg`, `grouped_bar_svg`, `waterfall_svg`) now detect, per chart, when any label is too wide for the gutter and switch that chart to a **label-above-bar** layout: the label gets the full chart width on its own line, left-aligned, with the bar beneath it, so the full text always renders. Charts whose labels all fit (the results page's exposure-class/approach charts, the reconciliation charts) are unchanged — the compact gutter layout is byte-identical, so nothing regresses. Pure server-side SVG (no CSS or template change; the existing `--oah-*` theme classes are reused). Covered by new `tests/unit/ui/views/test_charts.py` (both layouts pinned: short labels stay compact, a long label stacks and renders in full, taller viewBox, value text in both, empty placeholder).
+
 ---
 
 ## [0.3.6] - 2026-06-27
