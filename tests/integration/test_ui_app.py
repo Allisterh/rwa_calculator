@@ -90,6 +90,8 @@ def test_calculate_dispatches_job_then_results_become_available(
     assert "Calculating" in pending.text
     assert 'data-stage="calculators"' in pending.text
     assert "/static/calculating.js" in pending.text
+    # No output folder was given, so there is no trailing "Create exports" step.
+    assert 'data-stage="write_exports"' not in pending.text
 
     # The job finishes in the background; results are served under the job_id
     status = _wait_for_job(client, job_id)
@@ -180,13 +182,20 @@ def test_calculate_with_output_folder_writes_files(
         },
         follow_redirects=False,
     )
-    run_id = resp.headers["location"].rsplit("/", 1)[1]
+    location = resp.headers["location"]
+    run_id = location.rsplit("/", 1)[1]
+    # The stepper shows a trailing "Create exports" step for an export-writing run.
+    stepper = client.get(location).text
+    assert 'data-stage="write_exports"' in stepper
+    assert "Create exports" in stepper
     status = _wait_for_job(client, run_id)
 
-    # Assert — file on disk, stage count unchanged (write is outside STAGE_SEQUENCE),
-    # and the results page reports what was written.
+    # Assert — file on disk, stage count unchanged (the export write is a synthetic
+    # tail step, not a registry stage), and the results page reports what was written.
     assert status["status"] == "done"
     assert status["total_stages"] == 10
+    # The trailing export step is ticked off once the files are written.
+    assert "write_exports" in status["completed"]
     assert (out / f"rwa_export_{run_id}" / "results.parquet").exists()
     assert "Wrote" in client.get(f"/results/{run_id}").text
 
@@ -336,6 +345,10 @@ def test_comparison_renders_executive_summary(client: TestClient, data_dir: str)
     assert resp.status_code == 200
     assert "Executive summary" in resp.text
     assert "Comparison failed" not in resp.text
+    # The comparison is cached and its download buttons are wired to the export API.
+    assert "Download comparison" in resp.text
+    assert "/api/comparison/export/csv?comparison_id=" in resp.text
+    assert "/api/comparison/export/parquet?comparison_id=" in resp.text
 
 
 def test_invalid_path_rerenders_form_with_error(client: TestClient) -> None:
