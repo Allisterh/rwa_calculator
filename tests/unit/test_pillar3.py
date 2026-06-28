@@ -1901,3 +1901,27 @@ class TestExcelExport:
         result = generator.export_to_excel(bundle, output)
         assert output.exists()
         assert result.row_count > 0
+
+    def test_export_writes_non_finite_cells_as_blank(
+        self, generator: Pillar3Generator, tmp_path: Path
+    ):
+        # Arrange — a disclosure cell can be non-finite on real data (e.g. an
+        # average PD or a ratio over a zero denominator in an empty segment).
+        # xlsxwriter rejects NaN/Inf in write_number(), so they must be written
+        # blank rather than crashing the whole disclosure workbook.
+        bundle = Pillar3TemplateBundle(
+            ov1=pl.DataFrame(
+                {"row": ["Average PD", "RW ratio"], "value": [float("nan"), float("inf")]}
+            ),
+            framework="CRR",
+        )
+        output = tmp_path / "pillar3_nonfinite.xlsx"
+
+        # Act — must not raise "NAN/INF not supported in write_number()".
+        result = generator.export_to_excel(bundle, output)
+
+        # Assert — workbook written; the non-finite cells read back blank (null).
+        assert output.exists()
+        assert result.format == "pillar3_excel"
+        readback = pl.read_excel(output, sheet_name="UK OV1")
+        assert all(v is None for v in readback["value"].to_list())

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - (Next release changes will go here)
 
+### Fixed
+- **The Pillar III export no longer crashes when a disclosure cell computes a non-finite value.** On real portfolios a template ratio can be `NaN` or `±Inf` — e.g. an average PD or a risk-weight ratio over a zero denominator in an empty segment — and `xlsxwriter` rejects those in `write_number()` (`NAN/INF not supported … without 'nan_inf_to_errors'`), which aborted the whole workbook. The Pillar III workbook writer (`reporting/pillar3/generator.py`) now replaces non-finite floats with null at the write boundary, so an undefined disclosure value is shown as a **blank** cell rather than `#NUM!` or a crash; existing nulls and non-float columns are untouched. Covered by a new `TestExcelExport` regression test.
+
 ---
 
 ## [0.3.6] - 2026-06-27
