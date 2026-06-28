@@ -2482,7 +2482,7 @@ def _sanitise_sheet_name(name: str) -> str:
 def _write_single_sheet(workbook: Workbook, df: pl.DataFrame, name: str) -> int:
     """Write a single DataFrame to a workbook sheet. Returns row count."""
     sheet = _sanitise_sheet_name(name)
-    df.write_excel(workbook=workbook, worksheet=sheet, autofit=True)
+    _finite_only(df).write_excel(workbook=workbook, worksheet=sheet, autofit=True)
     return df.height
 
 
@@ -2500,6 +2500,24 @@ def _write_dict_sheets(
             continue
         display = display_names.get(key, key)
         sheet = _sanitise_sheet_name(f"{prefix} - {display}")
-        df.write_excel(workbook=workbook, worksheet=sheet, autofit=True)
+        _finite_only(df).write_excel(workbook=workbook, worksheet=sheet, autofit=True)
         total += df.height
     return total
+
+
+def _finite_only(df: pl.DataFrame) -> pl.DataFrame:
+    """Replace non-finite floats (NaN, +/-Inf) with null so the cell can be written.
+
+    xlsxwriter's ``write_number`` rejects NaN/Inf unless the workbook is opened
+    with ``nan_inf_to_errors`` (which would emit Excel error cells). A disclosure
+    value that is mathematically undefined — e.g. an average PD or a ratio over a
+    zero denominator in an empty segment — is better shown blank than as ``#NUM!``,
+    so non-finite floats become null here. Existing nulls and non-float columns are
+    untouched (only float columns can carry NaN/Inf).
+    """
+    float_cols = [name for name, dtype in df.schema.items() if dtype in (pl.Float32, pl.Float64)]
+    if not float_cols:
+        return df
+    return df.with_columns(
+        pl.when(pl.col(c).is_finite()).then(pl.col(c)).otherwise(None).alias(c) for c in float_cols
+    )
