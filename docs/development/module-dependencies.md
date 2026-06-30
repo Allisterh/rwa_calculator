@@ -17,7 +17,7 @@ Inspect a single module's dependencies and dependents directly:
 uv run curfew report rwa_calc.engine.classifier
 ```
 
-Last generated: 2026-06-28.
+Last generated: 2026-06-30.
 
 
 ## Package overview
@@ -381,6 +381,7 @@ The complete graph, one node per module, exactly as `curfew show --mermaid` emit
         n45 --> n20
         n45 --> n21
         n45 --> n23
+        n45 --> n24
         n45 --> n36
         n45 --> n37
         n45 --> n38
