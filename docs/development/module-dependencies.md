@@ -17,7 +17,7 @@ Inspect a single module's dependencies and dependents directly:
 uv run curfew report rwa_calc.engine.classifier
 ```
 
-Last generated: 2026-06-30.
+Last generated: 2026-07-03.
 
 
 ## Package overview
@@ -80,7 +80,7 @@ flowchart LR
 
 The complete graph, one node per module, exactly as `curfew show --mermaid` emits it.
 
-??? note "Full module-level graph (189 modules)"
+??? note "Full module-level graph (190 modules)"
 
     ```mermaid
     flowchart LR
@@ -272,11 +272,13 @@ The complete graph, one node per module, exactly as `curfew show --mermaid` emit
         n185["rwa_calc.ui.views"]
         n186["rwa_calc.ui.views.charts"]
         n187["rwa_calc.ui.views.comparison"]
-        n188["rwa_calc.ui.views.reconciliation"]
+        n188["rwa_calc.ui.views.method_split"]
+        n189["rwa_calc.ui.views.reconciliation"]
         n2 --> n20
         n3 --> n2
         n3 --> n20
         n3 --> n21
+        n3 --> n42
         n3 --> n94
         n3 --> n166
         n3 --> n175
@@ -284,6 +286,7 @@ The complete graph, one node per module, exactly as `curfew show --mermaid` emit
         n5 --> n20
         n5 --> n24
         n5 --> n35
+        n5 --> n42
         n6 --> n20
         n6 --> n21
         n6 --> n32
@@ -965,15 +968,17 @@ The complete graph, one node per module, exactly as `curfew show --mermaid` emit
         n180 --> n186
         n180 --> n187
         n180 --> n188
+        n180 --> n189
         n181 --> n11
         n181 --> n26
         n182 --> n96
         n187 --> n20
-        n188 --> n4
-        n188 --> n5
-        n188 --> n11
-        n188 --> n183
+        n188 --> n186
+        n189 --> n4
+        n189 --> n5
+        n189 --> n11
+        n189 --> n183
         classDef first_party fill:#e8f0fe,stroke:#1a73e8,color:#202124
-        class n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12,n13,n14,n15,n16,n17,n18,n19,n20,n21,n22,n23,n24,n25,n26,n27,n28,n29,n30,n31,n32,n33,n34,n35,n36,n37,n38,n39,n40,n41,n42,n43,n44,n45,n46,n47,n48,n49,n50,n51,n52,n53,n54,n55,n56,n57,n58,n59,n60,n61,n62,n63,n64,n65,n66,n67,n68,n69,n70,n71,n72,n73,n74,n75,n76,n77,n78,n79,n80,n81,n82,n83,n84,n85,n86,n87,n88,n89,n90,n91,n92,n93,n94,n95,n96,n97,n98,n99,n100,n101,n102,n103,n104,n105,n106,n107,n108,n109,n110,n111,n112,n113,n114,n115,n116,n117,n118,n119,n120,n121,n122,n123,n124,n125,n126,n127,n128,n129,n130,n131,n132,n133,n134,n135,n136,n137,n138,n139,n140,n141,n142,n143,n144,n145,n146,n147,n148,n149,n150,n151,n152,n153,n154,n155,n156,n157,n158,n159,n160,n161,n162,n163,n164,n165,n166,n167,n168,n169,n170,n171,n172,n173,n174,n175,n176,n177,n178,n179,n180,n181,n182,n183,n184,n185,n186,n187,n188 first_party
+        class n0,n1,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12,n13,n14,n15,n16,n17,n18,n19,n20,n21,n22,n23,n24,n25,n26,n27,n28,n29,n30,n31,n32,n33,n34,n35,n36,n37,n38,n39,n40,n41,n42,n43,n44,n45,n46,n47,n48,n49,n50,n51,n52,n53,n54,n55,n56,n57,n58,n59,n60,n61,n62,n63,n64,n65,n66,n67,n68,n69,n70,n71,n72,n73,n74,n75,n76,n77,n78,n79,n80,n81,n82,n83,n84,n85,n86,n87,n88,n89,n90,n91,n92,n93,n94,n95,n96,n97,n98,n99,n100,n101,n102,n103,n104,n105,n106,n107,n108,n109,n110,n111,n112,n113,n114,n115,n116,n117,n118,n119,n120,n121,n122,n123,n124,n125,n126,n127,n128,n129,n130,n131,n132,n133,n134,n135,n136,n137,n138,n139,n140,n141,n142,n143,n144,n145,n146,n147,n148,n149,n150,n151,n152,n153,n154,n155,n156,n157,n158,n159,n160,n161,n162,n163,n164,n165,n166,n167,n168,n169,n170,n171,n172,n173,n174,n175,n176,n177,n178,n179,n180,n181,n182,n183,n184,n185,n186,n187,n188,n189 first_party
     ```
 
