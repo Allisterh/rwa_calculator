@@ -222,6 +222,7 @@ class ForensicFilters:
     method: str | None = None
     worst_component: str | None = None
     status: str | None = None
+    hide_immaterial: bool = False
     query: str | None = None
     sort: str | None = None
     descending: bool = True
@@ -266,18 +267,46 @@ def headline_stats(response: ReconciliationResponse) -> list[dict]:
     return stats
 
 
-def summary_by_component_table(response: ReconciliationResponse) -> pl.DataFrame:
-    """Tier 1 — per-component bucket counts, summed |delta| and break rate."""
+def summary_by_component_table(
+    response: ReconciliationResponse, *, hide_immaterial: bool = False
+) -> pl.DataFrame:
+    """Tier 1 — per-component bucket counts, summed |delta| and break rate.
+
+    With ``hide_immaterial`` the counts come from the material-only re-derivation
+    (zero-gross-exposure rows removed), falling back to the all-rows summary when
+    the material dict is empty.
+    """
+    if hide_immaterial:
+        return response.collect_material_summaries().get(
+            "summary_by_component", response.collect_summary_by_component()
+        )
     return response.collect_summary_by_component()
 
 
-def segment_tables(response: ReconciliationResponse) -> dict[str, pl.DataFrame]:
+def segment_tables(
+    response: ReconciliationResponse, *, hide_immaterial: bool = False
+) -> dict[str, pl.DataFrame]:
     """Tier 2 — where breaks concentrate: by bucket, exposure class and approach.
 
     Reads through the cached ``collect_*`` accessors (not the raw lazy bundle
     frames) so the overview render reuses the worker-warmed cache instead of
-    re-executing the heavy reconcile join once per segment table.
+    re-executing the heavy reconcile join once per segment table. With
+    ``hide_immaterial`` the counts come from the material-only re-derivation
+    (zero-gross-exposure rows removed), each frame falling back to its all-rows
+    accessor when the material dict is empty.
     """
+    if hide_immaterial:
+        mat = response.collect_material_summaries()
+        return {
+            "by_bucket": mat.get("summary_by_bucket", response.collect_summary_by_bucket()),
+            "by_class": mat.get(
+                "summary_by_exposure_class", response.collect_summary_by_exposure_class()
+            ),
+            "by_approach": mat.get("summary_by_approach", response.collect_summary_by_approach()),
+            "by_class_method": mat.get(
+                "summary_by_class_method", response.collect_summary_by_class_method()
+            ),
+        }
     return {
         "by_bucket": response.collect_summary_by_bucket(),
         "by_class": response.collect_summary_by_exposure_class(),
@@ -333,6 +362,7 @@ def biggest_breaks(
     decisions: Mapping[str, Decision] | None = None,
     current_fps: Mapping[str, str] | None = None,
     *,
+    hide_immaterial: bool = False,
     limit: int = BIGGEST_BREAKS_LIMIT,
 ) -> pl.DataFrame:
     """Overview worklist — the ``limit`` most material *open* breaks, ranked.
@@ -352,6 +382,12 @@ def biggest_breaks(
         settled = [k for k, d in decisions.items() if not is_signoff_stale(d, current_fps.get(k))]
         if settled:
             df = df.filter(~pl.col("_recon_key").is_in(settled))
+    if hide_immaterial and "is_immaterial" in df.columns:
+        df = df.filter(~pl.col("is_immaterial"))
+    # ``is_immaterial`` rides on breaks_detail for the export/filter; it is an
+    # internal marker, so drop it from the on-screen worklist projection.
+    if "is_immaterial" in df.columns:
+        df = df.drop("is_immaterial")
     return df.head(limit).fill_nan(None)
 
 
@@ -359,6 +395,8 @@ def breaks_signoff_progress(
     response: ReconciliationResponse,
     decisions: Mapping[str, Decision] | None = None,
     current_fps: Mapping[str, str] | None = None,
+    *,
+    hide_immaterial: bool = False,
 ) -> dict[str, int]:
     """Burndown of the break worklist: how many distinct breaking keys are reviewed.
 
@@ -373,6 +411,8 @@ def breaks_signoff_progress(
     df = response.collect_breaks_detail()
     if "_recon_key" not in df.columns:
         return {"total": 0, "reviewed": 0, "open": 0, "accepted": 0, "rejected": 0, "changed": 0}
+    if hide_immaterial and "is_immaterial" in df.columns:
+        df = df.filter(~pl.col("is_immaterial"))
     break_keys = set(df.get_column("_recon_key").unique().to_list())
     decided = [k for k in break_keys if k in decisions]
     changed = [k for k in decided if is_signoff_stale(decisions[k], current_fps.get(k))]
@@ -513,6 +553,8 @@ def loan_detail(response: ReconciliationResponse, recon_key: str) -> dict | None
         "our_approach",
         "_our_present",
         "_legacy_present",
+        "gross_exposure",
+        "is_immaterial",
     }
     for name in components:
         shown.update(
@@ -876,6 +918,8 @@ def _apply_forensic_filters(df: pl.DataFrame, filters: ForensicFilters) -> pl.Da
         value = getattr(filters, field_name)
         if value and column in df.columns:
             df = df.filter(pl.col(column) == value)
+    if filters.hide_immaterial and "is_immaterial" in df.columns:
+        df = df.filter(~pl.col("is_immaterial"))
     if filters.query and "_recon_key" in df.columns:
         df = df.filter(
             pl.col("_recon_key").cast(pl.String).str.contains(filters.query, literal=True)

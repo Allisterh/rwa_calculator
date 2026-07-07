@@ -34,6 +34,10 @@ import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
+from rwa_calc.analysis.recon_registry import ComponentMapping, LegacyColumnMapping
+from rwa_calc.analysis.reconciliation import ReconciliationRunner
+from rwa_calc.api.models import ReconciliationResponse
+from rwa_calc.api.rest import register_reconciliation_with_id
 from rwa_calc.api.service import CreditRiskCalc
 from rwa_calc.ui.app.main import create_app
 from rwa_calc.ui.app.recon_state import STATE_DIR_ENV_VAR
@@ -276,6 +280,75 @@ def test_reconciliation_loan_detail_renders_for_a_key(client: TestClient, recon_
     assert loan.status_code == 200
     assert "Loan forensic" in loan.text
     assert "By component" in loan.text
+
+
+# =============================================================================
+# Materiality toggle — hide zero-gross-exposure rows
+# =============================================================================
+
+
+def _zero_gross_response() -> ReconciliationResponse:
+    """A registered reconciliation with one zero-EAD our-only row (Z1, immaterial)
+    and one real our-only omission (Z2), plus a matched break (L1). Registering the
+    response directly drives the real routes without the heavy background job."""
+    ours = pl.LazyFrame(
+        {
+            "exposure_reference": ["L1", "Z1", "Z2"],
+            "exposure_class": ["corporate", "corporate", "retail"],
+            "approach_applied": ["SA", "SA", "SA"],
+            "ead_final": [100.0, 0.0, 300.0],
+            "rwa_final": [50.0, 0.0, 150.0],
+        }
+    )
+    legacy = pl.LazyFrame(
+        {"exposure_reference": ["L1"], "legacy_ead": [100.0], "legacy_rwa": [80.0]}
+    )
+    mapping = LegacyColumnMapping(
+        legacy_keys=("exposure_reference",),
+        our_keys=("exposure_reference",),
+        components={"ead": ComponentMapping("EAD"), "rwa": ComponentMapping("RWA")},
+    )
+    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    return ReconciliationResponse.from_bundle(
+        bundle, legacy_file=Path("legacy.csv"), framework="CRR"
+    )
+
+
+def test_overview_toggle_hides_zero_gross_rows(client: TestClient) -> None:
+    recon_id = "zero-gross-overview"
+    register_reconciliation_with_id(recon_id, _zero_gross_response())
+
+    # Default view offers the toggle and does not suppress anything.
+    default = client.get(f"/reconciliation/{recon_id}")
+    assert default.status_code == 200
+    assert "Hide zero-gross-exposure rows" in default.text
+
+    # Toggled view suppresses the single zero-EAD our-only row and says so; the
+    # segment drills carry the toggle into the explorer.
+    hidden = client.get(f"/reconciliation/{recon_id}", params={"hide_immaterial": "1"})
+    assert hidden.status_code == 200
+    assert "1 zero-gross-exposure row(s) hidden" in hidden.text
+    assert "Show all rows" in hidden.text
+    assert "hide_immaterial=1" in hidden.text
+
+
+def test_explorer_toggle_checkbox_and_query_preserved(client: TestClient) -> None:
+    recon_id = "zero-gross-explorer"
+    register_reconciliation_with_id(recon_id, _zero_gross_response())
+    checkbox = 'name="hide_immaterial" type="checkbox" value="1"'
+
+    default = client.get(f"/reconciliation/{recon_id}/rows", params={"status": "all"})
+    assert default.status_code == 200
+    assert checkbox in default.text
+    assert f"{checkbox} checked" not in default.text
+
+    hidden = client.get(
+        f"/reconciliation/{recon_id}/rows", params={"status": "all", "hide_immaterial": "1"}
+    )
+    assert hidden.status_code == 200
+    # The checkbox reflects the active toggle, and the sort/paging links preserve it.
+    assert f"{checkbox} checked" in hidden.text
+    assert "hide_immaterial=1" in hidden.text
 
 
 def test_reconciliation_loan_unknown_key_is_404(client: TestClient, recon_dir: str) -> None:

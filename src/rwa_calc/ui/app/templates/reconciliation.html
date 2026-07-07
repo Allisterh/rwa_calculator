@@ -67,6 +67,17 @@ engine fix.</p>
 join keys and column names).</div>
 {% else %}
 
+<div class="callout info recon-materiality-toggle">
+  {% if result.hide_immaterial %}
+  Showing material rows only — {{ "{:,}".format(result.hidden_count) }} zero-gross-exposure row(s) hidden from the breakdown counts below (money totals are unaffected).
+  <a href="{{ result.toggle_hide_url }}">Show all rows</a>.
+  {% else %}
+  Breakdown counts include every row.
+  <a href="{{ result.toggle_hide_url }}">Hide zero-gross-exposure rows</a>
+  for a cleaner view of the real differences.
+  {% endif %}
+</div>
+
 <h2>1 · Headline — does it tie out?</h2>
 <div class="stat-row">
   {% for s in result.headline %}
@@ -102,21 +113,21 @@ allocate an exposure to different classes.</p>
 {{ render_table(result.allocation_table) }}
 {% endif %}
 <h3>By bucket</h3>
-{{ drill_table(result.bucket_table, "row_bucket", result.explorer_url, "bucket") }}
+{{ drill_table(result.bucket_table, "row_bucket", result.explorer_url, "bucket", result.hide_qs) }}
 <h3>By exposure class</h3>
-{{ drill_table(result.class_table, "our_exposure_class", result.explorer_url, "exposure_class") }}
+{{ drill_table(result.class_table, "our_exposure_class", result.explorer_url, "exposure_class", result.hide_qs) }}
 <h3>By approach</h3>
-{{ drill_table(result.approach_table, "our_approach", result.explorer_url, "approach") }}
+{{ drill_table(result.approach_table, "our_approach", result.explorer_url, "approach", result.hide_qs) }}
 <h3>By exposure class &amp; method</h3>
 <p class="muted">Our-side view — how our breaks distribute across methodology (STD / FIRB / AIRB /
 slotting / equity) within each exposure class. Click a method to drill the explorer to that
 class × method. (The legacy side carries no approach, so the asset-class allocation above stays
 un-split.)</p>
-{{ drill_table2(result.class_method_table, "method", result.explorer_url, "exposure_class", "our_exposure_class", "method", "method") }}
+{{ drill_table2(result.class_method_table, "method", result.explorer_url, "exposure_class", "our_exposure_class", "method", "method", result.hide_qs) }}
 
 <h2>3 · Worklist — top {{ result.biggest_n }} of {{ "{:,}".format(result.break_count) }} break(s), largest first</h2>
 <p class="muted">Click a key to open its single-loan forensic and sign it off (accept / reject
-with a reason), or <a href="{{ result.explorer_url }}">open the full per-key explorer</a>
+with a reason), or <a href="{{ result.explorer_url }}{% if result.hide_immaterial %}?hide_immaterial=1{% endif %}">open the full per-key explorer</a>
 ({{ "{:,}".format(result.total_rows) }} row(s)). Reviewed breaks drop off this worklist.
 Download the full per-key detail:
 <a href="{{ result.export_csv_url }}">CSV</a> · <a href="{{ result.export_excel_url }}">Excel</a>.</p>
@@ -143,7 +154,7 @@ Switch the explorer's status filter to <em>accepted</em> / <em>rejected</em> to 
 decisions.</div>
 {% endif %}
 <p>
-  <a class="btn btn-primary" href="{{ result.explorer_url }}">Explore open differences →</a>
+  <a class="btn btn-primary" href="{{ result.explorer_url }}{% if result.hide_immaterial %}?hide_immaterial=1{% endif %}">Explore open differences →</a>
 </p>
 
 {% endif %}

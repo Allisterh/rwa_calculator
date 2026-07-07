@@ -96,6 +96,20 @@ Every component on every row lands in one bucket, and the row takes its worst:
 | `missing_left` | In the legacy file but **not** in our results. |
 | `missing_right` | In our results but **not** in the legacy file. |
 
+### Focusing on material differences
+
+Our engine emits legitimate our-only lines that carry **zero exposure** — a fully-provisioned
+exposure, a zero-undrawn facility row, a guarantee-remainder sub-row. Each is a correct
+`missing_right`, but with **zero gross exposure** it adds nothing to any money total while
+inflating the bucket counts, burying the real omissions. The overview and the per-key explorer
+therefore offer an opt-in **"Hide zero-gross-exposure rows"** toggle (off by default). A row is
+*immaterial* when its gross exposure — `max(|our EAD|, |legacy EAD|)`, falling back to RWA when
+EAD is unmapped — rounds to zero. Toggling it on re-derives every breakdown count (per bucket,
+per component, per class / approach) and the biggest-breaks worklist with those rows removed;
+the money tie-out and Σ|Δ| charts are unchanged (a zero-gross row contributes nothing). The
+wide per-key frame carries `gross_exposure` and `is_immaterial`, so the same filter is
+available in the explorer and the CSV / Excel export.
+
 ### Data fix or engine fix?
 
 The point of attaching our *explain* and *input* columns to every row is to make a break
@@ -248,8 +262,10 @@ and a ranked "biggest breaks" top-N — that never materialises the full diff, s
 for portfolios of any size. From there you drill down: each segment row opens the **per-key
 explorer** (filter by bucket / class / approach / worst-component / key, sort any column, and
 page through the full row-level diff), and each key opens its **single-loan forensic** (every
-component's legacy-vs-ours plus the explain / input drivers). CSV / Excel downloads of the
-full per-key detail remain available.
+component's legacy-vs-ours plus the explain / input drivers). A **"Hide zero-gross-exposure
+rows"** toggle on the overview and the explorer drops immaterial our-only / legacy-only lines
+from the breakdown counts (see [Focusing on material differences](#focusing-on-material-differences)).
+CSV / Excel downloads of the full per-key detail remain available.
 
 ```bash
 uv add rwa-calc
@@ -274,8 +290,9 @@ The same flow is available over HTTP for programmatic callers via `POST /api/rec
 | `collect_summary_by_component()` | `pl.DataFrame` | Per component: bucket counts, `sum_abs_delta`, `break_rate`. |
 | `collect_class_allocation()` | `pl.DataFrame` | Per risk class: `our_ead`/`legacy_ead`/`delta_ead`, `our_rwa`/`legacy_rwa`/`delta_rwa`/`delta_rwa_pct`. |
 | `collect_summary_by_bucket()` | `pl.DataFrame` | Row-level `row_bucket` counts. |
+| `collect_material_summaries()` | `dict[str, pl.DataFrame]` | The count / tie-out summaries re-derived with zero-gross-exposure rows removed (keyed by bundle-frame name); empty when no components reconciled. |
 | `collect_breaks_detail()` | `pl.DataFrame` | Long-format break worklist, ranked by `abs_delta`. |
-| `collect_component_reconciliation()` | `pl.DataFrame` | Per-key forensic frame (legacy vs ours + explain/input). |
+| `collect_component_reconciliation()` | `pl.DataFrame` | Per-key forensic frame (legacy vs ours + explain/input, plus `gross_exposure` and `is_immaterial`). |
 | `to_excel(path)` / `to_csv(dir)` | `ExportResult` | Multi-sheet workbook / one CSV per view. |
 | `has_breaks` | `bool` | True when any row reconciled to a break. |
 
@@ -286,7 +303,7 @@ The underlying engine bundle (available as `response.bundle`). All frames are
 
 | Field | Description |
 |-------|-------------|
-| `component_reconciliation` | Per-key: `legacy_<c>` / `our_<c>` / `<c>_bucket` per component, explain + input columns, `row_bucket`, `worst_component`. |
+| `component_reconciliation` | Per-key: `legacy_<c>` / `our_<c>` / `<c>_bucket` per component, explain + input columns, `row_bucket`, `worst_component`, `gross_exposure`, `is_immaterial`. |
 | `summary_by_component` | Headline per-component bucket counts and break rate. |
 | `class_allocation` | Per risk class: sum(ours) vs sum(legacy) EAD/RWA and deltas — the asset-class allocation tie-out. Empty when class/EAD/RWA are unmapped. |
 | `summary_by_bucket` | Row-level bucket counts. |

@@ -604,3 +604,98 @@ def test_unmapped_crm_shows_as_ead_driver() -> None:
     coll = next(d for d in ead["drivers"] if d["name"] == "collateral_adjusted_value")
     assert coll["ours"] == pytest.approx(40.0)
     assert coll["legacy_available"] is False
+
+
+# =============================================================================
+# Materiality toggle — hide zero-gross-exposure rows
+# =============================================================================
+
+
+def _response_zero() -> ReconciliationResponse:
+    """A reconciliation with immaterial (zero-gross) rows.
+
+    - L1: a material break (RWA 50 vs 80), gross exposure 100.
+    - Z1: an our-only line with zero EAD (missing_right, immaterial).
+    - Z2: an our-only line with real EAD (missing_right, material omission).
+    - B0: a matched key with zero EAD on both sides whose exposure class differs
+      (a break, but immaterial — nothing is actually at stake).
+    """
+    ours = pl.LazyFrame(
+        {
+            "exposure_reference": ["L1", "Z1", "Z2", "B0"],
+            "exposure_class": ["corporate", "corporate", "retail", "corporate"],
+            "approach_applied": ["SA", "SA", "SA", "SA"],
+            "ead_final": [100.0, 0.0, 300.0, 0.0],
+            "rwa_final": [50.0, 0.0, 150.0, 0.0],
+        }
+    )
+    legacy = pl.LazyFrame(
+        {
+            "exposure_reference": ["L1", "B0"],
+            "legacy_ead": [100.0, 0.0],
+            "legacy_rwa": [80.0, 0.0],
+            "legacy_exposure_class": ["corporate", "retail"],
+        }
+    )
+    mapping = LegacyColumnMapping(
+        legacy_keys=("exposure_reference",),
+        our_keys=("exposure_reference",),
+        components={
+            "ead": ComponentMapping("EAD"),
+            "rwa": ComponentMapping("RWA"),
+            "exposure_class": ComponentMapping("legacy_exposure_class"),
+        },
+    )
+    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    return ReconciliationResponse.from_bundle(
+        bundle, legacy_file=Path("legacy.csv"), framework="CRR"
+    )
+
+
+def _missing_right(bucket_summary: pl.DataFrame) -> int:
+    row = bucket_summary.filter(pl.col("row_bucket") == rv.BUCKET_MISSING_RIGHT)
+    return int(row.get_column("count").item()) if row.height else 0
+
+
+def test_segment_tables_hide_immaterial_reduces_missing_right() -> None:
+    response = _response_zero()
+    all_bucket = rv.segment_tables(response)["by_bucket"]
+    mat_bucket = rv.segment_tables(response, hide_immaterial=True)["by_bucket"]
+    # Both our-only rows count as missing_right by default; only the material one
+    # (Z2) survives the toggle.
+    assert _missing_right(all_bucket) == 2
+    assert _missing_right(mat_bucket) == 1
+
+
+def test_summary_by_component_hide_immaterial_reduces_missing_right() -> None:
+    response = _response_zero()
+
+    def _n_mr(df: pl.DataFrame) -> int:
+        ead = df.filter(pl.col("component") == "ead")
+        return int(ead.get_column("n_missing_right").item())
+
+    assert _n_mr(rv.summary_by_component_table(response)) == 2
+    assert _n_mr(rv.summary_by_component_table(response, hide_immaterial=True)) == 1
+
+
+def test_forensic_page_hide_immaterial_filters_zero_gross_rows() -> None:
+    response = _response_zero()
+    keys_all = {r["_recon_key"] for r in rv.forensic_page(response, rv.ForensicFilters()).rows}
+    keys_mat = {
+        r["_recon_key"]
+        for r in rv.forensic_page(response, rv.ForensicFilters(hide_immaterial=True)).rows
+    }
+    assert {"Z1", "B0"} <= keys_all
+    assert keys_mat.isdisjoint({"Z1", "B0"})
+    assert {"L1", "Z2"} <= keys_mat
+
+
+def test_biggest_breaks_hide_immaterial_drops_zero_gross_break() -> None:
+    response = _response_zero()
+    all_breaks = rv.biggest_breaks(response)
+    mat_breaks = rv.biggest_breaks(response, hide_immaterial=True)
+    assert set(all_breaks.get_column("_recon_key").to_list()) == {"L1", "B0"}
+    assert set(mat_breaks.get_column("_recon_key").to_list()) == {"L1"}
+    # is_immaterial is an internal marker, dropped from the worklist projection.
+    assert "is_immaterial" not in mat_breaks.columns
+    assert "is_immaterial" not in all_breaks.columns

@@ -146,6 +146,42 @@ class TestReconcileEndToEnd:
         assert rwa_row["our_total"] == pytest.approx(our_rwa)
         assert rwa_row["legacy_total"] == pytest.approx(our_rwa + 123_000.0)
 
+    def test_material_summaries_exclude_zero_gross_phantom(
+        self, our_calc: CreditRiskCalc, tmp_path: Path
+    ) -> None:
+        # Arrange: our loan matches; a phantom legacy-only row with ZERO RWA (zero
+        # gross exposure) inflates the missing_left count while adding nothing.
+        our = our_calc.calculate()
+        results = our.collect_results()
+        our_ref = results["exposure_reference"][0]
+        our_rwa = float(results["rwa_final"][0])
+        legacy = tmp_path / "legacy_zero.csv"
+        pl.DataFrame(
+            {
+                "loan_id": [our_ref, "PHANTOM-ZERO"],
+                "RWA_m": [our_rwa / 1_000_000.0, 0.0],
+                "Asset_Class": ["CORP", "RETAIL"],
+            }
+        ).write_csv(legacy)
+
+        # Act
+        response = our_calc.reconcile(_settings(legacy))
+        assert response.success
+
+        # Assert: the materiality flag survives the full API path, and the material
+        # re-derivation drops the zero-gross phantom from the missing_left count.
+        recon = response.collect_component_reconciliation()
+        assert "gross_exposure" in recon.columns
+        assert "is_immaterial" in recon.columns
+
+        def _buckets(summary: pl.DataFrame) -> dict[str, int]:
+            return {r["row_bucket"]: r["count"] for r in summary.to_dicts()}
+
+        all_buckets = _buckets(response.collect_summary_by_bucket())
+        mat_buckets = _buckets(response.collect_material_summaries()["summary_by_bucket"])
+        assert all_buckets.get("missing_left") == 1
+        assert mat_buckets.get("missing_left", 0) == 0
+
     def test_reconcile_accepts_toml_config_path(
         self, our_calc: CreditRiskCalc, tmp_path: Path
     ) -> None:
