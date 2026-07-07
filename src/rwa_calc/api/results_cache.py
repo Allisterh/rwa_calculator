@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -133,9 +134,12 @@ class ResultsCache:
         approach_path = self._cache_dir / "last_summary_by_approach.parquet"
         class_method_path = self._cache_dir / "last_summary_by_class_method.parquet"
 
-        # Write main results to parquet
+        # Write main results to parquet atomically — a scan_parquet reader of the
+        # fixed ``last_results.parquet`` path must never see a half-written file
+        # (its footer offsets would overrun the truncated body -> "File out of
+        # specification: The page header reported the wrong page size").
         if isinstance(results, pl.DataFrame):
-            results.write_parquet(results_path)
+            self._atomic_write(results, results_path)
         else:
             self._sink_or_collect(results, results_path)
 
@@ -224,7 +228,7 @@ class ResultsCache:
             return None
         try:
             df = summary if isinstance(summary, pl.DataFrame) else summary.collect()
-            df.write_parquet(path)
+            self._atomic_write(df, path)
         except Exception:
             logger.warning("Failed to write %s parquet", label)
             path.unlink(missing_ok=True)
@@ -233,14 +237,55 @@ class ResultsCache:
 
     def _sink_or_collect(self, lf: pl.LazyFrame, path: Path) -> None:
         """
-        Attempt streaming sink_parquet; fall back to collect + write_parquet.
+        Stream to a temp file via sink_parquet, then atomically replace ``path``.
+
+        Streaming keeps peak memory at ~1x dataset size; writing to a sibling temp
+        file and ``os.replace``-ing it into place means a concurrent
+        ``scan_parquet`` reader of ``path`` sees either the whole previous file or
+        the whole new one — never a half-written parquet whose footer offsets
+        overrun the truncated body ("File out of specification: The page header
+        reported the wrong page size"). Falls back to ``collect().write_parquet``
+        (into the same temp file) when the streaming sink fails.
 
         Args:
             lf: LazyFrame to write
             path: Output parquet file path
         """
+        tmp = _tmp_path(path)
         try:
-            lf.sink_parquet(path)
-        except Exception:
-            logger.warning("sink_parquet() failed, falling back to collect().write_parquet()")
-            lf.collect().write_parquet(path)
+            try:
+                lf.sink_parquet(tmp)
+            except Exception:
+                logger.warning("sink_parquet() failed, falling back to collect().write_parquet()")
+                lf.collect().write_parquet(tmp)
+            os.replace(tmp, path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    def _atomic_write(df: pl.DataFrame, path: Path) -> None:
+        """Write *df* to *path* atomically (sibling temp file + ``os.replace``).
+
+        A ``scan_parquet`` reader of ``path`` then always sees a complete file,
+        never a partially-written one that would raise "File out of specification:
+        The page header reported the wrong page size". ``os.replace`` is atomic on
+        the same filesystem (the temp file is a sibling, so it always is).
+        """
+        tmp = _tmp_path(path)
+        try:
+            df.write_parquet(tmp)
+            os.replace(tmp, path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+
+
+# =============================================================================
+# Private helpers
+# =============================================================================
+
+
+def _tmp_path(path: Path) -> Path:
+    """A sibling temp path for an atomic write (same directory -> same filesystem)."""
+    return path.with_name(f".{path.name}.tmp")

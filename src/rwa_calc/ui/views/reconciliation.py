@@ -466,19 +466,26 @@ def forensic_page(
 def loan_detail(response: ReconciliationResponse, recon_key: str) -> dict | None:
     """Tier C — the full per-component forensic for a single loan (join key).
 
-    Filters the lazy per-key frame to one key (filter pushdown keeps it cheap even
-    when the eager cache is cold), then surfaces: a per-component panel
+    Filters the *memoised* wide per-key frame (the same eager snapshot the
+    explorer renders from) down to one key — never a fresh ``scan_parquet``
+    re-read of the results cache — then surfaces: a per-component panel
     (legacy / ours / Δ / bucket for every active component, matches included), that
     key's break rows, and the *driver* columns (explain / input) dropped from
     every on-screen table today and previously only reachable via the CSV export.
-    Returns ``None`` when no row matches the key.
+    Returns ``None`` when the reconciliation produced no keyed frame, or no row
+    matches the key.
+
+    Reading the shared collected snapshot (rather than re-executing the reconcile
+    plan against ``last_results.parquet``) is what keeps this view working: a fresh
+    re-scan is the one drill path that goes back to disk, so it alone is exposed to
+    a torn / mis-written results parquet ("File out of specification: The page
+    header reported the wrong page size"). It also makes this view's numbers match
+    the explorer exactly, rather than risking a second, independently-summed collect.
     """
-    df = (
-        response.scan_component_reconciliation()
-        .filter(pl.col("_recon_key") == recon_key)
-        .collect()
-        .fill_nan(None)
-    )
+    full = response.collect_component_reconciliation()
+    if "_recon_key" not in full.columns:
+        return None
+    df = full.filter(pl.col("_recon_key") == recon_key).fill_nan(None)
     if df.height == 0:
         return None
 
@@ -519,11 +526,11 @@ def loan_detail(response: ReconciliationResponse, recon_key: str) -> dict | None
         )
     drivers = {c: row.get(c) for c in df.columns if c not in shown}
 
+    breaks_all = response.collect_breaks_detail()
     breaks = (
-        response.scan_breaks_detail()
-        .filter(pl.col("_recon_key") == recon_key)
-        .collect()
-        .fill_nan(None)
+        breaks_all.filter(pl.col("_recon_key") == recon_key).fill_nan(None)
+        if "_recon_key" in breaks_all.columns
+        else breaks_all.fill_nan(None)
     )
     return {
         "recon_key": recon_key,
