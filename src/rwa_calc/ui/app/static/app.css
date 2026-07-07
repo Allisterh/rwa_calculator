@@ -96,6 +96,14 @@ h3 { font-size: 16px; margin: 0 0 8px; }
 fieldset.field { border: 0; padding: 0; min-width: 0; }
 .field legend { display: block; font-size: 13px; color: var(--oah-slate-300); margin-bottom: 6px; padding: 0; }
 
+/* An inline checkbox + label (e.g. the reconciliation explorer's "hide
+   zero-gross-exposure rows" toggle): undo the full-width text-input chrome so the
+   box sits beside its text, and centre the control against the taller labelled
+   inputs sharing its row. */
+.field-check label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--oah-slate-100); }
+.field-check input[type="checkbox"] { width: auto; padding: 0; margin: 0; }
+.field-row .field-check { align-self: center; }
+
 /* Inline checkbox group (e.g. the results-page "Save to folder" formats). */
 .checkbox-row { display: flex; flex-wrap: wrap; gap: 14px; }
 .checkbox { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--oah-slate-100); cursor: pointer; }

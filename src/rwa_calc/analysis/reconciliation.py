@@ -166,6 +166,13 @@ class ReconciliationRunner:
         )
 
         recon = self._apply_buckets(joined, mapping, active)
+        # Flag each key's materiality before any summary/breaks builder runs, so all
+        # derived frames carry it. A zero-gross-exposure row is a legitimate but
+        # immaterial our-only/legacy-only line (a fully-provisioned exposure, a
+        # zero-undrawn facility row, a guarantee-remainder sub-row) that inflates the
+        # missing_* bucket counts while contributing nothing to any money total; the
+        # UI can optionally hide it so the real differences stand out.
+        recon = recon.with_columns(_materiality_columns(active))
         # Tag every key with its methodology label (STD/FIRB/AIRB/SLOTTING/EQUITY)
         # from the shared mapping, so the class×method segment carries the same
         # vocabulary as the results/comparison tabs and the explorer can filter on
@@ -657,6 +664,30 @@ def _within_expr(
     return diff <= tol
 
 
+def _materiality_columns(active: list[_ActiveComponent]) -> list[pl.Expr]:
+    """Gross-exposure + immateriality flag for each reconciliation key.
+
+    Gross exposure is the larger of our and legacy EAD magnitude (falling back to
+    RWA when EAD is unmapped). A key whose gross exposure rounds to zero is flagged
+    ``is_immaterial`` — an our-only / legacy-only line that adds nothing to any money
+    total — so the UI can optionally hide it and let the real differences stand out.
+    When neither money component is mapped there is no measure, so nothing is
+    immaterial and the hide toggle is a safe no-op.
+    """
+    by_name = {a.spec.name: a for a in active}
+    measure = by_name.get("ead") or by_name.get("rwa")
+    if measure is None:
+        return [
+            pl.lit(None, dtype=pl.Float64).alias("gross_exposure"),
+            pl.lit(value=False).alias("is_immaterial"),
+        ]
+    gross = pl.max_horizontal(
+        pl.col(f"our_{measure.spec.name}").cast(pl.Float64).abs().fill_null(0.0),
+        pl.col(measure.legacy_col).cast(pl.Float64).abs().fill_null(0.0),
+    )
+    return [gross.alias("gross_exposure"), (gross <= _EXACT_EPSILON).alias("is_immaterial")]
+
+
 # =============================================================================
 # Summaries
 # =============================================================================
@@ -852,6 +883,11 @@ def _breaks_detail(
                     "rel_delta"
                 ),
                 explain_expr.alias("our_explain"),
+                # Ride the key's materiality along so the "hide zero-gross-exposure"
+                # toggle can drop immaterial breaks from the worklist (a rare
+                # both-sides-zero break). Dropped from the on-screen worklist by the
+                # view before display; retained in the CSV/Excel export.
+                pl.col("is_immaterial"),
             )
         )
     if not frames:
@@ -864,6 +900,7 @@ def _breaks_detail(
                 "abs_delta": pl.Float64,
                 "rel_delta": pl.Float64,
                 "our_explain": pl.String,
+                "is_immaterial": pl.Boolean,
             }
         )
     return pl.concat(frames, how="vertical").sort(
@@ -906,6 +943,54 @@ def _totals_tie_out(recon: pl.LazyFrame, active: list[_ActiveComponent]) -> pl.L
             }
         )
     return pl.concat(rows, how="vertical")
+
+
+def material_summaries(recon: pl.DataFrame) -> dict[str, pl.DataFrame]:
+    """Re-derive the count/total summaries with immaterial (zero-gross) rows removed.
+
+    Reuses the very same private builders the bundle is assembled from — over the
+    wide per-key frame filtered to ``~is_immaterial`` — so the UI's "hide
+    zero-gross-exposure rows" view can never drift from the all-rows summaries.
+    Returns a dict keyed by the corresponding ``ReconciliationBundle`` frame names;
+    ``class_allocation`` is intentionally omitted (it is built from the raw results
+    and a zero-gross row contributes nothing to it). Returns an empty dict when the
+    frame carries no active components, so callers fall back to the all-rows
+    accessors rather than crash on an empty reconciliation.
+    """
+    active = _active_components_from_frame(recon)
+    if not active:
+        return {}
+    lf = recon.lazy()
+    if "is_immaterial" in recon.columns:
+        lf = lf.filter(~pl.col("is_immaterial"))
+    return {
+        "summary_by_component": _summary_by_component(lf, active).collect(),
+        "summary_by_bucket": _summary_by_bucket(lf).collect(),
+        "summary_by_exposure_class": _summary_by_group(lf, "our_exposure_class", active).collect(),
+        "summary_by_approach": _summary_by_group(lf, "our_approach", active).collect(),
+        "summary_by_class_method": _summary_by_group(
+            lf, ["our_exposure_class", "method"], active
+        ).collect(),
+        "totals_tie_out": _totals_tie_out(lf, active).collect(),
+    }
+
+
+def _active_components_from_frame(df: pl.DataFrame) -> list[_ActiveComponent]:
+    """Rebuild the active-component list from a materialised reconciliation frame.
+
+    Lets :func:`material_summaries` re-derive the summaries from the wide per-key
+    frame without the runner's in-memory state: a component is active when the frame
+    carries its ``<name>_bucket`` plus the ``our_``/``legacy_`` value columns the
+    summary builders read. Iterated in registry order for stable output.
+    """
+    present = set(df.columns)
+    active: list[_ActiveComponent] = []
+    for spec in RECONCILABLE_COMPONENTS:
+        our_col = f"our_{spec.name}"
+        legacy_col = f"legacy_{spec.name}"
+        if f"{spec.name}_bucket" in present and our_col in present and legacy_col in present:
+            active.append(_ActiveComponent(spec=spec, our_col=our_col, legacy_col=legacy_col))
+    return active
 
 
 # =============================================================================

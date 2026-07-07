@@ -422,6 +422,13 @@ class ReconciliationResponse:
     _collect_cache: dict[str, pl.DataFrame] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
+    # Memo for the material-only (zero-gross-exposure removed) summary re-derivation:
+    # a single dict-of-frames under the "v" key, computed once from the cached wide
+    # per-key frame the first time the UI's "hide zero-gross-exposure rows" toggle is
+    # used, then reused for the response's lifetime.
+    _material_memo: dict[str, dict[str, pl.DataFrame]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     @classmethod
     def from_bundle(
@@ -498,6 +505,23 @@ class ReconciliationResponse:
     def collect_totals_tie_out(self) -> pl.DataFrame:
         """Collect the per-component portfolio tie-out (sum legacy vs sum ours)."""
         return self._collect_cached("totals_tie_out")
+
+    def collect_material_summaries(self) -> dict[str, pl.DataFrame]:
+        """Material-only summaries (zero-gross-exposure rows removed), cached once.
+
+        Delegates to ``analysis.reconciliation.material_summaries`` over the cached
+        wide per-key frame — reusing the engine's own summary builders so the UI's
+        "hide zero-gross-exposure rows" view can never diverge from the all-rows
+        summaries. Returns a dict keyed by bundle-frame name (``summary_by_bucket``,
+        ``summary_by_component``, the three segment summaries, ``totals_tie_out``);
+        empty when the reconciliation produced no comparable components, so callers
+        fall back to the all-rows accessors.
+        """
+        if "v" not in self._material_memo:
+            from rwa_calc.analysis.reconciliation import material_summaries
+
+            self._material_memo["v"] = material_summaries(self.collect_component_reconciliation())
+        return self._material_memo["v"]
 
     def to_csv(self, output_dir: Path) -> ExportResult:
         """Export the reconciliation frames to CSV files."""

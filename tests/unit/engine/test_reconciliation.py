@@ -20,6 +20,7 @@ from rwa_calc.analysis.reconciliation import (
     BUCKET_WITHIN,
     ReconciliationRunner,
     ReconciliationRunnerProtocol,
+    material_summaries,
 )
 from rwa_calc.contracts.errors import (
     ERROR_RECON_DUPLICATE_LEGACY_KEY,
@@ -591,3 +592,141 @@ class TestDataQualityWarnings:
 
         # Assert: no spurious non-finite warning.
         assert not any(e.code == ERROR_RECON_NON_FINITE_VALUE for e in bundle.errors)
+
+
+class TestMateriality:
+    """Gross-exposure flag + the material-only (zero-gross removed) re-derivation."""
+
+    def _ours(self) -> pl.LazyFrame:
+        # L1 material (matches legacy); Z1 our-only with zero EAD (immaterial);
+        # Z2 our-only with real EAD (a genuine omission that must be kept).
+        return pl.LazyFrame(
+            {
+                "exposure_reference": ["L1", "Z1", "Z2"],
+                "exposure_class": ["corporate", "corporate", "retail"],
+                "approach_applied": ["SA", "SA", "SA"],
+                "ead_final": [100.0, 0.0, 300.0],
+                "rwa_final": [50.0, 0.0, 150.0],
+                "risk_weight": [0.50, 0.0, 0.50],
+            }
+        )
+
+    def _legacy_l1_only(self) -> pl.LazyFrame:
+        return pl.LazyFrame({"loan_id": ["L1"], "legacy_ead": [100.0], "legacy_rwa": [50.0]})
+
+    def _mapping_ead(self) -> LegacyColumnMapping:
+        return LegacyColumnMapping(
+            legacy_keys=("loan_id",),
+            our_keys=("exposure_reference",),
+            components={
+                "ead": ComponentMapping("legacy_ead"),
+                "rwa": ComponentMapping("legacy_rwa"),
+            },
+        )
+
+    def test_wide_frame_carries_gross_exposure_and_flag(self) -> None:
+        df = _recon(self._ours(), self._legacy_l1_only(), self._mapping_ead())
+        cols = df.component_reconciliation.collect_schema().names()
+        assert "gross_exposure" in cols
+        assert "is_immaterial" in cols
+
+    def test_zero_gross_row_flagged_immaterial(self) -> None:
+        # Act
+        df = _recon(
+            self._ours(), self._legacy_l1_only(), self._mapping_ead()
+        ).component_reconciliation.collect()
+
+        # Assert: the zero-EAD our-only row is immaterial; the others are not.
+        assert _bucket_for(df, "Z1", "is_immaterial") is True
+        assert _bucket_for(df, "Z1", "gross_exposure") == pytest.approx(0.0)
+        assert _bucket_for(df, "Z2", "is_immaterial") is False
+        assert _bucket_for(df, "L1", "is_immaterial") is False
+
+    def test_gross_exposure_is_max_of_both_sides(self) -> None:
+        # Arrange: legacy EAD larger than ours on the matched key.
+        legacy = pl.LazyFrame({"loan_id": ["L1"], "legacy_ead": [250.0], "legacy_rwa": [50.0]})
+        df = _recon(self._ours(), legacy, self._mapping_ead()).component_reconciliation.collect()
+        # max(|our 100|, |legacy 250|) = 250.
+        assert _bucket_for(df, "L1", "gross_exposure") == pytest.approx(250.0)
+
+    def test_material_summaries_drops_zero_gross_from_missing_right(self) -> None:
+        # Arrange
+        recon = _recon(
+            self._ours(), self._legacy_l1_only(), self._mapping_ead()
+        ).component_reconciliation.collect()
+
+        def _mr(summary: pl.DataFrame) -> int:
+            row = summary.filter(pl.col("row_bucket") == BUCKET_MISSING_RIGHT)
+            return int(row.get_column("count").item()) if row.height else 0
+
+        all_bucket = recon.lazy().group_by("row_bucket").agg(pl.len().alias("count")).collect()
+        mat_bucket = material_summaries(recon)["summary_by_bucket"]
+
+        # Assert: both our-only rows count as missing_right by default; only the
+        # material one (Z2) survives the material re-derivation.
+        assert _mr(all_bucket) == 2
+        assert _mr(mat_bucket) == 1
+
+    def test_material_summaries_leave_money_totals_unchanged(self) -> None:
+        # A zero-gross row adds nothing to a money total, so the tie-out is identical.
+        recon = _recon(
+            self._ours(), self._legacy_l1_only(), self._mapping_ead()
+        ).component_reconciliation.collect()
+        mat_ead = (
+            material_summaries(recon)["totals_tie_out"]
+            .filter(pl.col("component") == "ead")
+            .row(0, named=True)
+        )
+        # ours = 100 + 0 + 300 = 400 with or without the zero row.
+        assert mat_ead["our_total"] == pytest.approx(400.0)
+
+    def test_material_summaries_noop_when_no_zero_rows(self) -> None:
+        # With every row material, the material summary equals the all-rows summary.
+        recon = _recon(_ours(), _legacy(), _mapping()).component_reconciliation.collect()
+        mat = material_summaries(recon)["summary_by_bucket"].sort("row_bucket")
+        allr = (
+            recon.lazy()
+            .group_by("row_bucket")
+            .agg(pl.len().alias("count"))
+            .sort("row_bucket")
+            .collect()
+        )
+        assert mat.to_dicts() == allr.to_dicts()
+
+    def test_rwa_fallback_when_ead_unmapped(self) -> None:
+        # Arrange: only RWA mapped (default mapping). A zero-RWA our-only row is
+        # immaterial via the RWA fallback measure.
+        ours = pl.LazyFrame(
+            {
+                "exposure_reference": ["L1", "Z1"],
+                "exposure_class": ["corporate", "corporate"],
+                "approach_applied": ["SA", "SA"],
+                "ead_final": [100.0, 0.0],
+                "rwa_final": [50.0, 0.0],
+                "risk_weight": [0.50, 0.0],
+            }
+        )
+        legacy = pl.LazyFrame({"loan_id": ["L1"], "legacy_rwa": [50.0]})
+        df = _recon(ours, legacy, _mapping()).component_reconciliation.collect()
+        assert _bucket_for(df, "Z1", "is_immaterial") is True
+        assert _bucket_for(df, "L1", "is_immaterial") is False
+
+    def test_no_measure_mapped_flags_nothing_immaterial(self) -> None:
+        # Arrange: map only a categorical (no ead/rwa) — there is no money measure,
+        # so nothing is immaterial and the toggle is a safe no-op.
+        ours = pl.LazyFrame(
+            {
+                "exposure_reference": ["L1", "Z1"],
+                "exposure_class": ["corporate", "corporate"],
+                "approach_applied": ["SA", "SA"],
+                "ead_final": [100.0, 0.0],
+            }
+        )
+        legacy = pl.LazyFrame({"loan_id": ["L1"], "legacy_exposure_class": ["corporate"]})
+        mapping = LegacyColumnMapping(
+            legacy_keys=("loan_id",),
+            our_keys=("exposure_reference",),
+            components={"exposure_class": ComponentMapping("legacy_exposure_class")},
+        )
+        df = _recon(ours, legacy, mapping).component_reconciliation.collect()
+        assert df.get_column("is_immaterial").to_list() == [False, False]

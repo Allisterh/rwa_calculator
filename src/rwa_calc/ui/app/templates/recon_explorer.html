@@ -79,6 +79,12 @@ incl. <span data-signoff="changed">{{ "{:,}".format(signoff_progress.changed) }}
       <label for="page_size">Rows per page</label>
       <input id="page_size" name="page_size" type="number" min="1" max="{{ max_page_size }}" value="{{ page_size }}">
     </div>
+    <div class="field field-check">
+      <label for="hide_immaterial" class="check-label">
+        <input id="hide_immaterial" name="hide_immaterial" type="checkbox" value="1"{% if filters.hide_immaterial %} checked{% endif %}>
+        Hide zero-gross-exposure rows
+      </label>
+    </div>
   </div>
   {# Preserve the active sort when the filters change. #}
   {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">

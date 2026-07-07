@@ -569,14 +569,18 @@ def _register_pages(app: FastAPI) -> None:
         return RedirectResponse(url="/reconciliation", status_code=303)
 
     @app.get("/reconciliation/{recon_id}", response_class=HTMLResponse)
-    def reconciliation_result(request: Request, recon_id: str) -> HTMLResponse:
+    def reconciliation_result(
+        request: Request, recon_id: str, hide_immaterial: bool = False
+    ) -> HTMLResponse:
         response = get_reconciliation(recon_id)
         if response is None:
             return _not_found(request, _RECON_NOT_FOUND_MESSAGE)
         context = _reconciliation_form_context()
         decisions = _recon_decisions(recon_id)
         fps = reconciliation_view.current_fingerprints(response, decisions)
-        context["result"] = _reconciliation_result(recon_id, response, decisions, fps)
+        context["result"] = _reconciliation_result(
+            recon_id, response, decisions, fps, hide_immaterial=hide_immaterial
+        )
         return templates.TemplateResponse(
             request=request, name="reconciliation.html", context=_nav(context)
         )
@@ -591,6 +595,7 @@ def _register_pages(app: FastAPI) -> None:
         method: str = "",
         worst_component: str = "",
         status: str = reconciliation_view.SIGNOFF_OPEN,
+        hide_immaterial: bool = False,
         q: str = "",
         sort: str = "",
         sort_dir: str = "desc",
@@ -611,6 +616,7 @@ def _register_pages(app: FastAPI) -> None:
             method=method or None,
             worst_component=worst_component or None,
             status=status_filter,
+            hide_immaterial=hide_immaterial,
             query=q or None,
             sort=sort or None,
             descending=(sort_dir != "asc"),
@@ -1131,6 +1137,8 @@ def _reconciliation_result(
     response: ReconciliationResponse,
     decisions: Mapping[str, Decision],
     current_fps: Mapping[str, str],
+    *,
+    hide_immaterial: bool = False,
 ) -> dict:
     """Build the aggregates-first overview context for a registered reconciliation.
 
@@ -1140,21 +1148,53 @@ def _reconciliation_result(
     time and constant DOM for any portfolio size. The full row-level diff is
     reached by drilling into the explorer (``/rows``) and a single loan
     (``/loan``); the segment rows carry the filter that pre-narrows the explorer.
+
+    With ``hide_immaterial`` the breakdown counts (per-component, by-bucket, the
+    segment tables and the worklist) exclude zero-gross-exposure rows — legitimate
+    but immaterial our-only/legacy-only lines that add nothing to any money total.
+    That opt-in path re-derives the material summaries from the wide frame (one
+    extra collect); the money charts / tie-out are inherently unaffected, so they
+    are left untouched. The toggle is carried into the explorer drill links.
     """
     warnings = [f"[{e.code}] {e.message}" for e in response.errors]
     if not response.success:
         return {"recon_id": recon_id, "success": False, "warnings": warnings}
 
-    segments = reconciliation_view.segment_tables(response)
+    segments = reconciliation_view.segment_tables(response, hide_immaterial=hide_immaterial)
     by_bucket = segments["by_bucket"]
     total_rows = (
         int(by_bucket.get_column("count").sum() or 0) if "count" in by_bucket.columns else 0
     )
+
+    # Count of rows the toggle suppressed, for the on-screen label. Computed only in
+    # the opt-in hidden view (which already collected the material summaries); the
+    # default view never touches the wide per-key frame.
+    hidden_count = 0
+    if hide_immaterial:
+        all_bucket = response.collect_summary_by_bucket()
+        all_total = (
+            int(all_bucket.get_column("count").sum() or 0) if "count" in all_bucket.columns else 0
+        )
+        hidden_count = max(0, all_total - total_rows)
+
+    breaks_detail = response.collect_breaks_detail()
+    break_count = (
+        breaks_detail.filter(~pl.col("is_immaterial")).height
+        if hide_immaterial and "is_immaterial" in breaks_detail.columns
+        else breaks_detail.height
+    )
+
+    base_url = f"/reconciliation/{recon_id}"
     return {
         "recon_id": recon_id,
         "success": True,
         "warnings": warnings,
         "has_breaks": response.has_breaks,
+        # Materiality toggle (hide zero-gross-exposure rows)
+        "hide_immaterial": hide_immaterial,
+        "hide_qs": "&hide_immaterial=1" if hide_immaterial else "",
+        "hidden_count": hidden_count,
+        "toggle_hide_url": base_url if hide_immaterial else f"{base_url}?hide_immaterial=1",
         # Tier 1 — headline
         "headline": reconciliation_view.headline_stats(response),
         "chart_abs_delta": charts.horizontal_bar_svg(
@@ -1163,7 +1203,11 @@ def _reconciliation_result(
         "chart_tie_out": charts.grouped_bar_svg(
             reconciliation_view.tie_out_chart_items(response), series=("Legacy", "Ours")
         ),
-        "component_table": _table(reconciliation_view.summary_by_component_table(response)),
+        "component_table": _table(
+            reconciliation_view.summary_by_component_table(
+                response, hide_immaterial=hide_immaterial
+            )
+        ),
         # Tier 2 — segment (each row drills into the explorer, pre-filtered)
         "bucket_table": _table(by_bucket),
         "allocation_table": _table(reconciliation_view.class_allocation_table(response)),
@@ -1177,19 +1221,22 @@ def _reconciliation_result(
         # explorer). Reviewed breaks drop off, so the worklist burns down; a break
         # whose difference moved since sign-off stays (stale) for re-review.
         "biggest_breaks": _table(
-            reconciliation_view.biggest_breaks(response, decisions, current_fps)
+            reconciliation_view.biggest_breaks(
+                response, decisions, current_fps, hide_immaterial=hide_immaterial
+            )
         ),
         "biggest_n": reconciliation_view.BIGGEST_BREAKS_LIMIT,
-        "break_count": response.collect_breaks_detail().height,
+        "break_count": break_count,
         "signoff_progress": reconciliation_view.breaks_signoff_progress(
-            response, decisions, current_fps
+            response, decisions, current_fps, hide_immaterial=hide_immaterial
         ),
         "signoff_decision_count": len(decisions),
         "total_rows": total_rows,
-        # Navigation
-        "explorer_url": f"/reconciliation/{recon_id}/rows",
-        "loan_url_base": f"/reconciliation/{recon_id}/loan",
-        "clear_all_url": f"/reconciliation/{recon_id}/signoff/clear-all",
+        # Navigation (explorer_url is query-free — drill macros append ?param=…;
+        # direct links append the toggle themselves).
+        "explorer_url": f"{base_url}/rows",
+        "loan_url_base": f"{base_url}/loan",
+        "clear_all_url": f"{base_url}/signoff/clear-all",
         "export_csv_url": f"/api/reconcile/export/csv?recon_id={recon_id}",
         "export_excel_url": f"/api/reconcile/export/excel?recon_id={recon_id}",
     }
@@ -1223,6 +1270,7 @@ def _reconciliation_explorer(
         "method": filters.method,
         "worst_component": filters.worst_component,
         "status": status_param,
+        "hide_immaterial": "1" if filters.hide_immaterial else None,
         "q": filters.query,
         "page_size": page.page_size,
     }
@@ -1249,6 +1297,7 @@ def _reconciliation_explorer(
             "method": filters.method or "",
             "worst_component": filters.worst_component or "",
             "status": status_param,
+            "hide_immaterial": filters.hide_immaterial,
             "q": filters.query or "",
         },
         "options": reconciliation_view.forensic_filter_options(response),
@@ -1263,7 +1312,8 @@ def _reconciliation_explorer(
         "explorer_path": f"/reconciliation/{recon_id}/rows",
         "query_base": query_base,
         "loan_url_base": f"/reconciliation/{recon_id}/loan",
-        "report_url": f"/reconciliation/{recon_id}",
+        "report_url": f"/reconciliation/{recon_id}"
+        + ("?hide_immaterial=1" if filters.hide_immaterial else ""),
         "export_csv_url": f"/api/reconcile/export/csv?recon_id={recon_id}",
         "export_excel_url": f"/api/reconcile/export/excel?recon_id={recon_id}",
     }

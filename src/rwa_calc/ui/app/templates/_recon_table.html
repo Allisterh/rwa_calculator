@@ -24,14 +24,17 @@
 </div>
 {% endmacro %}
 
-{% macro drill_table(table, key_col, link_base, param) %}
+{# `extra_qs` (optional) is appended verbatim to each drill link (e.g.
+   "&hide_immaterial=1"), so a segment drill can carry the page's active toggles
+   into the explorer. Default "" leaves existing callers unchanged. #}
+{% macro drill_table(table, key_col, link_base, param, extra_qs="") %}
 <div class="table-wrap">
   <table class="data">
     <thead><tr>{% for c in table.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
     <tbody>
       {% for row in table.rows %}
       <tr>{% for c in table.columns %}
-        <td>{% if c == key_col and row[c] is not none %}<a href="{{ link_base }}?{{ param }}={{ row[c]|string|urlencode }}">{{ fmt(row[c]) }}</a>{% else %}{{ fmt(row[c]) }}{% endif %}</td>
+        <td>{% if c == key_col and row[c] is not none %}<a href="{{ link_base }}?{{ param }}={{ row[c]|string|urlencode }}{{ extra_qs }}">{{ fmt(row[c]) }}</a>{% else %}{{ fmt(row[c]) }}{% endif %}</td>
       {% endfor %}</tr>
       {% endfor %}
     </tbody>
@@ -41,15 +44,16 @@
 
 {# drill_table2(...) — like drill_table, but the `key_col` cell drills the explorer
    pre-filtered on TWO dimensions: param_a=row[col_a] and param_b=row[col_b] (e.g. a
-   class×method row narrowing to both its exposure class and its methodology). #}
-{% macro drill_table2(table, key_col, link_base, param_a, col_a, param_b, col_b) %}
+   class×method row narrowing to both its exposure class and its methodology).
+   `extra_qs` behaves as in drill_table. #}
+{% macro drill_table2(table, key_col, link_base, param_a, col_a, param_b, col_b, extra_qs="") %}
 <div class="table-wrap">
   <table class="data">
     <thead><tr>{% for c in table.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
     <tbody>
       {% for row in table.rows %}
       <tr>{% for c in table.columns %}
-        <td>{% if c == key_col and row[c] is not none %}<a href="{{ link_base }}?{{ param_a }}={{ row[col_a]|string|urlencode }}&{{ param_b }}={{ row[col_b]|string|urlencode }}">{{ fmt(row[c]) }}</a>{% else %}{{ fmt(row[c]) }}{% endif %}</td>
+        <td>{% if c == key_col and row[c] is not none %}<a href="{{ link_base }}?{{ param_a }}={{ row[col_a]|string|urlencode }}&{{ param_b }}={{ row[col_b]|string|urlencode }}{{ extra_qs }}">{{ fmt(row[c]) }}</a>{% else %}{{ fmt(row[c]) }}{% endif %}</td>
       {% endfor %}</tr>
       {% endfor %}
     </tbody>
