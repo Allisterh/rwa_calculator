@@ -494,23 +494,26 @@ def _json_encode_value(value: object) -> str | None:
 def _reconciliation_frames(
     response: ReconciliationResponse,
 ) -> list[tuple[str, pl.DataFrame]]:
-    """Collect the reconciliation bundle frames in report order (headline first)."""
-    bundle = response.bundle
-    ordered = [
-        ("summary_by_component", bundle.summary_by_component),
-        ("totals_tie_out", bundle.totals_tie_out),
-        ("class_allocation", bundle.class_allocation),
-        ("summary_by_bucket", bundle.summary_by_bucket),
-        ("summary_by_exposure_class", bundle.summary_by_exposure_class),
-        ("summary_by_approach", bundle.summary_by_approach),
-        ("breaks_detail", bundle.breaks_detail),
-        ("component_reconciliation", bundle.component_reconciliation),
+    """Collect the reconciliation bundle frames in report order (headline first).
+
+    Reads through the response's *memoised* ``collect_*`` accessors rather than
+    collecting the raw lazy bundle frames directly. The bundle frames are lazy
+    views that re-scan the run's ``last_results.parquet`` on every ``.collect()``;
+    reusing the cached eager snapshot (already warmed for the report/explorer) both
+    avoids re-executing the reconcile join per export and keeps the export off the
+    fresh-disk-re-scan path that can raise "File out of specification: The page
+    header reported the wrong page size" on a torn / mis-written results parquet.
+    """
+    return [
+        ("summary_by_component", response.collect_summary_by_component()),
+        ("totals_tie_out", response.collect_totals_tie_out()),
+        ("class_allocation", response.collect_class_allocation()),
+        ("summary_by_bucket", response.collect_summary_by_bucket()),
+        ("summary_by_exposure_class", response.collect_summary_by_exposure_class()),
+        ("summary_by_approach", response.collect_summary_by_approach()),
+        ("breaks_detail", response.collect_breaks_detail()),
+        ("component_reconciliation", response.collect_component_reconciliation()),
     ]
-    frames: list[tuple[str, pl.DataFrame]] = []
-    for name, lf in ordered:
-        df: pl.DataFrame = lf.collect()
-        frames.append((name, df))
-    return frames
 
 
 def _reconciliation_errors_frame(response: ReconciliationResponse) -> pl.DataFrame:
