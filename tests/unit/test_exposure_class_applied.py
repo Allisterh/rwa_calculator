@@ -201,19 +201,16 @@ class TestGuaranteedLegAppliedClass:
 
 
 class TestReconClassComponent:
-    """The exposure_class recon component prefers the post-guarantee class."""
+    """The per-key recon class is the obligor applied class (uniform across legs);
+    the post-guarantee split is a separate aggregate (``_class_allocation``)."""
 
-    def test_prefers_post_crm_then_applied_then_origination(self) -> None:
+    def test_prefers_applied_then_origination(self) -> None:
         component = RECONCILABLE_COMPONENTS_BY_NAME["exposure_class"]
-        assert component.our_columns == (
-            "exposure_class_post_crm",
-            "exposure_class_applied",
-            "exposure_class",
-        )
+        assert component.our_columns == ("exposure_class_applied", "exposure_class")
 
-    def test_origination_class_surfaced_as_rationale(self) -> None:
+    def test_post_crm_surfaced_as_rationale(self) -> None:
         component = RECONCILABLE_COMPONENTS_BY_NAME["exposure_class"]
-        assert "exposure_class" in component.explain_columns
+        assert "exposure_class_post_crm" in component.explain_columns
 
 
 # =============================================================================

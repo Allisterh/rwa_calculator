@@ -60,19 +60,20 @@ class ReconcilableComponent:
 
 RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
-        # Post-guarantee reporting class — the reconciliation ties out on a
-        # post-substitution basis. ``exposure_class_post_crm`` reports a guaranteed
-        # exposure's guaranteed slice under the guarantor's class (Art. 235) and the
-        # retained slice under the obligor's applied class; ``exposure_class_applied``
-        # (pre-substitution, folds SME-managed-as-retail + defaulted) is the fallback
-        # and the pre-CRM rationale, and origination ``exposure_class`` the final
-        # fallback for frames produced before these columns existed.
+        # Per-key / break-attribution class. Uses ``exposure_class_applied`` — the
+        # obligor's applied class (folds SME-managed-as-retail + defaulted) — which is
+        # UNIFORM across a guaranteed exposure's __G_/__REM legs, so a partially-
+        # guaranteed exposure's break is attributed deterministically to its borrower
+        # class rather than an arbitrary first leg. The POST-guarantee money split
+        # (guaranteed slice under the guarantor) is a separate, aggregate view built
+        # by ``_class_allocation`` off ``exposure_class_post_crm`` — see that function.
+        # ``exposure_class`` is the origination fallback for pre-column frames.
         "exposure_class",
         "categorical",
-        our_columns=("exposure_class_post_crm", "exposure_class_applied", "exposure_class"),
+        our_columns=("exposure_class_applied", "exposure_class"),
         explain_columns=(
             "exposure_class_reason",
-            "exposure_class_applied",
+            "exposure_class_post_crm",
             "exposure_class",
             "pre_crm_exposure_class",
         ),

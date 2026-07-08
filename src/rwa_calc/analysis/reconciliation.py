@@ -755,8 +755,16 @@ def _class_allocation(
         return _empty_class_allocation()
 
     value_map = mapping.components["exposure_class"].value_map
+    # Allocation is post-guarantee: prefer ``exposure_class_post_crm`` (guaranteed
+    # slice under the guarantor's class, retained slice under the obligor's) over the
+    # per-key component column (the obligor home class used for break attribution),
+    # so our by-class money totals mirror a post-substitution legacy extract.
+    our_present = set(our_results.collect_schema().names())
+    our_class_col = (
+        "exposure_class_post_crm" if "exposure_class_post_crm" in our_present else cls.our_col
+    )
     our_side = (
-        our_results.with_columns(_normalise(pl.col(cls.our_col)).alias("exposure_class"))
+        our_results.with_columns(_normalise(pl.col(our_class_col)).alias("exposure_class"))
         .group_by("exposure_class")
         .agg(
             _sum_or_null(ead.our_col if ead else None).alias("our_ead"),
