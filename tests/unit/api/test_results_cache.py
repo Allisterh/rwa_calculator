@@ -145,7 +145,9 @@ class TestResultsCache:
 
         assert loaded is not None
         assert loaded.summary_by_class_method_path is not None
-        assert loaded.scan_summary_by_class_method().collect().height == 1
+        scanned = loaded.scan_summary_by_class_method()
+        assert scanned is not None
+        assert scanned.collect().height == 1
 
     def test_sink_with_none_summary_clears_stale_parquet(self, tmp_path: Path) -> None:
         """A later run that writes no summary clears a prior run's stale parquet.
@@ -160,12 +162,16 @@ class TestResultsCache:
                 {"exposure_class": ["corp"], "method": ["STD"], "total_rwa": [1.0]}
             ),
         )
-        assert cache.load_cached().summary_by_class_method_path is not None
+        first = cache.load_cached()
+        assert first is not None
+        assert first.summary_by_class_method_path is not None
 
         # Second run produces no summary (e.g. an error run) -> stale file removed.
         cache.sink_results(results=pl.LazyFrame({"a": [2]}))
 
-        assert cache.load_cached().summary_by_class_method_path is None
+        second = cache.load_cached()
+        assert second is not None
+        assert second.summary_by_class_method_path is None
 
     def test_sink_results_writes_metadata(self, tmp_path: Path) -> None:
         """sink_results should write metadata JSON."""

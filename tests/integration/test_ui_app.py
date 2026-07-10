@@ -480,9 +480,7 @@ def test_calculator_offers_results_link_when_identical_run_exists(
     assert f"/results/{job_id}" in form.text
 
 
-def test_comparison_seeds_run_index_for_both_frameworks(
-    client: TestClient, data_dir: str
-) -> None:
+def test_comparison_seeds_run_index_for_both_frameworks(client: TestClient, data_dir: str) -> None:
     # Act — a comparison runs both frameworks over one dataset.
     resp = client.post(
         "/comparison",

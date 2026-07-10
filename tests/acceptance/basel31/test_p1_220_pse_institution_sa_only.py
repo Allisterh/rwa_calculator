@@ -254,9 +254,7 @@ class TestP1220PseInstitutionSaOnly:
     # SUPPORTING ASSERTIONS — SA risk weight / EAD / RWA
     # ------------------------------------------------------------------
 
-    def test_sa_risk_weight_is_pse_sovereign_derived_cqs2(
-        self, b31_result_row: dict
-    ) -> None:
+    def test_sa_risk_weight_is_pse_sovereign_derived_cqs2(self, b31_result_row: dict) -> None:
         """
         P1.220: SA risk weight = 0.50 (Art. 116(1) Table 2, CQS 2,
         PSE sovereign-derived, unrated own-CQS branch).

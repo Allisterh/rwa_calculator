@@ -812,6 +812,8 @@ class TestSummaryByClassMethod:
             config=crr_config,
         )
 
+        assert result.summary_by_class is not None
+        assert result.summary_by_class_method is not None
         by_class = result.summary_by_class.collect().select(["exposure_class", "total_rwa"])
         rolled = (
             result.summary_by_class_method.collect()
@@ -849,6 +851,7 @@ class TestSummaryByClassMethod:
             config=crr_config,
         )
 
+        assert result.summary_by_class_method is not None
         cm = result.summary_by_class_method.collect()
         row = cm.filter(pl.col("exposure_class") == "RETAIL_MORTGAGE")
         assert row["method"].to_list() == ["AIRB"]

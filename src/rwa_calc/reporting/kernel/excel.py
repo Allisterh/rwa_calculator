@@ -53,10 +53,17 @@ _BANNER_ROW_HEIGHT = 60.0
 
 
 class _RefNamed(Protocol):
-    """Structural view of a template column: a regulatory ref and a readable name."""
+    """Structural view of a template column: a regulatory ref and a readable name.
 
-    ref: str
-    name: str
+    Members are read-only properties so frozen dataclass columns
+    (``COREPColumn`` / ``P3Column``) satisfy the protocol.
+    """
+
+    @property
+    def ref(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
 
 
 def column_name_map(columns: Iterable[_RefNamed]) -> dict[str, str]:

@@ -190,12 +190,8 @@ EXPECTED_EG: float = min(EXPECTED_GA, EXPOSURE_VALUE_AT_CCF_100)  # 400,000
 EXPECTED_COVERAGE_FRACTION: float = EXPECTED_EG / EXPOSURE_VALUE_AT_CCF_100  # 0.40
 
 # CCF re-applied to the covered/uncovered split (Art. 236(3))
-EXPECTED_COVERED_EAD: float = (
-    EXPECTED_COVERAGE_FRACTION * EXPECTED_EAD_AFTER_COLLATERAL
-)  # 200,000
-EXPECTED_UNCOVERED_EAD: float = (
-    EXPECTED_EAD_AFTER_COLLATERAL - EXPECTED_COVERED_EAD
-)  # 300,000
+EXPECTED_COVERED_EAD: float = EXPECTED_COVERAGE_FRACTION * EXPECTED_EAD_AFTER_COLLATERAL  # 200,000
+EXPECTED_UNCOVERED_EAD: float = EXPECTED_EAD_AFTER_COLLATERAL - EXPECTED_COVERED_EAD  # 300,000
 
 # Risk weights (CRR Art. 122)
 EXPECTED_GUARANTOR_RW: float = 0.20  # corporate CQS 1
@@ -527,23 +523,33 @@ def print_summary(saved: dict[str, Path]) -> None:
     print("Scenario: guarantee coverage fraction measured on CCF=100% basis (Art. 235(1)/236(3))")
     print(f"  Borrower:  {BORROWER_REF} (corporate, unrated, RW={EXPECTED_BORROWER_RW:.0%})")
     print(f"  Guarantor: {GUARANTOR_REF} (corporate, CQS 1, RW={EXPECTED_GUARANTOR_RW:.0%})")
-    print(f"  Facility:  {FACILITY_REF}  GBP {FACILITY_LIMIT:,.0f}  risk_type={RISK_TYPE}  (no loan)")
+    print(
+        f"  Facility:  {FACILITY_REF}  GBP {FACILITY_LIMIT:,.0f}  risk_type={RISK_TYPE}  (no loan)"
+    )
     print(f"  Guarantee: {GUARANTEE_REF}  amount_covered=GBP {AMOUNT_COVERED:,.0f}")
     print()
     print(f"  E (ead_for_crm, CCF=100%)   = {EXPOSURE_VALUE_AT_CCF_100:,.0f}")
     print(f"  ead_after_collateral (CCF=50%) = {EXPECTED_EAD_AFTER_COLLATERAL:,.0f}")
     print(f"  GA = {EXPECTED_GA:,.0f}; Eg = min(GA, E) = {EXPECTED_EG:,.0f}")
     print(f"  coverage_fraction f = Eg / E = {EXPECTED_COVERAGE_FRACTION:.2f}")
-    print(f"  Covered EAD   = {EXPECTED_COVERED_EAD:,.0f}  x RW {EXPECTED_GUARANTOR_RW:.0%} = "
-          f"{EXPECTED_COVERED_RWA:,.0f}")
-    print(f"  Uncovered EAD = {EXPECTED_UNCOVERED_EAD:,.0f}  x RW {EXPECTED_BORROWER_RW:.0%} = "
-          f"{EXPECTED_UNCOVERED_RWA:,.0f}")
-    print(f"  Total EAD = {EXPECTED_TOTAL_EAD:,.0f}  Total RWA = {EXPECTED_TOTAL_RWA:,.0f}  "
-          f"Blended RW = {EXPECTED_BLENDED_RW:.4f}")
+    print(
+        f"  Covered EAD   = {EXPECTED_COVERED_EAD:,.0f}  x RW {EXPECTED_GUARANTOR_RW:.0%} = "
+        f"{EXPECTED_COVERED_RWA:,.0f}"
+    )
+    print(
+        f"  Uncovered EAD = {EXPECTED_UNCOVERED_EAD:,.0f}  x RW {EXPECTED_BORROWER_RW:.0%} = "
+        f"{EXPECTED_UNCOVERED_RWA:,.0f}"
+    )
+    print(
+        f"  Total EAD = {EXPECTED_TOTAL_EAD:,.0f}  Total RWA = {EXPECTED_TOTAL_RWA:,.0f}  "
+        f"Blended RW = {EXPECTED_BLENDED_RW:.4f}"
+    )
     print()
-    print(f"  Pre-fix (buggy) total RWA = {BUGGY_TOTAL_RWA:,.0f}  "
-          f"(understated by {UNDERSTATEMENT:,.0f} = "
-          f"{UNDERSTATEMENT / EXPECTED_TOTAL_RWA:.4%})")
+    print(
+        f"  Pre-fix (buggy) total RWA = {BUGGY_TOTAL_RWA:,.0f}  "
+        f"(understated by {UNDERSTATEMENT:,.0f} = "
+        f"{UNDERSTATEMENT / EXPECTED_TOTAL_RWA:.4%})"
+    )
 
 
 def main() -> None:

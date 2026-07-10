@@ -259,13 +259,11 @@ class TestP1222RglaUnratedItalianMunicipalityTable1A:
     def test_crr_ead_final_matches_drawn_amount(self, crr_result_row: dict) -> None:
         """P1.222 CRR: ead_final = drawn_amount (5,000,000.0); invariant across the fix."""
         assert crr_result_row["ead_final"] == pytest.approx(EAD, rel=1e-9), (
-            f"P1.222 CRR: ead_final should be {EAD:,.2f}. "
-            f"Got {crr_result_row['ead_final']:,.2f}."
+            f"P1.222 CRR: ead_final should be {EAD:,.2f}. Got {crr_result_row['ead_final']:,.2f}."
         )
 
     def test_b31_ead_final_matches_drawn_amount(self, b31_result_row: dict) -> None:
         """P1.222 B31: ead_final = drawn_amount (5,000,000.0); invariant across the fix."""
         assert b31_result_row["ead_final"] == pytest.approx(EAD, rel=1e-9), (
-            f"P1.222 B31: ead_final should be {EAD:,.2f}. "
-            f"Got {b31_result_row['ead_final']:,.2f}."
+            f"P1.222 B31: ead_final should be {EAD:,.2f}. Got {b31_result_row['ead_final']:,.2f}."
         )
