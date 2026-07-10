@@ -1436,6 +1436,14 @@ AGGREGATOR_EXIT_EDGE: EdgeContract = EdgeContract(
     name="aggregator_exit",
     columns={
         **_calc_output_common_columns(),
+        # Post-guarantee twin of approach_applied: the guaranteed slice of an
+        # SA-guaranteed exposure is reported under the guarantor's standardised
+        # approach (Art. 235 risk-weight substitution), while an IRB-guaranteed
+        # slice keeps the obligor's IRB approach (Art. 161 parameter substitution).
+        # Pairs with exposure_class_post_crm so class and approach partition the
+        # same post-guarantee money. Computed by the aggregator
+        # (_add_post_crm_reporting_approach).
+        "approach_post_crm": EdgeColumn(dtype=pl.String, citation="CRR Art. 235"),
         "correlation": EdgeColumn(dtype=pl.Float64),
         "cp_internal_rating_grade": EdgeColumn(dtype=pl.String),
         "cp_is_core_market_participant": EdgeColumn(dtype=pl.Boolean),

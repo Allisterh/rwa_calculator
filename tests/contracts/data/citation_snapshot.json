@@ -9,6 +9,9 @@
     "CRR Art. 112",
     "CRR Art. 123"
   ],
+  "rwa_calc.engine.aggregator.aggregator::_add_post_crm_reporting_approach": [
+    "CRR Art. 235"
+  ],
   "rwa_calc.engine.aggregator.aggregator::_add_post_crm_reporting_class": [
     "CRR Art. 235"
   ],
