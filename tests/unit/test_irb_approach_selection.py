@@ -159,7 +159,8 @@ class TestCCFCalculatorIntegration:
     - SA: 50% CCF
     - FIRB: 75% CCF
     - AIRB with ccf_modelled: Use modelled value
-    - AIRB without ccf_modelled: Fall back to SA (50%)
+    - AIRB without ccf_modelled (in Art. 166(8) scope): Fall back to the F-IRB
+      supervisory CCF (75%), not the SA CCF (CRR Art. 166(8)(d)/166(9))
     """
 
     @pytest.fixture
@@ -241,12 +242,22 @@ class TestCCFCalculatorIntegration:
         assert result["ccf"][0] == pytest.approx(0.65)
         assert result["ead_from_ccf"][0] == pytest.approx(650000.0)
 
-    def test_airb_without_ccf_modelled_falls_back_to_sa(
+    def test_airb_without_ccf_modelled_falls_back_to_firb_supervisory(
         self,
         ccf_calculator,
         crr_config_irb: CalculationConfig,
     ) -> None:
-        """AIRB exposure without ccf_modelled should fall back to SA CCF."""
+        """AIRB exposure without ccf_modelled should fall back to the F-IRB
+        supervisory CCF, not the SA CCF.
+
+        The row is an in-scope Art. 166(8) commitment: ``is_obs_commitment``
+        defaults to True (not supplied) and ``risk_type`` is MR (not FR/FRC),
+        so it falls within Art. 166(8)(d) (credit lines / NIFs / RUFs). CRR
+        Art. 166(9) permits own-estimate CCFs only within the Art. 166(8)
+        product scope; when the own estimate (``ccf_modelled``) is null, the
+        engine falls back to the Art. 166(8)(d) supervisory F-IRB CCF (75%),
+        not the SA Art. 111 CCF (50%).
+        """
         exposures = pl.DataFrame(
             {
                 "exposure_reference": ["AIRB_NO_MODEL_001"],
@@ -260,8 +271,8 @@ class TestCCFCalculatorIntegration:
 
         result = ccf_calculator.apply_ccf(exposures, crr_config_irb).collect()
 
-        assert result["ccf"][0] == pytest.approx(0.50)
-        assert result["ead_from_ccf"][0] == pytest.approx(500000.0)
+        assert result["ccf"][0] == pytest.approx(0.75)
+        assert result["ead_from_ccf"][0] == pytest.approx(750000.0)
 
     def test_firb_mlr_exposure_gets_75_percent_ccf(
         self,
