@@ -415,6 +415,9 @@
   "rwa_calc.engine.stages.classify.subtypes::derive_exposure_subclass": [
     "PS1/26, paragraph 147A.1"
   ],
+  "rwa_calc.engine.stages.hierarchy.enrich::_apply_obligor_short_term_spillover": [
+    "CRR Art. 131"
+  ],
   "rwa_calc.engine.stages.hierarchy.enrich::apply_short_term_rating_override": [
     "CRR Art. 131",
     "CRR Art. 140"
