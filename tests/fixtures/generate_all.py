@@ -542,6 +542,11 @@ def generate_all_fixtures(fixtures_dir: Path) -> list[FixtureGroupResult]:
             _generate_p1216,
         ),
         (
+            "P1.218 (guarantee coverage fraction measured on CCF=100% basis, Art. 235(1)/236(3))",
+            "p1_218",
+            _generate_p1218,
+        ),
+        (
             "P8.39 (CCR-CCP-1/CCP-2 orchestrator QCCP wiring — 2%/4% vs 50% anti-degenerate baseline)",
             "ccr",
             _generate_p839_ccp,
@@ -2981,6 +2986,19 @@ def _generate_p1216(output_dir: Path) -> list[tuple[str, int]]:
     finally:
         sys.path.remove(str(output_dir))
         sys.modules.pop("p1_216", None)
+
+
+def _generate_p1218(output_dir: Path) -> list[tuple[str, int]]:
+    """Generate P1.218 fixtures (guarantee coverage fraction on CCF=100% basis, Art. 235(1)/236(3))."""
+    sys.path.insert(0, str(output_dir))
+    try:
+        from p1_218 import save_p1218_fixtures
+
+        saved = save_p1218_fixtures(output_dir)
+        return [(f"{name}.parquet", pl.read_parquet(path).height) for name, path in saved.items()]
+    finally:
+        sys.path.remove(str(output_dir))
+        sys.modules.pop("p1_218", None)
 
 
 def _generate_p828_alpha(output_dir: Path) -> list[tuple[str, int]]:

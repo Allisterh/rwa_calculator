@@ -498,11 +498,11 @@ def _apply_guarantee_splits(
     no_guarantee = _build_no_guarantee_rows(exposures_with_counts)
 
     # --- Path 2: Guaranteed exposures — row splitting (N >= 1 guarantors) ---
-    multi_joined = _join_multi_guarantees(
+    multi_joined, join_names = _join_multi_guarantees(
         exposures_with_counts, guarantees, guar_select, "percentage_covered" in guar_cols
     )
 
-    guarantor_sub_rows = _build_guarantor_sub_rows(multi_joined)
+    guarantor_sub_rows = _build_guarantor_sub_rows(multi_joined, join_names)
     remainder_sub_rows = _build_remainder_sub_rows(multi_joined)
 
     # Drop transient columns used during splitting
@@ -511,7 +511,9 @@ def _apply_guarantee_splits(
         "_guar_ratio",
         "_total_coverage",
         "_scale",
+        "_crm_basis",
         "_effective_amount",
+        "_effective_ead",
         "_total_effective",
         "amount_covered",
         # CRR Art. 234 tranching points are consumed inside the remainder
@@ -627,8 +629,12 @@ def _join_multi_guarantees(
     guarantees: pl.LazyFrame,
     guar_select: list[str],
     has_percentage: bool,
-) -> pl.LazyFrame:
-    """Join guarantees onto guaranteed exposures and compute effective amounts."""
+) -> tuple[pl.LazyFrame, list[str]]:
+    """Join guarantees onto guaranteed exposures and compute effective amounts.
+
+    Returns the joined frame plus its post-join column names (reused by
+    ``_build_guarantor_sub_rows`` so the schema is only materialised once).
+    """
     multi_guar_exposures = exposures_with_counts.filter(pl.col("guarantee_count") >= 1)
     multi_guarantees = guarantees.select(guar_select)
 
@@ -637,12 +643,28 @@ def _join_multi_guarantees(
         left_on="exposure_reference",
         right_on="beneficiary_reference",
         how="inner",
-    ).with_columns(
+    )
+
+    # CRR Art. 235(1) / 236(3): the covered part Eg = min(GA, E) measures the
+    # exposure value E at the CCF=100% basis (ead_for_crm) -- before any credit
+    # conversion factor -- with the CCF re-applied to the covered/uncovered split
+    # afterwards. Capping and pro-rating coverage against the post-CCF
+    # ead_after_collateral would over-recognise cover on undrawn commitments. For
+    # pure on-balance-sheet rows ead_for_crm == ead_after_collateral, so the two
+    # bases coincide. Fall back to ead_after_collateral only if ead_for_crm is
+    # absent/null (defensive; collateral.py always populates it in the pipeline).
+    join_names = multi_joined.collect_schema().names()
+    crm_basis = (
+        pl.coalesce(pl.col("ead_for_crm"), pl.col("ead_after_collateral"))
+        if "ead_for_crm" in join_names
+        else pl.col("ead_after_collateral")
+    )
+    multi_joined = multi_joined.with_columns(crm_basis.alias("_crm_basis")).with_columns(
         _resolve_guarantee_amount_expr(has_percentage, "_guar_amount"),
     )
 
-    # Cap total coverage to EAD using pro-rata scaling, then compute remainder
-    # totals and the per-row ratio used to split stock columns.
+    # Cap total coverage to the CCF=100% basis using pro-rata scaling, then derive
+    # the coverage fraction (Eg / E) and re-apply the CCF to size the covered EAD.
     return (
         multi_joined.with_columns(
             pl.col("_guar_amount").sum().over("parent_exposure_reference").alias("_total_coverage"),
@@ -650,30 +672,47 @@ def _join_multi_guarantees(
         .with_columns(
             pl.min_horizontal(
                 pl.lit(1.0),
-                pl.col("ead_after_collateral") / pl.col("_total_coverage"),
+                pl.col("_crm_basis") / pl.col("_total_coverage"),
             ).alias("_scale"),
         )
         .with_columns(
             (pl.col("_guar_amount") * pl.col("_scale")).alias("_effective_amount"),
         )
         .with_columns(
-            pl.col("_effective_amount")
+            # Coverage fraction on the CCF=100% basis. Guard against a null/zero
+            # basis (rows with no exposure value) to avoid division-by-zero.
+            pl.when(pl.col("_crm_basis") > 0)
+            .then(pl.col("_effective_amount") / pl.col("_crm_basis"))
+            .otherwise(pl.lit(0.0))
+            .alias("_guar_ratio"),
+        )
+        .with_columns(
+            # Re-apply the CCF (Art. 236(3)): covered EAD = coverage fraction x
+            # post-CCF EAD. Total EAD stays invariant; only the RW split moves.
+            (pl.col("_guar_ratio") * pl.col("ead_after_collateral")).alias("_effective_ead"),
+        )
+        .with_columns(
+            pl.col("_effective_ead")
             .sum()
             .over("parent_exposure_reference")
             .alias("_total_effective"),
         )
-        .with_columns(
-            (pl.col("_effective_amount") / pl.col("ead_after_collateral")).alias("_guar_ratio"),
-        )
-    )
+    ), join_names
 
 
-def _build_guarantor_sub_rows(multi_joined: pl.LazyFrame) -> pl.LazyFrame:
-    """Build the per-guarantor sub-rows for guaranteed exposures."""
+def _build_guarantor_sub_rows(multi_joined: pl.LazyFrame, schema_names: list[str]) -> pl.LazyFrame:
+    """Build the per-guarantor sub-rows for guaranteed exposures.
+
+    ``schema_names`` is the post-join column set from ``_join_multi_guarantees``
+    (reused here so the joined schema is only materialised once).
+    """
     guar_stock_splits: list[pl.Expr] = [
-        pl.col("_effective_amount").alias("guaranteed_portion"),
+        # Covered EAD (post-CCF) = coverage fraction x ead_after_collateral. The
+        # nominal credit-protection amount (G*) stays on guarantee_amount /
+        # original_guarantee_amount. CRR Art. 235(1) / 236(3).
+        pl.col("_effective_ead").alias("guaranteed_portion"),
         pl.lit(0.0).alias("unguaranteed_portion"),
-        pl.col("_effective_amount").alias("ead_after_collateral"),
+        pl.col("_effective_ead").alias("ead_after_collateral"),
         pl.col("_effective_amount").alias("guarantee_amount"),
         pl.col("_guar_amount").alias("original_guarantee_amount"),
         pl.col("guarantor").alias("guarantor_reference"),
@@ -681,7 +720,6 @@ def _build_guarantor_sub_rows(multi_joined: pl.LazyFrame) -> pl.LazyFrame:
             [pl.col("parent_exposure_reference"), pl.lit("__G_"), pl.col("guarantor")],
         ).alias("exposure_reference"),
     ]
-    schema_names = multi_joined.collect_schema().names()
     guar_stock_splits.extend(
         (pl.col(c) * pl.col("_guar_ratio")).alias(c)
         for c in _stock_split_cols()
@@ -902,7 +940,13 @@ def _apply_cross_approach_ccf(
 
 
 def _resolve_guarantee_amount_expr(has_percentage: bool, alias: str) -> pl.Expr:
-    """Build expression resolving guarantee amount from amount_covered or percentage_covered."""
+    """Build expression resolving guarantee amount from amount_covered or percentage_covered.
+
+    Percentage-based cover is measured against the CCF=100% basis (``_crm_basis``,
+    i.e. ``ead_for_crm``), not the post-CCF ``ead_after_collateral`` -- CRR
+    Art. 235(1) / 236(3). ``_crm_basis`` is materialised on the frame in
+    ``_join_multi_guarantees`` before this expression is applied.
+    """
     if has_percentage:
         return (
             pl.when(
@@ -913,7 +957,7 @@ def _resolve_guarantee_amount_expr(has_percentage: bool, alias: str) -> pl.Expr:
                 & pl.col("percentage_covered").is_not_null()
                 & (pl.col("percentage_covered") > 0)
             )
-            .then(pl.col("percentage_covered") * pl.col("ead_after_collateral"))
+            .then(pl.col("percentage_covered") * pl.col("_crm_basis"))
             .otherwise(pl.col("amount_covered").fill_null(0.0))
             .alias(alias)
         )

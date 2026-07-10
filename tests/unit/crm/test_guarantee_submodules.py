@@ -425,41 +425,63 @@ class TestResolveGuaranteeAmountExpr:
         assert result["guar_amount"][0] == pytest.approx(0.0)
 
     def test_percentage_used_when_amount_null(self) -> None:
-        """has_percentage=True + null amount: percentage x EAD."""
+        """has_percentage=True + null amount: percentage x CCF=100% basis (_crm_basis).
+
+        P1.218 (CRR Art. 235(1) / 236(3)): percentage-based cover is measured
+        against the CCF=100% basis (``_crm_basis``, sourced from
+        ``ead_for_crm`` in the caller), NOT the post-CCF
+        ``ead_after_collateral``. ``_crm_basis`` is set to a value distinct
+        from ``ead_after_collateral`` here to lock in that the expression
+        reads the CRM basis, not the post-collateral EAD.
+        """
         expr = _resolve_guarantee_amount_expr(has_percentage=True, alias="guar_amount")
         lf = pl.LazyFrame(
             {
                 "amount_covered": pl.Series("amount_covered", [None], dtype=pl.Float64),
                 "percentage_covered": [0.50],
                 "ead_after_collateral": [1_000_000.0],
+                "_crm_basis": [800_000.0],
             }
         )
         result = lf.with_columns(expr).collect()
 
-        assert result["guar_amount"][0] == pytest.approx(500_000.0)
+        # 0.50 x 800,000 (_crm_basis / ead_for_crm), not 0.50 x 1,000,000 (ead_after_collateral)
+        assert result["guar_amount"][0] == pytest.approx(400_000.0)
 
     def test_percentage_used_when_amount_near_zero(self) -> None:
-        """has_percentage=True + amount ~0 (< 1e-10): uses percentage."""
+        """has_percentage=True + amount ~0 (< 1e-10): uses percentage x CCF=100% basis.
+
+        P1.218 (CRR Art. 235(1) / 236(3)): ``_crm_basis`` set distinct from
+        ``ead_after_collateral`` to confirm the percentage path uses the
+        CCF=100% basis (``ead_for_crm``).
+        """
         expr = _resolve_guarantee_amount_expr(has_percentage=True, alias="guar_amount")
         lf = pl.LazyFrame(
             {
                 "amount_covered": [1e-11],
                 "percentage_covered": [0.30],
                 "ead_after_collateral": [1_000_000.0],
+                "_crm_basis": [700_000.0],
             }
         )
         result = lf.with_columns(expr).collect()
 
-        assert result["guar_amount"][0] == pytest.approx(300_000.0)
+        # 0.30 x 700,000 (_crm_basis / ead_for_crm), not 0.30 x 1,000,000 (ead_after_collateral)
+        assert result["guar_amount"][0] == pytest.approx(210_000.0)
 
     def test_amount_used_when_both_present(self) -> None:
-        """has_percentage=True + nonzero amount: amount_covered takes priority."""
+        """has_percentage=True + nonzero amount: amount_covered takes priority.
+
+        ``_crm_basis`` is added so the frame satisfies the has_percentage=True
+        schema; the amount-covered path ignores it regardless of its value.
+        """
         expr = _resolve_guarantee_amount_expr(has_percentage=True, alias="guar_amount")
         lf = pl.LazyFrame(
             {
                 "amount_covered": [200_000.0],
                 "percentage_covered": [0.50],
                 "ead_after_collateral": [1_000_000.0],
+                "_crm_basis": [900_000.0],
             }
         )
         result = lf.with_columns(expr).collect()
@@ -467,13 +489,19 @@ class TestResolveGuaranteeAmountExpr:
         assert result["guar_amount"][0] == pytest.approx(200_000.0)
 
     def test_both_null_returns_zero(self) -> None:
-        """has_percentage=True + both null: 0.0."""
+        """has_percentage=True + both null: 0.0.
+
+        ``_crm_basis`` is added so the frame satisfies the has_percentage=True
+        schema; with both amount_covered and percentage_covered null, the
+        basis value is never read.
+        """
         expr = _resolve_guarantee_amount_expr(has_percentage=True, alias="guar_amount")
         lf = pl.LazyFrame(
             {
                 "amount_covered": pl.Series("amount_covered", [None], dtype=pl.Float64),
                 "percentage_covered": pl.Series("percentage_covered", [None], dtype=pl.Float64),
                 "ead_after_collateral": [1_000_000.0],
+                "_crm_basis": [750_000.0],
             }
         )
         result = lf.with_columns(expr).collect()
@@ -481,13 +509,18 @@ class TestResolveGuaranteeAmountExpr:
         assert result["guar_amount"][0] == pytest.approx(0.0)
 
     def test_zero_percentage_falls_through_to_amount(self) -> None:
-        """has_percentage=True + percentage <= 0: uses amount_covered."""
+        """has_percentage=True + percentage <= 0: uses amount_covered.
+
+        ``_crm_basis`` is added so the frame satisfies the has_percentage=True
+        schema; percentage <= 0 doesn't trigger the basis-multiplication branch.
+        """
         expr = _resolve_guarantee_amount_expr(has_percentage=True, alias="guar_amount")
         lf = pl.LazyFrame(
             {
                 "amount_covered": pl.Series("amount_covered", [None], dtype=pl.Float64),
                 "percentage_covered": [0.0],
                 "ead_after_collateral": [1_000_000.0],
+                "_crm_basis": [650_000.0],
             }
         )
         result = lf.with_columns(expr).collect()
