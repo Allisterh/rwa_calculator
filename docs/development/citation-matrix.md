@@ -18,24 +18,29 @@ Last generated: 2026-07-10.
 
 ### CRR Art. 111 — Exposure value
 
-??? quote "`build_product_to_risk_type_expr` — src/rwa_calc/engine/ccf.py:120"
+??? quote "`build_product_to_risk_type_expr` — src/rwa_calc/engine/ccf.py:121"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:120:147"
+    --8<-- "src/rwa_calc/engine/ccf.py:121:148"
     ```
 
-??? quote "`sa_ccf_expression` — src/rwa_calc/engine/ccf.py:176"
+??? quote "`sa_ccf_expression` — src/rwa_calc/engine/ccf.py:177"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:176:208"
+    --8<-- "src/rwa_calc/engine/ccf.py:177:209"
     ```
 
-??? quote "`apply_ccf` — src/rwa_calc/engine/ccf.py:286"
+??? quote "`apply_ccf` — src/rwa_calc/engine/ccf.py:287"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:286:337"
+    --8<-- "src/rwa_calc/engine/ccf.py:287:338"
     ```
 
-??? quote "`_compute_ccf` — src/rwa_calc/engine/ccf.py:418"
+??? quote "`_compute_ccf` — src/rwa_calc/engine/ccf.py:419"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:418:587"
+    --8<-- "src/rwa_calc/engine/ccf.py:419:577"
+    ```
+
+??? quote "`_apply_oc_original_maturity_ccf` — src/rwa_calc/engine/ccf.py:582"
+    ```python
+    --8<-- "src/rwa_calc/engine/ccf.py:582:641"
     ```
 
 ??? quote "`resolve_provisions` — src/rwa_calc/engine/crm/provisions.py:37"
@@ -425,9 +430,9 @@ Last generated: 2026-07-10.
 
 ### CRR Art. 147 — Methodology to assign exposures to exposure classes
 
-??? quote "`_align_irb_exposure_class` — src/rwa_calc/engine/stages/classify/approach.py:324"
+??? quote "`_align_irb_exposure_class` — src/rwa_calc/engine/stages/classify/approach.py:331"
     ```python
-    --8<-- "src/rwa_calc/engine/stages/classify/approach.py:324:344"
+    --8<-- "src/rwa_calc/engine/stages/classify/approach.py:331:351"
     ```
 
 ??? quote "`classify` — src/rwa_calc/engine/stages/classify/classifier.py:105"
@@ -664,14 +669,14 @@ Last generated: 2026-07-10.
 
 ### CRR Art. 166 — Exposures to corporates, institutions, central governments and central banks and retail exposures
 
-??? quote "`_firb_ccf_for_col` — src/rwa_calc/engine/ccf.py:211"
+??? quote "`_firb_ccf_for_col` — src/rwa_calc/engine/ccf.py:212"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:211:258"
+    --8<-- "src/rwa_calc/engine/ccf.py:212:259"
     ```
 
-??? quote "`apply_ccf` — src/rwa_calc/engine/ccf.py:287"
+??? quote "`apply_ccf` — src/rwa_calc/engine/ccf.py:288"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:286:337"
+    --8<-- "src/rwa_calc/engine/ccf.py:287:338"
     ```
 
 
@@ -719,9 +724,9 @@ Last generated: 2026-07-10.
     --8<-- "src/rwa_calc/engine/crm/guarantees.py:90:166"
     ```
 
-??? quote "`_apply_maturity_mismatch_to_guarantees` — src/rwa_calc/engine/crm/guarantees.py:1267"
+??? quote "`_apply_maturity_mismatch_to_guarantees` — src/rwa_calc/engine/crm/guarantees.py:1311"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/guarantees.py:1267:1371"
+    --8<-- "src/rwa_calc/engine/crm/guarantees.py:1311:1415"
     ```
 
 
@@ -844,9 +849,9 @@ Last generated: 2026-07-10.
 
 ### CRR Art. 234 — Calculating risk-weighted exposure amounts and expected loss amounts in the event of partial protection and tranching
 
-??? quote "`_build_remainder_sub_rows` — src/rwa_calc/engine/crm/guarantees.py:693"
+??? quote "`_build_remainder_sub_rows` — src/rwa_calc/engine/crm/guarantees.py:731"
     ```python
-    --8<-- "src/rwa_calc/engine/crm/guarantees.py:693:754"
+    --8<-- "src/rwa_calc/engine/crm/guarantees.py:731:792"
     ```
 
 
@@ -1080,9 +1085,9 @@ Last generated: 2026-07-10.
 
 ### PS1/26, paragraph 111 — PRA Rulebook: CRR Firms: (CRR) Instrument 2026
 
-??? quote "`_compute_ccf` — src/rwa_calc/engine/ccf.py:419"
+??? quote "`_compute_ccf` — src/rwa_calc/engine/ccf.py:420"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:418:587"
+    --8<-- "src/rwa_calc/engine/ccf.py:419:577"
     ```
 
 
@@ -1278,9 +1283,9 @@ Last generated: 2026-07-10.
 
 ### PS1/26, paragraph 166.5 — PRA Rulebook: CRR Firms: (CRR) Instrument 2026
 
-??? quote "`_apply_purchased_receivable_ccf` — src/rwa_calc/engine/ccf.py:592"
+??? quote "`_apply_purchased_receivable_ccf` — src/rwa_calc/engine/ccf.py:646"
     ```python
-    --8<-- "src/rwa_calc/engine/ccf.py:592:632"
+    --8<-- "src/rwa_calc/engine/ccf.py:646:686"
     ```
 
 

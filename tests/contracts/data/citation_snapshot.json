@@ -15,6 +15,9 @@
   "rwa_calc.engine.aggregator.aggregator::_add_post_crm_reporting_class": [
     "CRR Art. 235"
   ],
+  "rwa_calc.engine.ccf::CCFCalculator._apply_oc_original_maturity_ccf": [
+    "CRR Art. 111(1)"
+  ],
   "rwa_calc.engine.ccf::CCFCalculator._apply_purchased_receivable_ccf": [
     "PS1/26, paragraph 166.5"
   ],
