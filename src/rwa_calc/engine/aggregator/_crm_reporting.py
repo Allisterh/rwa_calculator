@@ -28,12 +28,45 @@ from __future__ import annotations
 
 import polars as pl
 
+from rwa_calc.domain.enums import ApproachType
 from rwa_calc.engine.aggregator._schemas import (
     POST_CRM_DETAILED_SCHEMA,
     POST_CRM_SUMMARY_SCHEMA,
     PRE_CRM_SUMMARY_SCHEMA,
 )
 from rwa_calc.engine.aggregator._utils import col_or_default, empty_frame
+
+# Name of the aggregator-computed post-guarantee approach column (the approach twin
+# of ``exposure_class_post_crm``). Read here when present so the detailed view and
+# the sealed results frame can never disagree on the guaranteed leg's approach.
+POST_CRM_APPROACH_COLUMN = "approach_post_crm"
+
+
+def post_crm_approach_expr() -> pl.Expr:
+    """The post-guarantee (post-substitution) approach for one exposure row.
+
+    Single source of the rule, consumed by the aggregator (which materialises it as
+    ``approach_post_crm``) and by the post-CRM detailed view below:
+
+    - a guaranteed leg with an SA guarantor is a direct SA exposure to the guarantor
+      (CRR Art. 235 risk-weight substitution) -> ``standardised``
+    - a guaranteed leg with an IRB guarantor stays under the obligor's IRB approach
+      (CRR Art. 161 / CRE22.70-85 parameter substitution) -> ``approach_applied``
+    - everything else keeps ``approach_applied``
+
+    Requires ``is_guaranteed``, ``guarantor_approach`` and ``approach_applied`` —
+    all sealed on every calculator branch exit. A null ``is_guaranteed`` makes the
+    predicate null, which ``when`` routes to ``otherwise`` (the obligor's approach),
+    so no fill is needed — mirroring ``_add_post_crm_reporting_class``.
+    """
+    return (
+        pl.when(
+            (pl.col("is_guaranteed") == True)  # noqa: E712
+            & (pl.col("guarantor_approach") == "sa")
+        )
+        .then(pl.lit(ApproachType.SA.value))
+        .otherwise(pl.col("approach_applied"))
+    )
 
 
 def generate_pre_crm_summary(results: pl.LazyFrame) -> pl.LazyFrame:
@@ -214,18 +247,16 @@ def _build_guaranteed_portions(
     else:
         rw_expr = pl.lit(1.0)
 
-    # For guaranteed portion: use "standardised" when guarantor is SA, else original
-    has_approach = "approach_applied" in cols
-    has_guarantor_approach = "guarantor_approach" in cols
-    approach_expr = col_or_default("approach_applied", cols)
-    if has_guarantor_approach and has_approach:
-        guaranteed_approach_expr = (
-            pl.when(pl.col("guarantor_approach") == "sa")
-            .then(pl.lit("standardised"))
-            .otherwise(pl.col("approach_applied"))
-        )
+    # Post-substitution approach for the guaranteed portion. The aggregator
+    # materialises the rule as ``approach_post_crm`` before this view is built, so
+    # read it back rather than re-deriving; fall back to the expression (and then to
+    # the raw approach) only for frames that predate the column, e.g. minimal tests.
+    if POST_CRM_APPROACH_COLUMN in cols:
+        guaranteed_approach_expr = pl.col(POST_CRM_APPROACH_COLUMN)
+    elif {"approach_applied", "guarantor_approach", "is_guaranteed"} <= cols:
+        guaranteed_approach_expr = post_crm_approach_expr()
     else:
-        guaranteed_approach_expr = approach_expr
+        guaranteed_approach_expr = col_or_default("approach_applied", cols)
 
     return results.filter(pl.col("is_guaranteed").fill_null(False)).with_columns(
         [

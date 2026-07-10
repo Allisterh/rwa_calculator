@@ -38,6 +38,7 @@ from rwa_calc.engine.aggregator._crm_reporting import (
     generate_post_crm_detailed,
     generate_post_crm_summary,
     generate_pre_crm_summary,
+    post_crm_approach_expr,
 )
 from rwa_calc.engine.aggregator._el_summary import compute_el_portfolio_summary
 from rwa_calc.engine.aggregator._equity_prep import prepare_equity_results
@@ -141,9 +142,11 @@ class OutputAggregator:
         # here and flows through the residual multiplier, output floor, post-CRM
         # views and the sealed results frame. ``exposure_class_post_crm`` is its
         # post-guarantee twin (guaranteed slice under the guarantor's class) that
-        # the reconciliation ties out on.
+        # the reconciliation ties out on; ``approach_post_crm`` is the matching
+        # post-guarantee approach, so the two partition the same money the same way.
         combined_unmultiplied = _add_exposure_class_applied(combined_unmultiplied)
         combined_unmultiplied = _add_post_crm_reporting_class(combined_unmultiplied)
+        combined_unmultiplied = _add_post_crm_reporting_approach(combined_unmultiplied)
 
         # Build the per-pool summary and the per-exposure reconciliation
         # BEFORE applying the residual multiplier -- the pool slice needs
@@ -506,6 +509,34 @@ def _add_post_crm_reporting_class(lf: pl.LazyFrame) -> pl.LazyFrame:
         .otherwise(pl.col("exposure_class_applied"))
         .alias("exposure_class_post_crm")
     )
+
+
+@cites("CRR Art. 235")
+def _add_post_crm_reporting_approach(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Add ``approach_post_crm`` — the post-guarantee (post-substitution) approach.
+
+    The approach twin of :func:`_add_post_crm_reporting_class`. Where the guaranteed
+    slice is reported under the GUARANTOR's class, it must also be reported under the
+    approach the guarantor exposure is treated with, so the class and the approach
+    partition the same post-guarantee money consistently:
+
+    - guaranteed leg, SA guarantor -> ``standardised`` (Art. 235 risk-weight
+      substitution treats the protected portion as a direct SA exposure to the
+      guarantor)
+    - guaranteed leg, IRB guarantor -> the obligor's ``approach_applied`` (Art. 161 /
+      CRE22.70-85 parameter substitution keeps the exposure under IRB)
+    - retained leg / unguaranteed exposure -> ``approach_applied``
+
+    ``approach_applied`` stays the approach the row's RWA was computed under (the
+    branch it ran through); this is its post-substitution twin, consumed by the
+    reconciliation's post-guarantee by-class x method allocation and by the post-CRM
+    detailed reporting view.
+
+    References:
+        CRR Art. 235: SA risk-weight substitution on the protected portion.
+        CRR Art. 161 / CRE22.70-85: IRB parameter substitution.
+    """
+    return lf.with_columns(post_crm_approach_expr().alias("approach_post_crm"))
 
 
 def _collect_views(views: dict[str, pl.LazyFrame]) -> dict[str, pl.DataFrame]:
