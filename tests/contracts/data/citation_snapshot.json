@@ -458,7 +458,19 @@
   "rwa_calc.reporting.corep.c07::generate_c07": [
     "PS1/26, paragraph 1.3"
   ],
-  "rwa_calc.reporting.corep.generator::_c08_memorandum_cols": [
+  "rwa_calc.reporting.corep.c08::generate_c08_01": [
+    "PS1/26, paragraph 1.3"
+  ],
+  "rwa_calc.reporting.corep.c08::generate_c08_02": [
+    "PS1/26, paragraph 1.3"
+  ],
+  "rwa_calc.reporting.corep.c08::generate_c08_03": [
+    "PS1/26, paragraph 1.3"
+  ],
+  "rwa_calc.reporting.corep.c08::generate_c08_04": [
+    "PS1/26, paragraph 1.3"
+  ],
+  "rwa_calc.reporting.corep.c08::generate_c08_05": [
     "PS1/26, paragraph 1.3"
   ],
   "rwa_calc.reporting.pillar3.cms1::build_cms1_spec": [

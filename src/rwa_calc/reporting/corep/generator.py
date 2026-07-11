@@ -37,15 +37,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import polars as pl
-from watchfire import cites
 
 from rwa_calc.reporting.corep.c07 import c07_population, generate_c07
+from rwa_calc.reporting.corep.c08 import (
+    generate_c08_01,
+    generate_c08_02,
+    generate_c08_03,
+    generate_c08_04,
+    generate_c08_05,
+)
 from rwa_calc.reporting.corep.templates import (
     B31_C02_00_COLUMN_REFS,
     C02_00_CREDIT_RISK_ROWS,
     C02_00_SA_CLASS_MAP,
-    C08_03_PD_RANGES,
-    C08_04_ROWS,
     C08_06_CATEGORY_MAP,
     C08_07_CRR_RETAIL_CLASSES,
     C08_07_IRB_APPROACHES,
@@ -59,7 +63,6 @@ from rwa_calc.reporting.corep.templates import (
     OF_02_01_COLUMN_REFS,
     OF_02_01_COLUMNS,
     OF_02_01_ROW_SECTIONS,
-    PD_BANDS,
     SA_EXPOSURE_CLASS_ROWS,
     COREPRow,
     get_c02_00_columns,
@@ -83,7 +86,6 @@ from rwa_calc.reporting.corep.templates import (
     get_c34_02_columns,
     get_c34_04_columns,
     get_c34_08_columns,
-    get_irb_row_sections,
 )
 from rwa_calc.reporting.kernel import (
     available_columns as _available_columns,
@@ -97,9 +99,6 @@ from rwa_calc.reporting.kernel import (
 )
 from rwa_calc.reporting.kernel import (
     filter_off_bs as _filter_off_bs,
-)
-from rwa_calc.reporting.kernel import (
-    filter_on_bs as _filter_on_bs,
 )
 from rwa_calc.reporting.kernel import (
     null_row as _null_row,
@@ -287,11 +286,11 @@ class COREPGenerator:
 
         # IRB templates (C 08.01, C 08.02, C 08.03, C 08.06)
         irb_data = _filter_by_irb_approach(results, cols)
-        c08_01 = self._generate_all_c08_01(irb_data, cols, framework, errors)
-        c08_02 = self._generate_all_c08_02(irb_data, cols, framework, errors)
-        c08_03 = self._generate_all_c08_03(irb_data, cols, framework, errors)
-        c08_04 = self._generate_all_c08_04(irb_data, cols, framework, errors)
-        c08_05 = self._generate_all_c08_05(irb_data, cols, framework, errors)
+        c08_01 = self._generate_all_c08_01(results, cols, framework, errors)
+        c08_02 = self._generate_all_c08_02(results, cols, framework, errors)
+        c08_03 = self._generate_all_c08_03(results, cols, framework, errors)
+        c08_04 = self._generate_all_c08_04(results, cols, framework, errors)
+        c08_05 = self._generate_all_c08_05(results, cols, framework, errors)
         c08_06 = self._generate_all_c08_06(irb_data, cols, framework, errors)
 
         # C 08.07 / OF 08.07 — IRB scope of use
@@ -1520,666 +1519,79 @@ class COREPGenerator:
 
     def _generate_all_c08_01(
         self,
-        irb_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> dict[str, pl.DataFrame]:
-        """Generate C 08.01 DataFrames for all IRB exposure classes."""
-        ec_col = _pick(cols, "exposure_class")
-        ead_col = _pick(cols, "ead_final")
-        rwa_col = _pick(cols, "rwa_final", "rwa_post_factor", "rwa")
+        """Generate the per-class C 08.01 IRB templates.
 
-        if ec_col is None or ead_col is None or rwa_col is None:
-            if ead_col is None or rwa_col is None:
-                errors.append("C08.01: Missing EAD or RWA columns")
-            if ec_col is None:
-                errors.append("C08.01: Missing exposure_class column")
-            return {}
+        Dispatch-router entry (Phase 7 S8): C 08.01 is declarative — the
+        cell semantics live in ``corep/c08.py::generate_c08_01`` and run
+        through the one ``cellspec.execute`` executor.
 
-        irb_df: pl.DataFrame = irb_data.collect()
-        if len(irb_df) == 0:
-            return {}
-
-        data_cols = set(irb_df.columns)
-        classes = irb_df[ec_col].unique().sort().to_list()
-
-        # Pre-compute CRM substitution flows (inflows require full dataset)
-        sub_flows = _compute_substitution_flows(irb_df, data_cols)
-
-        result: dict[str, pl.DataFrame] = {}
-        for ec in classes:
-            class_df = irb_df.filter(pl.col(ec_col) == ec)
-            inflow = sub_flows.get(ec, {}).get("inflow", 0.0)
-            template_df = self._generate_c08_01_for_class(
-                class_df, data_cols, ead_col, rwa_col, framework, inflow
-            )
-            result[ec] = template_df
-
-        return result
-
-    def _generate_c08_01_for_class(
-        self,
-        class_data: pl.DataFrame,
-        cols: set[str],
-        ead_col: str,
-        rwa_col: str,
-        framework: str,
-        substitution_inflow: float = 0.0,
-    ) -> pl.DataFrame:
-        """Generate a C 08.01 DataFrame for a single IRB exposure class.
-
-        Builds 3 row sections:
-        1. Total (+ supporting factors for CRR)
-        2. Breakdown by Exposure Types
-        3. Calculation Approaches
+        References:
+            CRR Art. 142-191; Reg (EU) 2021/451 Annex I/II; PS1/26 Annex II.
         """
-        column_defs = get_c08_columns(framework)
-        column_refs = [c.ref for c in column_defs]
-        row_sections = get_irb_row_sections(framework)
-
-        rows: list[dict[str, object]] = []
-
-        def _emit_subset_row(row_def, subset: pl.DataFrame | None) -> None:
-            if subset is not None and len(subset) > 0:
-                values = _compute_c08_values(subset, cols, ead_col, rwa_col, column_refs)
-                rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-            else:
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-
-        # Section 1: Total
-        for row_def in row_sections[0].rows:
-            if row_def.ref == "0010":
-                values = _compute_c08_values(
-                    class_data,
-                    cols,
-                    ead_col,
-                    rwa_col,
-                    column_refs,
-                    substitution_inflow=substitution_inflow,
-                )
-                rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-            else:
-                rows.append(_null_row(row_def.ref, row_def.name, column_refs))
-
-        # Section 2: Breakdown by Exposure Types
-        for row_def in row_sections[1].rows:
-            _emit_subset_row(row_def, _c08_01_section2_subset(row_def.ref, class_data, cols))
-
-        # Section 3: Calculation Approaches
-        approach_col = "approach_applied" if "approach_applied" in cols else None
-        for row_def in row_sections[2].rows:
-            _emit_subset_row(
-                row_def,
-                _filter_section3_row(class_data, cols, row_def.ref, approach_col, framework),
-            )
-
-        schema: dict[str, PolarsDataType] = {
-            "row_ref": pl.String,
-            "row_name": pl.String,
-        }
-        schema.update(dict.fromkeys(column_refs, pl.Float64))
-        return pl.DataFrame(rows, schema=schema)
-
-    # =========================================================================
-    # C 08.02 — IRB PD Grade Breakdown (per exposure class)
-    # =========================================================================
+        return generate_c08_01(results, cols, framework, errors)
 
     def _generate_all_c08_02(
         self,
-        irb_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> dict[str, pl.DataFrame]:
-        """Generate C 08.02 DataFrames for all IRB exposure classes."""
-        ec_col = _pick(cols, "exposure_class")
-        ead_col = _pick(cols, "ead_final")
-        rwa_col = _pick(cols, "rwa_final", "rwa_post_factor", "rwa")
-        pd_col = _pick(cols, "pd_floored", "pd")
-        # Firm-supplied internal rating grade (COREP Annex II, C 08.02): when
-        # present, rows are keyed by the firm's obligor grade scale rather than
-        # the fixed PD bands.
-        grade_col = _pick(cols, "cp_internal_rating_grade")
+        """Generate the per-class C 08.02 IRB grade/PD-band templates.
 
-        if ec_col is None or ead_col is None or rwa_col is None:
-            errors.append("C08.02: Missing required columns")
-            return {}
-
-        if pd_col is None:
-            errors.append("C08.02: No PD column available — skipping PD grade breakdown")
-            return {}
-
-        irb_df: pl.DataFrame = irb_data.collect()
-        if len(irb_df) == 0:
-            return {}
-
-        data_cols = set(irb_df.columns)
-        classes = irb_df[ec_col].unique().sort().to_list()
-        result: dict[str, pl.DataFrame] = {}
-
-        for ec in classes:
-            class_df = irb_df.filter(pl.col(ec_col) == ec)
-            template_df = self._generate_c08_02_for_class(
-                class_df, data_cols, ead_col, rwa_col, pd_col, framework, grade_col
-            )
-            result[ec] = template_df
-
-        return result
-
-    def _generate_c08_02_for_class(
-        self,
-        class_data: pl.DataFrame,
-        cols: set[str],
-        ead_col: str,
-        rwa_col: str,
-        pd_col: str,
-        framework: str,
-        grade_col: str | None = None,
-    ) -> pl.DataFrame:
-        """Generate a C 08.02 DataFrame for a single IRB exposure class.
-
-        Rows are keyed either by the firm-supplied internal rating grade
-        (COREP Annex II, C 08.02 obligor grade scale) when ``grade_col`` is
-        present and populated for the class, or by the fixed PD bands as a
-        graceful fallback. Each row carries the same columns as C 08.01 plus
-        an obligor grade identifier (col 0005) and PD (col 0010 for B3.1).
+        Dispatch-router entry (Phase 7 S8): C 08.02 is declarative — the
+        data-driven grade/PD-band rows and the String 0005 column live in
+        ``corep/c08.py::generate_c08_02`` (the CR9.1 pattern).
         """
-        column_defs = get_c08_02_columns(framework)
-        column_refs = [c.ref for c in column_defs]
-
-        if grade_col is not None and grade_col in cols:
-            graded = self._generate_c08_02_grade_rows(
-                class_data, cols, ead_col, rwa_col, grade_col, column_refs
-            )
-            if graded is not None:
-                return self._c08_02_frame_from_rows(graded, column_refs)
-
-        # Assign PD bands
-        band_expr = pl.lit("Unassigned")
-        for lower, upper, label in reversed(PD_BANDS):
-            band_expr = (
-                pl.when((pl.col(pd_col) >= lower) & (pl.col(pd_col) < upper))
-                .then(pl.lit(label))
-                .otherwise(band_expr)
-            )
-
-        banded = class_data.with_columns(band_expr.alias("_pd_band"))
-
-        # Build one row per PD band
-        rows: list[dict[str, object]] = []
-        band_labels = [label for _, _, label in PD_BANDS]
-
-        for label in band_labels:
-            band_data = banded.filter(pl.col("_pd_band") == label).drop("_pd_band")
-            if len(band_data) == 0:
-                continue
-
-            # Compute C 08.01-equivalent values for this band
-            values = _compute_c08_values(band_data, cols, ead_col, rwa_col, column_refs)
-            # Col 0005: obligor grade identifier = the PD band label
-            values["0005"] = label
-            rows.append({"row_ref": label, "row_name": label, **values})
-
-        # Handle unassigned
-        unassigned = banded.filter(pl.col("_pd_band") == "Unassigned").drop("_pd_band")
-        if len(unassigned) > 0:
-            values = _compute_c08_values(unassigned, cols, ead_col, rwa_col, column_refs)
-            values["0005"] = "Unassigned"
-            rows.append({"row_ref": "Unassigned", "row_name": "Unassigned", **values})
-
-        return self._c08_02_frame_from_rows(rows, column_refs)
-
-    def _generate_c08_02_grade_rows(
-        self,
-        class_data: pl.DataFrame,
-        cols: set[str],
-        ead_col: str,
-        rwa_col: str,
-        grade_col: str,
-        column_refs: list[str],
-    ) -> list[dict[str, object]] | None:
-        """Build C 08.02 rows keyed by firm internal rating grade.
-
-        Returns one row per distinct non-null grade label (col 0005 = the grade
-        string); null-grade rows fall to a single "Unassigned" residual row.
-        Returns ``None`` when every grade value for the class is null so the
-        caller can fall back to the fixed PD-band path.
-        """
-        non_null = class_data.filter(pl.col(grade_col).is_not_null())
-        if len(non_null) == 0:
-            return None
-
-        rows: list[dict[str, object]] = []
-        grade_labels = non_null[grade_col].unique().sort().to_list()
-        for label in grade_labels:
-            grade_data = non_null.filter(pl.col(grade_col) == label)
-            values = _compute_c08_values(grade_data, cols, ead_col, rwa_col, column_refs)
-            # Col 0005: obligor grade identifier = the firm grade label
-            values["0005"] = label
-            rows.append({"row_ref": label, "row_name": label, **values})
-
-        # Rows with a null grade fall to an "Unassigned" residual (do not
-        # silently re-bucket them by PD).
-        unassigned = class_data.filter(pl.col(grade_col).is_null())
-        if len(unassigned) > 0:
-            values = _compute_c08_values(unassigned, cols, ead_col, rwa_col, column_refs)
-            values["0005"] = "Unassigned"
-            rows.append({"row_ref": "Unassigned", "row_name": "Unassigned", **values})
-
-        return rows
-
-    @staticmethod
-    def _c08_02_frame_from_rows(
-        rows: list[dict[str, object]],
-        column_refs: list[str],
-    ) -> pl.DataFrame:
-        """Materialise C 08.02 rows into a typed DataFrame.
-
-        Col 0005 (obligor grade identifier) is String; remaining columns are
-        Float64. Returns an empty, correctly-typed frame when ``rows`` is empty.
-        """
-        if not rows:
-            empty_schema: dict[str, PolarsDataType] = {
-                "row_ref": pl.String,
-                "row_name": pl.String,
-            }
-            empty_schema.update(dict.fromkeys(column_refs, pl.Float64))
-            return pl.DataFrame(schema=empty_schema)
-
-        # Infer schema from column defs — 0005 is String, rest are Float64
-        schema: dict[str, PolarsDataType] = {"row_ref": pl.String, "row_name": pl.String}
-        for ref in column_refs:
-            schema[ref] = pl.String if ref == "0005" else pl.Float64
-
-        return pl.DataFrame(rows, schema=schema)
-
-    # =========================================================================
-    # C 08.03 — IRB PD Ranges (per exposure class, 17 fixed regulatory buckets)
-    # =========================================================================
+        return generate_c08_02(results, cols, framework, errors)
 
     def _generate_all_c08_03(
         self,
-        irb_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> dict[str, pl.DataFrame]:
-        """Generate C 08.03 / OF 08.03 DataFrames for all IRB exposure classes.
+        """Generate the per-class C 08.03 PD-range templates.
 
-        C 08.03 provides PD distribution analysis using 17 fixed regulatory PD
-        range buckets (0.00-0.03% through 100% default). Each row contains
-        aggregated exposure, PD, LGD, maturity, RWEA, EL, and provision data
-        for exposures falling within the PD range.
-
-        Slotting exposures are excluded (they use category-based weights,
-        not PD-based calculation).
-
-        Basel 3.1 distinction: Row allocation uses pre-input-floor PD,
-        but col 0050 reports post-input-floor average PD.
-
-        References:
-        - CRR Art. 153, Regulation (EU) 2021/451 Annex I
-        - PRA PS1/26 Annex I/II (OF 08.03)
+        Dispatch-router entry (Phase 7 S8): declarative in
+        ``corep/c08.py::generate_c08_03`` (sparse PD-range rows).
         """
-        ec_col = _pick(cols, "exposure_class")
-        ead_col = _pick(cols, "ead_final")
-        rwa_col = _pick(cols, "rwa_final", "rwa_post_factor", "rwa")
-
-        if ec_col is None or ead_col is None or rwa_col is None:
-            errors.append("C08.03: Missing required columns (exposure_class/ead/rwa)")
-            return {}
-
-        # For row allocation: B31 uses pre-input-floor PD, CRR uses floored PD
-        if framework == "BASEL_3_1":
-            alloc_pd_col = _pick(cols, "pd", "pd_floored")
-        else:
-            alloc_pd_col = _pick(cols, "pd_floored", "pd")
-        # For col 0050 (reported PD): always post-input-floor
-        report_pd_col = _pick(cols, "pd_floored", "pd")
-
-        if alloc_pd_col is None:
-            errors.append("C08.03: No PD column available — skipping PD range breakdown")
-            return {}
-
-        # Exclude slotting exposures — C 08.03 covers F-IRB/A-IRB only
-        approach_col = _pick(cols, "approach_applied", "approach")
-        if approach_col is not None:
-            irb_no_slotting = irb_data.filter(pl.col(approach_col) != "slotting")
-        else:
-            irb_no_slotting = irb_data
-
-        irb_df: pl.DataFrame = irb_no_slotting.collect()
-        if len(irb_df) == 0:
-            return {}
-
-        data_cols = set(irb_df.columns)
-        classes = irb_df[ec_col].unique().sort().to_list()
-        result: dict[str, pl.DataFrame] = {}
-
-        for ec in classes:
-            class_df = irb_df.filter(pl.col(ec_col) == ec)
-            template_df = self._generate_c08_03_for_class(
-                class_df,
-                data_cols,
-                ead_col,
-                rwa_col,
-                alloc_pd_col,
-                report_pd_col or alloc_pd_col,
-                framework,
-            )
-            result[ec] = template_df
-
-        return result
-
-    def _generate_c08_03_for_class(
-        self,
-        class_data: pl.DataFrame,
-        cols: set[str],
-        ead_col: str,
-        rwa_col: str,
-        alloc_pd_col: str,
-        report_pd_col: str,
-        framework: str,
-    ) -> pl.DataFrame:
-        """Generate a C 08.03 DataFrame for a single IRB exposure class.
-
-        Rows = 17 fixed regulatory PD range buckets (plus optional unassigned).
-        Columns = 11: on/off-BS exposure, avg CCF, EAD, avg PD, obligors,
-        avg LGD, avg maturity, RWEA, EL, provisions.
-
-        Args:
-            class_data: DataFrame filtered to a single exposure class.
-            cols: Available column names.
-            ead_col: EAD column name.
-            rwa_col: RWA column name.
-            alloc_pd_col: PD column for row allocation (pre-floor for B31).
-            report_pd_col: PD column for col 0050 reporting (post-floor).
-            framework: "CRR" or "BASEL_3_1".
-        """
-        column_defs = get_c08_03_columns(framework)
-        column_refs = [c.ref for c in column_defs]
-
-        # Assign PD range buckets using the allocation PD column
-        band_expr = pl.lit("Unassigned")
-        for lower, upper, _row_ref, label in reversed(C08_03_PD_RANGES):
-            band_expr = (
-                pl.when((pl.col(alloc_pd_col) >= lower) & (pl.col(alloc_pd_col) < upper))
-                .then(pl.lit(label))
-                .otherwise(band_expr)
-            )
-        banded = class_data.with_columns(band_expr.alias("_pd_range"))
-
-        rows: list[dict[str, object]] = []
-
-        for _lower, _upper, row_ref, label in C08_03_PD_RANGES:
-            band_data = banded.filter(pl.col("_pd_range") == label).drop("_pd_range")
-            if len(band_data) == 0:
-                continue
-
-            values = _compute_c08_03_values(
-                band_data, cols, ead_col, rwa_col, report_pd_col, column_refs
-            )
-            rows.append({"row_ref": row_ref, "row_name": label, **values})
-
-        # Handle unassigned (e.g. null PD)
-        unassigned = banded.filter(pl.col("_pd_range") == "Unassigned").drop("_pd_range")
-        if len(unassigned) > 0:
-            values = _compute_c08_03_values(
-                unassigned, cols, ead_col, rwa_col, report_pd_col, column_refs
-            )
-            rows.append({"row_ref": "9999", "row_name": "Unassigned", **values})
-
-        if not rows:
-            schema: dict[str, PolarsDataType] = {"row_ref": pl.String, "row_name": pl.String}
-            schema.update(dict.fromkeys(column_refs, pl.Float64))
-            return pl.DataFrame(schema=schema)
-
-        schema: dict[str, PolarsDataType] = {"row_ref": pl.String, "row_name": pl.String}
-        schema.update(dict.fromkeys(column_refs, pl.Float64))
-        return pl.DataFrame(rows, schema=schema)
-
-    # =========================================================================
-    # C 08.04 / OF 08.04 — IRB RWEA FLOW STATEMENTS
-    # =========================================================================
+        return generate_c08_03(results, cols, framework, errors)
 
     def _generate_all_c08_04(
         self,
-        irb_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> dict[str, pl.DataFrame]:
-        """Generate C 08.04 / OF 08.04 DataFrames for all IRB exposure classes.
+        """Generate the per-class C 08.04 RWEA flow templates.
 
-        C 08.04 reports quarter-over-quarter movements in IRB RWEA, decomposed
-        into seven standardised driver categories. Submitted once per IRB
-        exposure class, excluding CCR and slotting exposures.
-
-        The pipeline provides current-period data only. Row 0090 (closing RWEA)
-        is populated from current results. Rows 0010 (opening RWEA) and
-        0020-0080 (movement drivers) are null because they require prior-period
-        comparison data that a single pipeline run cannot produce.
-
-        Why: Flow statements help supervisors understand *why* capital
-        requirements changed, not just *that* they changed. The structured
-        driver decomposition (asset size, quality, models, methodology,
-        acquisitions, FX, other) is mandatory for IRB firms.
-
-        References:
-        - Regulation (EU) 2021/451, Annex I/II (C 08.04)
-        - PRA PS1/26, Annex I/II (OF 08.04)
+        Dispatch-router entry (Phase 7 S8): declarative in
+        ``corep/c08.py::generate_c08_04`` (only the closing row populates).
         """
-        ec_col = _pick(cols, "exposure_class")
-
-        if ec_col is None:
-            errors.append("C08.04: Missing required column (exposure_class)")
-            return {}
-
-        # Exclude slotting exposures — C 08.04 covers F-IRB/A-IRB only
-        approach_col = _pick(cols, "approach_applied", "approach")
-        if approach_col is not None:
-            irb_no_slotting = irb_data.filter(pl.col(approach_col) != "slotting")
-        else:
-            irb_no_slotting = irb_data
-
-        irb_df: pl.DataFrame = irb_no_slotting.collect()
-        if len(irb_df) == 0:
-            return {}
-
-        classes = irb_df[ec_col].unique().sort().to_list()
-        result: dict[str, pl.DataFrame] = {}
-
-        for ec in classes:
-            class_df = irb_df.filter(pl.col(ec_col) == ec)
-            template_df = self._generate_c08_04_for_class(
-                class_df,
-                set(irb_df.columns),
-                framework,
-            )
-            result[ec] = template_df
-
-        return result
-
-    def _generate_c08_04_for_class(
-        self,
-        class_data: pl.DataFrame,
-        cols: set[str],
-        framework: str,
-    ) -> pl.DataFrame:
-        """Generate a C 08.04 DataFrame for a single IRB exposure class.
-
-        Rows = 9: opening balance, 7 movement drivers, closing balance.
-        Columns = 1: RWEA (col ref 0010).
-
-        Only row 0090 (closing RWEA) is populated from the current pipeline.
-        All other rows require prior-period data and are null.
-
-        Args:
-            class_data: DataFrame filtered to a single exposure class.
-            cols: Available column names.
-            framework: "CRR" or "BASEL_3_1".
-        """
-        column_defs = get_c08_04_columns(framework)
-        column_refs = [c.ref for c in column_defs]
-
-        rwa_col = _pick(cols, "rwa_final", "rwa")
-        closing_rwea: float | None = None
-        if rwa_col is not None and len(class_data) > 0:
-            closing_rwea = float(class_data[rwa_col].fill_null(0.0).sum())
-
-        rows: list[dict[str, object]] = []
-        for row_def in C08_04_ROWS:
-            if row_def.ref == "0090":
-                # Closing RWEA — populated from current pipeline results
-                values: dict[str, object] = {"0010": closing_rwea}
-            else:
-                # Opening (0010) and movement drivers (0020-0080)
-                # require prior-period comparison data
-                values = {"0010": None}
-            rows.append({"row_ref": row_def.ref, "row_name": row_def.name, **values})
-
-        schema: dict[str, PolarsDataType] = {"row_ref": pl.String, "row_name": pl.String}
-        schema.update(dict.fromkeys(column_refs, pl.Float64))
-        return pl.DataFrame(rows, schema=schema)
-
-    # =========================================================================
-    # C 08.05 / OF 08.05 — IRB PD BACKTESTING
-    # =========================================================================
+        return generate_c08_04(results, cols, framework, errors)
 
     def _generate_all_c08_05(
         self,
-        irb_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> dict[str, pl.DataFrame]:
-        """Generate C 08.05 / OF 08.05 DataFrames for all IRB exposure classes.
+        """Generate the per-class C 08.05 PD back-testing templates.
 
-        C 08.05 provides PD backtesting analysis using 17 fixed regulatory PD
-        range buckets (same as C 08.03). Each row contains PD model validation
-        metrics: arithmetic average PD, obligor count, defaults, and default
-        rates. Slotting exposures are excluded.
-
-        Basel 3.1 distinction: Row allocation uses pre-input-floor PD,
-        but col 0010 reports the arithmetic average post-input-floor PD.
-
-        Why: PD backtesting is critical for IRB model validation. Comparing
-        assigned PDs against realised default rates reveals model calibration
-        drift and supports supervisory review of internal models.
-
-        References:
-        - CRR Art. 180 (PD validation requirements)
-        - Regulation (EU) 2021/451, Annex I/II (C 08.05)
-        - PRA PS1/26, Annex I/II (OF 08.05)
+        Dispatch-router entry (Phase 7 S8): declarative in
+        ``corep/c08.py::generate_c08_05`` (sparse ranges, point-in-time
+        proxies for the prior-year/historical carriers).
         """
-        ec_col = _pick(cols, "exposure_class")
-
-        if ec_col is None:
-            errors.append("C08.05: Missing required column (exposure_class)")
-            return {}
-
-        # For row allocation: B31 uses pre-input-floor PD, CRR uses floored PD
-        if framework == "BASEL_3_1":
-            alloc_pd_col = _pick(cols, "pd", "pd_floored")
-        else:
-            alloc_pd_col = _pick(cols, "pd_floored", "pd")
-        # For col 0010 (reported PD): always post-input-floor
-        report_pd_col = _pick(cols, "pd_floored", "pd")
-
-        if alloc_pd_col is None:
-            errors.append("C08.05: No PD column available — skipping PD backtesting")
-            return {}
-
-        # Exclude slotting exposures — C 08.05 covers F-IRB/A-IRB only
-        approach_col = _pick(cols, "approach_applied", "approach")
-        if approach_col is not None:
-            irb_no_slotting = irb_data.filter(pl.col(approach_col) != "slotting")
-        else:
-            irb_no_slotting = irb_data
-
-        irb_df: pl.DataFrame = irb_no_slotting.collect()
-        if len(irb_df) == 0:
-            return {}
-
-        classes = irb_df[ec_col].unique().sort().to_list()
-        result: dict[str, pl.DataFrame] = {}
-
-        for ec in classes:
-            class_df = irb_df.filter(pl.col(ec_col) == ec)
-            template_df = self._generate_c08_05_for_class(
-                class_df,
-                set(irb_df.columns),
-                alloc_pd_col,
-                report_pd_col or alloc_pd_col,
-                framework,
-            )
-            result[ec] = template_df
-
-        return result
-
-    def _generate_c08_05_for_class(
-        self,
-        class_data: pl.DataFrame,
-        cols: set[str],
-        alloc_pd_col: str,
-        report_pd_col: str,
-        framework: str,
-    ) -> pl.DataFrame:
-        """Generate a C 08.05 DataFrame for a single IRB exposure class.
-
-        Rows = 17 fixed regulatory PD range buckets (plus optional unassigned).
-        Columns = 5: arithmetic avg PD, obligors (prior year), defaults,
-        observed default rate, historical annual default rate.
-
-        Args:
-            class_data: DataFrame filtered to a single exposure class.
-            cols: Available column names.
-            alloc_pd_col: PD column for row allocation (pre-floor for B31).
-            report_pd_col: PD column for col 0010 reporting (post-floor).
-            framework: "CRR" or "BASEL_3_1".
-        """
-        column_defs = get_c08_05_columns(framework)
-        column_refs = [c.ref for c in column_defs]
-
-        # Assign PD range buckets using the allocation PD column
-        band_expr = pl.lit("Unassigned")
-        for lower, upper, _row_ref, label in reversed(C08_03_PD_RANGES):
-            band_expr = (
-                pl.when((pl.col(alloc_pd_col) >= lower) & (pl.col(alloc_pd_col) < upper))
-                .then(pl.lit(label))
-                .otherwise(band_expr)
-            )
-        banded = class_data.with_columns(band_expr.alias("_pd_range"))
-
-        rows: list[dict[str, object]] = []
-
-        for _lower, _upper, row_ref, label in C08_03_PD_RANGES:
-            band_data = banded.filter(pl.col("_pd_range") == label).drop("_pd_range")
-            if len(band_data) == 0:
-                continue
-
-            values = _compute_c08_05_values(band_data, cols, report_pd_col, column_refs)
-            rows.append({"row_ref": row_ref, "row_name": label, **values})
-
-        # Handle unassigned (e.g. null PD)
-        unassigned = banded.filter(pl.col("_pd_range") == "Unassigned").drop("_pd_range")
-        if len(unassigned) > 0:
-            values = _compute_c08_05_values(unassigned, cols, report_pd_col, column_refs)
-            rows.append({"row_ref": "9999", "row_name": "Unassigned", **values})
-
-        if not rows:
-            schema: dict[str, PolarsDataType] = {"row_ref": pl.String, "row_name": pl.String}
-            schema.update(dict.fromkeys(column_refs, pl.Float64))
-            return pl.DataFrame(schema=schema)
-
-        schema: dict[str, PolarsDataType] = {"row_ref": pl.String, "row_name": pl.String}
-        schema.update(dict.fromkeys(column_refs, pl.Float64))
-        return pl.DataFrame(rows, schema=schema)
-
-    # =========================================================================
-    # C 08.06 / OF 08.06 — IRB SPECIALISED LENDING SLOTTING
-    # =========================================================================
+        return generate_c08_05(results, cols, framework, errors)
 
     def _generate_all_c08_06(
         self,
@@ -2506,85 +1918,6 @@ def _filter_lfse(data: pl.DataFrame, cols: set[str]) -> pl.DataFrame | None:
 _SECTION3_NULL_REFS: frozenset[str] = frozenset({"0160", "0170", "0175", "0180"})
 
 
-def _filter_section3_unrated_corp(
-    data: pl.DataFrame, cols: set[str], framework: str
-) -> pl.DataFrame | None:
-    """Row 0190: corporates without ECAI assessment (B3.1 only, unrated)."""
-    if framework != "BASEL_3_1" or "exposure_class" not in cols:
-        return None
-    ec_filter = pl.col("exposure_class").str.contains("corporate", literal=True)
-    if "sa_cqs" in cols:
-        return data.filter(ec_filter & pl.col("sa_cqs").is_null())
-    return data.filter(ec_filter)
-
-
-def _filter_section3_unrated_ig(
-    data: pl.DataFrame, cols: set[str], framework: str
-) -> pl.DataFrame | None:
-    """Row 0200: investment-grade subset of unrated corporates (B3.1 only)."""
-    if framework != "BASEL_3_1" or "exposure_class" not in cols:
-        return None
-    ec_filter = pl.col("exposure_class").str.contains("corporate", literal=True)
-    unrated_filter = pl.col("sa_cqs").is_null() if "sa_cqs" in cols else pl.lit(True)
-    if "cp_is_investment_grade" in cols:
-        return data.filter(
-            ec_filter & unrated_filter & (pl.col("cp_is_investment_grade").fill_null(False) == True)  # noqa: E712
-        )
-    if "pd_floored" in cols:
-        return data.filter(ec_filter & unrated_filter & (pl.col("pd_floored") <= 0.005))
-    return None
-
-
-def _filter_section3_row(
-    data: pl.DataFrame,
-    cols: set[str],
-    row_ref: str,
-    approach_col: str | None,
-    framework: str,
-) -> pl.DataFrame | None:
-    """Filter class_data for a C 08.01 Section 3 row.
-
-    Section 3 splits the total IRB exposure by calculation method:
-    - 0070: PD/LGD model approach (F-IRB + A-IRB, excluding slotting)
-    - 0080: Specialised lending slotting approach
-    - 0160: Alternative treatment for real estate (CRR only)
-    - 0170: Exposures from free deliveries
-    - 0175: Purchased receivables (Basel 3.1 only)
-    - 0180: Dilution risk on purchased receivables
-    - 0190: Corporates without ECAI (Basel 3.1 only, unrated)
-    - 0200: of which: investment grade (subset of 0190)
-
-    Returns None for rows that cannot be populated from available data.
-
-    References:
-    - CRR Art. 142-191 (IRB approach assignment)
-    - PRA PS1/26 Art. 122D (investment grade assessment)
-    """
-    if approach_col is None:
-        return None
-
-    if row_ref == "0070":
-        # Exposures assigned to obligor grades or pools — non-slotting IRB
-        return data.filter(pl.col(approach_col).is_in(["foundation_irb", "advanced_irb"]))
-
-    if row_ref == "0080":
-        # Specialised lending slotting approach
-        return data.filter(pl.col(approach_col) == "slotting")
-
-    if row_ref in _SECTION3_NULL_REFS:
-        # Rows requiring pipeline flags not yet available (RE alt-treatment,
-        # free deliveries, purchased receivables, dilution risk).
-        return None
-
-    if row_ref == "0190":
-        return _filter_section3_unrated_corp(data, cols, framework)
-
-    if row_ref == "0200":
-        return _filter_section3_unrated_ig(data, cols, framework)
-
-    return None
-
-
 def _of_02_01_row(
     row_ref: str,
     row_name: str,
@@ -2782,549 +2115,6 @@ def _negate_deduction_cols(values: dict[str, float | None], negative_cols: froze
         values[ref] = 0.0 if negated == 0.0 else negated
 
 
-def _c08_exposure_cols(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    ead_sum: float,
-    lfse_data: pl.DataFrame | None,
-) -> dict[str, float | None]:
-    """Compute C 08.01/02 exposure columns (0010 PD, 0020 original, 0030 LFSE, 0035 netting)."""
-    values: dict[str, float | None] = {}
-    if "pd_floored" in cols and ead_sum > 0:
-        pd_x_ead = float((data["pd_floored"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0010"] = pd_x_ead / ead_sum
-    else:
-        values["0010"] = None
-
-    values["0020"] = _safe_sum_eager(data, cols, "drawn_amount", "undrawn_amount")
-
-    if lfse_data is not None and len(lfse_data) > 0:
-        values["0030"] = _safe_sum_eager(
-            lfse_data, set(lfse_data.columns), "drawn_amount", "undrawn_amount"
-        )
-    else:
-        values["0030"] = 0.0 if "cp_apply_fi_scalar" in cols else None
-
-    values["0035"] = _col_sum_eager(data, cols, "on_bs_netting_amount")
-    return values
-
-
-def _c08_crm_cols(
-    data: pl.DataFrame, cols: set[str], substitution_inflow: float
-) -> dict[str, float | None]:
-    """Compute C 08.01/02 CRM substitution columns (0040-0090)."""
-    values: dict[str, float | None] = {}
-
-    guar_only = _sum_by_protection_type(data, cols, "guarantee")
-    values["0040"] = (
-        guar_only if guar_only is not None else _col_sum_eager(data, cols, "guaranteed_portion")
-    )
-
-    cd_val = _sum_by_protection_type(data, cols, "credit_derivative")
-    values["0050"] = cd_val if cd_val is not None else 0.0
-
-    values["0060"] = _safe_sum_eager(
-        data,
-        cols,
-        "collateral_re_value",
-        "collateral_receivables_value",
-        "collateral_other_physical_value",
-    )
-
-    values["0070"] = _compute_substitution_outflow(data, cols)
-    values["0080"] = substitution_inflow if substitution_inflow else 0.0
-
-    # 0090: Exposure after CRM substitution pre CCFs
-    v_0020 = values.get("0020") or 0.0  # caller hasn't populated yet, intentionally 0
-    v_0040 = values.get("0040") or 0.0
-    v_0050 = values.get("0050") or 0.0
-    v_0060 = values.get("0060") or 0.0
-    v_0070 = values.get("0070") or 0.0
-    v_0080 = values.get("0080") or 0.0
-    values["0090"] = v_0020 - v_0040 - v_0050 - v_0060 - v_0070 + v_0080
-    return values
-
-
-def _c08_of_which_cols(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    lfse_data: pl.DataFrame | None,
-    defaulted: pl.DataFrame,
-) -> dict[str, float | None]:
-    """Compute C 08.01/02 'of which' columns (0100, 0101-0104, 0110, 0120-0140)."""
-    values: dict[str, float | None] = {}
-    off_bs = _filter_off_bs(data, cols)
-    if len(off_bs) > 0:
-        values["0100"] = _col_sum_eager(off_bs, set(off_bs.columns), ead_col)
-    else:
-        values["0100"] = 0.0
-
-    # 0101-0104: Slotting FCCM (B3.1 only, Phase 3A)
-    for ref in ("0101", "0102", "0103", "0104"):
-        values[ref] = None
-
-    values["0110"] = _col_sum_eager(data, cols, ead_col)
-    values["0120"] = None  # Off-BS — Phase 2B
-
-    if len(defaulted) > 0:
-        values["0125"] = _col_sum_eager(defaulted, set(defaulted.columns), ead_col)
-    else:
-        values["0125"] = 0.0
-
-    values["0130"] = None  # CCR arising — Phase 3K
-
-    if lfse_data is not None and len(lfse_data) > 0:
-        values["0140"] = _col_sum_eager(lfse_data, set(lfse_data.columns), ead_col)
-    else:
-        values["0140"] = 0.0 if "cp_apply_fi_scalar" in cols else None
-    return values
-
-
-def _c08_lgd_protection_cols(data: pl.DataFrame, cols: set[str]) -> dict[str, float | None]:
-    """Compute C 08.01/02 CRM-in-LGD protection columns (0150-0220)."""
-    values: dict[str, float | None] = {}
-
-    guar = _sum_by_protection_type(data, cols, "guarantee")
-    values["0150"] = guar if guar is not None else _col_sum_eager(data, cols, "guaranteed_portion")
-    cd_val = _sum_by_protection_type(data, cols, "credit_derivative")
-    values["0160"] = cd_val if cd_val is not None else 0.0
-    values["0170"] = 0.0  # Other funded credit protection catch-all
-    values["0171"] = 0.0  # Cash on deposit
-    values["0172"] = 0.0  # Life insurance policies
-    values["0173"] = 0.0  # Instruments held by third party
-    values["0180"] = _col_sum_eager(data, cols, "collateral_financial_value")
-    values["0190"] = _col_sum_eager(data, cols, "collateral_re_value")
-    values["0200"] = _col_sum_eager(data, cols, "collateral_other_physical_value")
-    values["0210"] = _col_sum_eager(data, cols, "collateral_receivables_value")
-    values["0220"] = _col_sum_eager(data, cols, "double_default_unfunded_protection")
-    return values
-
-
-def _c08_lfse_lgd_avg(
-    lfse_data: pl.DataFrame | None,
-    cols: set[str],
-    ead_col: str,
-) -> float | None:
-    """Compute the LFSE EAD-weighted-average LGD for C 08 col 0240."""
-    if lfse_data is None or len(lfse_data) == 0:
-        return 0.0 if "cp_apply_fi_scalar" in cols else None
-    lfse_cols = set(lfse_data.columns)
-    lfse_lgd_col = _pick(lfse_cols, "lgd_floored", "lgd_input")
-    lfse_ead_sum = float(lfse_data[ead_col].fill_null(0.0).sum()) if ead_col in lfse_cols else 0.0
-    if lfse_lgd_col is None or lfse_ead_sum <= 0:
-        return None
-    lgd_x_ead = float(
-        (lfse_data[lfse_lgd_col].fill_null(0.0) * lfse_data[ead_col].fill_null(0.0)).sum()
-    )
-    return lgd_x_ead / lfse_ead_sum
-
-
-def _c08_lgd_maturity_cols(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    ead_sum: float,
-    lfse_data: pl.DataFrame | None,
-) -> dict[str, float | None]:
-    """Compute C 08.01/02 LGD/maturity weighted-average columns (0230-0250)."""
-    values: dict[str, float | None] = {}
-
-    lgd_col = _pick(cols, "lgd_floored", "lgd_input")
-    if lgd_col is not None and ead_sum > 0:
-        lgd_x_ead = float((data[lgd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0230"] = lgd_x_ead / ead_sum
-    else:
-        values["0230"] = None
-
-    values["0240"] = _c08_lfse_lgd_avg(lfse_data, cols, ead_col)
-
-    if "irb_maturity_m" in cols and ead_sum > 0:
-        m_x_ead = float(
-            (data["irb_maturity_m"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
-        )
-        values["0250"] = (m_x_ead / ead_sum) * 365.0
-    else:
-        values["0250"] = None
-    return values
-
-
-def _c08_rwea_factor_cols(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    rwa_col: str,
-    defaulted: pl.DataFrame,
-    lfse_data: pl.DataFrame | None,
-) -> dict[str, float | None]:
-    """Compute C 08.01/02 RWEA + supporting-factor + output-floor columns (0251-0276)."""
-    values: dict[str, float | None] = {}
-
-    # Post-model adjustments (B3.1)
-    values["0251"] = _col_sum_eager(data, cols, "rwa_pre_adjustments")
-    values["0252"] = _col_sum_eager(data, cols, "post_model_adjustment_rwa")
-    values["0253"] = _col_sum_eager(data, cols, "mortgage_rw_floor_adjustment")
-    values["0254"] = _col_sum_eager(data, cols, "unrecognised_exposure_adjustment")
-
-    rwa_pre = _col_sum_eager(data, cols, "rwa_pre_factor")
-    values["0255"] = rwa_pre if rwa_pre is not None else _col_sum_eager(data, cols, rwa_col)
-
-    pre_factor_col = _pick(cols, "rwa_pre_factor")
-    values["0256"] = _supporting_factor_adjustment(
-        data, cols, "is_sme", "sme_supporting_factor_applied", pre_factor_col, rwa_col
-    )
-    values["0257"] = _supporting_factor_adjustment(
-        data,
-        cols,
-        "is_infrastructure",
-        "infrastructure_factor_applied",
-        pre_factor_col,
-        rwa_col,
-    )
-
-    values["0260"] = _col_sum_eager(data, cols, rwa_col)
-
-    if len(defaulted) > 0:
-        values["0265"] = _col_sum_eager(defaulted, set(defaulted.columns), rwa_col)
-    else:
-        values["0265"] = 0.0
-
-    if lfse_data is not None and len(lfse_data) > 0:
-        values["0270"] = _col_sum_eager(lfse_data, set(lfse_data.columns), rwa_col)
-    else:
-        values["0270"] = 0.0 if "cp_apply_fi_scalar" in cols else None
-
-    values["0275"] = _col_sum_eager(data, cols, ead_col)
-    sa_rwa_col = _pick(cols, "sa_rwa")
-    values["0276"] = _col_sum_eager(data, cols, sa_rwa_col) if sa_rwa_col else None
-    return values
-
-
-@cites("PS1/26, paragraph 1.3")
-def _c08_memorandum_cols(
-    data: pl.DataFrame, cols: set[str], rwa_col: str
-) -> dict[str, float | None]:
-    """Compute C 08.01/02 memorandum columns (0280-0310).
-
-    Col 0290 ("(-) Value adjustments and provisions") is emitted as a
-    NEGATIVE figure per COREP Annex II §1.3; IRB col 0090 is computed
-    upstream in ``_compute_c08_values`` from the positive magnitude and is
-    not affected.
-    """
-    values: dict[str, float | None] = {}
-
-    el_raw = _col_sum_eager(data, cols, "expected_loss")
-    el_pre = _col_sum_eager(data, cols, "el_pre_adjustment")
-    values["0280"] = el_pre if el_pre is not None else el_raw
-
-    values["0281"] = _col_sum_eager(data, cols, "post_model_adjustment_el")
-    values["0282"] = _col_sum_eager(data, cols, "el_after_adjustment")
-
-    prov = _safe_sum_eager(data, cols, "scra_provision_amount", "gcra_provision_amount")
-    if abs(prov) < 1e-9:
-        held = _col_sum_eager(data, cols, "provision_held")
-        values["0290"] = held if held is not None else prov
-    else:
-        values["0290"] = prov
-
-    if "counterparty_reference" in cols:
-        values["0300"] = float(data["counterparty_reference"].n_unique())
-    else:
-        values["0300"] = float(len(data))
-
-    # 0310: Pre-credit derivatives RWEA. Both branches resolve to total RWEA
-    # — when CD-protected exposures exist, the substitution benefit is already
-    # embedded in ``rwa_col``; when none exist, pre-CD RWEA == total RWEA.
-    values["0310"] = _col_sum_eager(data, cols, rwa_col)
-
-    # COREP Annex II §1.3: emit "(-)"-labelled deduction col 0290 as negative.
-    _negate_deduction_cols(values, _C08_NEGATIVE_COLS)
-    return values
-
-
-def _compute_c08_values(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    rwa_col: str,
-    column_refs: list[str],
-    *,
-    substitution_inflow: float = 0.0,
-) -> dict[str, float | str | None]:
-    """Compute C 08.01/08.02 column values from a data subset.
-
-    Maps pipeline columns to 4-digit COREP column refs. Weighted averages
-    are computed for PD, LGD, and maturity. Maturity is converted from
-    years to days (COREP col 0250 requires days).
-
-    Args:
-        substitution_inflow: Pre-computed inflow of guaranteed_portion from
-            other exposure classes into this class. Only meaningful for the
-            total row (0010); sub-rows pass 0.
-    """
-    if len(data) == 0:
-        return dict.fromkeys(column_refs)
-
-    ead_sum = float(data[ead_col].fill_null(0.0).sum()) if ead_col in cols else 0.0
-    lfse_data = _filter_lfse(data, cols)
-    defaulted = _filter_defaulted(data, cols)
-
-    values: dict[str, float | None] = {}
-    values.update(_c08_exposure_cols(data, cols, ead_col, ead_sum, lfse_data))
-    crm_values = _c08_crm_cols(data, cols, substitution_inflow)
-    # 0090 needs the populated 0020 — recompute now that we have it
-    v_0020 = values.get("0020") or 0.0
-    crm_values["0090"] = (
-        v_0020
-        - (crm_values.get("0040") or 0.0)
-        - (crm_values.get("0050") or 0.0)
-        - (crm_values.get("0060") or 0.0)
-        - (crm_values.get("0070") or 0.0)
-        + (crm_values.get("0080") or 0.0)
-    )
-    values.update(crm_values)
-    values.update(_c08_of_which_cols(data, cols, ead_col, lfse_data, defaulted))
-    values.update(_c08_lgd_protection_cols(data, cols))
-    values.update(_c08_lgd_maturity_cols(data, cols, ead_col, ead_sum, lfse_data))
-    values.update(_c08_rwea_factor_cols(data, cols, ead_col, rwa_col, defaulted, lfse_data))
-    values.update(_c08_memorandum_cols(data, cols, rwa_col))
-
-    return {ref: values.get(ref) for ref in column_refs if ref in values}
-
-
-def _c08_03_exposure_cols(
-    data: pl.DataFrame, cols: set[str], ead_sum: float
-) -> dict[str, float | None]:
-    """Compute C 08.03 exposure columns (0010 on-BS, 0020 off-BS, 0030 CCF, 0040 EAD)."""
-    values: dict[str, float | None] = {}
-
-    on_bs = _filter_on_bs(data, cols)
-    if on_bs is not None and len(on_bs) > 0:
-        values["0010"] = _safe_sum_eager(on_bs, set(on_bs.columns), "drawn_amount", "interest")
-    else:
-        values["0010"] = _safe_sum_eager(data, cols, "drawn_amount", "interest")
-
-    off_bs = _filter_off_bs(data, cols)
-    if off_bs is not None and len(off_bs) > 0:
-        values["0020"] = _col_sum_eager(off_bs, set(off_bs.columns), "nominal_amount")
-    else:
-        values["0020"] = _col_sum_eager(data, cols, "nominal_amount")
-
-    ccf_col = _pick(cols, "ccf")
-    nominal_col = _pick(cols, "nominal_amount") if ccf_col is not None and ead_sum > 0 else None
-    if ccf_col is not None and ead_sum > 0 and nominal_col is not None:
-        nominal_sum = float(data[nominal_col].fill_null(0.0).sum())
-        if nominal_sum > 0:
-            ccf_x_nominal = float(
-                (data[ccf_col].fill_null(0.0) * data[nominal_col].fill_null(0.0)).sum()
-            )
-            values["0030"] = ccf_x_nominal / nominal_sum
-        else:
-            values["0030"] = None
-    else:
-        values["0030"] = None
-
-    values["0040"] = ead_sum if ead_sum > 0 else 0.0
-    return values
-
-
-def _c08_03_weighted_avg_cols(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    pd_col: str,
-    ead_sum: float,
-) -> dict[str, float | None]:
-    """Compute C 08.03 weighted-average columns (0050 PD, 0060 obligors, 0070 LGD, 0080 maturity)."""
-    values: dict[str, float | None] = {}
-    if pd_col in cols and ead_sum > 0:
-        pd_x_ead = float((data[pd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0050"] = pd_x_ead / ead_sum
-    else:
-        values["0050"] = None
-
-    if "counterparty_reference" in cols:
-        values["0060"] = float(data["counterparty_reference"].n_unique())
-    else:
-        values["0060"] = float(len(data))
-
-    lgd_col = _pick(cols, "lgd_floored", "lgd_input")
-    if lgd_col is not None and ead_sum > 0:
-        lgd_x_ead = float((data[lgd_col].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum())
-        values["0070"] = lgd_x_ead / ead_sum
-    else:
-        values["0070"] = None
-
-    if "irb_maturity_m" in cols and ead_sum > 0:
-        m_x_ead = float(
-            (data["irb_maturity_m"].fill_null(0.0) * data[ead_col].fill_null(0.0)).sum()
-        )
-        values["0080"] = m_x_ead / ead_sum
-    else:
-        values["0080"] = None
-    return values
-
-
-def _c08_03_rwea_provisions(
-    data: pl.DataFrame, cols: set[str], rwa_col: str
-) -> dict[str, float | None]:
-    """Compute C 08.03 RWEA + EL + provisions columns (0090, 0100, 0110)."""
-    values: dict[str, float | None] = {}
-    values["0090"] = _col_sum_eager(data, cols, rwa_col)
-    el_col = _pick(cols, "expected_loss")
-    values["0100"] = _col_sum_eager(data, cols, el_col) if el_col else None
-
-    prov = _safe_sum_eager(data, cols, "scra_provision_amount", "gcra_provision_amount")
-    if abs(prov) < 1e-9:
-        held = _col_sum_eager(data, cols, "provision_held")
-        values["0110"] = held if held is not None else prov
-    else:
-        values["0110"] = prov
-    return values
-
-
-def _compute_c08_03_values(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    rwa_col: str,
-    pd_col: str,
-    column_refs: list[str],
-) -> dict[str, float | None]:
-    """Compute C 08.03 column values for a PD range bucket.
-
-    11 columns: on/off-BS exposure, average CCF, EAD, average PD,
-    obligor count, average LGD, average maturity, RWEA, EL, provisions.
-
-    Args:
-        data: DataFrame filtered to a single PD range bucket.
-        cols: Available column names in the data.
-        ead_col: EAD column name.
-        rwa_col: RWA column name.
-        pd_col: PD column for reporting (post-input-floor for B31).
-        column_refs: List of column refs to include in output.
-
-    References:
-    - CRR Art. 153 / Regulation (EU) 2021/451 Annex I (C 08.03)
-    - PRA PS1/26 Annex I/II (OF 08.03)
-    """
-    ead_sum = float(data[ead_col].fill_null(0.0).sum()) if ead_col in cols else 0.0
-
-    values: dict[str, float | None] = {}
-    values.update(_c08_03_exposure_cols(data, cols, ead_sum))
-    values.update(_c08_03_weighted_avg_cols(data, cols, ead_col, pd_col, ead_sum))
-    values.update(_c08_03_rwea_provisions(data, cols, rwa_col))
-
-    return {ref: values.get(ref) for ref in column_refs if ref in values}
-
-
-def _c08_05_default_counts(
-    data: pl.DataFrame,
-    cols: set[str],
-    cp_col: str | None,
-    pd_col: str,
-) -> tuple[float, float]:
-    """Return ``(n_obligors, n_defaults)`` for the C 08.05 PD-bucket data.
-
-    Uses ``is_defaulted`` / ``default_status`` if present, otherwise falls
-    back to ``PD >= 1.0``. Obligor counts unique on ``counterparty_reference``
-    when available, else row count.
-    """
-    n_rows = len(data)
-    n_obligors = float(data[cp_col].n_unique()) if cp_col is not None else float(n_rows)
-    default_col = _pick(cols, "is_defaulted")
-
-    if default_col is not None:
-        defaulted = data.filter(pl.col(default_col) == True)  # noqa: E712
-    elif pd_col in cols:
-        defaulted = data.filter(pl.col(pd_col) >= 1.0)
-    else:
-        return n_obligors, 0.0
-
-    if cp_col is not None:
-        n_defaults = float(defaulted[cp_col].n_unique())
-    else:
-        n_defaults = float(len(defaulted))
-    return n_obligors, n_defaults
-
-
-def _compute_c08_05_values(
-    data: pl.DataFrame,
-    cols: set[str],
-    pd_col: str,
-    column_refs: list[str],
-) -> dict[str, float | None]:
-    """Compute C 08.05 column values for a PD range bucket.
-
-    5 columns: arithmetic average PD, obligor count (prior year),
-    defaults during year, observed default rate, historical annual default rate.
-
-    Why: PD backtesting compares model-assigned PDs against realised default
-    rates per PD bucket. This is a key supervisory metric for IRB model
-    validation under CRR Art. 180 and PRA PS1/26.
-
-    Note on historical data: Cols 0020 (prior-year obligors) and 0050
-    (historical annual default rate) ideally require multi-year lookback data.
-    When only current-period data is available from the pipeline, col 0020
-    uses current obligor count and col 0050 uses the current-period observed
-    default rate as best-effort approximations.
-
-    Args:
-        data: DataFrame filtered to a single PD range bucket.
-        cols: Available column names in the data.
-        pd_col: PD column for reporting (post-input-floor for B31).
-        column_refs: List of column refs to include in output.
-
-    References:
-    - CRR Art. 180, Regulation (EU) 2021/451 Annex I (C 08.05)
-    - PRA PS1/26 Annex I/II (OF 08.05)
-    """
-    values: dict[str, float | None] = {}
-    n_rows = len(data)
-
-    # 0010: Arithmetic average PD (%)
-    # Unlike C 08.03 col 0050 (EAD-weighted), this is a simple arithmetic average
-    if pd_col in cols and n_rows > 0:
-        pd_sum = float(data[pd_col].fill_null(0.0).sum())
-        values["0010"] = pd_sum / n_rows
-    else:
-        values["0010"] = None
-
-    # Determine obligor count and default count
-    cp_col = "counterparty_reference" if "counterparty_reference" in cols else None
-    n_obligors, n_defaults = _c08_05_default_counts(data, cols, cp_col, pd_col)
-
-    # 0020: Number of obligors at end of previous year
-    # Best-effort: use current-period obligor count when historical data absent
-    prior_year_col = _pick(cols, "prior_year_obligor_count")
-    if prior_year_col is not None:
-        values["0020"] = float(data[prior_year_col].fill_null(0.0).sum())
-    else:
-        values["0020"] = n_obligors
-
-    # 0030: Of which: defaulted during the year
-    values["0030"] = n_defaults
-
-    # 0040: Observed average default rate (%)
-    if n_obligors > 0:
-        values["0040"] = n_defaults / n_obligors
-    else:
-        values["0040"] = 0.0
-
-    # 0050: Average historical annual default rate (%)
-    # Best-effort: use current observed default rate when multi-year data absent
-    hist_rate_col = _pick(cols, "historical_annual_default_rate")
-    if hist_rate_col is not None and n_rows > 0:
-        values["0050"] = float(cast("float", data[hist_rate_col].fill_null(0.0).mean()))
-    else:
-        # Fall back to current observed rate as single-period approximation
-        values["0050"] = values["0040"]
-
-    # Filter to only refs in this framework's column set (C 08.05)
-    return {ref: values.get(ref) for ref in column_refs if ref in values}
-
-
 def _c08_07_group_by_class(
     results: pl.LazyFrame,
     ead_col: str,
@@ -3363,17 +2153,6 @@ def _c08_07_group_by_class(
             class_sa_rwa[ec] = class_sa_rwa.get(ec, 0.0) + rwa_val
 
     return class_irb_ead, class_sa_ead, class_irb_rwa, class_sa_rwa
-
-
-def _c08_01_section2_subset(
-    row_ref: str, class_data: pl.DataFrame, cols: set[str]
-) -> pl.DataFrame | None:
-    """Resolve a C 08.01 Section 2 (Breakdown by Exposure Types) row."""
-    if row_ref == "0020":
-        return _filter_on_bs(class_data, cols)
-    if row_ref == "0030":
-        return _filter_off_bs(class_data, cols)
-    return None
 
 
 def _c08_06_sl_type_filter(

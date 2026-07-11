@@ -720,6 +720,33 @@ next slice (order C08.04 → C08.03 → C08.05 → C08.01; C08.02's data-driven 
 + String data column 0005 defeat the Float64 executor — expect a recorded scope-out or an
 executor extension decision).
 
+**S8-C08.01/02/03/04/05 DONE 2026-07-11 — the whole IRB COREP family in one slice; C 08.02's
+"executor misfit" verdict OVERTURNED.** `reporting/corep/c08.py` (five generators sharing one
+value surface); the imperative estate deleted (`_compute_c08_values` + its seven column
+helpers, the five per-class builders, the C 08.02 grade-row builder + typed materialiser, the
+section dispatchers + B31 unrated filters, the C 08.03/05 value computers + default counts).
+**C 08.02 recorded decision: FEASIBLE — the CR9.1 pattern** (generate-time data-driven rows
+via a derived `c08_02_key` column — distinct firm grades else populated PD bands plus
+"Unassigned"; `row_ref == row_name == the String 0005 column`, injected post-execute).
+**Keying recorded:** all five dicts key RAW `exposure_class` (== `reporting_class_origin` for
+IRB — obligor basis, probe-verified zero movers; NO applied ladder, NO SL merge — both
+deliberate contrasts with C 07.00). **Preserved-verbatim subtleties (recorded):** the
+column-presence-vs-value-nullness distinction (0280 reads `el_pre_adjustment` whenever the
+COLUMN exists, its nulls filling to 0.0 and masking `expected_loss` on slotting sheets — the
+golden behaviour); the Annex II negation set is `{0290}` ONLY (the 0090 CRM waterfall runs on
+positive magnitudes); maturity col 0250 = years x365.0 (`irb_maturity_m` is years despite the
+suffix); C 08.04's deliberately two-wide RWA ladder (no `rwa_post_factor`); the C 08.03
+on/off-BS whole-bucket fallback (post-step); the value-dependent provisions ladder
+(SCRA/GCRA ~0 -> `provision_held`) as a shared post-step; C 08.05's null-filled arithmetic
+means via a constant-one weight column and the CR9-style prior-year/historical fallbacks
+(with a rate post-fix when a prior carrier is supplied); the B31 alloc-on-`pd` /
+report-`pd_floored` split; sparse bucket emission + the 9999 "Unassigned" row; LFSE
+sub-splits gated on `cp_apply_fi_scalar` COLUMN presence (0.0 empty vs None absent).
+Substitution inflow reuses the C 07 `ReportingContext.substitution_inflow` side input
+(total row 0010 only). Gate: goldens byte-identical WITHOUT regen (28 C 08 frames, both
+regimes); all 732 COREP unit tests (incl. P4.20 grade rows) green unchanged; full suite
+green. Remaining imperative COREP: C 08.06/07, C 09.01/02, OF 02.01, C 02.00, C 34.x.
+
 Order: **Pillar 3** OV1 → ~~CR4/CR5~~ → ~~CR6/CR6a/CR7/CR7a~~ → ~~CR9/CR9.1/CR10~~ → ~~CMS1/2~~ → CCR1/2/3/8 (DEFERRED with S8-pre)
 (post S8-pre); then **COREP** C07 + skeleton-sharing C08.01/02/03/05 → C08.04/06/07 → C09.01/02 →
 OF02.01 → OF07/OF08/C34.x (post S8-pre) → **C02.00 LAST** (portfolio pre-pass via
