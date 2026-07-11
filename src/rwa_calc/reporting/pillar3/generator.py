@@ -64,6 +64,7 @@ from rwa_calc.reporting.kernel import (
 from rwa_calc.reporting.kernel import (
     pick as _pick,
 )
+from rwa_calc.reporting.pillar3.cr8 import generate_cr8
 from rwa_calc.reporting.pillar3.templates import (
     CCR1_COLUMNS,
     CCR1_ROWS,
@@ -81,7 +82,6 @@ from rwa_calc.reporting.pillar3.templates import (
     CR6A_COLUMNS,
     CR7_COLUMNS,
     CR8_COLUMNS,
-    CR8_ROWS,
     CR9_1_COLUMN_REFS,
     CR9_AIRB_CLASSES,
     CR9_APPROACH_DISPLAY,
@@ -710,50 +710,15 @@ class Pillar3Generator:
     ) -> pl.DataFrame | None:
         """Generate the CR8 RWEA flow statement for IRB credit-risk exposures.
 
-        Row 9 (closing) sums the current-period IRB (non-slotting) ``rwa_final``;
-        when ``prior_irb_data`` is supplied, row 1 (opening) sums the prior
-        period on the same like-for-like basis and row 8 (Other) carries the
-        signed residual ``closing - opening`` (positive = increase, negative =
-        decrease per PS1/26 Annex XXII §11). Rows 2-7 (per-driver flow
-        components) stay null — they need exposure-level period-over-period
-        lineage not available from two point-in-time snapshots. When
-        ``prior_irb_data`` is None, rows 1-8 stay null (unchanged behaviour).
+        Dispatch-router entry (Phase 7 S7): CR8 is declarative — the cell
+        semantics live in ``pillar3/cr8.py::CR8_SPEC`` and run through the one
+        ``cellspec.execute`` executor. This method only routes the pre-filtered
+        IRB (non-slotting) subset and the prior-period frame.
 
         References:
             CRR Part 8 Art. 438(h); PRA PS1/26 Annex XXII §11.
         """
-        rwa_col = _pick(cols, "rwa_final", "rwa")
-        if not rwa_col:
-            errors.append("CR8: missing RWA column")
-            return None
-
-        data = irb_data.collect()
-        column_refs = [c.ref for c in CR8_COLUMNS]
-        closing_rwa = _col_sum(data, rwa_col)
-
-        opening_rwa: float | None = None
-        other_rwa: float | None = None
-        if prior_irb_data is not None:
-            opening_rwa = _col_sum(prior_irb_data.collect(), rwa_col)
-            # Row 8 (Other) = signed residual = closing - opening (rows 2-7 = 0).
-            other_rwa = (closing_rwa or 0.0) - (opening_rwa or 0.0)
-
-        rows_out: list[dict[str, object]] = []
-        for row_def in CR8_ROWS:
-            if row_def.ref == "9":
-                values: dict[str, object] = {"a": closing_rwa}
-            elif row_def.ref == "1":
-                # Opening balance — prior-period closing (None without prior data).
-                values = {"a": opening_rwa}
-            elif row_def.ref == "8":
-                # Other — signed residual delta (None without prior data).
-                values = {"a": other_rwa}
-            else:
-                # Flow drivers (rows 2-7) — require multi-period comparison.
-                values = {"a": None}
-            rows_out.append(_make_row(row_def, values, column_refs))
-
-        return _build_df(rows_out, column_refs)
+        return generate_cr8(irb_data, prior_irb_data, cols, errors)
 
     # ---- CR9 — PD back-testing per exposure class (Art. 452(h)) ----
 

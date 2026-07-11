@@ -1,0 +1,349 @@
+"""
+Declarative cell specifications and the ONE template executor (Phase 7 S7).
+
+Pipeline position:
+    sealed aggregator-exit ledger + ReportingContext
+        -> TemplateSpec (per-template module) -> execute() -> template DataFrame
+
+Key responsibilities:
+- A small, closed vocabulary of value bindings (the verbs a template cell can
+  mean): Sum, Mean, WeightedAvg, Ratio, Count, PriorPeriod, Formula.
+- Row predicates over the canonical reporting-ledger columns
+  (``reporting_class`` / ``reporting_class_origin`` / ``reporting_method`` /
+  ``reporting_approach_origin`` / ``reporting_leg_role`` /
+  ``reporting_on_balance_sheet`` / ``reporting_subclass`` / ``is_defaulted``).
+- One executor that turns ``(TemplateSpec, ledger frame, ReportingContext)``
+  into the template DataFrame, applying the per-template empty-cell policy
+  (COREP zero vs Pillar 3 null — a recorded drift, never unified).
+
+Deliberately NOT here (docs/plans/phase7-declarative-reporting.md §8):
+no expression DSL — the executor has exactly two escapes. ``Formula`` is the
+intra-row escape (a plain typed callable over already-computed row cells);
+``PriorPeriod`` / the ``ReportingContext`` side inputs are the out-of-frame
+escape. Anything richer is a typed kernel function a spec references.
+
+References:
+- docs/plans/phase7-declarative-reporting.md §3.2 (vocabulary sized to the
+  measured cell-semantics taxonomy)
+- Regulation (EU) 2021/451 Annex I/II; CRR Part 8 (template layouts)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, Protocol
+
+import polars as pl
+
+from rwa_calc.reporting.kernel import col_sum
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from rwa_calc.reporting.metadata import ReportingContext
+
+
+# =============================================================================
+# Value bindings — the verb vocabulary (taxonomy kinds 1-8, 11-12)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class Sum:
+    """Kind 1 (dominant): sum ``col`` over the cell's row subset."""
+
+    col: str
+
+
+@dataclass(frozen=True)
+class Mean:
+    """Kind 3: unweighted mean of ``col`` (e.g. C08.05 avg-PD — deliberately
+    NOT EAD-weighted)."""
+
+    col: str
+
+
+@dataclass(frozen=True)
+class WeightedAvg:
+    """Kind 2: ``weight``-weighted average of ``col`` (LGD, PD, maturity)."""
+
+    col: str
+    weight: str = "reporting_ead"
+
+
+@dataclass(frozen=True)
+class Ratio:
+    """Kind 4: ``sum(numerator) / sum(denominator)``, scaled (OV1 x100 rows)."""
+
+    numerator: str
+    denominator: str
+    scale: float = 1.0
+
+
+@dataclass(frozen=True)
+class Count:
+    """Kind 5: row count, or ``n_unique(col)`` when ``distinct``."""
+
+    col: str
+    distinct: bool = False
+
+
+@dataclass(frozen=True)
+class PriorPeriod:
+    """Kinds 8/11: evaluate ``binding`` over the prior-period frame.
+
+    Resolves to None when the context carries no prior-period results —
+    flow templates (CR8, C 08.04) leave their opening rows null.
+    """
+
+    binding: Sum | Mean | WeightedAvg | Ratio | Count
+
+
+@dataclass(frozen=True)
+class Formula:
+    """Kind 7 — the ONE intra-template escape.
+
+    ``fn`` is a plain typed callable receiving the referenced already-computed
+    cell values (None where a referenced cell is empty) and a
+    ``prior_available`` flag (whether the context carried a prior-period
+    frame — flow residuals are null without one, but coerce a None opening to
+    zero WITH one, matching the generators' recorded semantics). ~5 cells
+    across the whole estate use this; anything richer belongs in a kernel fn.
+
+    Ref resolution: each ref is tried as a COLUMN ref in the formula's own row
+    first (the COREP intra-row waterfalls, e.g. C07 ``0040 = 0010 - 0030``),
+    then as a ROW ref in the formula's own column (the single-column flow
+    templates, e.g. CR8 row 8 = row 9 - row 1). Formulas evaluate after every
+    non-formula cell in the template; a formula referencing another formula is
+    unsupported (raises).
+    """
+
+    refs: tuple[str, ...]
+    fn: Callable[[Mapping[str, float | None], bool], float | None]
+
+
+type ValueBinding = Sum | Mean | WeightedAvg | Ratio | Count | PriorPeriod | Formula
+
+
+# =============================================================================
+# Row predicates — over the canonical reporting-ledger columns only
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class RowPredicate:
+    """A conjunctive row filter over the sealed reporting-ledger columns.
+
+    Post-substitution fields (``classes`` / ``method``) and origin fields
+    (``classes_origin`` / ``approaches_origin``) are both available so each
+    template keys on its RECORDED basis (COREP C 07.00 keys origin; the
+    post-substitution retargets are per-template recorded decisions — plan
+    F3/F4). Unset fields (empty tuple / None) impose no constraint.
+    """
+
+    classes: tuple[str, ...] = ()
+    classes_origin: tuple[str, ...] = ()
+    method: str | None = None
+    approaches_origin: tuple[str, ...] = ()
+    leg_role: Literal["whole", "guaranteed", "retained"] | None = None
+    on_balance_sheet: bool | None = None
+    is_defaulted: bool | None = None
+    subclass: str | None = None
+
+    def to_expr(self) -> pl.Expr | None:
+        """Compile to a Polars filter expression (None = no constraint)."""
+        terms: list[pl.Expr] = []
+        if self.classes:
+            terms.append(pl.col("reporting_class").is_in(list(self.classes)))
+        if self.classes_origin:
+            terms.append(pl.col("reporting_class_origin").is_in(list(self.classes_origin)))
+        if self.method is not None:
+            terms.append(pl.col("reporting_method") == self.method)
+        if self.approaches_origin:
+            terms.append(pl.col("reporting_approach_origin").is_in(list(self.approaches_origin)))
+        if self.leg_role is not None:
+            terms.append(pl.col("reporting_leg_role") == self.leg_role)
+        if self.on_balance_sheet is not None:
+            terms.append(pl.col("reporting_on_balance_sheet") == self.on_balance_sheet)
+        if self.is_defaulted is not None:
+            terms.append(pl.col("is_defaulted") == self.is_defaulted)
+        if self.subclass is not None:
+            terms.append(pl.col("reporting_subclass") == self.subclass)
+        if not terms:
+            return None
+        expr = terms[0]
+        for term in terms[1:]:
+            expr = expr & term
+        return expr
+
+
+# =============================================================================
+# Cell + template specifications
+# =============================================================================
+
+
+class TemplateRow(Protocol):
+    """Structural row layout — satisfied by P3Row / COREPRow constants."""
+
+    @property
+    def ref(self) -> str: ...
+    @property
+    def name(self) -> str: ...
+
+
+@dataclass(frozen=True)
+class CellSpec:
+    """One cell: a value binding, optionally narrowed by a row predicate."""
+
+    binding: ValueBinding
+    predicate: RowPredicate | None = None
+
+
+@dataclass(frozen=True)
+class TemplateSpec:
+    """One template: the frozen layout constants paired with cell bindings.
+
+    ``cells`` keys are ``(row_ref, column_ref)``; unbound cells take the
+    template's ``empty_cell`` policy. ``predicate`` narrows the input frame
+    for every cell (a per-cell predicate narrows further).
+    """
+
+    name: str
+    rows: tuple[TemplateRow, ...]
+    column_refs: tuple[str, ...]
+    cells: Mapping[tuple[str, str], CellSpec]
+    predicate: RowPredicate | None = None
+    empty_cell: Literal["zero", "null"] = "zero"
+
+
+# =============================================================================
+# The ONE executor
+# =============================================================================
+
+
+def execute(
+    spec: TemplateSpec,
+    frame: pl.LazyFrame | pl.DataFrame,
+    ctx: ReportingContext | None = None,
+) -> pl.DataFrame:
+    """Execute a template spec over the sealed ledger (+ side context).
+
+    For each row x column: resolve the cell's binding over the (predicate-
+    narrowed) frame; unbound cells take the template ``empty_cell`` policy
+    (``"zero"`` -> 0.0, COREP; ``"null"`` -> None, Pillar 3 — the recorded
+    drift, applied per template, never unified). ``Formula`` cells evaluate
+    after the row's other cells, receiving their values.
+    """
+    data = frame.collect() if isinstance(frame, pl.LazyFrame) else frame
+    data = _narrow(data, spec.predicate)
+
+    prior = ctx.previous_period_results if ctx is not None else None
+    prior_df = prior.collect() if isinstance(prior, pl.LazyFrame) else prior
+    if prior_df is not None:
+        prior_df = _narrow(prior_df, spec.predicate)
+    prior_available = prior_df is not None
+
+    empty_default: float | None = 0.0 if spec.empty_cell == "zero" else None
+    empty_as_none = spec.empty_cell == "null"
+
+    # Pass 1: every non-formula cell, keyed (row_ref, col_ref).
+    computed: dict[tuple[str, str], float | None] = {}
+    formulas: list[tuple[str, str, Formula]] = []
+    for row_def in spec.rows:
+        for col_ref in spec.column_refs:
+            cell = spec.cells.get((row_def.ref, col_ref))
+            if cell is None:
+                computed[(row_def.ref, col_ref)] = empty_default
+                continue
+            if isinstance(cell.binding, Formula):
+                formulas.append((row_def.ref, col_ref, cell.binding))
+                continue
+            cell_data = _narrow(data, cell.predicate)
+            cell_prior = _narrow(prior_df, cell.predicate) if prior_df is not None else None
+            computed[(row_def.ref, col_ref)] = _evaluate(
+                cell.binding, cell_data, cell_prior, empty_as_none=empty_as_none
+            )
+
+    # Pass 2: formulas, over the computed cells (own-row column ref first,
+    # then own-column row ref — see Formula's resolution rule).
+    for row_ref, col_ref, formula in formulas:
+        inputs: dict[str, float | None] = {}
+        for ref in formula.refs:
+            if (row_ref, ref) in computed:
+                inputs[ref] = computed[(row_ref, ref)]
+            elif (ref, col_ref) in computed:
+                inputs[ref] = computed[(ref, col_ref)]
+            else:
+                raise KeyError(
+                    f"template {spec.name!r}: formula cell ({row_ref}, {col_ref}) "
+                    f"references {ref!r}, which is not a computed cell (a formula "
+                    "referencing another formula is unsupported)"
+                )
+        computed[(row_ref, col_ref)] = formula.fn(inputs, prior_available)
+
+    rows_out: list[dict[str, object]] = []
+    for row_def in spec.rows:
+        row: dict[str, object] = {"row_ref": row_def.ref, "row_name": row_def.name}
+        for col_ref in spec.column_refs:
+            row[col_ref] = computed[(row_def.ref, col_ref)]
+        rows_out.append(row)
+
+    schema: dict[str, pl.DataType | type[pl.DataType]] = {
+        "row_ref": pl.String,
+        "row_name": pl.String,
+    }
+    schema.update(dict.fromkeys(spec.column_refs, pl.Float64))
+    return pl.DataFrame(rows_out, schema=schema)
+
+
+# =============================================================================
+# Private helpers
+# =============================================================================
+
+
+def _narrow(data: pl.DataFrame, predicate: RowPredicate | None) -> pl.DataFrame:
+    expr = predicate.to_expr() if predicate is not None else None
+    return data.filter(expr) if expr is not None else data
+
+
+def _evaluate(
+    binding: Sum | Mean | WeightedAvg | Ratio | Count | PriorPeriod,
+    data: pl.DataFrame,
+    prior: pl.DataFrame | None,
+    *,
+    empty_as_none: bool,
+) -> float | None:
+    cols = set(data.columns)
+    if isinstance(binding, PriorPeriod):
+        if prior is None:
+            return None
+        return _evaluate(binding.binding, prior, None, empty_as_none=empty_as_none)
+    if isinstance(binding, Sum):
+        return col_sum(data, cols, binding.col, empty_as_none=empty_as_none)
+    if isinstance(binding, Mean):
+        if binding.col not in cols or data.height == 0:
+            return None if empty_as_none else 0.0
+        mean = data[binding.col].mean()
+        return float(mean) if mean is not None else (None if empty_as_none else 0.0)
+    if isinstance(binding, WeightedAvg):
+        if binding.col not in cols or binding.weight not in cols or data.height == 0:
+            return None if empty_as_none else 0.0
+        weights = data[binding.weight].fill_null(0.0)
+        total = float(weights.sum())
+        if total == 0.0:
+            return None if empty_as_none else 0.0
+        weighted = float((data[binding.col].fill_null(0.0) * weights).sum())
+        return weighted / total
+    if isinstance(binding, Ratio):
+        num = col_sum(data, cols, binding.numerator, empty_as_none=empty_as_none)
+        den = col_sum(data, cols, binding.denominator, empty_as_none=empty_as_none)
+        if num is None or den is None or den == 0.0:
+            return None if empty_as_none else 0.0
+        return num / den * binding.scale
+    if isinstance(binding, Count):
+        if binding.distinct:
+            if binding.col not in cols:
+                return None if empty_as_none else 0.0
+            return float(data[binding.col].n_unique())
+        return float(data.height)
+    raise TypeError(f"unknown value binding: {type(binding).__name__}")

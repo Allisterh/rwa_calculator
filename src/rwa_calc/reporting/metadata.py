@@ -45,6 +45,9 @@ class ReportingContext:
     Attributes:
         template_set: The regime's cited reporting template inventory,
             resolved from the rulepack (``resolve(...).reporting()``).
+            ``None`` while the generators remain pack-blind (the S8 strangler
+            slices thread the resolved set; the executor itself never needs
+            it — variant selection happens at spec-choice time).
         output_floor_summary: Portfolio-level output-floor summary
             (Basel 3.1 only; ``None`` under CRR or when the floor did not run).
         previous_period_results: Prior-run results LazyFrame for flow
@@ -57,7 +60,7 @@ class ReportingContext:
             ``None`` when not elected.
     """
 
-    template_set: ReportingTemplateSet
+    template_set: ReportingTemplateSet | None = None
     output_floor_summary: OutputFloorSummary | None = None
     previous_period_results: pl.LazyFrame | None = None
     capital_ratio_overrides: Pillar3CapitalRatioOverrides | None = None

@@ -503,7 +503,30 @@ regenerated. Check-17 extension to `reporting/` confirmed still a §9 phase-exit
   `reporting/`.
 - **Gate:** full suite; goldens unchanged.
 
-### S7 — CellSpec model + one executor + kernel growth + CR8 pilot (NUMBER-NEUTRAL)
+### S7 — CellSpec model + one executor + kernel growth + CR8 pilot (NUMBER-NEUTRAL) — **DONE 2026-07-11**
+
+*As delivered:* `reporting/cellspec.py` — the verb vocabulary (`Sum`/`Mean`/`WeightedAvg`/
+`Ratio`/`Count`/`PriorPeriod`/`Formula`), `RowPredicate` over the canonical ledger columns
+(both post-substitution AND origin bases, so each template keys its RECORDED basis),
+`CellSpec`/`TemplateSpec` pairing the frozen layout constants with `(row_ref, col_ref)`
+bindings, per-template `empty_cell` policy (zero = COREP / null = Pillar 3), and the ONE
+`execute()` with two-pass evaluation. Design refinements recorded during the pilot:
+(a) `Formula` is the intra-TEMPLATE escape, not intra-row — CR8's row 8 references rows 9/1
+within its single column, so refs resolve own-row-column-ref first, then own-column-row-ref
+(formula-referencing-formula raises); (b) `Formula.fn` receives a `prior_available` flag —
+CR8's residual is null without a prior period but coerces a None opening to zero WITH one
+(the generator's recorded semantics); (c) `ReportingContext.template_set` relaxed to
+optional (generators stay pack-blind until S8). First per-template module:
+`reporting/pillar3/cr8.py` (`CR8_SPEC` + `generate_cr8`); the generator's `_generate_cr8`
+is now a dispatch-router delegation. Input selection (the IRB non-slotting subset + lenient
+prior-period column fallbacks) deliberately stays with the router: `previous_period_results`
+is an EXTERNAL prior-run frame that may predate the ledger columns — its predicate retarget
+is an S8 recorded decision. CR8's own `_pick("rwa_final", "rwa")` ladder deleted (guard on
+the sealed name only). Kernel growth deferred-in-part: the executor's `WeightedAvg` IS the
+one weighted-average primitive going forward; the drifted generator copies retire with their
+templates at S8. Pins: `tests/unit/reporting/test_cellspec.py` (12 tests); all 201 existing
+Pillar 3 unit tests + the CR8 goldens pass through the executor UNCHANGED. Gate: full suite
+green; arch_check + ruff clean.
 - **Scope:** `reporting/cellspec.py` (§3.2); grow `reporting/kernel/` with the reconciled
   `WeightedAvg`/`Ratio`/`Count`/`Lookup`/`_make_row`/`_build_df` primitives (deduping drifted
   copies); establish the dispatch-router; migrate exactly one stateless pilot — **Pillar 3 CR8**.
