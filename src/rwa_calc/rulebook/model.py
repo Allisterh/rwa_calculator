@@ -270,6 +270,36 @@ class Feature:
     citation: Citation
 
 
+@dataclass(frozen=True)
+class ReportingTemplateSet:
+    """The cited per-regime reporting template inventory (Phase 7 S6).
+
+    Names the COREP and Pillar 3 template families the regime's reporting
+    framework comprises, plus the ``variant`` token that selects each
+    template's regime-specific ``TemplateSpec`` (columns/rows/refs) in the
+    declarative reporting layer — replacing the generators'
+    ``framework == "BASEL_3_1"`` string tests and ref-set sniffing as the
+    strangler slices land. Template ids are the template-bundle field names
+    (``c07_00``, ``of_02_01``, ``ov1``, ``cms1``, …); the inventories are
+    regulatory data (which templates the regime requires), not emission
+    behaviour, and changing them is a new pack version (content-hashed).
+    """
+
+    name: str
+    corep: tuple[str, ...]
+    pillar3: tuple[str, ...]
+    variant: str
+    citation: Citation
+
+    def __post_init__(self) -> None:
+        if not self.corep:
+            raise ValueError(f"ReportingTemplateSet {self.name!r}: corep must be non-empty")
+        if not self.pillar3:
+            raise ValueError(f"ReportingTemplateSet {self.name!r}: pillar3 must be non-empty")
+        if not self.variant:
+            raise ValueError(f"ReportingTemplateSet {self.name!r}: variant must be non-empty")
+
+
 # =============================================================================
 # RULE-ENTRY UNION — the pack-entry value type
 # =============================================================================
@@ -285,4 +315,5 @@ type RuleEntry = (
     | DecisionTable
     | FormulaParams
     | Feature
+    | ReportingTemplateSet
 )

@@ -34,6 +34,7 @@ from rwa_calc.rulebook.model import (
     FormulaParams,
     IntParam,
     LookupTable,
+    ReportingTemplateSet,
     RuleEntry,
     ScalarParam,
     Schedule,
@@ -1303,5 +1304,28 @@ ENTRIES: dict[str, RuleEntry] = {
         name="cva_ba_index_diversification_factor",
         value=Decimal("0.70"),
         citation=Citation("PS1/26", "4.8", "index-hedge supervisory diversification multiplier"),
+    ),
+    # ------------------------------------------------------------------
+    # Reporting template inventory (Phase 7 S6): the CRR set plus the
+    # PS1/26 additions — OF 02.01 (output floor, Art. 92(2A)) and the
+    # CMS1/CMS2 capital-plus-buffers disclosures. Ids are the
+    # template-bundle field names; ``variant`` selects the Basel 3.1
+    # TemplateSpec (147A corporate sub-class split, revised C08 layouts).
+    "reporting_template_set": ReportingTemplateSet(
+        name="reporting_template_set",
+        corep=(
+            "c_02_00", "c07_00", "c08_01", "c08_02", "c08_03", "c08_04", "c08_05", "c08_06",
+            "c08_07", "c09_01", "c09_02", "c34_01", "c34_02", "c34_04", "c34_08",
+            "of_02_01",
+        ),
+        pillar3=(
+            "ov1", "cr4", "cr5", "cr6", "cr6a", "cr7", "cr7a", "cr8", "cr9", "cr9_1", "cr10",
+            "ccr1", "ccr2", "ccr3", "ccr8",
+            "cms1", "cms2",
+        ),
+        variant="b31",
+        citation=Citation(
+            "PS1/26", "430", "adds OF 02.01 (output floor) + CMS1/CMS2 to the CRR reporting set"
+        ),
     ),
 }

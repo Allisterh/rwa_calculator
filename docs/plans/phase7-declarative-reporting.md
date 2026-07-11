@@ -476,7 +476,25 @@ stay. F2 is closed with this recording; execution continues at S6.
 - **Gate:** portfolio-total parity + per-row goldens with recorded decision; floor acceptance
   suite.
 
-### S6 — Rulepack reporting metadata + `ReportingContext` (NUMBER-NEUTRAL, single-stream)
+### S6 — Rulepack reporting metadata + `ReportingContext` (NUMBER-NEUTRAL, single-stream) — **DONE 2026-07-11**
+
+*As delivered:* `ReportingTemplateSet` rule shape (`rulebook/model.py` — corep/pillar3
+inventories + `variant` token, citation required, non-empty validation) + the `_value_repr`
+content-hash branch + `resolve().reporting()` accessor; cited `reporting_template_set` entries
+in both packs (CRR = the Reg 2021/451 Annex I COREP CR/CCR set + Part Eight Pillar 3, cited
+CRR Art. 430; B31 = the CRR set + `of_02_01`/`cms1`/`cms2`, cited PS1/26) — a membership pin
+asserts every declared id is a real template-bundle field, and B31 ⊇ CRR; typed
+`ReportingContext` (`reporting/metadata.py`) carrying the resolved set + the out-of-frame
+inputs (`OutputFloorSummary`, prior-period results, `Pillar3CapitalRatioOverrides`,
+reporting-basis/institution-type elections — both types live in `contracts/`, so no
+reporting→api inversion). Two scope notes recorded: the P7.5/P7.6 Art. 150(1A)/147B flags are
+template-LAYOUT variants already declarative in `templates.py` constants (the `variant` token
+selects them at S8 — no separate pack flags needed); `reporting_basis`/`institution_type` are
+firm ELECTIONS from `output_floor_config`, so they ride `ReportingContext`, not the pack.
+Metadata not yet consumed by the generators (S7/S8). Pins:
+`tests/unit/rulebook/test_reporting_metadata.py` (13 tests). Gate: rulebook suite 248 green;
+goldens + contracts green; full suite green; arch_check/ruff clean; citation matrix
+regenerated. Check-17 extension to `reporting/` confirmed still a §9 phase-exit item.
 - **Scope:** new cited `ReportingTemplateSet` RuleEntry (+ content-hash serialiser branch — the
   `_value_repr` raises on unknown shapes) + `resolve().reporting()` accessor + cited pack entries
   (per-regime template-set membership, variant/ref-set, `reporting_basis`/`institution_type`,
