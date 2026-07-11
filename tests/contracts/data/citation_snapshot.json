@@ -467,6 +467,18 @@
   "rwa_calc.reporting.pillar3.cr5::build_cr5_spec": [
     "CRR Art. 444"
   ],
+  "rwa_calc.reporting.pillar3.cr6::build_cr6_spec": [
+    "CRR Art. 452"
+  ],
+  "rwa_calc.reporting.pillar3.cr6a::build_cr6a_spec": [
+    "CRR Art. 452"
+  ],
+  "rwa_calc.reporting.pillar3.cr7::build_cr7_spec": [
+    "CRR Art. 453"
+  ],
+  "rwa_calc.reporting.pillar3.cr7a::build_cr7a_spec": [
+    "CRR Art. 453"
+  ],
   "rwa_calc.reporting.pillar3.generator::Pillar3Generator._generate_all_cr9": [
     "PS1/26, paragraph 147.2"
   ],

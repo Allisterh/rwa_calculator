@@ -87,6 +87,12 @@ class TestBindings:
         assert execute(_spec(cells, empty_cell="null"), _ledger()).row(0, named=True)["a"] is None
         assert execute(_spec(cells, empty_cell="zero"), _ledger()).row(0, named=True)["a"] == 0.0
 
+    def test_weighted_avg_scale(self) -> None:
+        """CR6 shape: PD/LGD columns report the weighted average x100."""
+        cells = {("1", "a"): CellSpec(WeightedAvg("reporting_rw", scale=100.0))}
+        df = execute(_spec(cells), _ledger())
+        assert df.row(0, named=True)["a"] == pytest.approx(390.0 / 600.0 * 100.0)
+
     def test_weighted_avg_mean_ratio_count(self) -> None:
         cells = {
             ("1", "a"): CellSpec(WeightedAvg("reporting_rw", weight="reporting_ead")),

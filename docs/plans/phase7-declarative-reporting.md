@@ -593,7 +593,42 @@ via role) are recorded follow-ups in §7, not silent changes. CR4/CR5 unit class
 to `tests/unit/reporting/pillar3/test_cr4_cr5.py` (+ new substitution/defaulted-mover tests).
 Gate: goldens regen'd with this recorded diff; full suite green.
 
-Order: **Pillar 3** OV1 → ~~CR4/CR5~~ → CR6/CR6a/CR7/CR7a → CR9/CR9.1/CR10 → CMS1/2 → CCR1/2/3/8
+**S8-CR6/CR6a/CR7/CR7a DONE 2026-07-11 — carries the recorded F3 second tranche.**
+`reporting/pillar3/{cr6,cr6a,cr7,cr7a}.py`; the imperative bodies (`_compute_cr6_values`,
+`_generate_cr6_for_class`, the 14 CR7 handlers + dispatch constants, `_compute_cr7a_values`,
+`_obligor_count`) deleted; all four routed through `cellspec.execute` (CR6 = one spec per
+obligor-class sheet + dict fan-out; CR7a = one spec per origin approach).
+**F3 second tranche (CR6 family), oracle-adjudicated — the OPPOSITE basis from CR4/CR5:**
+the Annex XXII instructions mandate the obligor basis verbatim ("without considering any
+substitution effects due to CRM"; CR7-A col a "without taking into account any substitution
+effects due to the existence of a guarantee"), and the COREP by-PD-range twin C 08.03 has no
+substitution-flow columns — so **CR6 sheets and CR7/CR7a rows key `reporting_class_origin` ×
+`reporting_approach_origin`**; substitution is a same-template column pair (CR7 a→b, CR7-A
+m→n), never a sheet move. Number-neutral on the goldens (no IRB movers exist; probe-verified).
+**CR6-A recorded keying:** rows stay on the ORIGINATION class (sealed raw `exposure_class`,
+via tolerant per-value limbs) — the row axis is Art. 147-shaped with no defaulted sink, so the
+applied basis would silently drop defaulted-SA EAD (−1.0M row 3) while Total kept it.
+**Two recorded reg-mandated fixes** (goldens: exactly ONE cell pair changed):
+(1) CRR CR7 row 8 "Retail — Secured by immovable property" now sums A-IRB `retail_mortgage`
+— the retired handler summed `(retail_other, retail_qrre)`, byte-identical to row 9; golden
+row 8 flips populated→null (no A-IRB mortgage in the portfolio). (2) CR6 defaulted rows are
+forced to the 100% PD band via the derived `cr6_alloc_pd` column ("All defaulted exposures
+shall be included in the bucket representing PD of 100%") — the engine's defaulted treatment
+never rewrites the model PD, so the retired code mis-bucketed defaulted IRB rows at model PD
+(zero golden diff; pinned by a new unit test). **Preserved verbatim (mandated/recorded):** the
+B31 pre-floor-allocate (`pd`) / post-floor-report (`pd_floored`, `lgd_floored` — PS1/26
+Art. 160(1)/163(1), 161(5)/164(4)) regime split; CR7 a==b and CR7-A m==n approximations (§7
+follow-ups — the ledger's two legs now make the n-side computable; the a/m hypothetical sides
+need pre-CD/pre-substitution RWA carriers); CR6 col m permanently null
+(`scra_provision_amount` never produced — F6); CR6-A col e roll-out % = recorded 0.0.
+Vocabulary addition: `WeightedAvg.scale` (CR6 PD/LGD ×100). CR6's String PD-range label
+column and the empty-band all-null contract are cr6.py-owned post-steps (label injection +
+explicit band-emptiness nulling) — the executor stays Float64-only. CR6/CR6a/CR7/CR7a unit
+classes split out to `tests/unit/reporting/pillar3/test_cr6_cr7.py` (+ new obligor-basis
+substitution, defaulted-band, CR7-row-8 and CR6-A-keying pins). Gate: goldens regen'd with
+the recorded row-8 diff only; full suite green.
+
+Order: **Pillar 3** OV1 → ~~CR4/CR5~~ → ~~CR6/CR6a/CR7/CR7a~~ → CR9/CR9.1/CR10 → CMS1/2 → CCR1/2/3/8
 (post S8-pre); then **COREP** C07 + skeleton-sharing C08.01/02/03/05 → C08.04/06/07 → C09.01/02 →
 OF02.01 → OF07/OF08/C34.x (post S8-pre) → **C02.00 LAST** (portfolio pre-pass via
 `ReportingContext`).
@@ -624,7 +659,7 @@ OF02.01 → OF07/OF08/C34.x (post S8-pre) → **C02.00 LAST** (portfolio pre-pas
 |---|---|---|---|
 | **F1** | S4 | `summary_by_class` basis shift for unguaranteed defaulted / SME-managed-as-retail rows (raw → applied class) | **FIX** — align summaries to the applied/post-CRM semantic; oracle sign-off per diff |
 | **F2** | S5 | Per-row post-floor `reporting_rwa` allocation of the portfolio floor add-on | **PRESERVE** portfolio totals exactly; **FIX** the per-row convention, ring-fenced, oracle-signed |
-| **F3** | S8.. | Pillar 3 CR4/CR5/CR6/CR9 retarget raw `exposure_class` → `reporting_class` (SME/defaulted rows change sheet) | **FIX** — Pillar III post-CRM disclosure reports the applied/substituted class; per-template oracle sign-off. **CR4/CR5 DONE 2026-07-11** (split basis: a/b origin, c-f + CR5 post — see the S8-CR4/CR5 block); CR6/CR9 pending |
+| **F3** | S8.. | Pillar 3 CR4/CR5/CR6/CR9 retarget raw `exposure_class` → `reporting_class` (SME/defaulted rows change sheet) | **FIX** — per-template oracle sign-off; the basis is PER-TEMPLATE, not uniform. **CR4/CR5 DONE 2026-07-11** (split basis: a/b origin, c-f + CR5 post). **CR6/CR6a/CR7/CR7a DONE 2026-07-11** (obligor basis: CR6/CR7/CR7a → `reporting_class_origin` — the instructions bar substitution effects; CR6-A → origination class, recorded). CR9 pending |
 | **F4** | S8.. | COREP C07 origin vs post-CRM column consistency (already on `exposure_class_applied` since `5ee669f8`) | **PRESERVE** C07.00 origination keying + outflow/inflow; confirm the split reproduces existing cells |
 | **F5** | S8../Sn | UI by-class chart retarget raw `exposure_class` → `reporting_class` | **FIX** — UI matches COREP/Pillar 3 exactly; closes the operator-flagged UI/recon gap |
 | **F6** | follow-ups | The S1-DEFERRED stripped/never-produced reads (`ccf_applied`, `sa_cqs`, `scra/gcra_provision_amount`, `ead_pre_ccf`, `exposure_post_crm`, …) — permanently-null cells today | **Per-column add-to-contract-vs-accept-empty decision**, never a blanket seal |
@@ -674,6 +709,21 @@ Consumer-facing surface = `reporting_class`, `reporting_class_origin`, `reportin
   "reported in two parts" instruction (PS1/26 Annex XX) reads as both parts staying in the RE
   class row. Decide whether the residual leg's class row should exclude role-tagged legs;
   bundle with the role-coverage fix above.
+- **CR7 col a / CR7-A col m hypothetical RWEA carriers (found during S8-CR6-family; behaviour
+  predates the slice):** CR7 col a (pre-credit-derivatives RWEA, Art. 204 derecognition) and
+  CR7-A col m (RWEA without substitution effects) are both approximated by the ACTUAL
+  `rwa_final` — correct only while no credit derivatives / substitution occur. The two-leg
+  ledger makes the n-side exact already; the hypothetical sides need engine carriers (the
+  borrower-basis RWA of covered legs — `pre_crm_rwa` / `guarantor_rw`-inverse candidates).
+  F7-family: own recorded-decision slice with an oracle scenario, not a Sum alias.
+- **CR7-A funded-CP sub-splits (F6):** cols g/h/i/j (cash on deposit, life insurance,
+  third-party instruments) and l (credit derivatives, distinct from guarantees) have no
+  engine columns — permanently null, per-column add-to-contract decisions.
+- **Executor per-cell filtering became measurable on CR6** (8 class sheets × ~200 cells,
+  each a DataFrame filter): the reporting unit-test wall roughly doubled. Fine at portfolio
+  scale; if benchmarks flag the reporting stage on 10M-row frames, add a grouped-aggregation
+  kernel behind `execute()` (one group-by per (predicate-family, verb) instead of per-cell
+  filters) — an executor-internal change, specs untouched.
 - **Tie-out cross-check:** headline totals (per-key frame) vs class allocation (raw frame) have
   no cross-check; add one assertion frame once both read the ledger.
 - **`exposure_class_for_sa` / `substitute_rw` deletions** (S3) — record the 0-reader /

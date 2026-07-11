@@ -65,10 +65,14 @@ class Mean:
 
 @dataclass(frozen=True)
 class WeightedAvg:
-    """Kind 2: ``weight``-weighted average of ``col`` (LGD, PD, maturity)."""
+    """Kind 2: ``weight``-weighted average of ``col`` (LGD, PD, maturity).
+
+    ``scale`` multiplies a non-None result (the CR6 PD/LGD columns report
+    percentages: weighted average x100)."""
 
     col: str
     weight: str = "reporting_ead"
+    scale: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -472,7 +476,7 @@ def _evaluate(
         if total == 0.0:
             return None if empty_as_none else 0.0
         weighted = float((data[binding.col].fill_null(0.0) * weights).sum())
-        return weighted / total
+        return weighted / total * binding.scale
     if isinstance(binding, Ratio):
         num = col_sum(data, cols, binding.numerator, empty_as_none=empty_as_none)
         den = col_sum(data, cols, binding.denominator, empty_as_none=empty_as_none)

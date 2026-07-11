@@ -36,10 +36,9 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import polars as pl
 from watchfire import cites
@@ -66,6 +65,10 @@ from rwa_calc.reporting.kernel import (
 )
 from rwa_calc.reporting.pillar3.cr4 import generate_cr4
 from rwa_calc.reporting.pillar3.cr5 import generate_cr5
+from rwa_calc.reporting.pillar3.cr6 import generate_cr6
+from rwa_calc.reporting.pillar3.cr6a import generate_cr6a
+from rwa_calc.reporting.pillar3.cr7 import generate_cr7
+from rwa_calc.reporting.pillar3.cr7a import generate_cr7a
 from rwa_calc.reporting.pillar3.cr8 import generate_cr8
 from rwa_calc.reporting.pillar3.ov1 import generate_ov1
 from rwa_calc.reporting.pillar3.templates import (
@@ -104,8 +107,6 @@ from rwa_calc.reporting.pillar3.templates import (
     get_cr4_columns,
     get_cr5_columns,
     get_cr6_columns,
-    get_cr6a_rows,
-    get_cr7_rows,
     get_cr7a_columns,
     get_cr10_columns,
     get_cr10_subtemplates,
@@ -227,7 +228,7 @@ class Pillar3Generator:
             ),
             cr4=self._generate_cr4(results, cols, framework, errors),
             cr5=self._generate_cr5(results, cols, framework, errors),
-            cr6=self._generate_all_cr6(irb_data, cols, framework, errors),
+            cr6=self._generate_all_cr6(results, cols, framework, errors),
             cr6a=self._generate_cr6a(results, cols, framework, errors),
             cr7=self._generate_cr7(results, cols, framework, errors),
             cr7a=self._generate_all_cr7a(results, cols, framework, errors),
@@ -422,85 +423,22 @@ class Pillar3Generator:
 
     def _generate_all_cr6(
         self,
-        irb_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> dict[str, pl.DataFrame]:
-        ead_col = _pick(cols, "ead_final")
-        rwa_col = _pick(cols, "rwa_final", "rwa")
-        ec_col = _pick(cols, "exposure_class")
-        if not ead_col or not rwa_col or not ec_col:
-            errors.append("CR6: missing required columns")
-            return {}
+        """Generate the per-class CR6 IRB by-PD-range templates.
 
-        data = irb_data.collect()
-        if data.height == 0:
-            return {}
+        Dispatch-router entry (Phase 7 S8): CR6 is declarative — the cell
+        semantics live in ``pillar3/cr6.py::build_cr6_spec`` (obligor-class
+        sheets, regime PD-allocation split, defaulted 100%-band landing)
+        and run through the one ``cellspec.execute`` executor.
 
-        is_b31 = framework == "BASEL_3_1"
-        alloc_pd_col = _pick(cols, "pd") if is_b31 else None
-        report_pd_col = _pick(cols, "pd_floored")
-        pd_col = alloc_pd_col or report_pd_col or _pick(cols, "pd_floored")
-
-        if not pd_col:
-            errors.append("CR6: missing PD column")
-            return {}
-
-        result: dict[str, pl.DataFrame] = {}
-        for ec_val in data[ec_col].unique().to_list():
-            if ec_val not in IRB_EXPOSURE_CLASSES:
-                continue
-            class_data = data.filter(pl.col(ec_col) == ec_val)
-            result[ec_val] = self._generate_cr6_for_class(
-                class_data,
-                cols,
-                ead_col,
-                rwa_col,
-                pd_col,
-                report_pd_col or pd_col,
-                framework,
-            )
-
-        return result
-
-    def _generate_cr6_for_class(
-        self,
-        class_data: pl.DataFrame,
-        cols: set[str],
-        ead_col: str,
-        rwa_col: str,
-        alloc_pd_col: str,
-        report_pd_col: str,
-        framework: str,
-    ) -> pl.DataFrame:
-        cr6_cols = get_cr6_columns(framework)
-        column_refs = [c.ref for c in cr6_cols]
-        rows_out: list[dict[str, object]] = []
-
-        for lower, upper, row_ref, label in CR6_PD_RANGES:
-            if math.isinf(upper):
-                bucket = class_data.filter(pl.col(alloc_pd_col) >= lower)
-            else:
-                bucket = class_data.filter(
-                    (pl.col(alloc_pd_col) >= lower) & (pl.col(alloc_pd_col) < upper)
-                )
-
-            values = _compute_cr6_values(bucket, cols, ead_col, rwa_col, report_pd_col)
-            values["a"] = label
-            row = P3Row(row_ref, label)
-            rows_out.append(_make_row(row, values, column_refs))
-
-        # Total row
-        total_values = _compute_cr6_values(class_data, cols, ead_col, rwa_col, report_pd_col)
-        total_values["a"] = "Total"
-        rows_out.append(_make_row(P3Row("18", "Total", is_total=True), total_values, column_refs))
-
-        # Build with mixed types: col "a" is String, rest Float64
-        schema: dict[str, PolarsDataType] = {"row_ref": pl.String, "row_name": pl.String}
-        for ref in column_refs:
-            schema[ref] = pl.String if ref == "a" else pl.Float64
-        return pl.DataFrame(rows_out, schema=schema)
+        References:
+            CRR Art. 452(g); PRA PS1/26 Annex XXII.
+        """
+        return generate_cr6(results, cols, framework, errors)
 
     # ---- CR6-A ----
 
@@ -511,44 +449,17 @@ class Pillar3Generator:
         framework: str,
         errors: list[str],
     ) -> pl.DataFrame | None:
-        ead_col = _pick(cols, "ead_final")
-        ec_col = _pick(cols, "exposure_class")
-        approach_col = _pick(cols, "approach_applied", "approach")
-        if not ead_col or not ec_col or not approach_col:
-            errors.append("CR6-A: missing required columns")
-            return None
+        """Generate the CR6-A scope-of-IRB-use template.
 
-        data = results.collect()
-        cr6a_rows = get_cr6a_rows(framework)
-        column_refs = [c.ref for c in CR6A_COLUMNS]
-        irb_approaches = {"foundation_irb", "advanced_irb", "slotting"}
-        rows_out: list[dict[str, object]] = []
+        Dispatch-router entry (Phase 7 S8): CR6-A is declarative — the cell
+        semantics live in ``pillar3/cr6a.py::build_cr6a_spec`` (origination-
+        class rows, IRB/SA percentage formulas) and run through the one
+        ``cellspec.execute`` executor.
 
-        for row_def in cr6a_rows:
-            if row_def.is_total:
-                subset = data
-            elif row_def.exposure_classes:
-                subset = data.filter(pl.col(ec_col).is_in(list(row_def.exposure_classes)))
-            else:
-                rows_out.append(_null_row(row_def, column_refs))
-                continue
-
-            total_ead = _col_sum(subset, ead_col) or 0.0
-            irb_subset = subset.filter(pl.col(approach_col).is_in(list(irb_approaches)))
-            irb_ead = _col_sum(irb_subset, ead_col) or 0.0
-            sa_subset = subset.filter(~pl.col(approach_col).is_in(list(irb_approaches)))
-            sa_ead = _col_sum(sa_subset, ead_col) or 0.0
-
-            values: dict[str, object] = {
-                "a": irb_ead,
-                "b": total_ead,
-                "c": (sa_ead / total_ead * 100.0) if total_ead > 0 else None,
-                "d": (irb_ead / total_ead * 100.0) if total_ead > 0 else None,
-                "e": 0.0,  # Roll-out plan % — not available from pipeline
-            }
-            rows_out.append(_make_row(row_def, values, column_refs))
-
-        return _build_df(rows_out, column_refs)
+        References:
+            CRR Art. 452(b); PRA PS1/26 Annex XXII.
+        """
+        return generate_cr6a(results, cols, framework, errors)
 
     # ---- CR7 ----
 
@@ -559,38 +470,17 @@ class Pillar3Generator:
         framework: str,
         errors: list[str],
     ) -> pl.DataFrame | None:
-        rwa_col = _pick(cols, "rwa_final", "rwa")
-        approach_col = _pick(cols, "approach_applied", "approach")
-        ec_col = _pick(cols, "exposure_class")
-        if not rwa_col or not approach_col:
-            errors.append("CR7: missing required columns")
-            return None
+        """Generate the CR7 credit-derivatives-effect template.
 
-        data = results.collect()
-        cr7_rows = get_cr7_rows(framework)
-        column_refs = [c.ref for c in CR7_COLUMNS]
+        Dispatch-router entry (Phase 7 S8): CR7 is declarative — the cell
+        semantics live in ``pillar3/cr7.py::build_cr7_spec`` (origin
+        approach x obligor-class rows; a == b recorded approximation) and
+        run through the one ``cellspec.execute`` executor.
 
-        firb = data.filter(pl.col(approach_col) == "foundation_irb")
-        airb = data.filter(pl.col(approach_col) == "advanced_irb")
-        slotting = data.filter(pl.col(approach_col) == "slotting")
-
-        rows_out: list[dict[str, object]] = []
-        for row_def in cr7_rows:
-            rwa = _cr7_row_rwa(
-                row_def,
-                framework=framework,
-                data=data,
-                firb=firb,
-                airb=airb,
-                slotting=slotting,
-                ec_col=ec_col,
-                approach_col=approach_col,
-                rwa_col=rwa_col,
-            )
-            # Pre-CD RWEA approximation = post-CD RWEA (pre-CD tracking not available)
-            rows_out.append(_make_row(row_def, {"a": rwa, "b": rwa}, column_refs))
-
-        return _build_df(rows_out, column_refs)
+        References:
+            CRR Art. 453(j); PRA PS1/26 Annex XXII.
+        """
+        return generate_cr7(results, cols, framework, errors)
 
     # ---- CR7-A ----
 
@@ -601,47 +491,17 @@ class Pillar3Generator:
         framework: str,
         errors: list[str],
     ) -> dict[str, pl.DataFrame]:
-        ead_col = _pick(cols, "ead_final")
-        rwa_col = _pick(cols, "rwa_final", "rwa")
-        approach_col = _pick(cols, "approach_applied", "approach")
-        ec_col = _pick(cols, "exposure_class")
-        if not ead_col or not rwa_col or not approach_col:
-            errors.append("CR7-A: missing required columns")
-            return {}
+        """Generate the per-approach CR7-A extent-of-CRM templates.
 
-        data = results.collect()
-        cr7a_cols = get_cr7a_columns(framework)
-        column_refs = [c.ref for c in cr7a_cols]
-        result: dict[str, pl.DataFrame] = {}
+        Dispatch-router entry (Phase 7 S8): CR7-A is declarative — the cell
+        semantics live in ``pillar3/cr7a.py::build_cr7a_spec`` (obligor-class
+        rows, FCP/UFCP percentage ratios, m == n recorded approximation)
+        and run through the one ``cellspec.execute`` executor.
 
-        from rwa_calc.reporting.pillar3.templates import CR7A_AIRB_ROWS, CR7A_FIRB_ROWS
-
-        for approach_key, approach_val, row_defs in [
-            ("foundation_irb", "foundation_irb", CR7A_FIRB_ROWS),
-            ("advanced_irb", "advanced_irb", CR7A_AIRB_ROWS),
-        ]:
-            approach_data = data.filter(pl.col(approach_col) == approach_val)
-            if approach_data.height == 0:
-                continue
-
-            rows_out: list[dict[str, object]] = []
-            for row_def in row_defs:
-                if row_def.is_total:
-                    subset = approach_data
-                elif row_def.exposure_classes and ec_col:
-                    subset = approach_data.filter(
-                        pl.col(ec_col).is_in(list(row_def.exposure_classes))
-                    )
-                else:
-                    rows_out.append(_null_row(row_def, column_refs))
-                    continue
-
-                values = _compute_cr7a_values(subset, cols, ead_col)
-                rows_out.append(_make_row(row_def, values, column_refs))
-
-            result[approach_key] = _build_df(rows_out, column_refs)
-
-        return result
+        References:
+            CRR Art. 453(g); PRA PS1/26 Annex XXII.
+        """
+        return generate_cr7a(results, cols, framework, errors)
 
     # ---- CR8 ----
 
@@ -1405,201 +1265,6 @@ def _filter_irb_non_slotting(
 # ---------------------------------------------------------------------------
 
 
-_CR7_IRB_APPROACHES: tuple[str, ...] = ("foundation_irb", "advanced_irb", "slotting")
-_CR7_B31_CORP_CLASSES: tuple[str, ...] = ("corporate", "corporate_sme", "specialised_lending")
-_CR7_CRR_CORP_CLASSES: tuple[str, ...] = ("corporate", "specialised_lending")
-_CR7_B31_RETAIL_CLASSES: tuple[str, ...] = ("retail_mortgage", "retail_qrre", "retail_other")
-_CR7_CRR_RETAIL_CLASSES: tuple[str, ...] = ("retail_other", "retail_qrre")
-
-
-_Cr7Handler = Callable[[pl.DataFrame, pl.DataFrame, pl.DataFrame, str | None, str], float | None]
-
-
-def _cr7_filter_in(
-    frame: pl.DataFrame,
-    ec_col: str | None,
-    classes: tuple[str, ...],
-) -> pl.DataFrame:
-    """Filter ``frame`` to rows whose exposure_class is in ``classes``.
-
-    Falls back to ``frame`` unchanged when no ``ec_col`` is available.
-    """
-    if not ec_col:
-        return frame
-    return frame.filter(pl.col(ec_col).is_in(list(classes)))
-
-
-def _cr7_row_rwa(
-    row_def: P3Row,
-    *,
-    framework: str,
-    data: pl.DataFrame,
-    firb: pl.DataFrame,
-    airb: pl.DataFrame,
-    slotting: pl.DataFrame,
-    ec_col: str | None,
-    approach_col: str,
-    rwa_col: str,
-) -> float | None:
-    """Resolve the RWA total for a single CR7 row, dispatching by ref."""
-    ref = row_def.ref
-    is_b31 = framework == "BASEL_3_1"
-
-    if ref == "1":
-        return _col_sum(firb, rwa_col)
-    if ref == "10" or row_def.is_total:
-        return _col_sum(
-            data.filter(pl.col(approach_col).is_in(list(_CR7_IRB_APPROACHES))),
-            rwa_col,
-        )
-    if ref == "9":
-        if not ec_col:
-            return None
-        return _col_sum(_cr7_filter_in(airb, ec_col, _CR7_CRR_RETAIL_CLASSES), rwa_col)
-
-    handler = _CR7_HANDLERS_B31.get(ref) if is_b31 else _CR7_HANDLERS_CRR.get(ref)
-    if handler is None:
-        return None
-    return handler(firb, airb, slotting, ec_col, rwa_col)
-
-
-def _cr7_b31_ref2(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    if not ec_col:
-        return None
-    return _col_sum(firb.filter(pl.col(ec_col) == "institution"), rwa_col)
-
-
-def _cr7_crr_ref2(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    if not ec_col:
-        return None
-    return _col_sum(firb.filter(pl.col(ec_col) == "central_govt_central_bank"), rwa_col)
-
-
-def _cr7_b31_ref3(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    if not ec_col:
-        return None
-    return _col_sum(_cr7_filter_in(firb, ec_col, _CR7_B31_CORP_CLASSES), rwa_col)
-
-
-def _cr7_crr_ref3(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    if not ec_col:
-        return None
-    return _col_sum(firb.filter(pl.col(ec_col) == "institution"), rwa_col)
-
-
-def _cr7_b31_ref4(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(airb, rwa_col)
-
-
-def _cr7_crr_ref4(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    subset = firb.filter(pl.col(ec_col) == "corporate_sme") if ec_col else firb
-    return _col_sum(subset, rwa_col)
-
-
-def _cr7_b31_ref5(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(_cr7_filter_in(airb, ec_col, _CR7_B31_CORP_CLASSES), rwa_col)
-
-
-def _cr7_crr_ref5(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(_cr7_filter_in(firb, ec_col, _CR7_CRR_CORP_CLASSES), rwa_col)
-
-
-def _cr7_b31_ref6(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(_cr7_filter_in(airb, ec_col, _CR7_B31_RETAIL_CLASSES), rwa_col)
-
-
-def _cr7_crr_ref6(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(airb, rwa_col)
-
-
-def _cr7_b31_ref7(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(slotting, rwa_col)
-
-
-def _cr7_crr_ref7(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(_cr7_filter_in(airb, ec_col, _CR7_B31_CORP_CLASSES), rwa_col)
-
-
-def _cr7_b31_ref8(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    subset = airb.filter(pl.col(ec_col) == "retail_mortgage") if ec_col else airb
-    return _col_sum(subset, rwa_col)
-
-
-def _cr7_crr_ref8(firb, airb, slotting, ec_col, rwa_col):  # noqa: ARG001
-    return _col_sum(_cr7_filter_in(airb, ec_col, _CR7_CRR_RETAIL_CLASSES), rwa_col)
-
-
-_CR7_HANDLERS_B31: dict[str, _Cr7Handler] = {
-    "2": _cr7_b31_ref2,
-    "3": _cr7_b31_ref3,
-    "4": _cr7_b31_ref4,
-    "5": _cr7_b31_ref5,
-    "6": _cr7_b31_ref6,
-    "7": _cr7_b31_ref7,
-    "8": _cr7_b31_ref8,
-}
-_CR7_HANDLERS_CRR: dict[str, _Cr7Handler] = {
-    "2": _cr7_crr_ref2,
-    "3": _cr7_crr_ref3,
-    "4": _cr7_crr_ref4,
-    "5": _cr7_crr_ref5,
-    "6": _cr7_crr_ref6,
-    "7": _cr7_crr_ref7,
-    "8": _cr7_crr_ref8,
-}
-
-
-# ---------------------------------------------------------------------------
-# Per-template value computation
-# ---------------------------------------------------------------------------
-
-
-def _compute_cr6_values(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    rwa_col: str,
-    pd_col: str,
-) -> dict[str, object]:
-    """Compute CR6 column values for a PD-range bucket of IRB exposures."""
-    if data.height == 0:
-        return {}
-
-    on_bs = _filter_on_bs(data, cols)
-    off_bs = _filter_off_bs(data, cols)
-    lgd_col = _pick(cols, "lgd_floored", "lgd_input")
-    maturity_col = _pick(cols, "irb_maturity_m")
-    el_col = _pick(cols, "expected_loss")
-    ccf_col = _pick(cols, "ccf")
-    prov_col = _pick(cols, "scra_provision_amount", "provision_held")
-
-    ead_sum = _col_sum(data, ead_col) or 0.0
-    rwa_sum = _col_sum(data, rwa_col) or 0.0
-
-    values: dict[str, object] = {
-        "b": _safe_sum(on_bs, "drawn_amount", "interest"),
-        "c": _safe_sum(off_bs, "nominal_amount", "undrawn_amount"),
-        "d": _ead_weighted_avg(off_bs, ead_col, ccf_col),
-        "e": ead_sum,
-        "f": _ead_weighted_avg(data, ead_col, pd_col),
-        "g": _obligor_count(data, cols),
-        "h": _ead_weighted_avg(data, ead_col, lgd_col),
-        "i": _ead_weighted_avg(data, ead_col, maturity_col),
-        "j": rwa_sum,
-        "k": rwa_sum / ead_sum if ead_sum > 0 else None,
-        "l": _col_sum(data, el_col),
-        "m": _col_sum(data, prov_col),
-    }
-
-    # Convert PD/LGD to percentage for display
-    if values.get("f") is not None:
-        values["f"] = float(cast("float", values["f"])) * 100.0
-    if values.get("h") is not None:
-        values["h"] = float(cast("float", values["h"])) * 100.0
-
-    return values
-
-
 def _cr9_class_predicate(spec: CR9ClassSpec, ec_col: str, cols: set[str]) -> pl.Expr:
     """Resolve a CR9 leaf-class descriptor into a row-filter ``pl.Expr``.
 
@@ -1813,53 +1478,6 @@ def _cr9_hist_rate_pct(
     return observed_rate
 
 
-def _compute_cr7a_values(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-) -> dict[str, object]:
-    """Compute CR7-A column values for a filtered IRB subset."""
-    total_ead = _col_sum(data, ead_col) or 0.0
-
-    def _pct(col_name: str | None) -> float | None:
-        if not col_name or col_name not in data.columns or total_ead == 0:
-            return None
-        val = _col_sum(data, col_name) or 0.0
-        return val / total_ead * 100.0
-
-    values: dict[str, object] = {
-        "a": total_ead,
-        "b": _pct(_pick(cols, "collateral_financial_value")),
-        "d": _pct(_pick(cols, "collateral_re_value")),
-        "e": _pct(_pick(cols, "collateral_receivables_value")),
-        "f": _pct(_pick(cols, "collateral_other_physical_value")),
-        "h": None,  # Cash on deposit — not separately tracked
-        "i": None,  # Life insurance — not separately tracked
-        "j": None,  # Instruments held by third party — not separately tracked
-        "k": _pct(_pick(cols, "guaranteed_portion")),
-        "m": _col_sum(data, _pick(cols, "rwa_final", "rwa")),
-        "n": _col_sum(data, _pick(cols, "rwa_final", "rwa")),
-    }
-
-    # c = sum of d + e + f
-    d_val = float(cast("float", values.get("d") or 0.0))
-    e_val = float(cast("float", values.get("e") or 0.0))
-    f_val = float(cast("float", values.get("f") or 0.0))
-    values["c"] = d_val + e_val + f_val if (d_val or e_val or f_val) else None
-
-    # g = sum of h + i + j
-    values["g"] = None  # sub-categories not tracked
-
-    # l = credit derivatives %
-    values["l"] = None  # Not separately tracked from guarantees
-
-    # o, p for B31 slotting — always None for F-IRB/A-IRB
-    values["o"] = None
-    values["p"] = None
-
-    return values
-
-
 def _cr10_type_data(
     data: pl.DataFrame,
     sl_type_col: str | None,
@@ -2070,14 +1688,6 @@ def _cr9_display_names(cr9_dict: dict[str, pl.DataFrame]) -> dict[str, str]:
         class_name = IRB_EXPOSURE_CLASSES.get(parts[1], parts[1]) if len(parts) > 1 else ""
         display[key] = f"{approach} {class_name}" if class_name else approach
     return display
-
-
-def _obligor_count(data: pl.DataFrame, cols: set[str]) -> float | None:
-    """Count unique obligors (counterparty references) in a dataset."""
-    cp_col = _pick(cols, "counterparty_reference")
-    if not cp_col or cp_col not in data.columns:
-        return None
-    return float(data.select(pl.col(cp_col).n_unique()).item())
 
 
 # ---------------------------------------------------------------------------
