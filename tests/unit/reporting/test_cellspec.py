@@ -26,6 +26,7 @@ from rwa_calc.reporting.cellspec import (
     PriorPeriod,
     Ratio,
     RowPredicate,
+    SafeSum,
     Sum,
     TemplateSpec,
     WeightedAvg,
@@ -124,6 +125,81 @@ class TestPredicates:
         assert RowPredicate().to_expr() is None
         pred = RowPredicate(subclass="sme")
         assert _ledger().filter(pred.to_expr())["exposure_reference"].to_list() == ["A"]
+
+    def test_between_half_open_band(self) -> None:
+        """CR5 band shape: low <= col < high, so a boundary value falls in
+        exactly one band."""
+        in_band = RowPredicate(between=(("reporting_rw", 0.195, 0.205),))
+        assert in_band.apply(_ledger())["exposure_reference"].to_list() == ["B"]
+        at_lower = RowPredicate(between=(("reporting_rw", 0.2, 0.3),))
+        assert at_lower.apply(_ledger())["exposure_reference"].to_list() == ["B"]
+        at_upper = RowPredicate(between=(("reporting_rw", 0.1, 0.2),))
+        assert at_upper.apply(_ledger()).height == 0
+
+    def test_between_absent_column_yields_empty_subset(self) -> None:
+        pred = RowPredicate(between=(("no_such_column", 0.0, 1.0),))
+        assert pred.apply(_ledger()).height == 0
+
+    def test_any_of_unions_class_and_tolerant_equals_limbs(self) -> None:
+        """CR5 row-9 shape: exposure class OR a split-leg role column."""
+        data = _ledger().with_columns(
+            pl.Series("re_split_role", [None, "secured", None], dtype=pl.String)
+        )
+        pred = RowPredicate(
+            any_of=(
+                RowPredicate(classes=("retail",)),
+                RowPredicate(equals=(("re_split_role", "secured"),)),
+            )
+        )
+        assert pred.apply(data)["exposure_reference"].to_list() == ["B", "C"]
+
+    def test_any_of_limb_with_absent_tolerant_column_matches_nothing(self) -> None:
+        """A role limb over a frame without the role column contributes no
+        rows — the class limb still matches."""
+        pred = RowPredicate(
+            any_of=(
+                RowPredicate(classes=("retail",)),
+                RowPredicate(equals=(("re_split_role", "secured"),)),
+            )
+        )
+        assert pred.apply(_ledger())["exposure_reference"].to_list() == ["C"]
+
+    def test_any_of_conjoins_with_outer_terms(self) -> None:
+        pred = RowPredicate(
+            is_defaulted=False,
+            any_of=(
+                RowPredicate(classes=("retail",)),
+                RowPredicate(classes=("corporate",)),
+            ),
+        )
+        assert pred.apply(_ledger())["exposure_reference"].to_list() == ["A", "B"]
+
+    def test_nested_any_of_raises(self) -> None:
+        with pytest.raises(ValueError, match="any_of"):
+            RowPredicate(any_of=(RowPredicate(any_of=(RowPredicate(),)),))
+
+
+class TestSafeSum:
+    def test_sums_present_columns_and_skips_absent(self) -> None:
+        data = _ledger().with_columns(pl.Series("drawn_amount", [10.0, 20.0, 30.0]))
+        cells = {("1", "a"): CellSpec(SafeSum(("drawn_amount", "interest")))}
+        assert execute(_spec(cells), data).row(0, named=True)["a"] == 60.0
+
+    def test_no_named_column_present_takes_empty_policy(self) -> None:
+        cells = {("1", "a"): CellSpec(SafeSum(("drawn_amount", "interest")))}
+        assert execute(_spec(cells, empty_cell="null"), _ledger()).row(0, named=True)["a"] is None
+        assert execute(_spec(cells, empty_cell="zero"), _ledger()).row(0, named=True)["a"] == 0.0
+
+    def test_empty_subset_with_present_column_is_zero(self) -> None:
+        """kernel safe_sum_or_none semantics: a present column over an empty
+        subset sums to 0.0 even under the null template policy."""
+        data = _ledger().with_columns(pl.Series("drawn_amount", [10.0, 20.0, 30.0]))
+        cells = {
+            ("1", "a"): CellSpec(
+                SafeSum(("drawn_amount",)), predicate=RowPredicate(classes=("no_such_class",))
+            )
+        }
+        assert execute(_spec(cells, empty_cell="null"), data).row(0, named=True)["a"] == 0.0
 
 
 class TestPriorPeriodAndFormula:

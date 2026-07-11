@@ -63,6 +63,21 @@ def with_reporting_ledger(ours: pl.LazyFrame) -> pl.LazyFrame:
             # as the lenient seal would — the sealed ledger always carries the
             # column, and a null never matches a predicate.
             exprs.append(pl.lit(None, dtype=dtypes[target]).alias(target))
+    if "reporting_on_balance_sheet" not in cols:
+        # Mirrors the aggregator's exposure-type rule (bs_type never reaches
+        # the aggregator): loan -> on-BS, facility/contingent -> off-BS,
+        # anything else -> null.
+        if "exposure_type" in cols:
+            exprs.append(
+                pl.when(pl.col("exposure_type") == "loan")
+                .then(pl.lit(value=True))
+                .when(pl.col("exposure_type").is_in(["facility", "contingent"]))
+                .then(pl.lit(value=False))
+                .otherwise(pl.lit(None, dtype=pl.Boolean))
+                .alias("reporting_on_balance_sheet")
+            )
+        else:
+            exprs.append(pl.lit(None, dtype=pl.Boolean).alias("reporting_on_balance_sheet"))
     return ours.with_columns(exprs) if exprs else ours
 
 

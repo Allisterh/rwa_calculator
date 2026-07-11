@@ -1,10 +1,9 @@
 {
   "_comment": "Architecture-debt ratchet baseline (arch_check check 11). Counts may not increase (cites_decorators may not decrease). Regenerate after an improvement with: python scripts/arch_check.py --update-baseline",
-  "_note_20260710_2012": "P1.223 obligor short-term ECAI spillover (enrich.py::_apply_obligor_short_term_spillover) adds 3 null-safe fill_null gates, 1 required<=schema presence guard, and 1 collect_schema().names() — all defensive and required so the function no-ops when scratch/date columns are absent and null dates fall back conservatively to not-short-term. Bumped fill_null 448->451, presence_guard 363->364, collect_schema 156->157.",
-  "engine_fill_null_sites": 451,
-  "engine_presence_guard_sites": 364,
-  "engine_collect_schema_sites": 157,
+  "engine_fill_null_sites": 447,
+  "engine_presence_guard_sites": 325,
+  "engine_collect_schema_sites": 154,
   "engine_eager_collect_sites": 33,
   "max_engine_module_loc": 1625,
-  "cites_decorators": 196
+  "cites_decorators": 208
 }

@@ -7,7 +7,7 @@ Pipeline position:
 
 Key responsibilities:
 - A small, closed vocabulary of value bindings (the verbs a template cell can
-  mean): Sum, Mean, WeightedAvg, Ratio, Count, PriorPeriod, Formula.
+  mean): Sum, SafeSum, Mean, WeightedAvg, Ratio, Count, PriorPeriod, Formula.
 - Row predicates over the canonical reporting-ledger columns
   (``reporting_class`` / ``reporting_class_origin`` / ``reporting_method`` /
   ``reporting_approach_origin`` / ``reporting_leg_role`` /
@@ -31,11 +31,11 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 import polars as pl
 
-from rwa_calc.reporting.kernel import col_sum
+from rwa_calc.reporting.kernel import col_sum, safe_sum_or_none
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -89,6 +89,17 @@ class Count:
 
 
 @dataclass(frozen=True)
+class SafeSum:
+    """Kind 1 variant: sum every PRESENT column in ``cols`` over the row
+    subset — absent names contribute nothing; None when NO named column is
+    present (the kernel ``safe_sum_or_none`` gross-carrying-amount semantics:
+    CR4 cols a/b and CR5 cols ba/bb sum ``drawn_amount``+``interest`` /
+    ``nominal_amount``+``undrawn_amount``)."""
+
+    cols: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class FirstNonNull:
     """First non-null value of ``col`` (a broadcast per-row constant — e.g.
     the OV1 row-26 output-floor multiplier carried on ``output_floor_pct``).
@@ -118,7 +129,7 @@ class PriorPeriod:
     flow templates (CR8, C 08.04) leave their opening rows null.
     """
 
-    binding: Sum | Mean | WeightedAvg | Ratio | Count | FirstNonNull
+    binding: Sum | SafeSum | Mean | WeightedAvg | Ratio | Count | FirstNonNull
 
 
 @dataclass(frozen=True)
@@ -145,7 +156,16 @@ class Formula:
 
 
 type ValueBinding = (
-    Sum | Mean | WeightedAvg | Ratio | Count | FirstNonNull | SideContext | PriorPeriod | Formula
+    Sum
+    | SafeSum
+    | Mean
+    | WeightedAvg
+    | Ratio
+    | Count
+    | FirstNonNull
+    | SideContext
+    | PriorPeriod
+    | Formula
 )
 
 
@@ -181,6 +201,23 @@ class RowPredicate:
     equals: tuple[tuple[str, str], ...] = ()
     # Inclusive band over the per-leg reporting_rw (the OV1 250%-RW memo row).
     rw_between: tuple[float, float] | None = None
+    # Presence-TOLERANT half-open bands ``low <= col < high`` over a named
+    # column (the CR5 risk-weight bucket allocation over the derived
+    # pre-multiplier bucket column): an absent column yields an EMPTY
+    # subset, exactly like ``equals``.
+    between: tuple[tuple[str, float, float], ...] = ()
+    # Disjunctive membership: a row matches when ANY limb matches (each limb
+    # is itself a conjunctive RowPredicate; nesting a further ``any_of``
+    # inside a limb is unsupported). Conjoined with the other terms. Sized
+    # for the CR5 row-9 membership: exposure class OR a 55%-LTV split-leg
+    # role, because the Art. 124F/124L physical legs carry reclassified
+    # exposure classes.
+    any_of: tuple[RowPredicate, ...] = ()
+
+    def __post_init__(self) -> None:
+        if any(limb.any_of for limb in self.any_of):
+            msg = "RowPredicate: an any_of limb may not itself carry any_of"
+            raise ValueError(msg)
 
     def to_expr(self) -> pl.Expr | None:
         """Compile the sealed-column terms to a filter expression (None = no
@@ -214,15 +251,33 @@ class RowPredicate:
         return expr
 
     def apply(self, data: pl.DataFrame) -> pl.DataFrame:
-        """Filter ``data``: strict sealed-column terms + tolerant ``equals``."""
-        for col, _value in self.equals:
-            if col not in data.columns:
-                return data.clear()
+        """Filter ``data``: strict terms + tolerant terms + ``any_of`` union."""
+        expr = self._compile(set(data.columns))
+        return data.filter(expr) if expr is not None else data
+
+    def _compile(self, cols: set[str]) -> pl.Expr | None:
+        """The full filter expression against a frame with ``cols`` (None =
+        no constraint). A tolerant ``equals``/``between`` column absent from
+        the frame compiles to match-nothing — the recorded permanently-
+        null-cell behaviour. ``any_of`` limbs compile independently and
+        union; an all-defaults limb matches everything."""
+        if any(col not in cols for col, _value in self.equals) or any(
+            col not in cols for col, _low, _high in self.between
+        ):
+            return pl.lit(False)
         expr = self.to_expr()
         for col, value in self.equals:
-            term = pl.col(col) == value
-            expr = term if expr is None else expr & term
-        return data.filter(expr) if expr is not None else data
+            expr = _conj(expr, pl.col(col) == value)
+        for col, low, high in self.between:
+            expr = _conj(expr, (pl.col(col) >= low) & (pl.col(col) < high))
+        if self.any_of:
+            union: pl.Expr | None = None
+            for limb in self.any_of:
+                limb_expr = limb._compile(cols)
+                limb_expr = pl.lit(True) if limb_expr is None else limb_expr
+                union = limb_expr if union is None else union | limb_expr
+            expr = _conj(expr, union) if union is not None else expr
+        return expr
 
 
 # =============================================================================
@@ -362,8 +417,20 @@ def _narrow(data: pl.DataFrame, predicate: RowPredicate | None) -> pl.DataFrame:
     return predicate.apply(data) if predicate is not None else data
 
 
+def _conj(expr: pl.Expr | None, term: pl.Expr) -> pl.Expr:
+    return term if expr is None else expr & term
+
+
 def _evaluate(
-    binding: Sum | Mean | WeightedAvg | Ratio | Count | FirstNonNull | SideContext | PriorPeriod,
+    binding: Sum
+    | SafeSum
+    | Mean
+    | WeightedAvg
+    | Ratio
+    | Count
+    | FirstNonNull
+    | SideContext
+    | PriorPeriod,
     data: pl.DataFrame,
     prior: pl.DataFrame | None,
     ctx: ReportingContext | None,
@@ -385,11 +452,18 @@ def _evaluate(
         return float(first) if first is not None else None
     if isinstance(binding, Sum):
         return col_sum(data, cols, binding.col, empty_as_none=empty_as_none)
+    if isinstance(binding, SafeSum):
+        value = safe_sum_or_none(data, cols, *binding.cols)
+        if value is not None:
+            return value
+        return None if empty_as_none else 0.0
     if isinstance(binding, Mean):
         if binding.col not in cols or data.height == 0:
             return None if empty_as_none else 0.0
         mean = data[binding.col].mean()
-        return float(mean) if mean is not None else (None if empty_as_none else 0.0)
+        if mean is None:
+            return None if empty_as_none else 0.0
+        return float(cast("float", mean))
     if isinstance(binding, WeightedAvg):
         if binding.col not in cols or binding.weight not in cols or data.height == 0:
             return None if empty_as_none else 0.0

@@ -461,6 +461,12 @@
   "rwa_calc.reporting.corep.generator::_filter_sft": [
     "PS1/26"
   ],
+  "rwa_calc.reporting.pillar3.cr4::build_cr4_spec": [
+    "CRR Art. 444"
+  ],
+  "rwa_calc.reporting.pillar3.cr5::build_cr5_spec": [
+    "CRR Art. 444"
+  ],
   "rwa_calc.reporting.pillar3.generator::Pillar3Generator._generate_all_cr9": [
     "PS1/26, paragraph 147.2"
   ],

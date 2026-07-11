@@ -64,6 +64,8 @@ from rwa_calc.reporting.kernel import (
 from rwa_calc.reporting.kernel import (
     pick as _pick,
 )
+from rwa_calc.reporting.pillar3.cr4 import generate_cr4
+from rwa_calc.reporting.pillar3.cr5 import generate_cr5
 from rwa_calc.reporting.pillar3.cr8 import generate_cr8
 from rwa_calc.reporting.pillar3.ov1 import generate_ov1
 from rwa_calc.reporting.pillar3.templates import (
@@ -97,14 +99,10 @@ from rwa_calc.reporting.pillar3.templates import (
     SLOTTING_RISK_WEIGHTS,
     CR9ClassSpec,
     P3Row,
-    _letter_ref,
     get_ccr3_risk_weights,
     get_ccr3_rows,
     get_cr4_columns,
-    get_cr4_rows,
     get_cr5_columns,
-    get_cr5_risk_weights,
-    get_cr5_rows,
     get_cr6_columns,
     get_cr6a_rows,
     get_cr7_rows,
@@ -227,8 +225,8 @@ class Pillar3Generator:
             ov1=self._generate_ov1(
                 results, cols, framework, errors, capital_ratios, output_floor_summary
             ),
-            cr4=self._generate_cr4(sa_data, cols, framework, errors),
-            cr5=self._generate_cr5(sa_data, cols, framework, errors),
+            cr4=self._generate_cr4(results, cols, framework, errors),
+            cr5=self._generate_cr5(results, cols, framework, errors),
             cr6=self._generate_all_cr6(irb_data, cols, framework, errors),
             cr6a=self._generate_cr6a(results, cols, framework, errors),
             cr7=self._generate_cr7(results, cols, framework, errors),
@@ -382,76 +380,43 @@ class Pillar3Generator:
 
     def _generate_cr4(
         self,
-        sa_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> pl.DataFrame | None:
-        ead_col = _pick(cols, "ead_final")
-        rwa_col = _pick(cols, "rwa_final", "rwa")
-        ec_col = _pick(cols, "exposure_class")
-        if not ead_col or not rwa_col:
-            errors.append("CR4: missing EAD or RWA column")
-            return None
+        """Generate the CR4 SA exposure-and-CRM-effects template.
 
-        data = sa_data.collect()
-        cr4_rows = get_cr4_rows(framework)
-        column_refs = [c.ref for c in get_cr4_columns(framework)]
-        rows_out: list[dict[str, object]] = []
+        Dispatch-router entry (Phase 7 S8): CR4 is declarative — the cell
+        semantics live in ``pillar3/cr4.py::build_cr4_spec`` (incl. the
+        recorded F3 class-basis split) and run through the one
+        ``cellspec.execute`` executor.
 
-        for row_def in cr4_rows:
-            if row_def.is_total:
-                subset = data
-            elif row_def.exposure_classes and ec_col:
-                subset = data.filter(pl.col(ec_col).is_in(list(row_def.exposure_classes)))
-            else:
-                rows_out.append(_null_row(row_def, column_refs))
-                continue
-
-            values = _compute_cr4_values(subset, cols, ead_col, rwa_col)
-            rows_out.append(_make_row(row_def, values, column_refs))
-
-        return _build_df(rows_out, column_refs)
+        References:
+            CRR Art. 444(e); PRA PS1/26 Annex XX.
+        """
+        return generate_cr4(results, cols, framework, errors)
 
     # ---- CR5 ----
 
     def _generate_cr5(
         self,
-        sa_data: pl.LazyFrame,
+        results: pl.LazyFrame,
         cols: set[str],
         framework: str,
         errors: list[str],
     ) -> pl.DataFrame | None:
-        ead_col = _pick(cols, "ead_final")
-        rw_col = _pick(cols, "risk_weight")
-        ec_col = _pick(cols, "exposure_class")
-        if not ead_col or not rw_col:
-            errors.append("CR5: missing EAD or risk_weight column")
-            return None
+        """Generate the CR5 SA risk-weight allocation template.
 
-        data = sa_data.collect()
-        cr5_rows = get_cr5_rows(framework)
-        rw_bands = get_cr5_risk_weights(framework)
-        all_columns = get_cr5_columns(framework)
-        column_refs = [c.ref for c in all_columns]
-        is_b31 = framework == "BASEL_3_1"
-        role_col = _pick(cols, "re_split_role")
-        rows_out: list[dict[str, object]] = []
+        Dispatch-router entry (Phase 7 S8): CR5 is declarative — the cell
+        semantics live in ``pillar3/cr5.py::build_cr5_spec`` (post-
+        substitution class rows, Art. 123B pre-multiplier banding) and run
+        through the one ``cellspec.execute`` executor.
 
-        for row_def in cr5_rows:
-            if row_def.is_total:
-                subset = data
-            else:
-                predicate = _cr5_row_predicate(row_def, ec_col, role_col)
-                if predicate is None:
-                    rows_out.append(_null_row(row_def, column_refs))
-                    continue
-                subset = data.filter(predicate)
-
-            values = _compute_cr5_values(subset, cols, ead_col, rw_col, rw_bands, is_b31)
-            rows_out.append(_make_row(row_def, values, column_refs))
-
-        return _build_df(rows_out, column_refs)
+        References:
+            CRR Art. 444(e); PRA PS1/26 Annex XX.
+        """
+        return generate_cr5(results, cols, framework, errors)
 
     # ---- CR6 ----
 
@@ -1587,125 +1552,6 @@ _CR7_HANDLERS_CRR: dict[str, _Cr7Handler] = {
 # ---------------------------------------------------------------------------
 # Per-template value computation
 # ---------------------------------------------------------------------------
-
-
-def _compute_cr4_values(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    rwa_col: str,
-) -> dict[str, object]:
-    """Compute CR4 column values for a subset of SA exposures."""
-    on_bs = _filter_on_bs(data, cols)
-    off_bs = _filter_off_bs(data, cols)
-
-    on_bs_pre = _safe_sum(on_bs, "drawn_amount", "interest") or 0.0
-    off_bs_pre = _safe_sum(off_bs, "nominal_amount", "undrawn_amount") or 0.0
-    on_bs_post = _col_sum(on_bs, ead_col) or 0.0
-    off_bs_post = _col_sum(off_bs, ead_col) or 0.0
-    rwa = _col_sum(data, rwa_col) or 0.0
-    denominator = on_bs_post + off_bs_post
-
-    return {
-        "a": on_bs_pre,
-        "b": off_bs_pre,
-        "c": on_bs_post,
-        "d": off_bs_post,
-        "e": rwa,
-        "f": rwa / denominator if denominator > 0 else None,
-    }
-
-
-def _cr5_row_predicate(
-    row_def: P3Row,
-    ec_col: str | None,
-    role_col: str | None,
-) -> pl.Expr | None:
-    """Build the CR5 row membership predicate (or None if the row is inert).
-
-    A row matches an exposure when its ``exposure_class`` is in the row's
-    ``exposure_classes`` OR (Basel 3.1) its ``re_split_role`` is in the row's
-    ``re_split_roles``. The role limb selects the 55%-LTV split legs (Art. 124F
-    secured / Art. 124L residual) so the parent RE row reconciles to the
-    un-split exposure and the 9f/9g "of which" sub-rows each pick one leg.
-    """
-    predicates: list[pl.Expr] = []
-    if row_def.exposure_classes and ec_col:
-        predicates.append(pl.col(ec_col).is_in(list(row_def.exposure_classes)))
-    if row_def.re_split_roles and role_col:
-        predicates.append(pl.col(role_col).is_in(list(row_def.re_split_roles)))
-    if not predicates:
-        return None
-    combined = predicates[0]
-    for extra in predicates[1:]:
-        combined = combined | extra
-    return combined
-
-
-def _compute_cr5_values(
-    data: pl.DataFrame,
-    cols: set[str],
-    ead_col: str,
-    rw_col: str,
-    rw_bands: list[tuple[float, str]],
-    is_b31: bool,
-) -> dict[str, object]:
-    """Compute CR5 column values: EAD allocated to risk-weight buckets."""
-    total_ead = _col_sum(data, ead_col) or 0.0
-    allocated = 0.0
-    values: dict[str, object] = {}
-
-    # PRA PS1/26 Art. 123B: rows that fired the 1.5x currency-mismatch multiplier
-    # are bucketed on their pre-multiplier risk weight so EAD lands in the
-    # underlying credit-risk band rather than an inflated one. Frames without the
-    # snapshot/flag columns (CRR, or older callers) bucket on rw_col exactly as
-    # before.
-    if (
-        "risk_weight_pre_currency_mismatch" in data.columns
-        and "currency_mismatch_multiplier_applied" in data.columns
-    ):
-        rw_bucket_expr = (
-            pl.when(pl.col("currency_mismatch_multiplier_applied").fill_null(False))
-            .then(pl.col("risk_weight_pre_currency_mismatch"))
-            .otherwise(pl.col(rw_col))
-        )
-    else:
-        rw_bucket_expr = pl.col(rw_col)
-
-    for i, (rw_value, _label) in enumerate(rw_bands):
-        ref = _letter_ref(i)
-        # Filter to ±0.5pp tolerance for risk weight match
-        tol = 0.005
-        bucket = data.filter((rw_bucket_expr >= rw_value - tol) & (rw_bucket_expr < rw_value + tol))
-        bucket_ead = _col_sum(bucket, ead_col) or 0.0
-        values[ref] = bucket_ead
-        allocated += bucket_ead
-
-    n = len(rw_bands)
-    # Residual bucket: total EAD minus all allocated bands
-    values[_letter_ref(n)] = max(0.0, total_ead - allocated)
-    # Total
-    values[_letter_ref(n + 1)] = total_ead
-    # Unrated
-    if "sa_cqs" in data.columns:
-        unrated = data.filter(pl.col("sa_cqs").is_null())
-        values[_letter_ref(n + 2)] = _col_sum(unrated, ead_col)
-    else:
-        values[_letter_ref(n + 2)] = total_ead  # All unrated
-
-    if is_b31:
-        on_bs = _filter_on_bs(data, cols)
-        off_bs = _filter_off_bs(data, cols)
-        on_bs_ead = _safe_sum(on_bs, "drawn_amount", "interest")
-        off_bs_ead = _safe_sum(off_bs, "nominal_amount", "undrawn_amount")
-        ccf_col = _pick(cols, "ccf")
-        avg_ccf = _ead_weighted_avg(off_bs, ead_col, ccf_col) if ccf_col else None
-        values["ba"] = on_bs_ead
-        values["bb"] = off_bs_ead
-        values["bc"] = avg_ccf
-        values["bd"] = total_ead
-
-    return values
 
 
 def _compute_cr6_values(

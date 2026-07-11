@@ -294,6 +294,7 @@ class TestExportToParquet:
             "reporting_approach_origin",
             "reporting_ead",
             "reporting_rw",
+            "reporting_on_balance_sheet",
         ]
 
     def test_parquet_roundtrip_preserves_data(

@@ -562,7 +562,38 @@ that mirrors the sealed projection (typed-null injection for absent sources, exa
 lenient seal) onto hand-rolled frames before `generate_from_lazyframe`; it mirrors the parent
 signature exactly because the P2.48 tests feature-gate on `inspect.signature`. Gate: all 332
 Pillar 3 unit tests + the OV1 goldens structure-identical; full suite green.
-Order: **Pillar 3** OV1 → CR4/CR5 → CR6/CR6a/CR7/CR7a → CR9/CR9.1/CR10 → CMS1/2 → CCR1/2/3/8
+
+**S8-CR4/CR5 DONE 2026-07-11 — carries the recorded F3 decision (first tranche).**
+`reporting/pillar3/cr4.py::build_cr4_spec` + `cr5.py::build_cr5_spec`; the imperative
+`_compute_cr4_values`/`_compute_cr5_values`/`_cr5_row_predicate` deleted; both routed through
+`cellspec.execute` on the FULL sealed frame (the spec's `approaches_origin=("standardised",)`
+template predicate replaces the `sa_data` pre-filter — same membership).
+**F3 recorded decision (CR4/CR5 tranche), oracle-adjudicated:** the UK/UKB Annex XX
+instructions are silent on the substitution split, so the COREP C 07.00 heritage decides
+(Annex II ¶56/¶56A/¶40-43/¶65 two-step class assignment; EBA Q&A 2018_4093): **CR4 cols a/b
+key on `reporting_class_origin`** (obligor applied Art. 112 class — C 07.00 col 0010 basis);
+**CR4 cols c/d/e/f and ALL CR5 rows key on `reporting_class`** (post-substitution — C 07.00
+col 0200 basis; the covered leg lands in the protection provider's row). Defaulted exposures
+sit in row 10 under both bases (Art. 112(2) assessment order; equity/high-risk/CIU carve-out
+untouched — those classes never map to row 10). Golden regen (both regimes, CR4+CR5): exactly
+ONE mover — `RP-LN-DEFAULT` (raw `corporate`, applied `defaulted`) EAD 1.0M/RWA 1.5M moves
+row 7 → row 10 (CR5: the 150% band); grand totals unchanged; every other cell byte-identical.
+Density f is now a `Formula` e/(c+d) so its denominator stays the on+off-BS split sums (not
+Σead over unclassified-BS rows). Vocabulary additions recorded: `SafeSum(cols)` (kernel
+`safe_sum_or_none` gross sums), `RowPredicate.between` (presence-tolerant half-open bands over
+the derived `cr5_rw_bucket` — Art. 123B pre-multiplier banding stays a cr5.py-owned typed
+transform), `RowPredicate.any_of` (union of conjunctive limbs — CR5 rows 9/9f/9g class-OR-role
+membership; nesting banned). The shim gained the `reporting_on_balance_sheet` exposure-type
+derivation (mirrors `_add_reporting_projection`). Recorded fallbacks/gaps: CR5 "Of which:
+unrated" = Total (the `sa_cqs` read was dead — never produced, seal-stripped; F6 fix path is
+an engine rating-presence column); the CR5 role lists mirror the retired predicate exactly —
+widening to the splitter's `secured_rre`/`secured_cre`/`whole` roles (which today fall
+outside rows 9/9f/9g) and the residual-leg dual-membership (counterparty-class row AND row 9
+via role) are recorded follow-ups in §7, not silent changes. CR4/CR5 unit classes split out
+to `tests/unit/reporting/pillar3/test_cr4_cr5.py` (+ new substitution/defaulted-mover tests).
+Gate: goldens regen'd with this recorded diff; full suite green.
+
+Order: **Pillar 3** OV1 → ~~CR4/CR5~~ → CR6/CR6a/CR7/CR7a → CR9/CR9.1/CR10 → CMS1/2 → CCR1/2/3/8
 (post S8-pre); then **COREP** C07 + skeleton-sharing C08.01/02/03/05 → C08.04/06/07 → C09.01/02 →
 OF02.01 → OF07/OF08/C34.x (post S8-pre) → **C02.00 LAST** (portfolio pre-pass via
 `ReportingContext`).
@@ -593,7 +624,7 @@ OF02.01 → OF07/OF08/C34.x (post S8-pre) → **C02.00 LAST** (portfolio pre-pas
 |---|---|---|---|
 | **F1** | S4 | `summary_by_class` basis shift for unguaranteed defaulted / SME-managed-as-retail rows (raw → applied class) | **FIX** — align summaries to the applied/post-CRM semantic; oracle sign-off per diff |
 | **F2** | S5 | Per-row post-floor `reporting_rwa` allocation of the portfolio floor add-on | **PRESERVE** portfolio totals exactly; **FIX** the per-row convention, ring-fenced, oracle-signed |
-| **F3** | S8.. | Pillar 3 CR4/CR5/CR6/CR9 retarget raw `exposure_class` → `reporting_class` (SME/defaulted rows change sheet) | **FIX** — Pillar III post-CRM disclosure reports the applied/substituted class; per-template oracle sign-off |
+| **F3** | S8.. | Pillar 3 CR4/CR5/CR6/CR9 retarget raw `exposure_class` → `reporting_class` (SME/defaulted rows change sheet) | **FIX** — Pillar III post-CRM disclosure reports the applied/substituted class; per-template oracle sign-off. **CR4/CR5 DONE 2026-07-11** (split basis: a/b origin, c-f + CR5 post — see the S8-CR4/CR5 block); CR6/CR9 pending |
 | **F4** | S8.. | COREP C07 origin vs post-CRM column consistency (already on `exposure_class_applied` since `5ee669f8`) | **PRESERVE** C07.00 origination keying + outflow/inflow; confirm the split reproduces existing cells |
 | **F5** | S8../Sn | UI by-class chart retarget raw `exposure_class` → `reporting_class` | **FIX** — UI matches COREP/Pillar 3 exactly; closes the operator-flagged UI/recon gap |
 | **F6** | follow-ups | The S1-DEFERRED stripped/never-produced reads (`ccf_applied`, `sa_cqs`, `scra/gcra_provision_amount`, `ead_pre_ccf`, `exposure_post_crm`, …) — permanently-null cells today | **Per-column add-to-contract-vs-accept-empty decision**, never a blanket seal |
@@ -631,6 +662,18 @@ Consumer-facing surface = `reporting_class`, `reporting_class_origin`, `reportin
   which legitimately differs across `__G_`/`__REM` legs of cross-approach guaranteed exposures —
   exclude `guaranteed` legs from the heterogeneity check or key it on
   `reporting_approach_origin`.
+- **CR5 split-leg role coverage (found during S8-CR4/CR5, behaviour predates the slice):** the
+  rows 9/9f/9g role lists only match `re_split_role in ("secured","residual")`, but the splitter
+  also emits `secured_rre`/`secured_cre` (mixed-collateral pairs) and `whole` (Art. 124H(3)) —
+  those legs fall outside rows 9/9f/9g entirely (secured legs carry reclassified
+  `residential_mortgage`/`commercial_mortgage` classes not in any `SA_DISCLOSURE_CLASSES`
+  tuple). Fix needs a physical-split scenario + oracle (the golden portfolio produces zero
+  split legs, so today's gate cannot observe it).
+- **CR5 residual-leg dual membership (same provenance):** a corporate residual leg matches BOTH
+  its counterparty-class row (7) via `reporting_class` AND row 9 via the role limb — the
+  "reported in two parts" instruction (PS1/26 Annex XX) reads as both parts staying in the RE
+  class row. Decide whether the residual leg's class row should exclude role-tagged legs;
+  bundle with the role-coverage fix above.
 - **Tie-out cross-check:** headline totals (per-key frame) vs class allocation (raw frame) have
   no cross-check; add one assertion frame once both read the ledger.
 - **`exposure_class_for_sa` / `substitute_rw` deletions** (S3) — record the 0-reader /
