@@ -470,7 +470,7 @@
   "rwa_calc.reporting.pillar3.generator::Pillar3Generator._generate_cr9_1": [
     "PS1/26, paragraph 147.2"
   ],
-  "rwa_calc.reporting.pillar3.generator::_ov1_equity_subapproach_rwa": [
+  "rwa_calc.reporting.pillar3.ov1::build_ov1_spec": [
     "PS1/26, paragraph 132"
   ]
 }

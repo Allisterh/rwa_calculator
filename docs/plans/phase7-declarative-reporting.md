@@ -542,6 +542,26 @@ green; arch_check + ruff clean.
 - **Gate:** regeneration-is-clean on the new goldens; recorded decision either way.
 
 ### S8..S(n−1) — Strangler per template family (golden-gated; Pillar 3 first, C02.00 last)
+
+**S8-OV1 DONE 2026-07-11.** `reporting/pillar3/ov1.py::build_ov1_spec` — the full OV1 cell
+inventory as CellSpecs (totals; per-ORIGIN-approach rows with per-cell zero override —
+`reporting_approach_origin` aliases the recorded `approach_applied` basis, so number-neutral;
+the F-decision post-substitution retarget stays open); the pre-floor row 4a; the six ratio
+rows and OF-ADJ row 27 via the new `SideContext` verb (+ `ReportingContext.side_value` key
+registry); the 250%-RW memo via `rw_between`; the floor multiplier via the new
+`FirstNonNull` verb; the B31 equity sub-approach rows 11-14 via presence-TOLERANT
+`RowPredicate.equals` (their discriminators are F6-stripped columns — recorded
+permanently-null cells, never a raise); the c = a x 0.08 own-funds shim as a per-row
+`Formula`. Generator's `_generate_ov1` + its ten module-level helpers (~180 LOC incl.
+`_approach_rwa`/`_ratio_for_ref` and the four `_OV1_*` constants) deleted. Vocabulary
+additions recorded: `SideContext(key, scale)`, `FirstNonNull(col)`,
+`CellSpec.empty_cell` per-cell override, `RowPredicate.equals` (tolerant) + `rw_between`.
+Test-estate note: the Pillar 3 unit fixtures feed unsealed synthetic frames, so
+`tests/fixtures/recon_ledger.py` gained `LedgerShimPillar3Generator` — a test-only subclass
+that mirrors the sealed projection (typed-null injection for absent sources, exactly as the
+lenient seal) onto hand-rolled frames before `generate_from_lazyframe`; it mirrors the parent
+signature exactly because the P2.48 tests feature-gate on `inspect.signature`. Gate: all 332
+Pillar 3 unit tests + the OV1 goldens structure-identical; full suite green.
 Order: **Pillar 3** OV1 → CR4/CR5 → CR6/CR6a/CR7/CR7a → CR9/CR9.1/CR10 → CMS1/2 → CCR1/2/3/8
 (post S8-pre); then **COREP** C07 + skeleton-sharing C08.01/02/03/05 → C08.04/06/07 → C09.01/02 →
 OF02.01 → OF07/OF08/C34.x (post S8-pre) → **C02.00 LAST** (portfolio pre-pass via

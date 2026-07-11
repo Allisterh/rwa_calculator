@@ -66,3 +66,29 @@ class ReportingContext:
     capital_ratio_overrides: Pillar3CapitalRatioOverrides | None = None
     reporting_basis: str | None = None
     institution_type: str | None = None
+
+    def side_value(self, key: str) -> float | None:
+        """Resolve a named out-of-frame scalar for a ``SideContext`` binding.
+
+        Explicit key registry — a spec naming an unknown key is a programming
+        error and raises. ``of_adj`` reads the output-floor summary (None when
+        the floor did not run); the six ``*_ratio_pre_floor*`` keys read the
+        Pillar 3 capital-ratio overrides (None when not supplied — the OV1
+        ratio rows stay null).
+        """
+        if key == "of_adj":
+            return float(self.output_floor_summary.of_adj) if self.output_floor_summary else None
+        ratio_fields = {
+            "cet1_ratio_pre_floor",
+            "cet1_ratio_pre_floor_transitional",
+            "tier1_ratio_pre_floor",
+            "tier1_ratio_pre_floor_transitional",
+            "total_ratio_pre_floor",
+            "total_ratio_pre_floor_transitional",
+        }
+        if key in ratio_fields:
+            if self.capital_ratio_overrides is None:
+                return None
+            value = getattr(self.capital_ratio_overrides, key)
+            return float(value) if value is not None else None
+        raise KeyError(f"unknown ReportingContext side value: {key!r}")

@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import pytest
 
-from rwa_calc.reporting.pillar3.generator import Pillar3Generator
 from rwa_calc.reporting.pillar3.templates import (
     CR9_AIRB_CLASSES,
     CR9_FIRB_CLASSES,
@@ -56,6 +55,7 @@ from tests.fixtures.p2_49.p2_49 import (
     FIRB_OTHER_NON_SME_KEY,
     build_cr9_irb_results_lf,
 )
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -65,7 +65,7 @@ from tests.fixtures.p2_49.p2_49 import (
 @pytest.fixture(scope="module")
 def b31_cr9_bundle() -> dict:
     """Generate the CR9 dict from the P2.49 seed frame under Basel 3.1."""
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     lf = build_cr9_irb_results_lf()
     bundle = gen.generate_from_lazyframe(lf, framework="BASEL_3_1")
     return bundle.cr9

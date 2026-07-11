@@ -89,6 +89,28 @@ class Count:
 
 
 @dataclass(frozen=True)
+class FirstNonNull:
+    """First non-null value of ``col`` (a broadcast per-row constant — e.g.
+    the OV1 row-26 output-floor multiplier carried on ``output_floor_pct``).
+    None when the column is absent or all-null."""
+
+    col: str
+
+
+@dataclass(frozen=True)
+class SideContext:
+    """Kind 8: a named out-of-frame value from the ``ReportingContext``.
+
+    ``key`` is one of the explicit names ``ReportingContext.side_value``
+    resolves (``of_adj``, the six OV1 pre-floor capital-ratio fields);
+    ``scale`` multiplies a non-None value (the ratio rows report x100).
+    """
+
+    key: str
+    scale: float = 1.0
+
+
+@dataclass(frozen=True)
 class PriorPeriod:
     """Kinds 8/11: evaluate ``binding`` over the prior-period frame.
 
@@ -96,7 +118,7 @@ class PriorPeriod:
     flow templates (CR8, C 08.04) leave their opening rows null.
     """
 
-    binding: Sum | Mean | WeightedAvg | Ratio | Count
+    binding: Sum | Mean | WeightedAvg | Ratio | Count | FirstNonNull
 
 
 @dataclass(frozen=True)
@@ -122,7 +144,9 @@ class Formula:
     fn: Callable[[Mapping[str, float | None], bool], float | None]
 
 
-type ValueBinding = Sum | Mean | WeightedAvg | Ratio | Count | PriorPeriod | Formula
+type ValueBinding = (
+    Sum | Mean | WeightedAvg | Ratio | Count | FirstNonNull | SideContext | PriorPeriod | Formula
+)
 
 
 # =============================================================================
@@ -149,9 +173,19 @@ class RowPredicate:
     on_balance_sheet: bool | None = None
     is_defaulted: bool | None = None
     subclass: str | None = None
+    # Presence-TOLERANT column == value conditions for the audited F6 columns
+    # (e.g. the OV1 equity sub-approach discriminators ciu_approach /
+    # equity_transitional_approach, which the seal strips today): an absent
+    # column yields an EMPTY subset — the recorded permanently-null-cell
+    # behaviour — never a raise. Sealed-ledger fields above stay strict.
+    equals: tuple[tuple[str, str], ...] = ()
+    # Inclusive band over the per-leg reporting_rw (the OV1 250%-RW memo row).
+    rw_between: tuple[float, float] | None = None
 
     def to_expr(self) -> pl.Expr | None:
-        """Compile to a Polars filter expression (None = no constraint)."""
+        """Compile the sealed-column terms to a filter expression (None = no
+        constraint). The presence-tolerant ``equals`` terms are applied by
+        ``apply`` (they need the frame's columns)."""
         terms: list[pl.Expr] = []
         if self.classes:
             terms.append(pl.col("reporting_class").is_in(list(self.classes)))
@@ -169,12 +203,26 @@ class RowPredicate:
             terms.append(pl.col("is_defaulted") == self.is_defaulted)
         if self.subclass is not None:
             terms.append(pl.col("reporting_subclass") == self.subclass)
+        if self.rw_between is not None:
+            low, high = self.rw_between
+            terms.append(pl.col("reporting_rw").is_between(low, high))
         if not terms:
             return None
         expr = terms[0]
         for term in terms[1:]:
             expr = expr & term
         return expr
+
+    def apply(self, data: pl.DataFrame) -> pl.DataFrame:
+        """Filter ``data``: strict sealed-column terms + tolerant ``equals``."""
+        for col, _value in self.equals:
+            if col not in data.columns:
+                return data.clear()
+        expr = self.to_expr()
+        for col, value in self.equals:
+            term = pl.col(col) == value
+            expr = term if expr is None else expr & term
+        return data.filter(expr) if expr is not None else data
 
 
 # =============================================================================
@@ -193,10 +241,16 @@ class TemplateRow(Protocol):
 
 @dataclass(frozen=True)
 class CellSpec:
-    """One cell: a value binding, optionally narrowed by a row predicate."""
+    """One cell: a value binding, optionally narrowed by a row predicate.
+
+    ``empty_cell`` overrides the template policy for this cell (e.g. the OV1
+    per-approach rows report 0.0 for an absent approach while the template
+    default is Pillar 3 null).
+    """
 
     binding: ValueBinding
     predicate: RowPredicate | None = None
+    empty_cell: Literal["zero", "null"] | None = None
 
 
 @dataclass(frozen=True)
@@ -260,8 +314,11 @@ def execute(
                 continue
             cell_data = _narrow(data, cell.predicate)
             cell_prior = _narrow(prior_df, cell.predicate) if prior_df is not None else None
+            cell_empty_as_none = (
+                empty_as_none if cell.empty_cell is None else cell.empty_cell == "null"
+            )
             computed[(row_def.ref, col_ref)] = _evaluate(
-                cell.binding, cell_data, cell_prior, empty_as_none=empty_as_none
+                cell.binding, cell_data, cell_prior, ctx, empty_as_none=cell_empty_as_none
             )
 
     # Pass 2: formulas, over the computed cells (own-row column ref first,
@@ -302,14 +359,14 @@ def execute(
 
 
 def _narrow(data: pl.DataFrame, predicate: RowPredicate | None) -> pl.DataFrame:
-    expr = predicate.to_expr() if predicate is not None else None
-    return data.filter(expr) if expr is not None else data
+    return predicate.apply(data) if predicate is not None else data
 
 
 def _evaluate(
-    binding: Sum | Mean | WeightedAvg | Ratio | Count | PriorPeriod,
+    binding: Sum | Mean | WeightedAvg | Ratio | Count | FirstNonNull | SideContext | PriorPeriod,
     data: pl.DataFrame,
     prior: pl.DataFrame | None,
+    ctx: ReportingContext | None,
     *,
     empty_as_none: bool,
 ) -> float | None:
@@ -317,7 +374,15 @@ def _evaluate(
     if isinstance(binding, PriorPeriod):
         if prior is None:
             return None
-        return _evaluate(binding.binding, prior, None, empty_as_none=empty_as_none)
+        return _evaluate(binding.binding, prior, None, ctx, empty_as_none=empty_as_none)
+    if isinstance(binding, SideContext):
+        value = ctx.side_value(binding.key) if ctx is not None else None
+        return value * binding.scale if value is not None else None
+    if isinstance(binding, FirstNonNull):
+        if binding.col not in cols or data.height == 0:
+            return None
+        first = data.select(pl.col(binding.col).drop_nulls().first()).item()
+        return float(first) if first is not None else None
     if isinstance(binding, Sum):
         return col_sum(data, cols, binding.col, empty_as_none=empty_as_none)
     if isinstance(binding, Mean):

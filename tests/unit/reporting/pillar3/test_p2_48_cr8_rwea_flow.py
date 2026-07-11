@@ -40,7 +40,6 @@ import polars as pl
 import pytest
 
 from rwa_calc.reporting.pillar3.generator import (
-    Pillar3Generator,
     Pillar3TemplateBundle,
 )
 from tests.fixtures.p2_48.p2_48 import (
@@ -52,6 +51,7 @@ from tests.fixtures.p2_48.p2_48 import (
     build_current_period_lf,
     build_prior_period_lf,
 )
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -66,7 +66,7 @@ def _build_bundle_with_prior() -> Pillar3TemplateBundle:
     the opening assertion fires as a clean AssertionError (not TypeError).
     Once the engine-implementer adds the param, the full two-period path runs.
     """
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     current_lf = build_current_period_lf()
     prior_lf = build_prior_period_lf()
 
@@ -89,7 +89,7 @@ def _build_bundle_decrease_control() -> Pillar3TemplateBundle:
     Current = prior period (closing = 1_000_000)
     → row 8 = -150_000 (negative = decrease).
     """
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     # Swap: prior gets current-period data, current gets prior-period data
     swapped_current_lf = build_prior_period_lf()
     swapped_prior_lf = build_current_period_lf()
@@ -283,7 +283,7 @@ class TestP248CR8BackwardsCompat:
     @pytest.fixture(scope="class")
     def bundle(self) -> Pillar3TemplateBundle:
         """Bundle generated WITHOUT prior_period_results (current API, unchanged)."""
-        gen = Pillar3Generator()
+        gen = LedgerShimPillar3Generator()
         return gen.generate_from_lazyframe(build_current_period_lf(), framework="CRR")
 
     def test_p2_48_cr8_closing_populated_without_prior(self, bundle: Pillar3TemplateBundle) -> None:

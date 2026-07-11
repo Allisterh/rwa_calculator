@@ -30,6 +30,7 @@ from rwa_calc.reporting.pillar3.templates import (
     B31_OV1_ROWS,
     CRR_OV1_ROWS,
 )
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 # ---------------------------------------------------------------------------
 # Expected constants
@@ -126,11 +127,10 @@ class TestOv1Row4aPreFloorTotalRwea:
 
     def test_b31_ov1_row_4a_pre_floor_total_rwea(self) -> None:
         """generate_from_lazyframe (B31) produces row 4a with a=1000.0, c=80.0."""
-        from rwa_calc.reporting.pillar3.generator import Pillar3Generator
 
         # Arrange
         lf = _make_pre_floor_lf()
-        gen = Pillar3Generator()
+        gen = LedgerShimPillar3Generator()
 
         # Act
         bundle = gen.generate_from_lazyframe(lf, framework="BASEL_3_1")
@@ -162,11 +162,9 @@ class TestOv1RatioRowsDefaultNone:
     """Without capital_ratios kwarg, rows 5a-7b must emit None for a/b/c."""
 
     def test_b31_ov1_rows_5a_to_7b_default_to_none(self) -> None:
-        from rwa_calc.reporting.pillar3.generator import Pillar3Generator
-
         # Arrange
         lf = _make_pre_floor_lf()
-        gen = Pillar3Generator()
+        gen = LedgerShimPillar3Generator()
 
         # Act — no capital_ratios provided
         bundle = gen.generate_from_lazyframe(lf, framework="BASEL_3_1")
@@ -205,7 +203,6 @@ class TestOv1RatioRowsUseOverride:
         )
 
         from rwa_calc.contracts.config import Pillar3CapitalRatioOverrides
-        from rwa_calc.reporting.pillar3.generator import Pillar3Generator
 
         # Arrange
         overrides = Pillar3CapitalRatioOverrides(
@@ -214,7 +211,7 @@ class TestOv1RatioRowsUseOverride:
             total_ratio_pre_floor=Decimal("0.185"),  # 18.5%
         )
         lf = _make_pre_floor_lf()
-        gen = Pillar3Generator()
+        gen = LedgerShimPillar3Generator()
 
         # Act
         bundle = gen.generate_from_lazyframe(

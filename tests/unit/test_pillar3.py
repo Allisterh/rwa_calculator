@@ -85,6 +85,7 @@ from rwa_calc.reporting.pillar3.templates import (
     get_cr10_subtemplates,
     get_ov1_rows,
 )
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -364,7 +365,7 @@ class TestFrameworkSelectors:
 
 @pytest.fixture
 def generator() -> Pillar3Generator:
-    return Pillar3Generator()
+    return LedgerShimPillar3Generator()
 
 
 class TestPillar3Bundle:
