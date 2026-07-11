@@ -302,18 +302,6 @@ class TestClassifierSLExposureClass:
         df = _classify(specialised_lending=sl)
         assert df["exposure_class"][0] == ExposureClass.SPECIALISED_LENDING.value
 
-    def test_exposure_class_for_sa_is_corporate_via_sl_join(self) -> None:
-        """SA floor path: exposure_class_for_sa = CORPORATE for non-defaulted SL."""
-        sl = _make_sl_table("project_finance")
-        df = _classify(specialised_lending=sl)
-        assert df["exposure_class_for_sa"][0] == ExposureClass.CORPORATE.value
-
-    def test_exposure_class_for_sa_defaulted_sl(self) -> None:
-        """Defaulted SL gets DEFAULTED in exposure_class_for_sa (priority)."""
-        sl = _make_sl_table("project_finance")
-        df = _classify(specialised_lending=sl, default_status=True)
-        assert df["exposure_class_for_sa"][0] == ExposureClass.DEFAULTED.value
-
     def test_exposure_class_sa_corporate_via_entity_type(self) -> None:
         """entity_type='specialised_lending' also gives exposure_class_sa=CORPORATE."""
         df = _classify(entity_type="specialised_lending")

@@ -1284,7 +1284,6 @@ class TestDefaultClassification:
         # Defaulted exposure
         defaulted = df.filter(pl.col("exposure_reference") == "DEF_EXP")
         assert defaulted["is_defaulted"][0] is True
-        assert defaulted["exposure_class_for_sa"][0] == ExposureClass.DEFAULTED.value
 
         # Performing exposure
         performing = df.filter(pl.col("exposure_reference") == "PERF_EXP")

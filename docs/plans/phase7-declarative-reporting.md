@@ -385,7 +385,19 @@ regenerated (137 fns).
   `reporting_class_origin`. Record the leg-role enum decision (tranche sub-rows → `retained`).
 - **Gate:** full suite + 95 goldens structure-identical; new columns present; zero cell movement.
 
-### S3 — Delete the dead surface (NUMBER-NEUTRAL, single-stream)
+### S3 — Delete the dead surface (NUMBER-NEUTRAL, single-stream) — **DONE 2026-07-11**
+
+*As delivered:* `exposure_class_for_sa` producer deleted from
+`stages/classify/attributes.py` + both edge-dict literals (`_classifier_added_columns`,
+`_calc_output_common_columns` — covering all five edges); `substitute_rw` null-literal
+producer deleted from `crm/processor.py` + both declarations. Recorded audit results: the
+"zero readers" finding held for `src/`; five TEST files read the dead column and were
+repointed — the two SL/defaulted-priority classifier tests deleted (semantics pinned at the
+aggregator by `test_exposure_class_applied.py` and on the live `exposure_class_sa`), two
+redundant defaulted asserts dropped (`is_defaulted` asserted alongside), the P2.14
+acceptance asserts repointed to `exposure_class` (the SA branch frame — semantically
+identical for non-defaulted, non-SL rows), and the fictional input column stripped from
+`test_crr_crm.py` fixtures. Gate: goldens structure-identical; full suite green.
 - **Scope:** remove `exposure_class_for_sa` (edges `805,1136` + `attributes.py:350` producer;
   0 readers verified). Remove `substitute_rw` — **including its null-literal producer at
   `engine/crm/processor.py:1114`** — and its declarations (`edges.py:953,1273`).

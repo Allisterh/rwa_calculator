@@ -1111,7 +1111,6 @@ class CRMProcessor:
                 # Initialize guarantee-related columns
                 pl.lit(0.0).alias("guarantee_amount"),
                 pl.lit(None).cast(pl.String).alias("guarantor_reference"),
-                pl.lit(None).cast(pl.Float64).alias("substitute_rw"),
                 # Provision-related columns
                 *provision_cols,
                 # Art. 159(1) Pool B additional components

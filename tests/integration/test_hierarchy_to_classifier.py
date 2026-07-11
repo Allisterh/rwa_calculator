@@ -239,7 +239,6 @@ class TestDefaultStatusPropagation:
 
         loan_row = df.filter(pl.col("exposure_type") == "loan")
         assert loan_row["is_defaulted"][0] is True
-        assert loan_row["exposure_class_for_sa"][0] == ExposureClass.DEFAULTED.value
 
     def test_non_defaulted_counterparty_not_marked(
         self, hierarchy_resolver, classifier, crr_config
