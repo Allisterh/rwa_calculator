@@ -110,31 +110,35 @@ def irb_results() -> pl.LazyFrame:
 def partially_guaranteed_irb_results() -> pl.LazyFrame:
     """FIRB corporate exposure (EAD=1M) 60% guaranteed by an SA retail guarantor.
 
-    Splits into 400k unguaranteed -> CORPORATE/FIRB and 600k guaranteed ->
-    RETAIL/standardised (the guarantor's class/approach).
+    Supplied in the PHYSICAL two-leg shape the CRM stage actually emits
+    (``engine/crm/guarantees.py``): a ``__G_`` guaranteed leg (600k, the
+    guarantor's substituted RW) and a ``__REM`` retained leg (400k, the
+    borrower's RW) — 400k -> CORPORATE/FIRB and 600k -> RETAIL/standardised
+    on the reporting ledger.
     """
     return pad_irb_branch(
         pl.LazyFrame(
             {
-                "exposure_reference": ["EXP001"],
-                "exposure_class": ["CORPORATE"],
-                "approach": ["FIRB"],
-                "approach_applied": ["FIRB"],
-                "ead_final": [1000000.0],
-                "risk_weight": [0.5],
-                "rwa": [500000.0],
-                "rwa_final": [500000.0],
-                "guarantor_approach": ["sa"],
-                "guarantee_ratio": [0.6],
-                "is_guaranteed": [True],
-                "guaranteed_portion": [600000.0],
-                "unguaranteed_portion": [400000.0],
-                "counterparty_reference": ["BORROWER01"],
-                "guarantor_reference": ["GUARANTOR01"],
-                "pre_crm_exposure_class": ["CORPORATE"],
-                "post_crm_exposure_class_guaranteed": ["RETAIL"],
-                "pre_crm_risk_weight": [0.5],
-                "guarantor_rw": [0.75],
+                "exposure_reference": ["EXP001__G_GUARANTOR01", "EXP001__REM"],
+                "exposure_class": ["CORPORATE", "CORPORATE"],
+                "approach": ["FIRB", "FIRB"],
+                "approach_applied": ["FIRB", "FIRB"],
+                "ead_final": [600000.0, 400000.0],
+                "risk_weight": [0.75, 0.5],
+                "rwa": [450000.0, 200000.0],
+                "rwa_final": [450000.0, 200000.0],
+                "guarantor_approach": ["sa", None],
+                "guarantee_ratio": [0.6, 0.6],
+                "is_guaranteed": [True, False],
+                "guaranteed_portion": [600000.0, 0.0],
+                "unguaranteed_portion": [0.0, 400000.0],
+                "counterparty_reference": ["BORROWER01", "BORROWER01"],
+                "guarantor_reference": ["GUARANTOR01", None],
+                "parent_exposure_reference": ["EXP001", "EXP001"],
+                "pre_crm_exposure_class": ["CORPORATE", "CORPORATE"],
+                "post_crm_exposure_class_guaranteed": ["RETAIL", None],
+                "pre_crm_risk_weight": [0.5, 0.5],
+                "guarantor_rw": [0.75, None],
             }
         )
     )
@@ -727,38 +731,31 @@ class TestNonFiniteOutputDetection:
         assert all(e.severity.value == "warning" for e in agg002)
         assert any(e.field_name == "pd" and "BADPD" in (e.message or "") for e in agg002)
 
-    def test_reporting_column_nan_deduped_against_output_scan(self) -> None:
-        """A reporting-column scan reports only exposures the output scan missed.
+    def test_aliased_reporting_columns_do_not_double_report(self) -> None:
+        """One NaN row yields ONE error, not one per aliased column.
 
-        A NaN ``risk_weight`` row also makes its ``reporting_rw`` NaN — that must be
-        reported once (under the output column), while a reporting-only NaN (an
-        exposure finite in the output frame) is uniquely caught.
+        Phase 7 S4: the sealed ledger's ``reporting_rw`` / ``reporting_ead`` are
+        per-leg ALIASES of ``risk_weight`` / ``ead_final`` on the same frame (the
+        detailed re-split that could mint new values is gone), so the output scan
+        covers them by construction — a NaN ``risk_weight`` row is reported once,
+        under the output column, with no duplicate ``reporting_rw`` entry.
         """
         results = pl.DataFrame(
             {
                 "exposure_reference": ["A", "B"],
                 "rwa_final": [1.0, 2.0],
                 "ead_final": [10.0, 20.0],
-                "risk_weight": [float("nan"), 0.5],  # A: NaN output
-            }
-        )
-        reporting = pl.DataFrame(
-            {
-                "exposure_reference": ["A", "A", "C"],  # A split; C reporting-only NaN
-                "reporting_rw": [float("nan"), 0.3, float("nan")],
-                "reporting_ead": [5.0, 5.0, 7.0],
+                "risk_weight": [float("nan"), 0.5],
+                "reporting_rw": [float("nan"), 0.5],
+                "reporting_ead": [10.0, 20.0],
             }
         )
 
-        errors = _detect_non_finite_errors(results, reporting)
+        errors = _detect_non_finite_errors(results)
 
         rw_out = [e for e in errors if e.field_name == "risk_weight"]
-        rw_rep = [e for e in errors if e.field_name == "reporting_rw"]
         assert len(rw_out) == 1 and "A" in (rw_out[0].message or "")
-        # reporting_rw error names only C (A already flagged by the output scan).
-        assert len(rw_rep) == 1
-        assert rw_rep[0].actual_value == "1"
-        assert "C" in (rw_rep[0].message or "")
+        assert not [e for e in errors if e.field_name in ("reporting_rw", "reporting_ead")]
 
 
 class TestSummaryByClassMethod:
@@ -858,20 +855,24 @@ class TestSummaryByClassMethod:
 
 
 # =============================================================================
-# Post-CRM Detailed Reporting Tests
+# Post-substitution reporting approach on the sealed ledger
 # =============================================================================
 
 
-class TestPostCRMDetailedReportingApproach:
-    """Tests for reporting_approach in post-CRM detailed view."""
+class TestLedgerReportingApproach:
+    """The post-substitution approach on the sealed results ledger (Phase 7 S4).
 
-    def test_reporting_approach_in_detailed_view(
+    Replaces the retired post_crm_detailed view's reporting_approach pin: the
+    same rule (SA-guaranteed leg -> standardised, Art. 235; retained leg keeps
+    the obligor's approach, Art. 161) now lives on the per-leg ledger columns.
+    """
+
+    def test_reporting_approach_on_the_guarantee_legs(
         self,
         aggregator: OutputAggregator,
         partially_guaranteed_irb_results: pl.LazyFrame,
         crr_config: CalculationConfig,
     ) -> None:
-        """Post-CRM detailed view should include reporting_approach column."""
         result = aggregator.aggregate(
             sa_results=EMPTY_SA,
             irb_results=partially_guaranteed_irb_results,
@@ -880,15 +881,12 @@ class TestPostCRMDetailedReportingApproach:
             config=crr_config,
         )
 
-        assert result.post_crm_detailed is not None
-        df = result.post_crm_detailed.collect()
-        assert "reporting_approach" in df.columns
+        df = result.results.collect()
+        retained = df.filter(pl.col("reporting_leg_role") == "retained")
+        assert retained["reporting_approach"][0] == "FIRB"
 
-        unguar = df.filter(pl.col("crm_portion_type") == "unguaranteed")
-        assert unguar["reporting_approach"][0] == "FIRB"
-
-        guar = df.filter(pl.col("crm_portion_type") == "guaranteed")
-        assert guar["reporting_approach"][0] == "standardised"
+        guaranteed = df.filter(pl.col("reporting_leg_role") == "guaranteed")
+        assert guaranteed["reporting_approach"][0] == "standardised"
 
 
 # =============================================================================

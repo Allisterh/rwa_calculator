@@ -403,7 +403,40 @@ identical for non-defaulted, non-SL rows), and the fictional input column stripp
   `engine/crm/processor.py:1114`** — and its declarations (`edges.py:953,1273`).
 - **Gate:** full suite + goldens unchanged; recorded deletion note per column.
 
-### S4 — Re-found the summaries on the ledger; delete the re-split; collapse the recon ladders (NUMBER-CHANGING, single-stream)
+### S4 — Re-found the summaries on the ledger; delete the re-split; collapse the recon ladders (NUMBER-CHANGING, single-stream) — **DONE 2026-07-11**
+
+*As delivered:* `_summaries.py` rewritten as pure group-bys of the sealed ledger
+(`reporting_class` / `reporting_approach` / `reporting_method`, dual-path presence-guards
+deleted); `_crm_reporting.py` deleted entirely (`post_crm_approach_expr` relocated into the
+aggregator's projection cluster; the three dead view schemas deleted from `_schemas.py`);
+`pre_crm_summary`/`post_crm_detailed`/`post_crm_summary` bundle fields + audit-cache entries
+deleted; `_detect_non_finite_errors` drops its second-frame scan (the ledger's
+`reporting_rw`/`reporting_ead` are aliases — covered by construction); recon
+`_our_class_col`/`_our_method_col` deleted (allocation reads `reporting_class` +
+`reporting_approach` literals) and all 12 `recon_registry.our_columns` ladders collapsed to
+single sealed names (dead rungs killed: `sa_cqs`, `ccf_applied`, `irb_m`, `final_ead`, `ead`,
+`risk_weight_effective`, `sme_supporting_factor`, `irb_expected_loss`, `final_rwa`, `rwa`,
+`lgd_input`, `lgd`, `pd`). Recorded F1 sub-decisions (before/after diff on the reporting
+portfolio showed exactly these and nothing else):
+
+- **F1-a (FIX):** defaulted / SME-managed-as-retail rows re-bucket to their applied class —
+  the `defaulted` summary bucket exists for the first time (matches COREP C07's defaulted
+  sheet keying since `5ee669f8`).
+- **F1-b (FIX):** `total_rwa` = Σ sealed `rwa_final` (post-floor when the floor ran), replacing
+  the `reporting_ead × reporting_rw` reconstruction — which **overstated CRR totals by the
+  supporting-factor relief** (measured +2,703,419 on the reporting portfolio, ~1.9%) and
+  mispriced IRB-guaranteed legs at the flat `guarantor_rw` instead of the leg's
+  parameter-substituted RW. All six summary frames now tie exactly to the portfolio
+  `rwa_final` under both regimes (pinned). Implementation note: `rwa_final` is ALREADY
+  post-floor (`_floor.py` rewrites it; adding `floor_impact_rwa` double-counts — caught by
+  P1.130 during the slice).
+- **F1-c (FIX):** `exposure_count` counts physical ledger legs — the detailed view's zero-EAD
+  phantom "unguaranteed portion" row per guaranteed leg is gone.
+- **Test-estate note:** the `partially_guaranteed_irb_results` and P1.146 fixtures carried the
+  fictional single-row-both-portions shape and were re-baselined onto the physical
+  `__G_`/`__REM` legs (all pinned constants held); `tests/fixtures/recon_ledger.py::
+  with_reporting_ledger` mirrors the aggregator's projection onto hand-rolled recon test
+  frames; one UI test pinned the fictional `sa_cqs` rung and now supplies `external_cqs`.
 - **Scope:** point `summary_by_class`/`summary_by_approach`/`summary_by_class_method` at
   `reporting_class`/`reporting_approach`/`reporting_method`; delete the `_summaries.py`
   `has_reporting` presence-guard dual paths; establish the summaries as the only by-class/approach

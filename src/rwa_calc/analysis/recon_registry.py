@@ -60,17 +60,18 @@ class ReconcilableComponent:
 
 RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
-        # Per-key / break-attribution class. Uses ``exposure_class_applied`` — the
-        # obligor's applied class (folds SME-managed-as-retail + defaulted) — which is
-        # UNIFORM across a guaranteed exposure's __G_/__REM legs, so a partially-
-        # guaranteed exposure's break is attributed deterministically to its borrower
-        # class rather than an arbitrary first leg. The POST-guarantee money split
-        # (guaranteed slice under the guarantor) is a separate, aggregate view built
-        # by ``_class_allocation`` off ``exposure_class_post_crm`` — see that function.
-        # ``exposure_class`` is the origination fallback for pre-column frames.
+        # Per-key / break-attribution class. Uses ``reporting_class_origin`` — the
+        # sealed ledger's obligor applied class (folds SME-managed-as-retail +
+        # defaulted; = exposure_class_applied) — which is UNIFORM across a guaranteed
+        # exposure's __G_/__REM legs, so a partially-guaranteed exposure's break is
+        # attributed deterministically to its borrower class rather than an arbitrary
+        # first leg. The POST-guarantee money split (guaranteed slice under the
+        # guarantor) is a separate, aggregate view built by ``_class_allocation`` off
+        # ``reporting_class`` — see that function. Single sealed name, no fallback
+        # ladder (Phase 7 S4): the column is contract-guaranteed on aggregator_exit.
         "exposure_class",
         "categorical",
-        our_columns=("exposure_class_applied", "exposure_class"),
+        our_columns=("reporting_class_origin",),
         explain_columns=(
             "exposure_class_reason",
             "exposure_class_post_crm",
@@ -81,7 +82,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "approach",
         "categorical",
-        our_columns=("approach_applied", "approach"),
+        our_columns=("reporting_approach_origin",),
         explain_columns=("approach_selection_reason", "approach_permitted"),
         input_columns=("model_id",),
     ),
@@ -91,7 +92,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
         # CQS difference is a break (the exact-epsilon branch passes equal values).
         "cqs",
         "numeric",
-        our_columns=("sa_cqs", "external_cqs"),
+        our_columns=("external_cqs",),
         explain_columns=("sa_rating_source",),
         default_tol_kind="abs",
         default_tol=0.0,
@@ -103,7 +104,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
         # produces it). No separate original/floor column is persisted on output.
         "pd",
         "numeric",
-        our_columns=("pd_floored", "pd"),
+        our_columns=("pd_floored",),
         input_columns=("internal_pd",),
         default_tol_kind="abs",
         default_tol=5e-5,
@@ -115,7 +116,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
         # ``irb_``-prefixed output exists; ``lgd_pre_crm`` is the pre-CRM rationale.
         "lgd",
         "numeric",
-        our_columns=("lgd_floored", "lgd_input", "lgd"),
+        our_columns=("lgd_floored",),
         explain_columns=("lgd_pre_crm",),
         default_tol_kind="abs",
         default_tol=1e-3,
@@ -123,7 +124,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "maturity",
         "numeric",
-        our_columns=("irb_maturity_m", "irb_m", "maturity"),
+        our_columns=("irb_maturity_m",),
         input_columns=("residual_maturity_years", "original_maturity_date"),
         default_tol_kind="abs",
         default_tol=1e-2,
@@ -131,7 +132,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "ccf",
         "numeric",
-        our_columns=("ccf_applied", "ccf"),
+        our_columns=("ccf",),
         explain_columns=("ccf_source",),
         input_columns=("exposure_type", "undrawn_amount", "converted_undrawn"),
         default_tol_kind="abs",
@@ -185,7 +186,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "ead",
         "numeric",
-        our_columns=("ead_final", "final_ead", "ead"),
+        our_columns=("ead_final",),
         explain_columns=("gross_ead", "converted_undrawn"),
         # collateral_adjusted_value / guaranteed_portion stay as EAD drivers so our
         # side is always visible; when the `collateral` / `guarantee` components are
@@ -205,7 +206,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "risk_weight",
         "numeric",
-        our_columns=("risk_weight", "risk_weight_effective"),
+        our_columns=("risk_weight",),
         explain_columns=("sa_rw_regulatory_ref", "sa_rw_adjustment_reason"),
         input_columns=("external_cqs", "sa_cqs", "property_ltv", "ltv_band"),
         derived_ratio=("rwa", "ead"),
@@ -215,7 +216,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "supporting_factor",
         "numeric",
-        our_columns=("sme_supporting_factor", "supporting_factor"),
+        our_columns=("supporting_factor",),
         explain_columns=("infra_supporting_factor", "supporting_factor_benefit"),
         default_tol_kind="abs",
         default_tol=1e-4,
@@ -223,7 +224,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "expected_loss",
         "numeric",
-        our_columns=("expected_loss", "irb_expected_loss"),
+        our_columns=("expected_loss",),
         additive=True,
         default_tol_kind="rel",
         default_tol=0.01,
@@ -231,7 +232,7 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
     ReconcilableComponent(
         "rwa",
         "numeric",
-        our_columns=("rwa_final", "final_rwa", "rwa"),
+        our_columns=("rwa_final",),
         additive=True,
         default_tol_kind="rel",
         default_tol=0.01,

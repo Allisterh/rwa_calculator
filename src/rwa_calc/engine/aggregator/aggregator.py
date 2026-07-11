@@ -34,12 +34,6 @@ from rwa_calc.contracts.bundles import AggregatedResultBundle
 from rwa_calc.contracts.edges import AGGREGATOR_EXIT_EDGE, seal
 from rwa_calc.contracts.errors import non_finite_input_warning, non_finite_output_error
 from rwa_calc.domain.enums import ApproachType, ExposureClass
-from rwa_calc.engine.aggregator._crm_reporting import (
-    generate_post_crm_detailed,
-    generate_post_crm_summary,
-    generate_pre_crm_summary,
-    post_crm_approach_expr,
-)
 from rwa_calc.engine.aggregator._el_summary import compute_el_portfolio_summary
 from rwa_calc.engine.aggregator._equity_prep import prepare_equity_results
 from rwa_calc.engine.aggregator._floor import apply_floor_with_impact, compute_of_adj
@@ -161,23 +155,17 @@ class OutputAggregator:
         # column is a uniform 1.0 and this is a no-op.
         combined = apply_residual_multiplier(combined_unmultiplied)
 
-        # Pre-CRM summary uses the original (pre-substitution) class and is
-        # unaffected by the output floor, so it is built from the current
-        # ``combined``.  The post-CRM reporting views and the by-class /
-        # by-approach summaries are deferred until AFTER the output floor is
-        # applied below, so they reflect the floored per-row RWA (P1.130).
-        pre_crm_summary = generate_pre_crm_summary(combined)
-
         # Materialise the pre-floor views ONCE.  The calculator branches are
         # already eager (collected by materialise_branches at the calculator
         # edge), so these are plans over in-memory data; one pl.collect_all
         # shares the common subplan (concat + residual multiplier) across the
         # views.  Each frame is wrapped back with ``.lazy()`` so the bundle
         # fields stay LazyFrame-typed (migration Phase 1 — no bundle type
-        # changes until the Phase 3 producer seal).
+        # changes until the Phase 3 producer seal).  The by-class / by-approach
+        # summaries are deferred until AFTER the output floor is applied below,
+        # so they reflect the floored per-row RWA (P1.130).
         pre_floor_views: dict[str, pl.LazyFrame] = {
             "combined": combined,
-            "pre_crm_summary": pre_crm_summary,
         }
         if securitisation_summary is not None:
             pre_floor_views["securitisation_summary"] = securitisation_summary
@@ -257,7 +245,6 @@ class OutputAggregator:
             if ft_total > 0.0:
                 failed_trades_rwa = ft_total
 
-        pre_crm_summary = pre_floor_dfs["pre_crm_summary"].lazy()
         if securitisation_summary is not None:
             securitisation_summary = pre_floor_dfs["securitisation_summary"].lazy()
         if sec_audit_view is not None:
@@ -348,18 +335,15 @@ class OutputAggregator:
         # so this is provably cell-neutral.
         combined = _add_reporting_projection(combined)
 
-        # Generate post-CRM reporting views from the (possibly floored)
-        # ``combined`` frame.  When the floor binds, ``combined`` now carries
-        # the per-row ``floor_impact_rwa`` add-on, which the by-class /
-        # by-approach summaries fold into ``total_rwa`` so the reported totals
-        # reconcile with ``output_floor_summary.total_rwa_post_floor`` (P1.130).
-        # When the floor does not run (or does not bind), ``combined`` is the
-        # pre-floor frame and these views are identical to the pre-fix output.
-        post_crm_detailed = generate_post_crm_detailed(combined)
-        post_crm_summary = generate_post_crm_summary(post_crm_detailed)
-        summary_by_class = generate_summary_by_class(post_crm_detailed)
-        summary_by_approach = generate_summary_by_approach(post_crm_detailed)
-        summary_by_class_method = generate_summary_by_class_method(post_crm_detailed)
+        # Generate the persisted summaries as pure group-bys of the sealed
+        # per-leg reporting ledger (Phase 7 S4) — the SINGLE by-class /
+        # by-approach source. ``combined`` carries the reporting projection
+        # and, when the floor bound, the per-row ``floor_impact_rwa`` add-on,
+        # which ``total_rwa`` folds in so the reported totals reconcile with
+        # ``output_floor_summary.total_rwa_post_floor`` (P1.130).
+        summary_by_class = generate_summary_by_class(combined)
+        summary_by_approach = generate_summary_by_approach(combined)
+        summary_by_class_method = generate_summary_by_class_method(combined)
 
         # Supporting factor impact. The regime gate is pack Feature-sourced; the
         # pack is threaded into aggregate() (S11d), so this reads the run's
@@ -373,8 +357,6 @@ class OutputAggregator:
         # that were actually built are collected.
         post_floor_views: dict[str, pl.LazyFrame] = {
             "results": combined,
-            "post_crm_detailed": post_crm_detailed,
-            "post_crm_summary": post_crm_summary,
             "summary_by_class": summary_by_class,
             "summary_by_approach": summary_by_approach,
             "summary_by_class_method": summary_by_class_method,
@@ -406,9 +388,6 @@ class OutputAggregator:
             summary_by_class=post_floor_dfs["summary_by_class"].lazy(),
             summary_by_approach=post_floor_dfs["summary_by_approach"].lazy(),
             summary_by_class_method=post_floor_dfs["summary_by_class_method"].lazy(),
-            pre_crm_summary=pre_crm_summary,
-            post_crm_detailed=post_floor_dfs["post_crm_detailed"].lazy(),
-            post_crm_summary=post_floor_dfs["post_crm_summary"].lazy(),
             el_summary=el_summary,
             securitisation_summary=securitisation_summary,
             securitisation_audit=sec_audit_view,
@@ -417,9 +396,7 @@ class OutputAggregator:
             rwa_ccr_default=rwa_ccr_default,
             rwa_ccr_qccp_trade=rwa_ccr_qccp_trade,
             failed_trades_rwa=failed_trades_rwa,
-            errors=_detect_non_finite_errors(
-                post_floor_dfs["results"], post_floor_dfs.get("post_crm_detailed")
-            ),
+            errors=_detect_non_finite_errors(post_floor_dfs["results"]),
         )
 
 
@@ -545,7 +522,34 @@ def _add_post_crm_reporting_approach(lf: pl.LazyFrame) -> pl.LazyFrame:
         CRR Art. 235: SA risk-weight substitution on the protected portion.
         CRR Art. 161 / CRE22.70-85: IRB parameter substitution.
     """
-    return lf.with_columns(post_crm_approach_expr().alias("approach_post_crm"))
+    return lf.with_columns(_post_crm_approach_expr().alias("approach_post_crm"))
+
+
+def _post_crm_approach_expr() -> pl.Expr:
+    """The post-guarantee (post-substitution) approach for one exposure row.
+
+    Single source of the rule (relocated from the retired ``_crm_reporting``
+    module in Phase 7 S4):
+
+    - a guaranteed leg with an SA guarantor is a direct SA exposure to the guarantor
+      (CRR Art. 235 risk-weight substitution) -> ``standardised``
+    - a guaranteed leg with an IRB guarantor stays under the obligor's IRB approach
+      (CRR Art. 161 / CRE22.70-85 parameter substitution) -> ``approach_applied``
+    - everything else keeps ``approach_applied``
+
+    Requires ``is_guaranteed``, ``guarantor_approach`` and ``approach_applied`` —
+    all sealed on every calculator branch exit. A null ``is_guaranteed`` makes the
+    predicate null, which ``when`` routes to ``otherwise`` (the obligor's approach),
+    so no fill is needed — mirroring ``_add_post_crm_reporting_class``.
+    """
+    return (
+        pl.when(
+            (pl.col("is_guaranteed") == True)  # noqa: E712
+            & (pl.col("guarantor_approach") == "sa")
+        )
+        .then(pl.lit(ApproachType.SA.value))
+        .otherwise(pl.col("approach_applied"))
+    )
 
 
 @cites("CRR Art. 235")
@@ -658,21 +662,21 @@ def _non_finite_refs(df: pl.DataFrame, col: str) -> list[str]:
     return list(dict.fromkeys(refs))
 
 
-def _detect_non_finite_errors(
-    results_df: pl.DataFrame, reporting_df: pl.DataFrame | None
-) -> list[CalculationError]:
+def _detect_non_finite_errors(results_df: pl.DataFrame) -> list[CalculationError]:
     """Surface NaN/inf in the per-row outputs (AGG001) and IRB inputs (AGG002).
 
     Polars float ``.sum()`` propagates a NaN (it is not skipped like a null), so a
     single non-finite value would blank the portfolio totals and the summary
     charts. Rather than silently degrade, the aggregator records:
 
-    - **AGG001 (error)** for the final output columns the cards/charts consume —
-      ``rwa_final`` / ``ead_final`` / ``risk_weight`` (the totals/cards) plus the
-      post-CRM ``reporting_rw`` / ``reporting_ead`` the by-class/by-approach charts
-      aggregate. Reporting-column offenders already named by the output scan are
-      not re-reported. ``ErrorSeverity.ERROR`` (not critical) keeps the run
-      successful so the unaffected rows still report.
+    - **AGG001 (error)** for the final output columns the cards/charts/summaries
+      consume — ``rwa_final`` / ``ead_final`` / ``risk_weight``. The sealed
+      ``reporting_ead`` / ``reporting_rw`` the by-class/by-approach summaries
+      aggregate are per-leg aliases of ``ead_final`` / ``risk_weight`` (Phase 7
+      S2), so this scan covers them by construction — the retired
+      ``post_crm_detailed`` re-split, which could mint NEW values, no longer
+      exists. ``ErrorSeverity.ERROR`` (not critical) keeps the run successful
+      so the unaffected rows still report.
     - **AGG002 (warning)** for a non-finite raw IRB input (``pd`` / ``lgd``) that
       the floors raised to the regulatory minimum — a finite result that never
       trips AGG001, so without this it would be absorbed silently.
@@ -685,14 +689,6 @@ def _detect_non_finite_errors(
         if refs:
             errors.append(non_finite_output_error(column=col, count=len(refs), references=refs[:5]))
             flagged.update(refs)
-    if reporting_df is not None:
-        for col in ("reporting_rw", "reporting_ead"):
-            refs = [r for r in _non_finite_refs(reporting_df, col) if r not in flagged]
-            if refs:
-                errors.append(
-                    non_finite_output_error(column=col, count=len(refs), references=refs[:5])
-                )
-                flagged.update(refs)
 
     for col in ("pd", "lgd"):
         refs = _non_finite_refs(results_df, col)

@@ -515,68 +515,6 @@ class TestErrorAccumulation:
             irb_df = result.irb_results.collect()
             assert irb_df.height == 0
 
-    def test_pre_crm_summary_generated(
-        self,
-        hierarchy_resolver,
-        classifier,
-        crm_processor,
-        sa_calculator,
-        irb_calculator,
-        slotting_calculator,
-        crr_config,
-    ):
-        """Pre-CRM summary is generated in aggregated results."""
-        bundle = make_raw_data_bundle(
-            counterparties=[make_counterparty(entity_type="corporate")],
-            loans=[make_loan(drawn_amount=1_000_000.0)],
-        )
-
-        result = _run_full_pipeline(
-            hierarchy_resolver,
-            classifier,
-            crm_processor,
-            sa_calculator,
-            irb_calculator,
-            slotting_calculator,
-            crr_config,
-            bundle,
-        )
-
-        assert result.pre_crm_summary is not None
-        pre_crm = result.pre_crm_summary.collect()
-        assert pre_crm.height >= 1
-
-    def test_post_crm_summary_generated(
-        self,
-        hierarchy_resolver,
-        classifier,
-        crm_processor,
-        sa_calculator,
-        irb_calculator,
-        slotting_calculator,
-        crr_config,
-    ):
-        """Post-CRM summary is generated in aggregated results."""
-        bundle = make_raw_data_bundle(
-            counterparties=[make_counterparty(entity_type="corporate")],
-            loans=[make_loan(drawn_amount=1_000_000.0)],
-        )
-
-        result = _run_full_pipeline(
-            hierarchy_resolver,
-            classifier,
-            crm_processor,
-            sa_calculator,
-            irb_calculator,
-            slotting_calculator,
-            crr_config,
-            bundle,
-        )
-
-        assert result.post_crm_summary is not None
-        post_crm = result.post_crm_summary.collect()
-        assert post_crm.height >= 1
-
     def test_aggregated_result_has_all_summary_fields(
         self,
         hierarchy_resolver,
@@ -587,7 +525,12 @@ class TestErrorAccumulation:
         slotting_calculator,
         crr_config,
     ):
-        """AggregatedResultBundle has all expected summary fields populated."""
+        """AggregatedResultBundle has all expected summary fields populated.
+
+        Phase 7 S4: the three summaries are pure group-bys of the sealed
+        reporting ledger; the pre/post-CRM view fields were retired with the
+        `_crm_reporting` re-split (the ledger IS the per-leg post-CRM view).
+        """
         bundle = make_raw_data_bundle(
             counterparties=[make_counterparty(entity_type="corporate")],
             loans=[make_loan(drawn_amount=1_000_000.0)],
@@ -608,13 +551,9 @@ class TestErrorAccumulation:
         assert result.results is not None
         assert result.summary_by_class is not None
         assert result.summary_by_approach is not None
-        assert result.pre_crm_summary is not None
-        assert result.post_crm_detailed is not None
-        assert result.post_crm_summary is not None
+        assert result.summary_by_class_method is not None
 
-        # Verify they are collectible LazyFrames
-        result.summary_by_class.collect()
-        result.summary_by_approach.collect()
-        result.pre_crm_summary.collect()
-        result.post_crm_detailed.collect()
-        result.post_crm_summary.collect()
+        # Verify they are collectible LazyFrames with rows
+        assert result.summary_by_class.collect().height >= 1
+        assert result.summary_by_approach.collect().height >= 1
+        assert result.summary_by_class_method.collect().height >= 1

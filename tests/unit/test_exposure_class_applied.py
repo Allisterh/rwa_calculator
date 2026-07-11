@@ -204,9 +204,11 @@ class TestReconClassComponent:
     """The per-key recon class is the obligor applied class (uniform across legs);
     the post-guarantee split is a separate aggregate (``_class_allocation``)."""
 
-    def test_prefers_applied_then_origination(self) -> None:
+    def test_reads_the_sealed_origin_class_with_no_ladder(self) -> None:
+        """Phase 7 S4: single sealed name — reporting_class_origin (= the applied
+        class), contract-guaranteed on aggregator_exit; no fallback rungs."""
         component = RECONCILABLE_COMPONENTS_BY_NAME["exposure_class"]
-        assert component.our_columns == ("exposure_class_applied", "exposure_class")
+        assert component.our_columns == ("reporting_class_origin",)
 
     def test_post_crm_surfaced_as_rationale(self) -> None:
         component = RECONCILABLE_COMPONENTS_BY_NAME["exposure_class"]

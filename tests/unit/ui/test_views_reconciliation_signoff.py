@@ -23,6 +23,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.fixtures.recon_ledger import with_reporting_ledger
 
 from rwa_calc.analysis.recon_registry import ComponentMapping, LegacyColumnMapping
 from rwa_calc.analysis.reconciliation import ReconciliationRunner
@@ -54,7 +55,7 @@ def _response() -> ReconciliationResponse:
         our_keys=("exposure_reference",),
         components={"ead": ComponentMapping("EAD"), "rwa": ComponentMapping("RWA")},
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(
         bundle, legacy_file=Path("legacy.csv"), framework="CRR"
     )
@@ -280,7 +281,9 @@ def _build(
         our_keys=("exposure_reference",),
         components=components,
     )
-    bundle = ReconciliationRunner().reconcile(ours, pl.LazyFrame(legacy_data), mapping)
+    bundle = ReconciliationRunner().reconcile(
+        with_reporting_ledger(ours), pl.LazyFrame(legacy_data), mapping
+    )
     return ReconciliationResponse.from_bundle(bundle, legacy_file=Path("l.csv"), framework="CRR")
 
 

@@ -870,9 +870,6 @@ class AggregatedResultBundle:
             where methodology is STD / FIRB / AIRB (retail A-IRB folded in) /
             SLOTTING / EQUITY. Reconciles cell-for-cell with summary_by_class when
             summed over methods within a class.
-        pre_crm_summary: Pre-CRM summary (gross view by original class)
-        post_crm_detailed: Post-CRM detailed view (split rows for guarantees)
-        post_crm_summary: Post-CRM summary (net view by effective class)
         el_summary: Portfolio-level EL summary with T2 credit cap (IRB only)
         securitisation_summary: Per-pool EAD/RWA summary derived from each
             row's ``securitisation_pool_allocations`` (phase 1: placeholder
@@ -929,9 +926,6 @@ class AggregatedResultBundle:
     summary_by_class: pl.LazyFrame | None = None
     summary_by_approach: pl.LazyFrame | None = None
     summary_by_class_method: pl.LazyFrame | None = None
-    pre_crm_summary: pl.LazyFrame | None = None
-    post_crm_detailed: pl.LazyFrame | None = None
-    post_crm_summary: pl.LazyFrame | None = None
     el_summary: ELPortfolioSummary | None = None
     securitisation_summary: pl.LazyFrame | None = None
     securitisation_audit: pl.LazyFrame | None = None

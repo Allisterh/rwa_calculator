@@ -844,12 +844,21 @@ def _build_class_allocation(
     if by_method:
         if approach is None:
             return _empty_class_allocation(group)
-        our_method_src = pl.col(_our_method_col(our_results, approach))
+        # Post-substitution approach, read off the sealed reporting ledger
+        # (Phase 7 S4 — no candidate ladder; the column is contract-guaranteed).
+        our_method_src = pl.col("reporting_approach")
         legacy_method_src = _legacy_method_src(approach, mapping)
 
+    # Allocation is post-guarantee: ``reporting_class`` is the sealed
+    # post-substitution class (guaranteed leg under the guarantor, defaulted /
+    # SME-managed-as-retail under their applied class — CRR Art. 235/112), so
+    # our by-class money totals mirror a post-substitution legacy extract. The
+    # per-key break attribution uses ``reporting_class_origin`` instead (the
+    # obligor class, uniform across a guaranteed exposure's legs) — see
+    # RECONCILABLE_COMPONENTS.
     our_side = _allocation_side(
         our_results,
-        class_expr=_normalise(pl.col(_our_class_col(our_results, cls))),
+        class_expr=_normalise(pl.col("reporting_class")),
         method_src=our_method_src,
         group=group,
         aggs=(
@@ -919,31 +928,6 @@ def _allocation_side(
             method_label_expr(_METHOD_SRC).alias("method")
         )
     return prepared.group_by(list(group)).agg(*aggs)
-
-
-def _our_class_col(our_results: pl.LazyFrame, cls: _ActiveComponent) -> str:
-    """Our post-guarantee class column, falling back to the per-key component column.
-
-    Allocation is post-guarantee: prefer ``exposure_class_post_crm`` (guaranteed slice
-    under the guarantor's class, retained slice under the obligor's) over the per-key
-    component column (the obligor home class used for break attribution), so our
-    by-class money totals mirror a post-substitution legacy extract.
-    """
-    present = set(our_results.collect_schema().names())
-    return "exposure_class_post_crm" if "exposure_class_post_crm" in present else cls.our_col
-
-
-def _our_method_col(our_results: pl.LazyFrame, approach: _ActiveComponent) -> str:
-    """Our post-guarantee approach column — the method twin of :func:`_our_class_col`.
-
-    ``approach_post_crm`` is the aggregator's post-substitution approach (CRR Art. 235 /
-    Art. 161), so it pairs with ``exposure_class_post_crm``. Frames that predate the
-    column (minimal fixtures) fall back to the approach component's own column.
-    """
-    present = set(our_results.collect_schema().names())
-    if "approach_post_crm" in present:
-        return "approach_post_crm"
-    return approach.our_col
 
 
 def _legacy_method_src(approach: _ActiveComponent, mapping: LegacyColumnMapping) -> pl.Expr:
