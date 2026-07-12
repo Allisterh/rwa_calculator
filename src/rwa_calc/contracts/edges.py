@@ -1467,6 +1467,21 @@ AGGREGATOR_EXIT_EDGE: EdgeContract = EdgeContract(
         ),
         "reporting_rw": EdgeColumn(dtype=pl.Float64),
         "reporting_subclass": EdgeColumn(dtype=pl.String),
+        # Phase 7 decision F8 (recorded): the additive per-leg substitution
+        # relief, ead_final x guarantee_benefit_rw (borrower-basis RW minus
+        # substituted RW, snapshotted at the branch BEFORE supporting
+        # factors and the portfolio floor). 0.0 on retained/whole/
+        # non-beneficial legs.
+        "guarantee_rwa_benefit": EdgeColumn(
+            dtype=pl.Float64,
+            citation="CRR Art. 235",
+            null_meaning=(
+                "the substitution machinery never ran for this leg — slotting "
+                "legs (the recorded zero-relief gap: no guarantee substitution "
+                "stage exists for slotting) and runs with no CRM guarantee "
+                "sub-step. NOT zero relief; must not be filled to 0.0"
+            ),
+        ),
         # ------------------------------------------------------------------
         "correlation": EdgeColumn(dtype=pl.Float64),
         "cp_internal_rating_grade": EdgeColumn(dtype=pl.String),

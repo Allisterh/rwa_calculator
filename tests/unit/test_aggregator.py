@@ -1134,6 +1134,7 @@ class TestReportingProjection:
         "reporting_subclass",
         "reporting_ead",
         "reporting_rw",
+        "guarantee_rwa_benefit",
     )
 
     @pytest.fixture
@@ -1204,6 +1205,78 @@ class TestReportingProjection:
         )
         return result.results.collect()
 
+    @pytest.fixture
+    def benefit_leg_results(self) -> pl.LazyFrame:
+        """Guarantee legs carrying the branch RW delta (Phase 7 F8).
+
+        One exposure split across TWO guarantors (multi-guarantor
+        additivity): EXPM__G_GA (EAD 600k, borrower RW 1.0 -> 0.2, delta
+        0.8) and EXPM__G_GB (EAD 200k, delta 0.5), plus its retained leg
+        (200k, delta 0.0) and a plain unguaranteed exposure (delta 0.0).
+        """
+        return pad_irb_branch(
+            pl.LazyFrame(
+                {
+                    "exposure_reference": [
+                        "EXPM__G_GA",
+                        "EXPM__G_GB",
+                        "EXPM__REM",
+                        "EXP_PLAIN",
+                    ],
+                    "counterparty_reference": ["B01", "B01", "B01", "B03"],
+                    "exposure_class": ["CORPORATE"] * 4,
+                    "approach": ["FIRB"] * 4,
+                    "approach_applied": ["FIRB"] * 4,
+                    "ead_final": [600000.0, 200000.0, 200000.0, 250000.0],
+                    "risk_weight": [0.2, 0.5, 1.0, 1.0],
+                    "rwa_final": [120000.0, 100000.0, 200000.0, 250000.0],
+                    "is_guaranteed": [True, True, False, False],
+                    "guaranteed_portion": [600000.0, 200000.0, 0.0, 0.0],
+                    "unguaranteed_portion": [0.0, 0.0, 200000.0, 0.0],
+                    "guarantor_approach": ["sa", "sa", None, None],
+                    "guarantor_reference": ["GA", "GB", None, None],
+                    "parent_exposure_reference": ["EXPM", "EXPM", "EXPM", None],
+                    "pre_crm_risk_weight": [1.0, 1.0, 1.0, None],
+                    "guarantee_benefit_rw": [0.8, 0.5, 0.0, 0.0],
+                }
+            )
+        )
+
+    def test_guarantee_rwa_benefit_is_ead_times_branch_delta(
+        self,
+        aggregator: OutputAggregator,
+        benefit_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """F8: benefit = ead_final x guarantee_benefit_rw per leg, and the
+        per-exposure sum of leg benefits ties to the whole-exposure relief
+        (600k x 0.8 + 200k x 0.5 = 580k across the two guarantors)."""
+        df = self._aggregate_irb(aggregator, benefit_leg_results, crr_config)
+        by_ref = {r["exposure_reference"]: r for r in df.to_dicts()}
+        assert by_ref["EXPM__G_GA"]["guarantee_rwa_benefit"] == pytest.approx(480000.0)
+        assert by_ref["EXPM__G_GB"]["guarantee_rwa_benefit"] == pytest.approx(100000.0)
+        assert by_ref["EXPM__REM"]["guarantee_rwa_benefit"] == pytest.approx(0.0)
+        assert by_ref["EXP_PLAIN"]["guarantee_rwa_benefit"] == pytest.approx(0.0)
+        exposure_total = sum(
+            r["guarantee_rwa_benefit"]
+            for r in df.to_dicts()
+            if r["exposure_reference"].startswith("EXPM")
+        )
+        assert exposure_total == pytest.approx(580000.0)
+
+    def test_guarantee_rwa_benefit_null_without_substitution_machinery(
+        self,
+        aggregator: OutputAggregator,
+        guarantee_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """F8: with no branch delta column (no CRM guarantee sub-step ran),
+        the sealed column is present, Float64, and all-null — relief NOT
+        MODELLED, never 0.0."""
+        df = self._aggregate_irb(aggregator, guarantee_leg_results, crr_config)
+        assert df.schema["guarantee_rwa_benefit"] == pl.Float64
+        assert df["guarantee_rwa_benefit"].null_count() == df.height
+
     def test_projection_columns_sealed_on_results(
         self,
         aggregator: OutputAggregator,
@@ -1235,6 +1308,9 @@ class TestReportingProjection:
         assert AGGREGATOR_EXIT_EDGE.columns["reporting_class"].citation == "CRR Art. 235"
         assert AGGREGATOR_EXIT_EDGE.columns["reporting_class_origin"].citation == "CRR Art. 112"
         assert AGGREGATOR_EXIT_EDGE.columns["reporting_leg_role"].citation == "CRR Art. 235"
+        benefit = AGGREGATOR_EXIT_EDGE.columns["guarantee_rwa_benefit"]
+        assert benefit.citation == "CRR Art. 235"
+        assert benefit.null_meaning is not None  # slotting gap must stay visible
 
     def test_aliases_mirror_sealed_sources(
         self,

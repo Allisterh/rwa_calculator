@@ -161,12 +161,12 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
         default_tol=0.01,
     ),
     ReconcilableComponent(
-        # CRM — unfunded protection (substitution). The engine persists no single
-        # "RWA benefit" figure (``guarantee_benefit`` / ``guarantee_benefit_rw`` do
-        # not survive to the per-exposure output), so we reconcile the additive
-        # guaranteed EAD portion (``guaranteed_portion``): the amount our engine
-        # treated as covered by the guarantee, which sums across split sub-rows to
-        # the key grain. The guarantor approach / class and coverage ratio explain it.
+        # CRM — unfunded protection (substitution). The additive guaranteed
+        # EAD portion (``guaranteed_portion``): the amount our engine treated
+        # as covered by the guarantee, which sums across split sub-rows to
+        # the key grain. The guarantor approach / class and coverage ratio
+        # explain it. The RWA-relief side reconciles separately via the
+        # sealed ``guarantee_rwa_benefit`` component below (Phase 7 F8).
         "guarantee",
         "numeric",
         our_columns=("guaranteed_portion",),
@@ -178,6 +178,30 @@ RECONCILABLE_COMPONENTS: tuple[ReconcilableComponent, ...] = (
         input_columns=(
             "guarantee_amount",
             "unguaranteed_portion",
+        ),
+        additive=True,
+        default_tol_kind="rel",
+        default_tol=0.01,
+    ),
+    ReconcilableComponent(
+        # CRM — the Art. 235/236 substitution RELIEF (Phase 7 decision F8):
+        # the additive per-leg ``ead_final x (borrower-basis RW - substituted
+        # RW)``, PRE-supporting-factor / PRE-floor, sealed by the aggregator.
+        # Sums across split sub-rows to the key grain, so a guarantee-relief
+        # mismatch gets its own component row instead of diffusing into the
+        # risk_weight/rwa deltas. Null = relief not modelled (slotting legs).
+        "guarantee_rwa_benefit",
+        "numeric",
+        our_columns=("guarantee_rwa_benefit",),
+        explain_columns=(
+            "guarantor_approach",
+            "guarantor_exposure_class",
+            "guarantee_benefit_rw",
+        ),
+        input_columns=(
+            "guaranteed_portion",
+            "guarantor_rw",
+            "pre_crm_risk_weight",
         ),
         additive=True,
         default_tol_kind="rel",

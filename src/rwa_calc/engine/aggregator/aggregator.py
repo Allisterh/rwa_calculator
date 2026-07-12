@@ -585,6 +585,18 @@ def _add_reporting_projection(lf: pl.LazyFrame) -> pl.LazyFrame:
       reaches the aggregator, so the exposure-type rule IS today's behaviour).
     - ``reporting_subclass`` / ``reporting_ead`` / ``reporting_rw`` — aliases of
       ``exposure_subclass`` / ``ead_final`` / ``risk_weight``.
+    - ``guarantee_rwa_benefit`` (Phase 7 decision F8, recorded) — the additive
+      per-leg Art. 235/236 substitution relief:
+      ``ead_final x guarantee_benefit_rw`` = leg EAD x (borrower-basis RW -
+      substituted RW). PRE-supporting-factor and PRE-floor by definition (the
+      branch snapshots the delta before Art. 501/501a and the portfolio
+      floor), isolating the substitution effect; the applied delta already
+      folds the double-default override (Art. 153(3)) and the Art. 160(4)
+      no-better-than-direct floor, so the benefit ties exactly to the relief
+      the engine granted. 0.0 on retained/whole/non-beneficial legs; NULL
+      where the substitution machinery never ran (slotting legs — the
+      recorded zero-relief gap, deliberately NOT papered over as 0.0 — and
+      unguaranteed runs, where the branch columns are absent).
 
     Called after the residual multiplier and the output floor so the aliases
     mirror the sealed final values. Per-row post-floor RWA is deliberately NOT
@@ -606,6 +618,12 @@ def _add_reporting_projection(lf: pl.LazyFrame) -> pl.LazyFrame:
         .then(pl.lit(False))
         .otherwise(pl.lit(None, dtype=pl.Boolean))
     )
+    if "guarantee_benefit_rw" in lf.collect_schema().names():
+        # Null delta (slotting legs on guaranteed runs) stays null; the
+        # branch clamps non-beneficial legs to a 0.0 delta.
+        rwa_benefit = pl.col("ead_final") * pl.col("guarantee_benefit_rw")
+    else:
+        rwa_benefit = pl.lit(None, dtype=pl.Float64)
     return lf.with_columns(
         pl.col("exposure_class_post_crm").alias("reporting_class"),
         pl.col("exposure_class_applied").alias("reporting_class_origin"),
@@ -617,6 +635,7 @@ def _add_reporting_projection(lf: pl.LazyFrame) -> pl.LazyFrame:
         pl.col("exposure_subclass").alias("reporting_subclass"),
         pl.col("ead_final").alias("reporting_ead"),
         pl.col("risk_weight").alias("reporting_rw"),
+        rwa_benefit.alias("guarantee_rwa_benefit"),
     )
 
 
