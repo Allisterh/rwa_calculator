@@ -55,9 +55,6 @@ _FRAME_FIELDS = (
     "supporting_factor_impact",
     "summary_by_class",
     "summary_by_approach",
-    "pre_crm_summary",
-    "post_crm_detailed",
-    "post_crm_summary",
     "securitisation_summary",
     "securitisation_audit",
 )

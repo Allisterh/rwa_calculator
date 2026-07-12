@@ -235,7 +235,7 @@ def derive_independent_flags(
     and replace_strict() calls.
 
     Sets: exposure_class_sa, exposure_class_irb, exposure_class, is_mortgage,
-          is_defaulted, exposure_class_for_sa, is_infrastructure,
+          is_defaulted, is_infrastructure,
           qualifies_as_retail, retail_threshold_exclusion_applied, is_adc
 
     Art. 123A enforcement (Basel 3.1 only):
@@ -336,18 +336,6 @@ def derive_independent_flags(
             # Art. 158(5) but is NOT itself a trigger — see
             # ``_build_is_defaulted_expr`` and the DQ008 companion check.
             _build_is_defaulted_expr(),
-            # Art. 112 Table A2: HIGH_RISK (priority 4) takes precedence over
-            # DEFAULTED (priority 5). A defaulted high-risk item retains 150% per
-            # Art. 128, not the provision-based 100%/150% of Art. 127.
-            pl.when(
-                (pl.col("cp_default_status") == True)  # noqa: E712
-                & (pl.col("_sa_class") != ExposureClass.HIGH_RISK.value)
-            )
-            .then(pl.lit(ExposureClass.DEFAULTED.value))
-            .when(sl_override)
-            .then(sl_sa_class)
-            .otherwise(pl.col("_sa_class"))
-            .alias("exposure_class_for_sa"),
             # --- Infrastructure flag (uses _pt_upper) ---
             pl.col("_pt_upper").str.contains("INFRASTRUCTURE").alias("is_infrastructure"),
             # --- ADC classification (PRA PS1/26 Art. 124(3) / Art. 124K) ---

@@ -802,7 +802,6 @@ def _classifier_added_columns() -> dict[str, EdgeColumn]:
         "exposure_class_sa": EdgeColumn(dtype=pl.String),
         "exposure_class_irb": EdgeColumn(dtype=pl.String),
         "exposure_class": EdgeColumn(dtype=pl.String, citation="CRR Art. 112"),
-        "exposure_class_for_sa": EdgeColumn(dtype=pl.String),
         "exposure_subclass": EdgeColumn(dtype=pl.String),
         "is_mortgage": EdgeColumn(dtype=pl.Boolean),
         "is_infrastructure": EdgeColumn(dtype=pl.Boolean, citation="CRR Art. 501a"),
@@ -950,7 +949,6 @@ def _crm_added_columns() -> dict[str, EdgeColumn]:
         "guarantor_exposure_class": EdgeColumn(dtype=pl.String),
         "guarantor_approach": EdgeColumn(dtype=pl.String),
         "guarantor_rating_type": EdgeColumn(dtype=pl.String),
-        "substitute_rw": EdgeColumn(dtype=pl.Float64, citation="CRR Art. 235"),
         "post_crm_counterparty_guaranteed": EdgeColumn(dtype=pl.String),
         "post_crm_exposure_class_guaranteed": EdgeColumn(dtype=pl.String),
         "protection_type": EdgeColumn(dtype=pl.String),
@@ -1133,7 +1131,6 @@ def _calc_output_common_columns() -> dict[str, EdgeColumn]:
         "effective_ccf": EdgeColumn(dtype=pl.Float64),
         "effective_maturity": EdgeColumn(dtype=pl.Float64),
         "exposure_class": EdgeColumn(dtype=pl.String),
-        "exposure_class_for_sa": EdgeColumn(dtype=pl.String),
         "exposure_class_irb": EdgeColumn(dtype=pl.String),
         "exposure_class_sa": EdgeColumn(dtype=pl.String),
         "exposure_collateral_type": EdgeColumn(dtype=pl.String),
@@ -1270,7 +1267,6 @@ def _calc_output_common_columns() -> dict[str, EdgeColumn]:
             "their prefix; never fabricated",
         ),
         "split_parent_id": EdgeColumn(dtype=pl.String),
-        "substitute_rw": EdgeColumn(dtype=pl.Float64),
         "supporting_factor": EdgeColumn(dtype=pl.Float64),
         "supporting_factor_applied": EdgeColumn(dtype=pl.Boolean),
         "total_collateral_for_lgd": EdgeColumn(dtype=pl.Float64),
@@ -1444,6 +1440,50 @@ AGGREGATOR_EXIT_EDGE: EdgeContract = EdgeContract(
         # same post-guarantee money. Computed by the aggregator
         # (_add_post_crm_reporting_approach).
         "approach_post_crm": EdgeColumn(dtype=pl.String, citation="CRR Art. 235"),
+        # --- Canonical reporting projection (Phase 7 S2) ------------------
+        # The per-leg substitution ledger, named once at the producer
+        # (_add_reporting_projection). reporting_class/_origin and the
+        # approach twins are aliases of the sealed columns above;
+        # reporting_leg_role names the physical __G_/__REM guarantee split
+        # (Art. 234 tranche legs __REM_FL/__REM_SEN are `retained`);
+        # reporting_method materialises the STD/FIRB/AIRB/SLOTTING/EQUITY
+        # label of the post-substitution approach; reporting_ead/_rw alias
+        # ead_final/risk_weight AFTER the residual multiplier and floor.
+        "reporting_approach": EdgeColumn(dtype=pl.String, citation="CRR Art. 235"),
+        "reporting_approach_origin": EdgeColumn(dtype=pl.String),
+        "reporting_class": EdgeColumn(dtype=pl.String, citation="CRR Art. 235"),
+        "reporting_class_origin": EdgeColumn(dtype=pl.String, citation="CRR Art. 112"),
+        "reporting_ead": EdgeColumn(dtype=pl.Float64),
+        "reporting_leg_role": EdgeColumn(dtype=pl.String, citation="CRR Art. 235"),
+        "reporting_method": EdgeColumn(dtype=pl.String),
+        "reporting_on_balance_sheet": EdgeColumn(
+            dtype=pl.Boolean,
+            null_meaning=(
+                "exposure_type outside the loan/facility/contingent vocabulary — "
+                "the row belongs to neither the on- nor the off-balance-sheet "
+                "template cells (matches the reporting kernel's exposure_type "
+                "rule; must NOT be filled to a side)"
+            ),
+        ),
+        "reporting_rw": EdgeColumn(dtype=pl.Float64),
+        "reporting_subclass": EdgeColumn(dtype=pl.String),
+        # Phase 7 decision F8 (recorded): the additive per-leg substitution
+        # relief, ead_final x guarantee_benefit_rw (borrower-basis RW minus
+        # substituted RW, snapshotted at the branch BEFORE supporting
+        # factors and the portfolio floor). 0.0 on retained/whole/
+        # non-beneficial legs.
+        "guarantee_rwa_benefit": EdgeColumn(
+            dtype=pl.Float64,
+            citation="CRR Art. 235",
+            null_meaning=(
+                "the substitution machinery never ran for this run (no CRM "
+                "guarantee sub-step, so the branch delta column is absent). "
+                "NOT zero relief; must not be filled to 0.0. Slotting legs "
+                "substitute via RWSM (Art. 235(1), the 2026-07-12 fix) and "
+                "carry real benefits like SA/IRB legs"
+            ),
+        ),
+        # ------------------------------------------------------------------
         "correlation": EdgeColumn(dtype=pl.Float64),
         "cp_internal_rating_grade": EdgeColumn(dtype=pl.String),
         "cp_is_core_market_participant": EdgeColumn(dtype=pl.Boolean),

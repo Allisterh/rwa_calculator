@@ -33,10 +33,7 @@ ALWAYS_PRESENT_ARTIFACTS = {
     "collateral_haircuts.parquet",
     "collateral_allocation.parquet",
     "crm_audit.parquet",
-    # Aggregator pre/post summary views
-    "pre_crm_summary.parquet",
-    "post_crm_summary.parquet",
-    "post_crm_detailed.parquet",
+    # Aggregator summary views (Phase 7 S4: pure group-bys of the sealed ledger)
     "summary_by_class.parquet",
     "summary_by_approach.parquet",
     "results.parquet",

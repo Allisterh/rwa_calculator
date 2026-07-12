@@ -101,29 +101,6 @@ FLOOR_IMPACT_SCHEMA: dict[str, PolarsDataType] = {
     "output_floor_pct": pl.Float64,
 }
 
-POST_CRM_DETAILED_SCHEMA: dict[str, PolarsDataType] = {
-    "reporting_counterparty": pl.String,
-    "reporting_exposure_class": pl.String,
-    "reporting_ead": pl.Float64,
-    "reporting_rw": pl.Float64,
-    "reporting_approach": pl.String,
-    "crm_portion_type": pl.String,
-}
-
-POST_CRM_SUMMARY_SCHEMA: dict[str, PolarsDataType] = {
-    "reporting_exposure_class": pl.String,
-    "total_ead": pl.Float64,
-    "total_rwa": pl.Float64,
-    "exposure_count": pl.UInt32,
-}
-
-PRE_CRM_SUMMARY_SCHEMA: dict[str, PolarsDataType] = {
-    "pre_crm_exposure_class": pl.String,
-    "total_ead": pl.Float64,
-    "total_rwa_blended": pl.Float64,
-    "exposure_count": pl.UInt32,
-}
-
 SUPPORTING_FACTOR_SCHEMA: dict[str, PolarsDataType] = {
     "exposure_reference": pl.String,
     "supporting_factor": pl.Float64,

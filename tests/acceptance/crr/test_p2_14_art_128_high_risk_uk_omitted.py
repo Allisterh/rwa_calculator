@@ -262,17 +262,17 @@ class TestCRRArt128HighRiskUKOmitted:
 
         Arrange: LN_VC_001, entity_type=high_risk_venture_capital.
         Act:     full CRR SA pipeline, reporting_date=2024-12-31.
-        Assert:  exposure_class_for_sa != "high_risk"
+        Assert:  exposure_class != "high_risk"
                  (post-fix: should be "other" or the residual class string).
         """
         # Arrange
         row = p2_14_crr_results[_LOAN_VC]
 
         # Assert — under CRR Art. 128 is omitted, so high_risk class is dead letter
-        assert row["exposure_class_for_sa"] != "high_risk", (
-            f"P2.14 CRR LN_VC_001: exposure_class_for_sa must not be 'high_risk' "
+        assert row["exposure_class"] != "high_risk", (
+            f"P2.14 CRR LN_VC_001: exposure_class must not be 'high_risk' "
             f"under UK CRR (Art. 128 omitted by SI 2021/1078 reg. 6(3)(a)); "
-            f"got '{row['exposure_class_for_sa']}'"
+            f"got '{row['exposure_class']}'"
         )
 
     def test_crr_vc_loan_risk_weight(self, p2_14_crr_results: dict[str, dict]) -> None:
@@ -332,16 +332,16 @@ class TestCRRArt128HighRiskUKOmitted:
 
         Arrange: LN_PE_002, entity_type=high_risk_private_equity.
         Act:     full CRR SA pipeline, reporting_date=2024-12-31.
-        Assert:  exposure_class_for_sa != "high_risk".
+        Assert:  exposure_class != "high_risk".
         """
         # Arrange
         row = p2_14_crr_results[_LOAN_PE]
 
         # Assert — under CRR Art. 128 is omitted, so high_risk class is dead letter
-        assert row["exposure_class_for_sa"] != "high_risk", (
-            f"P2.14 CRR LN_PE_002: exposure_class_for_sa must not be 'high_risk' "
+        assert row["exposure_class"] != "high_risk", (
+            f"P2.14 CRR LN_PE_002: exposure_class must not be 'high_risk' "
             f"under UK CRR (Art. 128 omitted by SI 2021/1078 reg. 6(3)(a)); "
-            f"got '{row['exposure_class_for_sa']}'"
+            f"got '{row['exposure_class']}'"
         )
 
     def test_crr_pe_loan_risk_weight(self, p2_14_crr_results: dict[str, dict]) -> None:

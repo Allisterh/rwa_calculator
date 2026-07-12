@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
+from tests.fixtures.recon_ledger import with_reporting_ledger
 
 from rwa_calc.api.models import CalculationResponse, SummaryStatistics
 from rwa_calc.api.results_cache import ResultsCache
@@ -30,15 +31,17 @@ def sample_response(tmp_path: Path) -> CalculationResponse:
     """A CalculationResponse backed by a small cached parquet result set."""
     cache = ResultsCache(tmp_path / "cache")
     cached = cache.sink_results(
-        results=pl.LazyFrame(
-            {
-                "exposure_reference": ["EXP001", "EXP002"],
-                "approach_applied": ["standardised", "standardised"],
-                "exposure_class": ["corporate", "retail"],
-                "ead_final": [1_000_000.0, 500_000.0],
-                "risk_weight": [1.0, 0.75],
-                "rwa_final": [1_000_000.0, 375_000.0],
-            }
+        results=with_reporting_ledger(
+            pl.LazyFrame(
+                {
+                    "exposure_reference": ["EXP001", "EXP002"],
+                    "approach_applied": ["standardised", "standardised"],
+                    "exposure_class": ["corporate", "retail"],
+                    "ead_final": [1_000_000.0, 500_000.0],
+                    "risk_weight": [1.0, 0.75],
+                    "rwa_final": [1_000_000.0, 375_000.0],
+                }
+            )
         ),
         summary_by_class=pl.LazyFrame(
             {"exposure_class": ["corporate", "retail"], "total_rwa": [1_000_000.0, 375_000.0]}

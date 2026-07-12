@@ -55,7 +55,17 @@ def irb_output_columns() -> set[str]:
 # numeric components, all of which must resolve on the real output.
 @pytest.mark.parametrize(
     "component",
-    ["pd", "lgd", "guarantee", "maturity", "ead", "rwa", "risk_weight", "expected_loss"],
+    [
+        "pd",
+        "lgd",
+        "guarantee",
+        "guarantee_rwa_benefit",
+        "maturity",
+        "ead",
+        "rwa",
+        "risk_weight",
+        "expected_loss",
+    ],
 )
 def test_component_resolves_against_real_irb_output(
     component: str, irb_output_columns: set[str]

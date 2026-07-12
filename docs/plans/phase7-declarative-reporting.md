@@ -1,0 +1,1147 @@
+# Phase 7 — Declarative Reporting on One Canonical Output Ledger
+
+**Status:** ACTIVE — S0 (golden gate) + S1 (sealed-name retarget) MERGED (PR #395); execution resumes at S2.
+**Date:** 2026-07-11
+**Provenance:** Multi-agent investigation 2026-07-10 (5 mappers over Phase-6 residue / reporting layer /
+output surface / reconciliation complexity / consumer duplication → 3 independent designs
+[contract-first, cellspec-first, risk-first-minimalist] → 3-judge panel → synthesis →
+adversarial fact-check, 5 corrections applied). Winner = **contract-first** (2 of 3 judges) with
+recorded grafts from both runners-up.
+**Supersedes:** `.claude/state/phase7-plan.md` from S2 onward (its S0/S1 record and locked harness
+design remain the authority for what shipped).
+**Parent:** `docs/plans/target-architecture-migration.md` → "Phase 7 — Declarative reporting" +
+target principle 7.
+
+---
+
+## 0. The driving question
+
+How do we guarantee **simplicity between the calculation outputs and the reporting outputs**?
+Complexity has already crept in around pre- vs post-CRM views (guarantees with substitution
+effects) in the UI reconciliation between the legacy calculator and this engine — each consumer
+papers over the same gap differently.
+
+**This plan's thesis: fix the output contract; reporting, reconciliation, and the UI then become
+mechanical projections of it. CellSpec is a second-order consequence.** The canonical post-CRM
+projection already exists — the aggregator computes it — but it sits on a frame that is dropped at
+the API boundary, so every consumer re-derives it from raw columns and they disagree.
+
+---
+
+## 1. Phase 6 completion note (migration-doc correction)
+
+**Phase 6 (`analysis/` layer) is COMPLETE — merged as PR #394 on 2026-06-17.** Per-goal audit:
+
+| Goal | Verdict | Evidence |
+|---|---|---|
+| (a) comparison + recon out of `engine/`; registry out of `data/schemas.py` | **DELIVERED** | `engine/comparison.py`/`engine/reconciliation.py` deleted (S1 `7e707d6d`); registry → `analysis/recon_registry.py`, protocol → `analysis/reconciliation.py` (S2 `e8afbbf1`); arch_check check 12 bans engine→analysis; zero stale imports |
+| (b) comparison → labelled two-run over rulepack-identified runs | **DELIVERED** | `RunSpec(config, label, rulepack)` at `analysis/comparison.py:85`; label gate replaces the regime gate (S3 `13031cdd`) |
+| (c) CRR→B31 waterfall → one registered delta-attributor pairing | **DELIVERED** | `analysis/attribution.py` registry + `register_attributor("crr","b31",…)` self-registration (S4 `a9f59aa3`); scaling factor read from the pack |
+| (d) transition = same pack at successive dates + floor-tail partial re-run | **PARTIAL — deviation recorded** | successive-dates loop delivered (S5a `ca128a77`); floor-tail partial re-run recorded **INFEASIBLE** (S5b `022dd30d`, `transition.py:58-69`): pre-floor IRB RWA is not date-invariant (Art. 162 effective maturity shortens), so only the SA floor benchmark is date-stable |
+
+**Residue (audited 2026-07-10; none of it blocks Phase 7):**
+- **R1 — stale doc imports:** `docs/api/engine.md:858,964` and
+  `docs/framework-comparison/impact-analysis.md:29,79,161` still show
+  `from rwa_calc.engine.comparison import …` (and `TransitionalScheduleRunner` now lives in
+  `analysis/transition.py`). Fix as a docs item.
+- **R2 — migration-doc self-contradiction:** status header + "Next = Phase 6" markers stale, and
+  the §6 decision log has **zero Phase 6 rows** — the labelled-two-run semantics change and the
+  floor-tail INFEASIBLE dead-end exist only in commit messages. Corrected alongside this plan.
+- **R3 — `analysis` has no upward arch rule:** `IMPORT_DIRECTION_RULES` (arch_check check 12) has
+  no `analysis` key, so an `analysis → api/ui` cycle would be undetected. Cheap close: add
+  `"analysis": ("rwa_calc.api", "rwa_calc.ui")` (folded into §9 here).
+- **R4 — analysis DTOs still in `contracts/bundles.py`:** `ComparisonBundle:958`,
+  `TransitionalScheduleBundle:996`, `ReconciliationBundle:1067` — legal (downward import) but the
+  target layout's `contracts/results.py` split remains outstanding; note for a later phase.
+- **R5 — confirmed intended (not residue):** REC001–REC007 stay in `contracts/errors.py` (§3.3
+  taxonomy stays central); the `RECON_*` output-domain tuples stay in `data/schemas.py:2805-2824`
+  (consumed by `engine/aggregator/_collapse.py`, which may not import analysis).
+
+**Since the merge (Phase 7 must build on the July surface, not the June snapshot):** 21 commits on
+`analysis/` + `ui/views` delivered recon sign-off, calc-reuse (PR #434), and the post-guarantee
+class tie-out workstream (`db9e0d7a`, `925c1bb3`, `9e1752d9`, `7cc1e000`, `5ee669f8`) — the last of
+which moved the pre/post-CRM class semantics **into the sealed aggregator exit** as named, cited
+columns. That is good news: the coherent semantic exists in one place; the residue is that
+consumers still re-derive instead of reading it.
+
+---
+
+## 2. Starting-state recon (measured 2026-07-10, fact-checked)
+
+### 2.1 The sealed edge already IS the reporting input — the projection is on the wrong frame
+
+- The only per-row reporting input is `AggregatedResultBundle.results`, sealed as
+  `aggregator_exit` (`contracts/bundles.py:88`, seal at `engine/aggregator/aggregator.py:383`).
+  `EdgeContract.conform` strips undeclared columns (`contracts/edges.py:185-188`), so the declared
+  set **is** the whole reporting/recon/UI input. Both generators read only
+  `response.scan_results()` (`corep/generator.py:248`, `pillar3/generator.py:192`).
+- **Keystone:** the canonical post-CRM projection (`reporting_exposure_class` / `reporting_ead` /
+  `reporting_rw` / `reporting_approach`) already exists — computed in
+  `engine/aggregator/_crm_reporting.py` on the **`post_crm_detailed` frame, which is dropped at
+  the API boundary** and is absent from `AGGREGATOR_EXIT_EDGE` (only a docstring mention at
+  `edges.py:1445`). `_summaries.py:45-150` consumes the `reporting_*` names behind
+  `has_reporting = … in cols` presence-guards with raw-column fallbacks — a ladder of its own.
+  COREP/Pillar 3/comparison/UI re-derive from raw columns instead.
+
+### 2.2 Five class columns, four semantics — every consumer re-decides
+
+Sealed class columns: `exposure_class` (origination + substitution routing),
+`exposure_class_applied` (`edges.py:1459`, Art. 112 — + SME-managed-as-retail + defaulted; uniform
+across a guaranteed exposure's legs; `aggregator.py:424`), `exposure_class_post_crm`
+(`edges.py:1463`, Art. 235 — guaranteed slice under guarantor class; `aggregator.py:481`),
+`pre_crm_exposure_class` (`edges.py:917`), `post_crm_exposure_class_guaranteed` (`edges.py:955`);
+plus `approach`/`approach_applied`/`approach_post_crm` (`edges.py:1446`, `aggregator.py:515`) and
+the dead `exposure_class_for_sa`.
+
+Consumers diverge: COREP C07/C08.06 bucket on `exposure_class_applied`
+(`generator.py:1522,2662`); COREP C02/C09 and all Pillar 3 class templates (CR4/CR5/CR6/CR9, 9
+sites) bucket on raw `exposure_class`; reconciliation per-key attribution uses
+`exposure_class_applied` (`recon_registry.py:61-80`) but its money allocation uses
+`exposure_class_post_crm` (`reconciliation.py:924-933`); comparison groups on raw
+`exposure_class` + `approach_applied`. **The same defaulted-SA exposure reports as "defaulted" in
+COREP C07 and reconciliation but under its origination class in Pillar 3 CR4/CR5, the UI by-class
+chart, and comparison.**
+
+### 2.3 Guarantee substitution is physically a two-leg split, re-represented three times
+
+- CRM physically splits each guaranteed exposure into `__G_<guarantor>` legs
+  (`guaranteed_portion=EAD`, `is_guaranteed=True`) and `__REM` retained legs — plus Art. 234
+  tranching sub-rows `__REM_FL`/`__REM_SEN` (`engine/crm/guarantees.py:459-533,719-790,1177`).
+  The results frame is **per-leg for guaranteed rows, per-exposure otherwise**. On a `__G_` leg
+  the SA blend collapses to pure guarantor RW (`engine/sa/rw_adjustments.py:251-269`) — the
+  substituted values are already per-leg correct.
+- The split is then re-derived three independent times: `_crm_reporting.py:126-274` re-splits
+  each `__G_` leg again into reporting rows (~170 LOC); COREP `_compute_substitution_flows`
+  re-derives outflow/inflow (`generator.py:3135`); reconciliation collapses legs back via
+  `aggregate_to_key_grain` (`engine/aggregator/_collapse.py:45-96`).
+
+### 2.4 Where this bites reconciliation and the UI (the operator's pain, diagnosed)
+
+- **A — break attribution vs money allocation need different class bases.** Attribution keys on
+  `exposure_class_applied` (uniform across legs, deterministic); allocation needs post-substitution
+  `exposure_class_post_crm`. Two code paths, two columns (`925c1bb3` split them after `db9e0d7a`
+  added the post-CRM basis).
+- **B — the money allocation is a second, parallel recon engine.** `exposure_class_post_crm`
+  differs across legs so it cannot survive the `.first()` collapse — `_build_class_allocation`
+  (`reconciliation.py:814-899`) re-aggregates the **raw** frame, full-joined to a separately
+  grouped legacy side.
+- **C — the method dimension forks again, one level deeper.** `_class_allocation_by_method`
+  pairs `exposure_class_post_crm` with `approach_post_crm` (`:936-946`); REC007 exists purely to
+  warn about the basis trap (`9e1752d9`).
+- **D — the guarantee component can only reconcile EAD, not the RWA benefit.** No persisted
+  RWA-benefit figure survives to the per-exposure output (`recon_registry.py:162-184`); a
+  guarantee-relief mismatch only shows up diffused across `risk_weight`/`rwa` deltas, never
+  attributable to the guarantee (`7cc1e000` root cause was documentary column names being fiction).
+- **E — the UI explains the basis fork in prose.** `templates/reconciliation.html:133-166` renders
+  three class-dimensioned sections, each with a paragraph justifying its class basis. That prose
+  is the papering-over, verbatim.
+
+Recon correctness risks recorded in passing (not fixed here, tracked in §7):
+`_our_class_col` hard-assumes the legacy extract is post-substitution (no basis toggle → phantom
+offsetting deltas for an origination-basis legacy file, silent);
+`RECON_HETEROGENEITY_COLUMNS = ("exposure_class","approach_applied")` (`data/schemas.py:2824`)
+over-flags REC004 on every cross-approach guaranteed exposure (SA `__G_` leg + IRB `__REM` leg);
+the headline tie-out (per-key frame) and class allocation (raw frame) have no cross-check.
+
+### 2.5 Dead / duplicated surface
+
+- **`exposure_class_for_sa` is dead** — declared `edges.py:805,1136`, produced
+  `stages/classify/attributes.py:350`, zero read sites in `src/` (superseded by
+  `exposure_class_applied`). Rides ~5 edges for nothing.
+- **`substitute_rw` is produced-but-always-null** — `engine/crm/processor.py:1114` emits
+  `pl.lit(None)…alias("substitute_rw")`; declared at `edges.py:953,1273`. The SA path writes
+  substitution into `risk_weight`/`guarantor_rw` instead. Delete producer + declarations.
+- `pre_crm_summary`/`post_crm_summary`/`post_crm_detailed` bundle fields have no production
+  consumer beyond the opt-in audit cache (`engine/pipeline.py:481-505`); dropped at the API
+  boundary (`api/formatters.py:105-176` persists only `results` + the three `summary_by_*`).
+- **Duplication matrix D1–D10 (consumer-inventory, fact-checked):** approach→method bucket
+  derived in ≥5 places on two different keys (D1); **161 `_pick`** (86 corep + 75 pillar3) +
+  `recon_registry.our_columns` + `formatters._find_column_in_schema` +
+  `_collapse.RECON_*_CANDIDATES` + `_summaries.py` `has_reporting` fallbacks — five candidate-
+  ladder families (D2); three incompatible "post-CRM class" meanings (D3); six independent
+  by-class and five by-approach group-bys on three different class columns (D4/D5); per-row
+  `risk_weight` re-divided everywhere (D6); **three `floor_impact_rwa` re-folds**
+  (`_summaries.py:242-314`, `transition.py:176-177`, `analysis/comparison.py:499-573` — note:
+  COREP C02 reads `rwa_pre_floor`, a genuine pre-floor need, and `formatters._extract_floor_impact`
+  reads `floor_binding`/`floor_add_on` from the separate `floor_impact` frame; neither is a re-fold
+  of `floor_impact_rwa`) (D7); on/off-BS kernel-unified but with a reporting-side fallback
+  (`kernel/filters.py:57-91`) (D8); the per-leg/per-exposure grain fork (D9); IRB sub-class
+  re-derived via is_sme/FSE heuristics in COREP `_c02_00_irb_sub_agg:1227-1283` and Pillar 3 CR6
+  (D10).
+
+### 2.6 Regime branching, metadata, tests, goldens
+
+- `framework == "BASEL_3_1"` / `is_b31` branches: **58 COREP + 14 Pillar 3** line-count (order
+  ~70–77 by broader grep), plus ref-set sniffing (`"0171" in ref_set`, `generator.py:3437`;
+  `"0031"/"0080"/"0107"/"0110" in column_refs`) and Pillar 3's `_CR7_HANDLERS_B31/_CRR` dispatch
+  tables. **Rulepack reporting metadata today: essentially none** — generators are pack-blind
+  (`generate_from_lazyframe(results, framework=str)`); the one reporting `Feature`
+  (`b31_exposure_subclass_reporting_applies`) is consumed by the aggregator, not the generators.
+- `test_corep.py` 9,525 LOC / ~703 tests (xdist `loadfile` straggler); `test_pillar3.py` 1,957.
+  CCR reporting already split out (`test_corep_ccr.py` 1,115, `test_pillar3_ccr.py` 1,062) and
+  newer tests live under `tests/unit/reporting/` — the split direction has begun. Many
+  `test_corep.py` cell tests inject columns the seal strips — the unit estate is **not**
+  production-grounded; the golden gate is.
+- **Golden gate (S0):** `tests/acceptance/reporting/test_reporting_golden.py` runs the rich
+  `tests/fixtures/reporting_portfolio.py` through the real pipeline; compares **structure-exact +
+  Float64 rtol=1e-9/atol=1e-6** ("byte-identical" was rejected at S0 — Polars multi-threaded
+  group-by float sums are not process-deterministic, the recorded Phase-2 finding). Estate
+  provenance (corrected): **64 goldens at S0 (`c97c5e9c`) → 93 at S1 (`b41aba70`, un-emptied
+  C08.02/03/05 + CR6/CR9 + equity) → 95 at `5ee669f8`** (defaulted + corporate_sme C07 splits).
+- **Gate gap (fact-check finding): the post-scoping template families have NO goldens** —
+  zero `of_07`/`of_08`/`c34_*`/`ccr*` NDJSON files exist or ever existed; the golden test doesn't
+  reference them. The CCR templates (C34.01/02/04/08, CCR1/2/3/8 — `f776f67d`, `90d4a789`) are
+  covered only by synthetic unit tests. Their strangler slices need goldens authored first (§5
+  S8-pre) or a recorded scope-out.
+
+---
+
+## 3. Target design
+
+### 3.1 One canonical output ledger: the sealed per-leg frame, named
+
+**Grain A — the per-leg reporting ledger = `AGGREGATOR_EXIT_EDGE.results` itself, extended with a
+first-class reporting projection.** The results frame *already is* the two-leg substitution ledger
+(physical `__G_`/`__REM` legs). We do **not** introduce a new frame at a new grain — we *name* the
+ledger already present. Four of the six class/approach columns are pure aliases of already-sealed
+columns — **rename-and-consolidate, not new math** (minimalist graft, fact-checked):
+
+| Sealed column (new) | Semantic | Source | New? |
+|---|---|---|---|
+| `reporting_class` | post-substitution class the RWA is bucketed under (Art. 235: guarantor class on guaranteed legs; applied origin class otherwise) | `exposure_class_post_crm` | alias |
+| `reporting_class_origin` | obligor applied class (origination + SME-managed-as-retail + defaulted, Art. 112/123); uniform across a guaranteed exposure's legs | `exposure_class_applied` | alias |
+| `reporting_approach` | post-substitution approach | `approach_post_crm` | alias |
+| `reporting_approach_origin` | pre-substitution approach | `approach_applied` | alias |
+| `reporting_method` | SA / FIRB / AIRB / SLOTTING / EQUITY label | `_summaries.py::method_label_expr`, materialised | derived |
+| `reporting_leg_role` ∈ {`whole`,`guaranteed`,`retained`} | first-class marker of the physical guarantee split — replaces `is_guaranteed` + suffix sniffing. `retained` covers `__REM` and the Art. 234 tranche sub-rows `__REM_FL`/`__REM_SEN` (tranche identity stays on the existing reference columns; S2 records whether a `leg_detail` column is warranted) | derived from `is_guaranteed` + ref suffix | **new (names an existing fact)** |
+| `reporting_on_balance_sheet` | on/off-BS declared at source (kills the `kernel/filters.py:57-91` fallback, D8) | `bs_type` at aggregator | derived |
+| `reporting_subclass` | authoritative FIRB/AIRB + SME/FSE/property split (kills D10 re-derivations) | `exposure_subclass` | alias |
+| `reporting_ead` | per-leg post-CRM EAD | `ead_final` | alias |
+| `reporting_rw` | per-leg post-CRM risk weight | `risk_weight` | alias |
+
+**`reporting_rwa` (per-row POST-FLOOR RWA) is deliberately NOT in this foundation.** The output
+floor is a portfolio-level `max`; a per-row post-floor RWA is an allocation *convention*, not a
+relabel. Ring-fenced to its own number-changing slice (S5) with oracle sign-off.
+
+**Grain B — the three persisted summaries re-founded as pure group-bys of Grain A.**
+`summary_by_class`/`summary_by_approach`/`summary_by_class_method` become group-bys of the sealed
+ledger on `reporting_class`/`reporting_approach`/`reporting_method` and are established as the
+**only** by-class/by-approach source. `_summaries.py` already consumes the `reporting_*` names
+(today from the dropped frame, behind presence-guards) — this is a source relocation plus
+guard deletion, not new logic. COREP C02.00, Pillar 3 OV1, `api/formatters`, comparison, and
+transition retarget to these frames, collapsing D4/D5/D6.
+
+**Substitution becomes a zero-re-derivation ledger.** Guaranteed exposure = one `retained` leg
+(`reporting_class = reporting_class_origin =` obligor class, borrower RW) + one or more
+`guaranteed` legs (`reporting_class_origin =` obligor, `reporting_class =` guarantor). The
+movement reconstructs by grouping: outflow = Σ`reporting_ead` of `guaranteed` legs by
+`reporting_class_origin`; inflow = same by `reporting_class`. `_compute_substitution_flows`, the
+`_crm_reporting.py` re-split, and every consumer's class re-pick disappear.
+
+**Out-of-frame inputs travel in a typed `ReportingContext`** side-car: `output_floor_summary`,
+`output_floor_config`, `Pillar3CapitalRatioOverrides`, `previous_period_results`, the resolved
+pack reporting metadata, and the C02.00 portfolio pre-pass. This closes the "sealed exit only"
+incompleteness.
+
+**The seam:** sealed per-leg ledger + 3 re-founded summaries + typed `ReportingContext`.
+Reporting = filter+aggregate over the ledger; recon = `reporting_class_origin` (attribution) +
+`reporting_class` (allocation) as single named literals; UI = project
+`reporting_class`/`reporting_method` with a `reporting_leg_role` toggle that **is** the
+pre/post-CRM view. The three prose paragraphs in `reconciliation.html` reduce to a basis label.
+
+### 3.2 CellSpec: sized to the measured taxonomy — no expression DSL
+
+The measured cell-semantics taxonomy has **14 kinds: 6 fit filter+aggregate; the rest are
+policies or escapes.** The executor gets exactly **two escapes**.
+
+```python
+@dataclass(frozen=True)
+class RowPredicate:                # generalises CR9ClassSpec (pillar3/templates.py:65)
+    reporting_classes: tuple[str, ...] = ()
+    method: str | None = None                       # reporting_method
+    bs: Literal["on", "off"] | None = None          # reporting_on_balance_sheet
+    leg_role: Literal["whole", "guaranteed", "retained"] | None = None
+    is_defaulted: bool | None = None
+    subclass: str | None = None                     # reporting_subclass
+    pd_band: Band | None = None
+    rw_band: Band | None = None
+
+@dataclass(frozen=True)
+class CellSpec:
+    ref: str                                        # 4-digit column ref
+    binding: ValueBinding
+    empty_cell: Literal["zero", "null"] = "zero"    # per-cell policy — NEVER unified
+    sign: Literal["positive", "negated"] = "positive"
+    finite_only: bool = False                       # non-finite -> blank
+```
+
+Value-binding verbs → taxonomy kinds: `Sum(col)` (kind 1, dominant); `WeightedAvg(value_col,
+weight="reporting_ead")` (kind 2 — one reconciled kernel primitive replacing the drifted copies);
+`Mean(col)` (kind 3 — C08.05 avg-PD is deliberately NOT EAD-weighted, `generator.py:3989`);
+`Ratio(num, den, scale)` (kind 4); `Count(col, distinct)` (kind 5); `Lookup(kernel_fn, keys)`
+(kind 6 — C08.06 slotting RW `_c08_06_risk_weight_value:4319`; the spec references a typed kernel
+fn, never inlines the table); `Formula(refs, fn)` (kind 7, the ONE intra-row escape — C07
+`0040=0010−0030−0035:3277`, the `0110` waterfall `:3390`, `0150=max(0,0110−0130):3409`, ~5 cells
+total); `SideContext(key)` / `PriorPeriod(binding)` / `Derived(col, const)` (kinds 8/11/12 —
+CR8/C08.04 opening-RWEA carry-forward, the OV1 floor rows 26/27 handling
+(`_OV1_FLOOR_NO_SHIM_REFS`, `pillar3/generator.py:1511`), capital overrides, OV1 col-c
+`= a×0.08`).
+
+- **Kind 9 (stateful C02.00 roll-up**, `_c02_00_aggregate_by_approach:1145-1201`) is a typed
+  **pre-pass** kernel fn whose output enters via `ReportingContext`; C02.00 keeps a thin shell.
+- **Kind 10 (substitution flows) is demoted to kind 1** by the ledger — two `Sum` bindings on
+  different group keys.
+- **Kinds 13/14 (sign / finite-only / empty-cell) are per-cell policy fields, not kinds.**
+
+**One executor** (`reporting/cellspec.py`): for each row × column, compile
+`RowPredicate → pl.Expr`, filter once, evaluate the binding, apply policies. `TemplateSpec` pairs
+the existing frozen `COREPRow`/`COREPColumn`/`RowSection` / `P3Row`/`P3Column` layout constants
+(already ~90% declarative and golden-asserted) with a `dict[col_ref, CellSpec]` — adding only the
+missing value-binding layer, keyed on the same refs.
+
+**"The specs define the edge"** (cellspec-first graft — the strongest guard against `_pick`
+regrowth): enumerating every binding's required source column yields the exact sealed-column set
+the aggregator must emit. A binding needing an absent column is a **recorded
+add-to-contract-vs-accept-empty decision — never a fallback ladder.** This backs the §9 ban.
+
+**Variant selection from rulepack metadata:** a cited `ReportingTemplateSet` RuleEntry, resolved
+via `resolve(regime, date).reporting()`, selects the CRR vs B31 `TemplateSpec` (which
+refs/rows/columns apply) and carries `reporting_basis`/`institution_type` plus the P7.5/P7.6
+materiality/roll-out flags currently pinned in template constants. The executor is pack-blind at
+cell level; metadata picks the spec. Retires the ~58+14 framework string-tests and the ref-set
+sniffing.
+
+**Strangler discipline — the dispatch-router** (cellspec-first graft): the generator keeps a
+dispatch routing migrated templates through the executor and unmigrated ones through the legacy
+path until the final convergence slice. Suite green every slice, independent of order.
+
+### 3.3 Pre/post-CRM substitution — the representation, spelled out
+
+**Representation = the declared two-leg ledger; NOT collapsed to one applied class.** COREP
+**C 07.00** (Reg 2021/451 Annex I) is the referee: it reports `Original exposure` under the
+**origination** class, a *"Substitution of the exposure due to CRM"* block with `(-) Outflows` /
+`(+) Inflows`, then exposure value / RWEA on the **substituted** basis. Both endpoints of the
+money movement are mandatory template columns — a single per-exposure applied class cannot
+express them. The engine already computes this physically; the fix is a declaration.
+
+**C07 attribution rule (recorded):** the `Original exposure` measure (col 0010) is attributed
+**once** to the origin under `reporting_class_origin` (legs `whole`/`retained` + the guaranteed
+leg's origin), never double-counted across legs — an explicit guard on the drawn/undrawn
+double-count hazard.
+
+---
+
+## 4. Standing invariants (every slice)
+
+1. **Golden gate:** every slice gated by `test_reporting_golden.py` — structure-exact + Float64
+   rtol=1e-9/atol=1e-6 across the 95 NDJSON goldens. Do not attempt bit-exact (Polars float-sum
+   nondeterminism, recorded Phase-2 decision).
+2. **No silent regeneration:** `REGEN_REPORTING_GOLDENS=1` only with a recorded preserve-or-fix
+   decision per changed cell; the `crr`/`basel31` skills + `tests/oracle/` are the referee.
+   Bulk-regenerate-to-green is banned and a reviewer criterion.
+3. **Full suite green every slice** via the dispatch-router; each slice a shippable master PR.
+4. **Reporting input = the sealed aggregator exit + typed `ReportingContext`.** No consumer reads
+   an unsealed frame.
+5. **Specs define the edge:** no new multi-candidate column ladder anywhere in
+   `reporting/`/`analysis/`; absent-column needs are recorded decisions.
+6. **Number-neutral slices assert every existing cell unchanged** (modulo new columns);
+   number-changing slices carry a §6 decision.
+7. **Forced single-stream** for slices touching `contracts/edges.py`, `engine/aggregator/*`,
+   `contracts/bundles.py`, or `analysis/reconciliation.py`.
+8. **`summary_by_*` sequencing trap (hard):** do NOT re-point any consumer at the cached
+   `summary_by_*` frames before their keying is explicit against
+   `reporting_class`/`reporting_approach` — they key post-guarantee while api cards/COREP today
+   key pre-guarantee (`approach_applied`); re-pointing early silently flips the split.
+9. **Each strangler slice names the D1–D10 duplication site it deletes** and proves it dead —
+   reviewer criterion.
+
+---
+
+## 5. Execution slices
+
+*(S0 golden gate `c97c5e9c` and S1 sealed-name retarget `b41aba70` are merged; numbering
+continues.)*
+
+### S2 — Seal the canonical projection on the edge (NUMBER-NEUTRAL, single-stream) — **DONE 2026-07-11**
+
+*As delivered:* `_add_reporting_projection` (`engine/aggregator/aggregator.py`), applied to
+`combined` after the residual multiplier and output floor; 10 columns declared on
+`AGGREGATOR_EXIT_EDGE` with citations + null-semantics. One recorded deviation:
+`reporting_on_balance_sheet` derives from `exposure_type` (loan → on;
+facility/contingent → off; else null), NOT from `bs_type` — `bs_type` is stripped upstream of
+the branch seals and never reaches the aggregator, and the `exposure_type` rule is what the
+reporting kernel actually applies in production today, so the exposure-type derivation is the
+behaviour-preserving one. Art. 234 tranche legs (`__REM_FL`/`__REM_SEN`) map to `retained`
+(tranche identity stays on the reference columns; no `leg_detail` column warranted yet). Gate:
+7 new pins in `tests/unit/test_aggregator.py::TestReportingProjection`; 95 goldens
+structure-identical; full suite 8,343 passed; arch_check + ruff green; citation snapshot
+regenerated (137 fns).
+- **Scope:** add the §3.1 projection columns *except* `reporting_rwa` — the four aliases plus
+  `reporting_method`, `reporting_leg_role`, `reporting_on_balance_sheet`, `reporting_subclass`,
+  `reporting_ead`, `reporting_rw`. Computed once at the aggregator (extending the existing
+  `_add_exposure_class_applied`/`_add_post_crm_reporting_class`/`_add_post_crm_reporting_approach`
+  cluster, `aggregator.py:147-149,424-539`), declared on `AGGREGATOR_EXIT_EDGE`. **No consumer
+  switched yet.** `@cites` Art. 235 on `reporting_class`/`reporting_leg_role`, Art. 112 on
+  `reporting_class_origin`. Record the leg-role enum decision (tranche sub-rows → `retained`).
+- **Gate:** full suite + 95 goldens structure-identical; new columns present; zero cell movement.
+
+### S3 — Delete the dead surface (NUMBER-NEUTRAL, single-stream) — **DONE 2026-07-11**
+
+*As delivered:* `exposure_class_for_sa` producer deleted from
+`stages/classify/attributes.py` + both edge-dict literals (`_classifier_added_columns`,
+`_calc_output_common_columns` — covering all five edges); `substitute_rw` null-literal
+producer deleted from `crm/processor.py` + both declarations. Recorded audit results: the
+"zero readers" finding held for `src/`; five TEST files read the dead column and were
+repointed — the two SL/defaulted-priority classifier tests deleted (semantics pinned at the
+aggregator by `test_exposure_class_applied.py` and on the live `exposure_class_sa`), two
+redundant defaulted asserts dropped (`is_defaulted` asserted alongside), the P2.14
+acceptance asserts repointed to `exposure_class` (the SA branch frame — semantically
+identical for non-defaulted, non-SL rows), and the fictional input column stripped from
+`test_crr_crm.py` fixtures. Gate: goldens structure-identical; full suite green.
+- **Scope:** remove `exposure_class_for_sa` (edges `805,1136` + `attributes.py:350` producer;
+  0 readers verified). Remove `substitute_rw` — **including its null-literal producer at
+  `engine/crm/processor.py:1114`** — and its declarations (`edges.py:953,1273`).
+- **Gate:** full suite + goldens unchanged; recorded deletion note per column.
+
+### S4 — Re-found the summaries on the ledger; delete the re-split; collapse the recon ladders (NUMBER-CHANGING, single-stream) — **DONE 2026-07-11**
+
+*As delivered:* `_summaries.py` rewritten as pure group-bys of the sealed ledger
+(`reporting_class` / `reporting_approach` / `reporting_method`, dual-path presence-guards
+deleted); `_crm_reporting.py` deleted entirely (`post_crm_approach_expr` relocated into the
+aggregator's projection cluster; the three dead view schemas deleted from `_schemas.py`);
+`pre_crm_summary`/`post_crm_detailed`/`post_crm_summary` bundle fields + audit-cache entries
+deleted; `_detect_non_finite_errors` drops its second-frame scan (the ledger's
+`reporting_rw`/`reporting_ead` are aliases — covered by construction); recon
+`_our_class_col`/`_our_method_col` deleted (allocation reads `reporting_class` +
+`reporting_approach` literals) and all 12 `recon_registry.our_columns` ladders collapsed to
+single sealed names (dead rungs killed: `sa_cqs`, `ccf_applied`, `irb_m`, `final_ead`, `ead`,
+`risk_weight_effective`, `sme_supporting_factor`, `irb_expected_loss`, `final_rwa`, `rwa`,
+`lgd_input`, `lgd`, `pd`). Recorded F1 sub-decisions (before/after diff on the reporting
+portfolio showed exactly these and nothing else):
+
+- **F1-a (FIX):** defaulted / SME-managed-as-retail rows re-bucket to their applied class —
+  the `defaulted` summary bucket exists for the first time (matches COREP C07's defaulted
+  sheet keying since `5ee669f8`).
+- **F1-b (FIX):** `total_rwa` = Σ sealed `rwa_final` (post-floor when the floor ran), replacing
+  the `reporting_ead × reporting_rw` reconstruction — which **overstated CRR totals by the
+  supporting-factor relief** (measured +2,703,419 on the reporting portfolio, ~1.9%) and
+  mispriced IRB-guaranteed legs at the flat `guarantor_rw` instead of the leg's
+  parameter-substituted RW. All six summary frames now tie exactly to the portfolio
+  `rwa_final` under both regimes (pinned). Implementation note: `rwa_final` is ALREADY
+  post-floor (`_floor.py` rewrites it; adding `floor_impact_rwa` double-counts — caught by
+  P1.130 during the slice).
+- **F1-c (FIX):** `exposure_count` counts physical ledger legs — the detailed view's zero-EAD
+  phantom "unguaranteed portion" row per guaranteed leg is gone.
+- **Test-estate note:** the `partially_guaranteed_irb_results` and P1.146 fixtures carried the
+  fictional single-row-both-portions shape and were re-baselined onto the physical
+  `__G_`/`__REM` legs (all pinned constants held); `tests/fixtures/recon_ledger.py::
+  with_reporting_ledger` mirrors the aggregator's projection onto hand-rolled recon test
+  frames; one UI test pinned the fictional `sa_cqs` rung and now supplies `external_cqs`.
+- **Scope:** point `summary_by_class`/`summary_by_approach`/`summary_by_class_method` at
+  `reporting_class`/`reporting_approach`/`reporting_method`; delete the `_summaries.py`
+  `has_reporting` presence-guard dual paths; establish the summaries as the only by-class/approach
+  source. **Delete** `_crm_reporting.py::generate_post_crm_detailed`/`generate_post_crm_summary`
+  (~170 LOC) and the `pre_crm_summary`/`post_crm_summary`/`post_crm_detailed` bundle fields
+  (verify dead beyond the audit cache first). Collapse `reconciliation._our_class_col` /
+  `_our_method_col` (`reconciliation.py:924-946`) and `recon_registry.our_columns` preference
+  ladders to single literals (`reporting_class_origin` per-key; `reporting_class` +
+  `reporting_approach` allocation); `_build_class_allocation` keeps its raw-frame aggregation but
+  reads named columns.
+- **Number-changing:** YES — `summary_by_class` basis shifts for unguaranteed defaulted /
+  SME-managed-as-retail rows (F1). Kills the recon workarounds
+  (`db9e0d7a`/`925c1bb3`/`9e1752d9`/`7cc1e000` become reads of named columns).
+- **Gate:** recon acceptance tie-outs + goldens + full suite; every golden move a recorded
+  decision with oracle sign-off.
+
+### S5 — Per-row post-floor `reporting_rwa` (NUMBER-CHANGING, ring-fenced) — **RESOLVED AS MOOT 2026-07-11 (recorded)**
+
+*S4 established that the premise was wrong:* the authoritative per-row post-floor RWA
+**already exists** — `apply_floor_with_impact` rewrites `rwa_final` in place to the post-floor
+value (`_floor.py:256`; the pre-floor snapshot moves to `rwa_pre_floor`, the add-on to
+`floor_impact_rwa`). No new sealed column, no allocation-convention decision, and no F2 are
+needed: the summaries read the sealed `rwa_final` since S4, and the two remaining
+`floor_impact_rwa` read sites are legitimate **attribution** uses of the add-on, not re-folds —
+`analysis/transition.py:176-177` reports per-year `total_floor_impact` and
+`analysis/comparison.py:499-530` joins the B31 add-on for the waterfall's floor driver. Both
+stay. F2 is closed with this recording; execution continues at S6.
+- **Scope:** one authoritative per-row post-floor RWA on the edge. Retarget the **three**
+  `floor_impact_rwa` re-fold sites — `_summaries.py:242-314`, `transition.py:176-177`,
+  `analysis/comparison.py:499-573` — each as its own gated diff. **Explicitly NOT in scope
+  (fact-checked):** COREP C02's `rwa_pre_floor` comparison (genuinely needs the pre-floor value)
+  and `formatters._extract_floor_impact` (reads `floor_binding`/`floor_add_on` from the separate
+  `floor_impact` frame — a different concept, revisited only if `floor_impact` itself is
+  re-founded).
+- **Number-changing:** YES — the floor is a portfolio-level max; the per-row allocation is a
+  convention (F2): preserve portfolio totals exactly; oracle sign-off on the convention.
+- **Gate:** portfolio-total parity + per-row goldens with recorded decision; floor acceptance
+  suite.
+
+### S6 — Rulepack reporting metadata + `ReportingContext` (NUMBER-NEUTRAL, single-stream) — **DONE 2026-07-11**
+
+*As delivered:* `ReportingTemplateSet` rule shape (`rulebook/model.py` — corep/pillar3
+inventories + `variant` token, citation required, non-empty validation) + the `_value_repr`
+content-hash branch + `resolve().reporting()` accessor; cited `reporting_template_set` entries
+in both packs (CRR = the Reg 2021/451 Annex I COREP CR/CCR set + Part Eight Pillar 3, cited
+CRR Art. 430; B31 = the CRR set + `of_02_01`/`cms1`/`cms2`, cited PS1/26) — a membership pin
+asserts every declared id is a real template-bundle field, and B31 ⊇ CRR; typed
+`ReportingContext` (`reporting/metadata.py`) carrying the resolved set + the out-of-frame
+inputs (`OutputFloorSummary`, prior-period results, `Pillar3CapitalRatioOverrides`,
+reporting-basis/institution-type elections — both types live in `contracts/`, so no
+reporting→api inversion). Two scope notes recorded: the P7.5/P7.6 Art. 150(1A)/147B flags are
+template-LAYOUT variants already declarative in `templates.py` constants (the `variant` token
+selects them at S8 — no separate pack flags needed); `reporting_basis`/`institution_type` are
+firm ELECTIONS from `output_floor_config`, so they ride `ReportingContext`, not the pack.
+Metadata not yet consumed by the generators (S7/S8). Pins:
+`tests/unit/rulebook/test_reporting_metadata.py` (13 tests). Gate: rulebook suite 248 green;
+goldens + contracts green; full suite green; arch_check/ruff clean; citation matrix
+regenerated. Check-17 extension to `reporting/` confirmed still a §9 phase-exit item.
+- **Scope:** new cited `ReportingTemplateSet` RuleEntry (+ content-hash serialiser branch — the
+  `_value_repr` raises on unknown shapes) + `resolve().reporting()` accessor + cited pack entries
+  (per-regime template-set membership, variant/ref-set, `reporting_basis`/`institution_type`,
+  P7.5/P7.6 Art. 150(1A)/147B flags). Typed `ReportingContext` carrying the metadata view + the
+  out-of-frame inputs. Lands before any template is touched. Confirm check-17 coverage for
+  `reporting/`.
+- **Gate:** full suite; goldens unchanged.
+
+### S7 — CellSpec model + one executor + kernel growth + CR8 pilot (NUMBER-NEUTRAL) — **DONE 2026-07-11**
+
+*As delivered:* `reporting/cellspec.py` — the verb vocabulary (`Sum`/`Mean`/`WeightedAvg`/
+`Ratio`/`Count`/`PriorPeriod`/`Formula`), `RowPredicate` over the canonical ledger columns
+(both post-substitution AND origin bases, so each template keys its RECORDED basis),
+`CellSpec`/`TemplateSpec` pairing the frozen layout constants with `(row_ref, col_ref)`
+bindings, per-template `empty_cell` policy (zero = COREP / null = Pillar 3), and the ONE
+`execute()` with two-pass evaluation. Design refinements recorded during the pilot:
+(a) `Formula` is the intra-TEMPLATE escape, not intra-row — CR8's row 8 references rows 9/1
+within its single column, so refs resolve own-row-column-ref first, then own-column-row-ref
+(formula-referencing-formula raises); (b) `Formula.fn` receives a `prior_available` flag —
+CR8's residual is null without a prior period but coerces a None opening to zero WITH one
+(the generator's recorded semantics); (c) `ReportingContext.template_set` relaxed to
+optional (generators stay pack-blind until S8). First per-template module:
+`reporting/pillar3/cr8.py` (`CR8_SPEC` + `generate_cr8`); the generator's `_generate_cr8`
+is now a dispatch-router delegation. Input selection (the IRB non-slotting subset + lenient
+prior-period column fallbacks) deliberately stays with the router: `previous_period_results`
+is an EXTERNAL prior-run frame that may predate the ledger columns — its predicate retarget
+is an S8 recorded decision. CR8's own `_pick("rwa_final", "rwa")` ladder deleted (guard on
+the sealed name only). Kernel growth deferred-in-part: the executor's `WeightedAvg` IS the
+one weighted-average primitive going forward; the drifted generator copies retire with their
+templates at S8. Pins: `tests/unit/reporting/test_cellspec.py` (12 tests); all 201 existing
+Pillar 3 unit tests + the CR8 goldens pass through the executor UNCHANGED. Gate: full suite
+green; arch_check + ruff clean.
+- **Scope:** `reporting/cellspec.py` (§3.2); grow `reporting/kernel/` with the reconciled
+  `WeightedAvg`/`Ratio`/`Count`/`Lookup`/`_make_row`/`_build_df` primitives (deduping drifted
+  copies); establish the dispatch-router; migrate exactly one stateless pilot — **Pillar 3 CR8**.
+- **Gate:** CR8 golden structure-identical through the executor; full suite.
+
+### S8-pre — Goldens for the post-scoping families (PRE-REQUISITE, recorded decision)
+- **Scope (fact-check finding):** `OF07`/`OF08`/`C34.01/02/04/08` (COREP) and `CCR1/2/3/8`
+  (Pillar 3) have **no goldens** — author them first by extending
+  `tests/fixtures/reporting_portfolio.py` with the derivative/SFT trades those templates need,
+  **or** record a scope-out (they stay on the legacy path + synthetic unit tests
+  `test_corep_ccr.py`/`test_pillar3_ccr.py` until a fixture exists). Do not strangle an
+  un-goldened template.
+- **Gate:** regeneration-is-clean on the new goldens; recorded decision either way.
+
+### S8..S(n−1) — Strangler per template family (golden-gated; Pillar 3 first, C02.00 last)
+
+**S8-OV1 DONE 2026-07-11.** `reporting/pillar3/ov1.py::build_ov1_spec` — the full OV1 cell
+inventory as CellSpecs (totals; per-ORIGIN-approach rows with per-cell zero override —
+`reporting_approach_origin` aliases the recorded `approach_applied` basis, so number-neutral;
+the F-decision post-substitution retarget stays open); the pre-floor row 4a; the six ratio
+rows and OF-ADJ row 27 via the new `SideContext` verb (+ `ReportingContext.side_value` key
+registry); the 250%-RW memo via `rw_between`; the floor multiplier via the new
+`FirstNonNull` verb; the B31 equity sub-approach rows 11-14 via presence-TOLERANT
+`RowPredicate.equals` (their discriminators are F6-stripped columns — recorded
+permanently-null cells, never a raise); the c = a x 0.08 own-funds shim as a per-row
+`Formula`. Generator's `_generate_ov1` + its ten module-level helpers (~180 LOC incl.
+`_approach_rwa`/`_ratio_for_ref` and the four `_OV1_*` constants) deleted. Vocabulary
+additions recorded: `SideContext(key, scale)`, `FirstNonNull(col)`,
+`CellSpec.empty_cell` per-cell override, `RowPredicate.equals` (tolerant) + `rw_between`.
+Test-estate note: the Pillar 3 unit fixtures feed unsealed synthetic frames, so
+`tests/fixtures/recon_ledger.py` gained `LedgerShimPillar3Generator` — a test-only subclass
+that mirrors the sealed projection (typed-null injection for absent sources, exactly as the
+lenient seal) onto hand-rolled frames before `generate_from_lazyframe`; it mirrors the parent
+signature exactly because the P2.48 tests feature-gate on `inspect.signature`. Gate: all 332
+Pillar 3 unit tests + the OV1 goldens structure-identical; full suite green.
+
+**S8-CR4/CR5 DONE 2026-07-11 — carries the recorded F3 decision (first tranche).**
+`reporting/pillar3/cr4.py::build_cr4_spec` + `cr5.py::build_cr5_spec`; the imperative
+`_compute_cr4_values`/`_compute_cr5_values`/`_cr5_row_predicate` deleted; both routed through
+`cellspec.execute` on the FULL sealed frame (the spec's `approaches_origin=("standardised",)`
+template predicate replaces the `sa_data` pre-filter — same membership).
+**F3 recorded decision (CR4/CR5 tranche), oracle-adjudicated:** the UK/UKB Annex XX
+instructions are silent on the substitution split, so the COREP C 07.00 heritage decides
+(Annex II ¶56/¶56A/¶40-43/¶65 two-step class assignment; EBA Q&A 2018_4093): **CR4 cols a/b
+key on `reporting_class_origin`** (obligor applied Art. 112 class — C 07.00 col 0010 basis);
+**CR4 cols c/d/e/f and ALL CR5 rows key on `reporting_class`** (post-substitution — C 07.00
+col 0200 basis; the covered leg lands in the protection provider's row). Defaulted exposures
+sit in row 10 under both bases (Art. 112(2) assessment order; equity/high-risk/CIU carve-out
+untouched — those classes never map to row 10). Golden regen (both regimes, CR4+CR5): exactly
+ONE mover — `RP-LN-DEFAULT` (raw `corporate`, applied `defaulted`) EAD 1.0M/RWA 1.5M moves
+row 7 → row 10 (CR5: the 150% band); grand totals unchanged; every other cell byte-identical.
+Density f is now a `Formula` e/(c+d) so its denominator stays the on+off-BS split sums (not
+Σead over unclassified-BS rows). Vocabulary additions recorded: `SafeSum(cols)` (kernel
+`safe_sum_or_none` gross sums), `RowPredicate.between` (presence-tolerant half-open bands over
+the derived `cr5_rw_bucket` — Art. 123B pre-multiplier banding stays a cr5.py-owned typed
+transform), `RowPredicate.any_of` (union of conjunctive limbs — CR5 rows 9/9f/9g class-OR-role
+membership; nesting banned). The shim gained the `reporting_on_balance_sheet` exposure-type
+derivation (mirrors `_add_reporting_projection`). Recorded fallbacks/gaps: CR5 "Of which:
+unrated" = Total (the `sa_cqs` read was dead — never produced, seal-stripped; F6 fix path is
+an engine rating-presence column); the CR5 role lists mirror the retired predicate exactly —
+widening to the splitter's `secured_rre`/`secured_cre`/`whole` roles (which today fall
+outside rows 9/9f/9g) and the residual-leg dual-membership (counterparty-class row AND row 9
+via role) are recorded follow-ups in §7, not silent changes. CR4/CR5 unit classes split out
+to `tests/unit/reporting/pillar3/test_cr4_cr5.py` (+ new substitution/defaulted-mover tests).
+Gate: goldens regen'd with this recorded diff; full suite green.
+
+**S8-CR6/CR6a/CR7/CR7a DONE 2026-07-11 — carries the recorded F3 second tranche.**
+`reporting/pillar3/{cr6,cr6a,cr7,cr7a}.py`; the imperative bodies (`_compute_cr6_values`,
+`_generate_cr6_for_class`, the 14 CR7 handlers + dispatch constants, `_compute_cr7a_values`,
+`_obligor_count`) deleted; all four routed through `cellspec.execute` (CR6 = one spec per
+obligor-class sheet + dict fan-out; CR7a = one spec per origin approach).
+**F3 second tranche (CR6 family), oracle-adjudicated — the OPPOSITE basis from CR4/CR5:**
+the Annex XXII instructions mandate the obligor basis verbatim ("without considering any
+substitution effects due to CRM"; CR7-A col a "without taking into account any substitution
+effects due to the existence of a guarantee"), and the COREP by-PD-range twin C 08.03 has no
+substitution-flow columns — so **CR6 sheets and CR7/CR7a rows key `reporting_class_origin` ×
+`reporting_approach_origin`**; substitution is a same-template column pair (CR7 a→b, CR7-A
+m→n), never a sheet move. Number-neutral on the goldens (no IRB movers exist; probe-verified).
+**CR6-A recorded keying:** rows stay on the ORIGINATION class (sealed raw `exposure_class`,
+via tolerant per-value limbs) — the row axis is Art. 147-shaped with no defaulted sink, so the
+applied basis would silently drop defaulted-SA EAD (−1.0M row 3) while Total kept it.
+**Two recorded reg-mandated fixes** (goldens: exactly ONE cell pair changed):
+(1) CRR CR7 row 8 "Retail — Secured by immovable property" now sums A-IRB `retail_mortgage`
+— the retired handler summed `(retail_other, retail_qrre)`, byte-identical to row 9; golden
+row 8 flips populated→null (no A-IRB mortgage in the portfolio). (2) CR6 defaulted rows are
+forced to the 100% PD band via the derived `cr6_alloc_pd` column ("All defaulted exposures
+shall be included in the bucket representing PD of 100%") — the engine's defaulted treatment
+never rewrites the model PD, so the retired code mis-bucketed defaulted IRB rows at model PD
+(zero golden diff; pinned by a new unit test). **Preserved verbatim (mandated/recorded):** the
+B31 pre-floor-allocate (`pd`) / post-floor-report (`pd_floored`, `lgd_floored` — PS1/26
+Art. 160(1)/163(1), 161(5)/164(4)) regime split; CR7 a==b and CR7-A m==n approximations (§7
+follow-ups — the ledger's two legs now make the n-side computable; the a/m hypothetical sides
+need pre-CD/pre-substitution RWA carriers); CR6 col m permanently null
+(`scra_provision_amount` never produced — F6); CR6-A col e roll-out % = recorded 0.0.
+Vocabulary addition: `WeightedAvg.scale` (CR6 PD/LGD ×100). CR6's String PD-range label
+column and the empty-band all-null contract are cr6.py-owned post-steps (label injection +
+explicit band-emptiness nulling) — the executor stays Float64-only. CR6/CR6a/CR7/CR7a unit
+classes split out to `tests/unit/reporting/pillar3/test_cr6_cr7.py` (+ new obligor-basis
+substitution, defaulted-band, CR7-row-8 and CR6-A-keying pins). Gate: goldens regen'd with
+the recorded row-8 diff only; full suite green.
+
+**S8-CR9/CR9.1/CR10 DONE 2026-07-11 — closes F3 (CR9 was the last open tranche).**
+`reporting/pillar3/{cr9,cr10}.py` (CR9.1 shares cr9.py's value vocabulary — same c-h verbs,
+grade-row axis); the imperative bodies (per-class CR9 loop + six value helpers + schemas +
+`_cr9_class_predicate`, `_generate_cr9_1_for_class`, the four CR10 helpers) deleted; router
+methods delegate (the `@cites("PS1/26, paragraph 147.2")` strings moved with them).
+**F3 close-out, oracle-adjudicated:** CR9 sheets key the OBLIGOR basis —
+`reporting_class_origin` × `reporting_approach_origin` refined by the Annex XXII leaf taxonomy
+(the `CR9ClassSpec` discriminators stay a module-owned typed expression `_leaf_expr`, ported
+verbatim incl. the absent-column degradation rules) — "for each obligor assigned to this
+exposure class (without considering any substitution effects due to CRM)". CR10 has NO class
+axis (supervisory categories × `sl_type`; population = origin slotting book) — nothing to
+retarget; recorded. Number-neutral: the golden gate passed WITHOUT regeneration.
+**Recorded fix (zero golden diff, unit-pinned):** CR9's PD-band allocation now forces
+defaulted obligors to the 100% band via the derived `cr9_alloc_pd` (the CR6 fix pattern —
+the retired code bucketed defaulted rows at model PD; the fixture's defaulted row happened
+to carry pd=1.0). **Preserved verbatim (recorded):** the sparse-row emission (only populated
+PD bands + Total — CR6 by contrast renders all 17 bands; a fixed-shape alignment is a
+recorded open question, not a silent change); the c/d/e/h single-run point-in-time proxies
+incl. the live carrier ladders (`prior_year_obligor_count` summed when supplied, else current
+distinct obligors; `historical_annual_default_rate` meaned ×100 when supplied, else h copies
+e) — the instructions define c/e/h over prior-period/five-year series the engine does not
+carry (§7 follow-up); CR9.1's silent-empty gate on the never-produced `ecai_pd_mapping` /
+`external_rating_equivalent` (the recorded S1 accept-empty decision); CR10's a/b-zero vs
+d-f-null empty-category asymmetry, the CRR IPRE+HVCRE merge, the CRR equity force-emit, and
+the fixed Art. 153(5) column c (a module post-step — populated even on empty categories).
+Vocabulary addition: `Mean.scale` (CR9 col g ×100). String cells (CR9 a/b, CR9.1's dynamic
+ECAI grade column) are module post-steps; CR9.1's grade-row axis is a generate-time spec
+(rows discovered from the frame — the one data-driven row axis in the estate). CR9/CR10 unit
+classes split out to `tests/unit/reporting/pillar3/test_cr9_cr10.py` (+ new obligor-basis
+substitution and defaulted-band pins). Gate: goldens untouched; full suite green.
+
+**S8-CMS1/CMS2 DONE 2026-07-11 — the Pillar 3 credit estate is fully declarative.**
+`reporting/pillar3/{cms1,cms2}.py`; the imperative bodies + the five `_cms2_*` helpers +
+`_CMS2_SUBROW_NULL_REFS` deleted; the router's `sa_data`/`slotting_data` pre-filter plumbing
+retired (spec predicates replaced them; `irb_data` survives for CR8). Both specs are static
+single-layout (Basel 3.1 only — the Art. 92(3A) internal-model gate; verified NO CRR heritage
+exists, unlike CR9).
+**Recorded fix (reg-mandated, 2 golden cells):** the standardised side of the modelled-vs-SA
+split is now the EXPLICIT origin-approach complement `("standardised", "equity")` — the
+instructions state "exposures calculated according to the SA for credit risk include equity
+exposures subject to the IRB Equity Transitional" (the OV1 row-2 precedent). CMS1 already used
+the complement (unchanged); CMS2's per-class "SA portfolio add" used `standardised` only, so
+its equity row 0030 reported 0.0 against a 2.5M equity book and its Total disagreed with CMS1
+by exactly that amount. CMS2 column c is now the row's total actual RWA across ALL approaches
+(golden: 0030 c 0.0→2,500,000; 0070 c → equals CMS1). Unit-pinned incl. the CMS1==CMS2 total
+reconciliation.
+**Recorded keying:** CMS2 rows carry the ORIGINATION class (tolerant limbs over the sealed raw
+`exposure_class` — the CR6-A pattern): the row axis is Art. 147-shaped, and column b is
+defined as the SA recomputation "of exposures reported in column (a)" — the same population,
+never re-bucketed, so substitution moves no row (unit-pinned with a two-leg fixture).
+**Recorded basis:** columns b/d read the pre-supporting-factor `sa_rwa` (the engine's
+S-TREA/floor convention); the floor's multi-pass fallback path resolves a POST-factor SA RWA —
+recorded §7 divergence follow-up. Sub-rows preserved: 0041 (column c adds the class's
+standardised-side RWA; column d compares at parent-corporate level), 0042 (c mirrors a, d
+recorded-null), 0044/0045/0054 (no IPRE/HVCRE/purchased-receivables discriminators — F6).
+CMS unit classes moved to `tests/unit/reporting/pillar3/test_cms.py`. Gate: goldens regen'd
+with the recorded 2-cell diff; full suite green.
+
+**S8-C07.00 DONE 2026-07-11 — the F4 keystone; the first declarative COREP template.**
+`reporting/corep/c07.py`; the imperative estate deleted (`_compute_c07_values`, the CRM/CCF/
+RWEA column helpers, `_compute_rw_section_rows`, the four section-subset builders + their
+C07-only `_filter_*` family and map constants, `_c07_sa_data`); the router delegates and
+`c07_population` (SA book ∪ FCCM-SFT rows) is exported for the still-imperative C09.01.
+**F4 recorded decision executed as PRESERVE-verbatim:** sheets key the obligor applied-class
+ladder (`exposure_class_applied` → `exposure_class` — ≡ `reporting_class_origin` on sealed
+frames, kept raw so the shimless COREP unit estate needs no churn); SL merges into corporate
+before keying; substitution outflow (0090) keeps the raw-twin semantics (Σ `guaranteed_portion`
+where the pre-CRM class differs from the guarantor class — a derived `c07_substituted` flag)
+and the cross-sheet inflow (0100) is precomputed per destination class and threaded to the
+total row via the new `ReportingContext.substitution_inflow` side input (the out-of-frame
+escape — the 0110 waterfall Formula consumes it in-pass). The two-leg-ledger equivalence
+stays pinned at the aggregator (`test_substitution_flows_reconstruct_by_grouping`);
+**COREP ledger-field convergence + a `LedgerShimCorepGenerator` = recorded Sn/follow-up.**
+Mechanics: ~24 columns × ~37/72 rows per sheet through the one executor (COREP zero policy);
+waterfalls 0040/0110/0150 as Formulas over positive magnitudes with the Annex II §1.3 "(-)"
+negation as a frame post-step; module-derived discriminators (defaulted/SME/materially-
+dependent/qualifying-RE ladders, RW band label, CCF bucket, substitution flag, on/off-BS) feed
+tolerant-equals row terms — `RowPredicate.equals` widened to accept Boolean values; empty/
+inert row subsets render ALL-NULL via a predicate-reapplying post-step (the `_null_row`
+contract; COREP zero applies only to populated rows' unbound cells); structural-null cells
+(0210/0211/0240, CCF buckets and ECAI splits sans carriers, SF adjustments sans
+`rwa_pre_factor`) are constant-None Formulas. Traps hit: the asymmetric dedicated SF flag
+names (`sme_supporting_factor_applied` vs `infrastructure_factor_applied`); eager derived-
+column rounds need `cast(Float64, strict=False)` guards (Null-typed synthetic columns).
+Gate: goldens byte-identical WITHOUT regen (both regimes, all 16 sheets — F4 number-
+neutrality confirmed); all 713 test_corep tests + the C07 acceptance pins green unchanged;
+full suite green. **Scope deferrals recorded (operator): S8-pre golden authoring and the
+Pillar 3 CCR1/2/3/8 family stay on the legacy imperative path for now.** C08 family = the
+next slice (order C08.04 → C08.03 → C08.05 → C08.01; C08.02's data-driven String-keyed rows
++ String data column 0005 defeat the Float64 executor — expect a recorded scope-out or an
+executor extension decision).
+
+**S8-C08.01/02/03/04/05 DONE 2026-07-11 — the whole IRB COREP family in one slice; C 08.02's
+"executor misfit" verdict OVERTURNED.** `reporting/corep/c08.py` (five generators sharing one
+value surface); the imperative estate deleted (`_compute_c08_values` + its seven column
+helpers, the five per-class builders, the C 08.02 grade-row builder + typed materialiser, the
+section dispatchers + B31 unrated filters, the C 08.03/05 value computers + default counts).
+**C 08.02 recorded decision: FEASIBLE — the CR9.1 pattern** (generate-time data-driven rows
+via a derived `c08_02_key` column — distinct firm grades else populated PD bands plus
+"Unassigned"; `row_ref == row_name == the String 0005 column`, injected post-execute).
+**Keying recorded:** all five dicts key RAW `exposure_class` (== `reporting_class_origin` for
+IRB — obligor basis, probe-verified zero movers; NO applied ladder, NO SL merge — both
+deliberate contrasts with C 07.00). **Preserved-verbatim subtleties (recorded):** the
+column-presence-vs-value-nullness distinction (0280 reads `el_pre_adjustment` whenever the
+COLUMN exists, its nulls filling to 0.0 and masking `expected_loss` on slotting sheets — the
+golden behaviour); the Annex II negation set is `{0290}` ONLY (the 0090 CRM waterfall runs on
+positive magnitudes); maturity col 0250 = years x365.0 (`irb_maturity_m` is years despite the
+suffix); C 08.04's deliberately two-wide RWA ladder (no `rwa_post_factor`); the C 08.03
+on/off-BS whole-bucket fallback (post-step); the value-dependent provisions ladder
+(SCRA/GCRA ~0 -> `provision_held`) as a shared post-step; C 08.05's null-filled arithmetic
+means via a constant-one weight column and the CR9-style prior-year/historical fallbacks
+(with a rate post-fix when a prior carrier is supplied); the B31 alloc-on-`pd` /
+report-`pd_floored` split; sparse bucket emission + the 9999 "Unassigned" row; LFSE
+sub-splits gated on `cp_apply_fi_scalar` COLUMN presence (0.0 empty vs None absent).
+Substitution inflow reuses the C 07 `ReportingContext.substitution_inflow` side input
+(total row 0010 only). Gate: goldens byte-identical WITHOUT regen (28 C 08 frames, both
+regimes); all 732 COREP unit tests (incl. P4.20 grade rows) green unchanged; full suite
+green. Remaining imperative COREP: C 08.06/07, C 09.01/02, OF 02.01, C 02.00, C 34.x.
+
+**S8-C08.06/07 DONE 2026-07-11 — the C 08 family is FULLY declarative.** Both generators live
+in `reporting/corep/c08.py`; 13 imperative functions deleted from generator.py (the two
+generator bodies + eleven helpers, including the already-orphaned
+`_negate_deduction_cols`/`_C08_NEGATIVE_COLS` residue). **C 08.06** (per-SL-type sheets,
+slotting only): the per-ROW two-branch policy is a module post-pass over the executed spec —
+empty non-Total rows zero-fill every cell with 0070 = the row definition's fixed display risk
+weight ("50%" -> 0.5), while live rows AND both maturity-split Total rows compute on data
+(0050/0060/0070/0031 per-cell null). Preserved verbatim: the HVCRE routing (CRR's IPRE sheet
+absorbs HVCRE only when `is_hvcre` exists; B31 splits HVCRE out, admitting `is_hvcre` flags);
+the asymmetric maturity fallback (no `is_short_maturity` column -> short band empty, long
+band absorbs the whole category — generate-time predicate variants, NOT a tolerant term that
+would empty both); the permanently-empty "substantially stronger" sub-rows (a derived
+always-False carrier); CRR 0080 preferring `rwa_post_factor`; 0020 falling back to 0010 when
+no post-CRM carrier exists; 0030's whole-subset nominal fallback when the row has no
+off-balance slice; the 0040 `>0` clamp; 0070's first-non-null risk weight on zero-total-EAD
+subsets; the SCRA/GCRA -> `provision_held` ladder (shared `_provisions_postfix`); empty SL
+types emit NO sheet; the `approach_applied`-only population gate (an `approach`-only frame
+silently yields nothing). **C 08.07** (single frame): population = the FULL results frame —
+SA enters every denominator, null approach falls to SA, slotting counts as IRB
+(`C08_07_IRB_APPROACHES`); rows key RAW `exposure_class`; coverage percentages are intra-row
+Formulas guarding zero denominators to 0.0; the structural-null rows are a FIXED set (CRR
+0060/0100/0130, B31 0210/0280) — the OPPOSITE of C 07.00's empty-subset rule (empty
+real-class rows stay 0.0); B31 0140 = 0060 - 0150 so the additive identity
+0060 = Σ(0070..0140) + 0150 holds by construction; 0070-0130 stay 0.0 (no `sa_use_reason`
+carrier). **Recorded: the retired `output_floor_config` materiality gate was DEAD code** (the
+flag was threaded but never read; 0160-0180 unconditionally null, pinned by
+TestC0807MaterialityColumns on all three bases) — the declarative signature drops the
+parameter. The retired error-string mismatch is preserved ("C08.06" no space vs "C 08.07"
+with space — both pinned). Gate: goldens byte-identical WITHOUT regen (23 reporting
+acceptance); 65 C 08.06 + 51 C 08.07 + 4 materiality unit tests green unchanged;
+ty/ruff/arch_check green; citation snapshot 154 fns; full suite green. Remaining imperative
+COREP: C 09.01/02, OF 02.01, C 02.00, C 34.x.
+
+**S8-C09.01/02 DONE 2026-07-11 — both geographical-breakdown templates in one slice
+(`reporting/corep/c09.py`); 29 imperative functions + 7 constant maps deleted, including the
+five already-orphaned c07/c08-era helpers (`_filter_lfse`, `_sum_by_protection_type`,
+`_compute_substitution_flows/_outflow`, `_supporting_factor_adjustment`) and the now-dead
+`_filter_by_irb_approach`/`irb_data` dispatch plumbing.** Both templates key rows on the RAW
+`exposure_class` — NOT C 07.00's applied ladder (load-bearing: the defaulted SA exposure
+stays in its raw corporate row lighting the "of which defaulted" column while the "Exposures
+in default" row is null; under B31 the RE-split mortgage surfaces ONLY in the Total row —
+golden-verified, never "fixed"). Populations: C 09.01 = `c07_population` (SA book + FCCM SFT
+synthetic rows); C 09.02 = the IRB book INCLUDING slotting (the retired inline comment
+claiming exclusion was misleading — recorded). Preserved verbatim: the reverse-map row keying
+whose non-map-value rows are permanently null (C 09.01's SME/short-term/CIU/RE sub-rows —
+recorded dead code); empty class rows ALL-NULL vs the whole-frame Total rows (0170/0150,
+never nulled, aggregating exposures no class row displays); the narrow retired column ladders
+(gross = single pick(ead_gross, nominal_amount, drawn_amount); RWEA = pick(rwa_final, rwa) —
+NO rwa_post_factor; CRR pre-SF == post-SF RWEA with structurally-null SF adjustment columns);
+C 09.02's PD/LGD as RAW ratios weighted by `ead_final` (NOT reporting_ead, NOT x100) reading
+`lgd_post_crm` only, with the retired UNWEIGHTED-mean fallback on zero-EAD subsets as a
+module post-step (the WeightedAvg verb has no such fallback); the per-cell defaulted
+asymmetry (0100 null on an empty defaulted subset while 0030/0107/0120 are 0.0); the
+`!= True` null-dropping corporate non-SME filters vs the null-keeping non-SME anti-join
+(distinct derived flags); the B31 purchased-receivables rows as permanent nulls; no negation,
+no provision_held ladder on either template. Gate: goldens passed WITHOUT regen (8 c09
+frames, both regimes); all 80 C 09 unit tests green unchanged; ty/ruff/arch_check green;
+citation snapshot 156 fns. Remaining imperative COREP: OF 02.01, C 02.00, C 34.x.
+
+**S8-OF02.01 DONE 2026-07-12 — the output-floor comparison template
+(`reporting/corep/of02.py`).** The imperative method + `_of_02_01_row` deleted. Preserved
+verbatim: the B31-only gate (CRR -> None field, no frame); the entity gate reading ONLY
+`OutputFloorConfig.is_floor_applicable()` (nothing off OutputFloorSummary — that threading
+belongs to C 02.00), kept OUTSIDE the executor with the retired error string; rows 0010 and
+0080 carrying IDENTICAL full-portfolio values (the recorded "S1871 collapse" — 0080 is NOT a
+sum of rows); the FIXED all-null rows 0020-0070 (post-pass); column 0010 = Sum(rwa_pre_floor)
+— the PRE-floor modelled carrier, the mirror image of the "rwa_final is already post-floor"
+trap; 0030 = 0010 + 0020 as an intra-row Formula (Annex II §1.3.2); NO empty-frame early
+return (an empty portfolio still yields the 8-row frame with 0.0 on populated rows). The
+delegate keeps the extra `output_floor_config` kwarg (a recorded signature divergence from
+the 4-arg c07/c08/c09 delegates; ReportingContext carries no floor-config field — a
+convergence candidate for Sn). Gate: goldens WITHOUT regen; 42 OF0201 + 38 reporting-basis
+unit tests unchanged; full suite green; citation snapshot 157 fns. Remaining imperative
+COREP: C 02.00, C 34.x.
+
+**S8-C02.00 DONE 2026-07-12 — the master own-funds roll-up, ported as the recorded Kind-9
+HYBRID (`reporting/corep/c02.py`): typed pre-pass aggregation kernels + a thin row-assembly
+shell, deliberately NOT through the cellspec executor (plan §8.2 mandate).** 17 imperative
+functions relocated from generator.py; the three instance-state dicts
+(`self._irb_class_rwa` / `_slotting_type_rwa` / `_irb_sub_rwa`, set-read-reset across
+methods) become pure-function RETURNS of `_aggregate_by_approach` — the only structural
+change; everything else verbatim. Preserved (recorded): col 0030 = the post-floor total
+(`rwa_final` is ALREADY post-floor; `rwa_pre_floor` feeds only the 0034 activation boolean
+with its 0.01 epsilon); equity RWA in THREE rows by design (0210/0060/0420) while the flat
+total counts it once; SA rows key RAW `exposure_class` through the many-to-one ACCUMULATING
+`C02_00_SA_CLASS_MAP`; the `_irb_*_split` fallbacks that dump the whole total into one
+bucket on no sub-data (corporate → non-SME 0297/0356; RE → residential-non-SME 0383;
+retail-other → SME 0400 CRR-heritage); `exposure_subclass` as the canonical corporate split
+with the is_sme/FSE-flag heuristic fallback; the F-IRB-vs-A-IRB FSE asymmetry (0295 separate
+vs folded into 0356); the B31 column policy (only the three approach parents zero 0020/0030;
+sub-rows mirror 0010; totals take portfolio SA-equiv/floor; 0040 x0.08); the 0500
+currency-mismatch memo populated AFTER the column pass (0020/0030 null, excluded from TREA);
+zero-fill for valueless credit-risk rows vs null-fill for the six other-risk-type rows; the
+floor indicator gating (None config => applicable; absent summary => 0.0 not null). The
+delegate keeps both `output_floor_summary`/`output_floor_config` kwargs (recorded — with
+OF 02.01's, the ReportingContext convergence is an Sn follow-up). Gate: goldens WITHOUT
+regen (both regimes); 64 C02 + 38 reporting-basis unit tests + 7 P2.41 subclass acceptance
+pins unchanged; full suite green; citation snapshot 158 fns. **The COREP credit-risk estate
+is now FULLY declarative/delegated — only C 34.x (CCR) remains imperative, deferred with
+S8-pre (operator).**
+
+Order: **Pillar 3** OV1 → ~~CR4/CR5~~ → ~~CR6/CR6a/CR7/CR7a~~ → ~~CR9/CR9.1/CR10~~ → ~~CMS1/2~~ → CCR1/2/3/8 (DEFERRED with S8-pre)
+(post S8-pre); then **COREP** C07 + skeleton-sharing C08.01/02/03/05 → C08.04/06/07 → C09.01/02 →
+OF02.01 → OF07/OF08/C34.x (post S8-pre) → **C02.00 LAST** (portfolio pre-pass via
+`ReportingContext`).
+- **Per slice:** one `reporting/<pkg>/<template>.py` `TemplateSpec`; route through the router;
+  delete that template's `_pick` ladders, framework tests + ref-set sniffing, bespoke
+  `_compute_*_values` body; split its `test_corep.py`/`test_pillar3.py` class into a co-located
+  per-template file (the `test_corep_ccr.py` / `tests/unit/reporting/` precedent).
+- **Number-neutral by construction EXCEPT the flagged class-key retargets** (F3/F4/F5), each with
+  its own recorded decision + oracle sign-off.
+- **Gate per slice:** that template's golden structure-identical + full suite.
+
+**Sn DONE 2026-07-12 (three commits: 78f06ba2 test split / 276f9250 consumer convergence + F5 /
+the ratchets+docs commit).**
+- **Test split:** `test_corep.py` (9,525 LOC, 91 classes, 713 tests, THE loadfile straggler) →
+  `tests/unit/reporting/corep/` — 13 per-template files + `test_cross.py` (the 12 cross-template
+  classes keep their C07+C08 cross-checks together) + `_builders.py` (7 cross-family shared
+  builders; `test_p4_20`'s external `_irb_results` import re-pointed). Pure cut-paste (ast
+  segment extraction, ruff-trimmed imports), collection parity exact; unit chunk ~315s → ~197s.
+- **Consumer convergence (recorded decision — invariant 8's precondition satisfied since S4):**
+  formatters cards + REST deltas read `reporting_method` (D1 + the `_find_column_in_schema` D2
+  family deleted; NaN/inf net preserved); comparison.py selects
+  `reporting_class`/`reporting_approach`/`reporting_method` under name-stable aliases and the
+  attribution is_irb gate keys the post-substitution approach (D1 + D4/D5; the "FIRB" fallback
+  rung retired) — **this IS F5** (the comparison page was the one remaining raw-class UI
+  surface); `_collapse` ladders → sealed names, `RECON_RWA/EAD_CANDIDATES` deleted (one D2
+  family; number-neutral — alternates dead for sealed frames). `RECON_HETEROGENEITY_COLUMNS`
+  deliberately untouched (G2 REC004 refinement, behaviour-changing, stays recorded). The
+  comparison floor driver is NOT a D7 kill — it is the recorded-legitimate attribution use
+  (S5-moot record). Both generator entry points re-typed onto a structural
+  `reporting/metadata.py::ResultsSource` protocol; the api TYPE_CHECKING imports deleted; the
+  two "Retired by Phase 7" inversions retired for real.
+- **§9 dispositions:** ADDED — `max_reporting_module_loc` (banked 2010, templates.py),
+  `reporting_multi_candidate_picks` (banked 31 — **recorded scope-down: shrink-only ratchet,
+  NOT ratcheted to 0**; the survivors encode recorded regime-divergent sources like
+  `lgd_floored`/`lgd_input` and test-boundary tolerance), `max_reporting_test_file_loc`
+  (banked 1581), the `analysis` upward import rule (0 violations). RETIRED — the two
+  inversions. **RECORDED SCOPE-DOWNS / DEFERRALS:** (c) the raw `exposure_class`/
+  `approach_applied` read-ban contradicts the recorded F3/F4 bases (all COREP keys raw class BY
+  DESIGN — corep/ has 2 `reporting_*` reads total); any future enforcement must be a
+  per-module basis allowlist keyed to the §6 F3 table, not a blanket ban. (d) extending
+  check-17 to reporting's 98 `framework ==`/`is_b31` sites needs a NEW detector (the AST
+  predicate catches zero of them) plus a slice-sized refactor moving shape-selection into the
+  pack-resolved `ReportingTemplateSet` — deferred, recorded. (e) the sealed-column
+  read-allowlist is sequenced behind the F6 per-column decisions (it would fail on
+  `ead_pre_ccf`/`exposure_post_crm` day one). (watchfire) widening `source_paths` to
+  reporting/ risks fatal `unknown_article` on the CRR Part-8 disclosure articles and the COREP
+  ITS "Reg 2021/451" is not an allowed instrument — deferred pending an instrument-allowlist
+  decision; the projection columns already carry Art. 235/112 as EdgeColumn citation data
+  (un-validated, recorded).
+- **Docs/orchestration:** specs de-staled (`output-reporting.md` status block,
+  `default-definition.md` consumer paths + the CR1 phantom removed); `/next-items` Step-4d
+  gains C4.6 (no bulk-regen-to-green / §6 decisions / D1–D10 kill) and the forced-single-stream
+  list adds `contracts/edges.py`, `engine/aggregator/*` (widened), `analysis/reconciliation.py`,
+  `reporting/cellspec.py`, `reporting/metadata.py` in ALL THREE synced homes (CLAUDE.md +
+  Step-1 + C4.3); CLAUDE.md tests tree fixed (bdd/ never existed; oracle/ added). The
+  worst-stale `docs/api/reporting.md` + `docs/features/corep-reporting.md` are OUTSIDE the Sn
+  specs mandate — queued as a DOCS_IMPLEMENTATION_PLAN item.
+
+### Sn — Capstone: test split + consumer convergence + arch (NUMBER-NEUTRAL except F5 if pending)
+- **Scope:** confirm `test_corep.py` fully split (~16 per-template files; kills the xdist
+  straggler). Converge the remaining consumers on the ledger + summaries:
+  `api/formatters.py` (delete `_SA/_IRB/_SLOTTING_APPROACHES`, `_approach_sum`,
+  `_find_column_in_schema`), `analysis/comparison.py` (`_IRB_APPROACHES:190`,
+  `_compute_summary`), `_collapse.RECON_*_CANDIDATES` — respecting invariant 8. Retire the two
+  "Retired by Phase 7" arch_check inversions (`arch_check.py:413-414`). Add the §9 ratchets.
+  Update `docs/specifications/` + changelog + `/next-items` Step-4d reviewer criteria in the same
+  change.
+- **Gate:** full suite; ratchets green.
+
+---
+
+## 6. Flagged number-changing items (each needs a recorded preserve-or-fix decision)
+
+| ID | Slice | What moves | Recommended decision |
+|---|---|---|---|
+| **F1** | S4 | `summary_by_class` basis shift for unguaranteed defaulted / SME-managed-as-retail rows (raw → applied class) | **FIX** — align summaries to the applied/post-CRM semantic; oracle sign-off per diff |
+| **F2** | S5 | Per-row post-floor `reporting_rwa` allocation of the portfolio floor add-on | **PRESERVE** portfolio totals exactly; **FIX** the per-row convention, ring-fenced, oracle-signed |
+| **F3** | S8.. | Pillar 3 CR4/CR5/CR6/CR9 retarget raw `exposure_class` → `reporting_class` (SME/defaulted rows change sheet) | **FIX — CLOSED 2026-07-11**; the basis is PER-TEMPLATE, not uniform. **CR4/CR5** split basis (a/b origin, c-f + CR5 post-substitution). **CR6/CR7/CR7a + CR9** obligor basis (`reporting_class_origin` — the instructions bar substitution effects; CR9 refined by the Annex XXII leaf taxonomy). **CR6-A** origination class (Art. 147-shaped axis, no defaulted sink). **CR10** has no class axis (recorded no-op) |
+| **F4** | S8.. | COREP C07 origin vs post-CRM column consistency (already on `exposure_class_applied` since `5ee669f8`) | **PRESERVE** C07.00 origination keying + outflow/inflow; confirm the split reproduces existing cells |
+| **F5** | S8../Sn | UI by-class chart retarget raw `exposure_class` → `reporting_class` | **FIX — EXECUTED at Sn (276f9250)**: the results page had already moved at S4; the residual surface was the comparison page (fed by `analysis/comparison.py`), retargeted with the formatter cards under invariant 8's now-satisfied precondition |
+| **F6** | follow-ups | The S1-DEFERRED stripped/never-produced reads (`ccf_applied`, `sa_cqs`, `scra/gcra_provision_amount`, `ead_pre_ccf`, `exposure_post_crm`, …) — permanently-null cells today | **Per-column add-to-contract-vs-accept-empty decision**, never a blanket seal |
+| **F7** | own slices | P2.27 (OF08.01 col 0275 SA-equivalent EAD), P3.3/P3.6 (pre-multiplier RW, equity transitional end-state RW, AIRB RE 4-way split) — need new engine columns | Own recorded-decision slices, not silent generator one-liners |
+| **F8** | candidate | **Persisted guarantee RWA benefit** — recon today reconciles guarantee EAD only; relief mismatches diffuse into `risk_weight` deltas, unattributable | **EXECUTED 2026-07-12.** Definition (recorded): `guarantee_rwa_benefit` = `ead_final × guarantee_benefit_rw` — leg EAD × (borrower-basis RW − substituted RW), the difference between the two Art. 235 terms for the covered portion, **PRE-supporting-factor and PRE-floor** (the branch snapshots the delta before Art. 501/501a and the portfolio floor, isolating the substitution effect); the applied delta already folds the Art. 153(3) double-default override and the Art. 160(4) no-better-than-direct floor, so the figure ties exactly to the relief granted. 0.0 on retained/whole/non-beneficial legs; **NULL where the machinery never ran** (slotting legs — the recorded zero-relief gap, deliberately NOT papered over — and unguaranteed runs). Sealed on `AGGREGATOR_EXIT` (computed in `_add_reporting_projection`, schema-guarded, no new @cites); recon gains the additive `guarantee_rwa_benefit` component (REC001-optional); pinned by the P1.110-fixture hand-calc twins (CRR 500k / B31 750k, per-leg + additive tie-out) and multi-guarantor additivity at the aggregator unit level |
+
+---
+
+## 7. Recorded-decision candidates
+
+**F9 (recorded 2026-07-12) — the C 09.01 / C 02.00 defaulted-allocation fix.** The Annex II
+instructions (verbatim, both regimes near-identical): C 09.1's PRIMARY columns are defined
+"same as the CR SA template" columns — a defaulted SA exposure moves to row 0100 "Exposures
+in default" per Art. 112(j), exactly as C 07.00 assigns it — while column 0020 "Defaulted
+exposures" is a MEMORANDUM re-attributing the defaulted amounts to the obligor's ORIGINAL
+class row ("where the obligors would have been reported if those exposures were not assigned
+to the exposure classes 'exposures in default'"; column 0040 likewise reports new defaults
+"against the exposure class to which the obligor originally belonged"). The preserved raw
+keying was therefore WRONG for the primary columns. FIX EXECUTED: C 09.01 primaries key
+`reporting_class_origin` (the sealed applied ladder), 0020 keys the raw original class +
+defaulted (a two-basis template, the CR4 pattern); row-nulling uses the either-basis rule (a
+class row whose only exposures defaulted keeps its memo). C 02.00's class group-by keys
+`reporting_class_origin` for the same reason (its SA rows must tie to C 07.00's applied-basis
+totals; identical values for IRB rows). Golden movers (per-cell signed off, both regimes):
+C 09.01 row 0070 → 0100 primary swap (0020 memo unchanged on 0070); C 02.00 0130 → 0160
+(1.5M CRR). C 09.02 confirmed CORRECT as-is (the IRB template has no default row by design —
+"of which defaulted" columns on obligor rows). `LedgerShimCorepGenerator` introduced
+(mirrors the Pillar 3 shim; c09_01/c02_00 unit estates swapped). NOTED for follow-up, not
+this slice: Annex II para 87 attributes original exposure by IMMEDIATE obligor country but
+exposure value/RWEA by ULTIMATE obligor country — the engine keys one `cp_country_code` for
+all columns (recorded gap). Remaining convergence (number-neutral): retarget C 07/C 08/C
+09.02 population+class keys onto the sealed names and swap the remaining COREP unit files to
+the shim.
+
+**F9 convergence completion (EXECUTED 2026-07-12, number-neutral — zero golden changes, no
+regen).** C 07.00: sheet key collapsed to the single sealed `reporting_class_origin` (the
+retired `exposure_class_applied`/`exposure_class` ladder — pick census 31 → 30 banked) and
+`c07_population` filters SA on `reporting_approach_origin` (explicit `candidates=` override;
+the kernel default stays `approach_applied` for Pillar 3). C 08: `_irb_population`,
+`_non_slotting`, C 08.06's population gate+filter and C 08.01's approach-term predicates all
+key `reporting_approach_origin`; the five per-class sheet keys (C 08.01–05) key
+`reporting_class_origin` (== raw for the IRB book, probe-verified). **C 08.07 alone keeps the
+RAW `exposure_class` sheet key (recorded basis): its rows are the Art. 147 origination
+taxonomy over the FULL population, which has no "defaulted" class — the applied ladder would
+silently drop defaulted SA rows from their class rows.** C 09.02: `_irb_population` +
+`c09_slotting`'s approach pick key the sealed approach names; all class-equals predicate
+terms and `_class_union`'s default key `reporting_class_origin`. Attribute/derived reads stay
+raw by prior recorded decision (`str.contains("sme")` fallbacks, `_defaulted_expr` ladders,
+substitution-inflow `pre/post_crm_exposure_class`, lgd/sl_type/property_type). New
+sealed-ledger rule surfaced by the shim: the class column always EXISTS on a sealed frame
+(typed-null when sourceless), so the per-class sheet partitions in C 07/C 08.01–05 now
+`drop_nulls()` — a null class key partitions into no sheet, preserving the retired
+missing-column `{}` contract. All 14 remaining COREP unit files swapped to
+`LedgerShimCorepGenerator` (incl. `test_exposure_class_applied.py`,
+`test_sa_sl_classification.py`; the pipeline-fed acceptance files stay on the real
+generator). The shim `__new__`s gained proper return annotations (`-> COREPGenerator` /
+`-> Pillar3Generator`), clearing the entire shim-typing diagnostic family (ty 125 → 6
+repo-wide; the 6 predate Phase 7).
+
+
+### G1 — The grain question (the central decision)
+**Recommendation: adopt the per-leg frame as the canonical two-leg substitution ledger; do NOT
+collapse to one applied class; do NOT introduce a new normalised frame — name the ledger already
+physically present.** (Unanimous across the three designs and three judges; fact-checked.)
+- COREP C 07.00 mandates both endpoints + outflow/inflow — a single label loses one endpoint.
+- The engine already computes the ledger physically (`__G_`/`__REM`, `guarantees.py:459-533`) —
+  a declaration, not new computation.
+- Reconciliation already needs both bases (attribution vs allocation) — the two-column ledger
+  serves both without re-picking.
+- The UI's pre/post-CRM complexity **is** the undeclared ledger.
+Consumer-facing surface = `reporting_class`, `reporting_class_origin`, `reporting_leg_role`,
+`reporting_method`, the approach twin; everything else stays aggregator-internal or is deleted.
+
+### G2 — Others
+- **`reporting_rwa` floor-allocation convention** (F2) — record portfolio-preserving convention +
+  oracle sign-off.
+- **Summary re-founding basis** (F1) — record applied/post-CRM as authoritative.
+- **Empty-cell policy stays per-cell** — COREP 0.0 vs Pillar 3 null is a `CellSpec.empty_cell`
+  field; record "not unified".
+- **Legacy-extract basis toggle (recon):** `_our_class_col` hard-assumes the legacy file is
+  post-substitution; a firm reporting origination-basis sees phantom offsetting allocation deltas
+  with no warning. Decide: a `legacy_class_basis` mapping setting (origination | substituted)
+  selecting which ledger column the allocation compares against + a REC-code warning when unset.
+- **REC004 heterogeneity refinement:** `RECON_HETEROGENEITY_COLUMNS` includes `approach_applied`,
+  which legitimately differs across `__G_`/`__REM` legs of cross-approach guaranteed exposures —
+  exclude `guaranteed` legs from the heterogeneity check or key it on
+  `reporting_approach_origin`.
+- **CR5 split-leg role coverage (found during S8-CR4/CR5, behaviour predates the slice):** the
+  rows 9/9f/9g role lists only match `re_split_role in ("secured","residual")`, but the splitter
+  also emits `secured_rre`/`secured_cre` (mixed-collateral pairs) and `whole` (Art. 124H(3)) —
+  those legs fall outside rows 9/9f/9g entirely (secured legs carry reclassified
+  `residential_mortgage`/`commercial_mortgage` classes not in any `SA_DISCLOSURE_CLASSES`
+  tuple). Fix needs a physical-split scenario + oracle (the golden portfolio produces zero
+  split legs, so today's gate cannot observe it).
+- **CR5 residual-leg dual membership (same provenance):** a corporate residual leg matches BOTH
+  its counterparty-class row (7) via `reporting_class` AND row 9 via the role limb — the
+  "reported in two parts" instruction (PS1/26 Annex XX) reads as both parts staying in the RE
+  class row. Decide whether the residual leg's class row should exclude role-tagged legs;
+  bundle with the role-coverage fix above.
+- **CR7 col a / CR7-A col m hypothetical RWEA carriers (found during S8-CR6-family; behaviour
+  predates the slice):** CR7 col a (pre-credit-derivatives RWEA, Art. 204 derecognition) and
+  CR7-A col m (RWEA without substitution effects) are both approximated by the ACTUAL
+  `rwa_final` — correct only while no credit derivatives / substitution occur. The two-leg
+  ledger makes the n-side exact already; the hypothetical sides need engine carriers (the
+  borrower-basis RWA of covered legs — `pre_crm_rwa` / `guarantor_rw`-inverse candidates).
+  F7-family: own recorded-decision slice with an oracle scenario, not a Sum alias.
+- **CR7-A funded-CP sub-splits (F6):** cols g/h/i/j (cash on deposit, life insurance,
+  third-party instruments) and l (credit derivatives, distinct from guarantees) have no
+  engine columns — permanently null, per-column add-to-contract decisions.
+- **Executor per-cell filtering became measurable on CR6** (8 class sheets × ~200 cells,
+  each a DataFrame filter): the reporting unit-test wall roughly doubled. Fine at portfolio
+  scale; if benchmarks flag the reporting stage on 10M-row frames, add a grouped-aggregation
+  kernel behind `execute()` (one group-by per (predicate-family, verb) instead of per-cell
+  filters) — an executor-internal change, specs untouched.
+  **DONE 2026-07-12 (post-Sn).** Root cause measured: an eager expression-filter carries
+  ~7ms of Polars plan overhead regardless of frame size, and the executor paid it per CELL
+  (R×C filters). The kernel: (1) subsets are built once per DISTINCT predicate (RowPredicate
+  is frozen/hashable — cells share their row's few predicates); (2) ALL predicate masks
+  compile in ONE `select` per frame and subsets become boolean-mask filters (~10x cheaper);
+  (3) two public batched helpers (`cellspec.subset_rows`, `cellspec.matched_counts` — the
+  latter is one select of mask sums, zero filters) replace the per-row `pred.apply` loops in
+  the c07/c08/c09 module post-passes. Prior-frame masks compile against the prior frame's
+  OWN columns (tolerant terms stay per-frame). Number-neutral by construction (same subsets,
+  same `_evaluate`, null masks drop rows in both paths): goldens passed WITHOUT regen.
+  Measured on 10-14k-row frames: C 08.01 25,987→1,741 ms (14.9x), C 07.00 76,003→5,811 ms
+  (13.1x), CR6 63,366→9,298 ms (6.8x — its residue is generate-time spec construction, not
+  filtering; acceptable). Knock-on: the golden gate 65s→14s; the unit chunk ~197s→108s;
+  chunk B ~500s→161s — the full dev-loop suite is now ~4.5 min (was ~12).
+- **CR9 back-testing series carriers (F6, found during S8-CR9; behaviour predates the
+  slice):** columns c/e/h are defined over prior-period and five-year default-rate series
+  (obligors at previous year-end; one-year observed default rates; five-year average) that a
+  single reporting-date run cannot produce — the preserved point-in-time proxies (c = current
+  obligor count, e = snapshot default rate, h = e) are materially different quantities.
+  Decision path: add `prior_year_obligor_count` / `historical_annual_default_rate` input
+  carriers (the ladders already consume them when supplied) or null the cells as
+  un-computable; the e/h proxies are the strongest null-with-carrier-opt-in candidates.
+- **UK CR9/CR9.1 under CRR — recorded scope-out:** the code gates both templates
+  Basel-3.1-only, but the CRR heritage annex carries UK CR9 (Art. 452(h)) and UK CR9.1
+  (Art. 180(1)(f)) with a COARSER taxonomy (no residential/commercial retail split, no
+  financial/large corporate split) and no input-floor language on f/g. Implementing the CRR
+  variants is an own slice (new class specs + goldens), not a gate flip.
+- **CR9 sparse vs fixed-shape rows:** the instructions call CR9 a "fixed template" with a
+  fixed PD range; the estate emits only populated bands (+Total) while CR6 renders all 17.
+  Preserved as the recorded convention; aligning CR9 to the fixed 17-band shape is a golden-
+  structure change needing its own decision.
+- **`sa_rwa` pre- vs post-supporting-factor divergence (found during S8-CMS; behaviour
+  predates the slice):** the inline S-TREA carrier `sa_rwa` (engine/sa/calculator.py) is
+  captured BEFORE `apply_supporting_factors`, while the floor's multi-pass fallback join
+  resolves the POST-factor SA `rwa_final`. CMS cols b/d and the floor's single-pass path read
+  the pre-factor figure (recorded). Decide the S-TREA convention once (Art. 92(3A): does the
+  full-SA basis include Art. 501/501a relief?) and align both paths.
+- **CR10 column c short-maturity variant + display-constant pack-homing:** the fixed
+  Art. 153(5) reference weights hard-code the >= 2.5y column-c values
+  (`SLOTTING_RISK_WEIGHTS`/`HVCRE_RISK_WEIGHTS` in templates.py) while the pack carries the
+  <2.5y preferential tables the CALCULATION uses; a short-maturity slotting book shows the
+  standard RW in column c against a preferential RWEA in column e. Defensible ("fixed
+  column"), but reading column c from the pack (and retiring the templates.py copies) is the
+  tidy-up path.
+- **Tie-out cross-check:** headline totals (per-key frame) vs class allocation (raw frame) have
+  no cross-check; add one assertion frame once both read the ledger.
+- **`exposure_class_for_sa` / `substitute_rw` deletions** (S3) — record the 0-reader /
+  null-producer audit results.
+- **S8-pre scope decision** — goldens-first vs scope-out for the CCR/C34/OF07/OF08 families.
+
+---
+
+## 8. What NOT to build
+
+1. **No general expression DSL.** Two escapes (`Formula` ~5 cells, `SideContext`); anything more
+   is a typed kernel fn the spec references.
+2. **Don't force C02.00's stateful roll-up or the `_irb_*_split` bucketing through pure CellSpec**
+   — typed pre-pass kernel fns.
+3. **Don't unify COREP-0.0 vs Pillar 3-null empty cells** — per-cell policy or values change.
+4. **Don't chase byte-identical goldens** — structure-exact + rtol is the recorded decision.
+5. **Don't seal every column the generators read** — the stripped/never-produced reads are
+   permanently-null cells (F6), each a per-column call.
+6. **Don't add a second per-exposure grain or a new normalised two-leg frame** — the physical
+   split IS the ledger; `aggregate_to_key_grain` already collapses for recon.
+7. **Don't invent a CellSpec kind for substitution flows** — the ledger demotes it to `Sum`.
+8. **Don't re-point consumers at the cached `summary_by_*` frames before their keying is
+   explicit** (invariant 8).
+9. **Don't blind-delete the remaining `_pick` ladders** — S1 removed the pure-dead rungs; the
+   rest need per-column decisions.
+10. **No speculative reporting-metadata packs ahead of a real instrument; no long-lived branch;
+    no v2 package.**
+11. **Don't fold P2.27 / P3.3 / P3.6 / F8 in silently** — new engine columns need their own
+    recorded-decision slices.
+12. **Don't strangle an un-goldened template** (S8-pre) — a green synthetic unit suite is not a
+    correctness oracle here.
+
+---
+
+## 9. arch_check / ratchet additions at phase exit
+
+- **`max_reporting_module_loc` ratchet** — `reporting/` is currently un-ratcheted
+  (`generator.py` at 5,178 LOC unbounded); mirror `max_engine_module_loc` in
+  `RATCHET_MAX_METRICS` + `scripts/arch_metrics.json`; enforces one-module-per-template.
+- **Multi-candidate column-ladder ban in `reporting/` + `analysis/`** — census of `_pick(` with
+  >2 args, `our_columns`, `_find_column_in_schema`, `RECON_*_CANDIDATES`, and the `_summaries.py`
+  presence-guard duals; ratcheted to 0.
+- **Reporting class/approach read-allowlist** (post-retarget) — `reporting/`+`analysis/` may read
+  only the `reporting_*` family; raw `exposure_class`/`approach_applied` reads banned outside the
+  aggregator.
+- **Extend check-17 (regime-bool ban) to `reporting/`** — no `framework ==`/`is_b31`
+  branching or ref-set sniffing; variants read the pack token.
+- **Sealed-column read-allowlist** — reporting reads only names in `AGGREGATOR_EXIT_EDGE`'s
+  emitted set + `ReportingContext`; catches never-produced-read reintroduction.
+- **Add the missing `analysis` upward rule** (Phase 6 residue R3):
+  `"analysis": ("rwa_calc.api", "rwa_calc.ui")` in `IMPORT_DIRECTION_RULES`.
+- **Test-file LOC ceiling** on `tests/unit/reporting/**` so the straggler cannot re-accrete.
+- **Retire the two "Retired by Phase 7" inversions** (`arch_check.py:413-414`).
+- **watchfire:** each `TemplateSpec` cites its template ref (Reg 2021/451 Annex I/II; CRR Part 8
+  for Pillar 3); `ReportingTemplateSet` entries cite PS1/26 template guidance; the projection
+  columns cite Art. 235 / Art. 112.
+- **CLAUDE.md / workflow:** add the reporting-projection files to the forced-single-stream list;
+  update `/next-items` Step-4d reviewer criteria in the same PR that moves the architecture
+  (no bulk-regen-to-green; number-changing slices carry decisions; each slice names its D1–D10
+  kill).

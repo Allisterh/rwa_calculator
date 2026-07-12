@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import polars as pl
 import pytest
+from tests.fixtures.recon_ledger import with_reporting_ledger
 
 from rwa_calc.analysis.recon_registry import ComponentMapping, LegacyColumnMapping
 from rwa_calc.analysis.reconciliation import (
@@ -100,7 +101,7 @@ def _mapping(**overrides: ComponentMapping) -> LegacyColumnMapping:
 
 
 def _recon(ours: pl.LazyFrame, legacy: pl.LazyFrame, mapping: LegacyColumnMapping):
-    return ReconciliationRunner().reconcile(ours, legacy, mapping)
+    return ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
 
 
 def _bucket_for(recon_df: pl.DataFrame, key: str, col: str = "row_bucket") -> str:

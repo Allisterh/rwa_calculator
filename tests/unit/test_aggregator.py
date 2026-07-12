@@ -110,31 +110,35 @@ def irb_results() -> pl.LazyFrame:
 def partially_guaranteed_irb_results() -> pl.LazyFrame:
     """FIRB corporate exposure (EAD=1M) 60% guaranteed by an SA retail guarantor.
 
-    Splits into 400k unguaranteed -> CORPORATE/FIRB and 600k guaranteed ->
-    RETAIL/standardised (the guarantor's class/approach).
+    Supplied in the PHYSICAL two-leg shape the CRM stage actually emits
+    (``engine/crm/guarantees.py``): a ``__G_`` guaranteed leg (600k, the
+    guarantor's substituted RW) and a ``__REM`` retained leg (400k, the
+    borrower's RW) — 400k -> CORPORATE/FIRB and 600k -> RETAIL/standardised
+    on the reporting ledger.
     """
     return pad_irb_branch(
         pl.LazyFrame(
             {
-                "exposure_reference": ["EXP001"],
-                "exposure_class": ["CORPORATE"],
-                "approach": ["FIRB"],
-                "approach_applied": ["FIRB"],
-                "ead_final": [1000000.0],
-                "risk_weight": [0.5],
-                "rwa": [500000.0],
-                "rwa_final": [500000.0],
-                "guarantor_approach": ["sa"],
-                "guarantee_ratio": [0.6],
-                "is_guaranteed": [True],
-                "guaranteed_portion": [600000.0],
-                "unguaranteed_portion": [400000.0],
-                "counterparty_reference": ["BORROWER01"],
-                "guarantor_reference": ["GUARANTOR01"],
-                "pre_crm_exposure_class": ["CORPORATE"],
-                "post_crm_exposure_class_guaranteed": ["RETAIL"],
-                "pre_crm_risk_weight": [0.5],
-                "guarantor_rw": [0.75],
+                "exposure_reference": ["EXP001__G_GUARANTOR01", "EXP001__REM"],
+                "exposure_class": ["CORPORATE", "CORPORATE"],
+                "approach": ["FIRB", "FIRB"],
+                "approach_applied": ["FIRB", "FIRB"],
+                "ead_final": [600000.0, 400000.0],
+                "risk_weight": [0.75, 0.5],
+                "rwa": [450000.0, 200000.0],
+                "rwa_final": [450000.0, 200000.0],
+                "guarantor_approach": ["sa", None],
+                "guarantee_ratio": [0.6, 0.6],
+                "is_guaranteed": [True, False],
+                "guaranteed_portion": [600000.0, 0.0],
+                "unguaranteed_portion": [0.0, 400000.0],
+                "counterparty_reference": ["BORROWER01", "BORROWER01"],
+                "guarantor_reference": ["GUARANTOR01", None],
+                "parent_exposure_reference": ["EXP001", "EXP001"],
+                "pre_crm_exposure_class": ["CORPORATE", "CORPORATE"],
+                "post_crm_exposure_class_guaranteed": ["RETAIL", None],
+                "pre_crm_risk_weight": [0.5, 0.5],
+                "guarantor_rw": [0.75, None],
             }
         )
     )
@@ -727,38 +731,31 @@ class TestNonFiniteOutputDetection:
         assert all(e.severity.value == "warning" for e in agg002)
         assert any(e.field_name == "pd" and "BADPD" in (e.message or "") for e in agg002)
 
-    def test_reporting_column_nan_deduped_against_output_scan(self) -> None:
-        """A reporting-column scan reports only exposures the output scan missed.
+    def test_aliased_reporting_columns_do_not_double_report(self) -> None:
+        """One NaN row yields ONE error, not one per aliased column.
 
-        A NaN ``risk_weight`` row also makes its ``reporting_rw`` NaN — that must be
-        reported once (under the output column), while a reporting-only NaN (an
-        exposure finite in the output frame) is uniquely caught.
+        Phase 7 S4: the sealed ledger's ``reporting_rw`` / ``reporting_ead`` are
+        per-leg ALIASES of ``risk_weight`` / ``ead_final`` on the same frame (the
+        detailed re-split that could mint new values is gone), so the output scan
+        covers them by construction — a NaN ``risk_weight`` row is reported once,
+        under the output column, with no duplicate ``reporting_rw`` entry.
         """
         results = pl.DataFrame(
             {
                 "exposure_reference": ["A", "B"],
                 "rwa_final": [1.0, 2.0],
                 "ead_final": [10.0, 20.0],
-                "risk_weight": [float("nan"), 0.5],  # A: NaN output
-            }
-        )
-        reporting = pl.DataFrame(
-            {
-                "exposure_reference": ["A", "A", "C"],  # A split; C reporting-only NaN
-                "reporting_rw": [float("nan"), 0.3, float("nan")],
-                "reporting_ead": [5.0, 5.0, 7.0],
+                "risk_weight": [float("nan"), 0.5],
+                "reporting_rw": [float("nan"), 0.5],
+                "reporting_ead": [10.0, 20.0],
             }
         )
 
-        errors = _detect_non_finite_errors(results, reporting)
+        errors = _detect_non_finite_errors(results)
 
         rw_out = [e for e in errors if e.field_name == "risk_weight"]
-        rw_rep = [e for e in errors if e.field_name == "reporting_rw"]
         assert len(rw_out) == 1 and "A" in (rw_out[0].message or "")
-        # reporting_rw error names only C (A already flagged by the output scan).
-        assert len(rw_rep) == 1
-        assert rw_rep[0].actual_value == "1"
-        assert "C" in (rw_rep[0].message or "")
+        assert not [e for e in errors if e.field_name in ("reporting_rw", "reporting_ead")]
 
 
 class TestSummaryByClassMethod:
@@ -858,20 +855,24 @@ class TestSummaryByClassMethod:
 
 
 # =============================================================================
-# Post-CRM Detailed Reporting Tests
+# Post-substitution reporting approach on the sealed ledger
 # =============================================================================
 
 
-class TestPostCRMDetailedReportingApproach:
-    """Tests for reporting_approach in post-CRM detailed view."""
+class TestLedgerReportingApproach:
+    """The post-substitution approach on the sealed results ledger (Phase 7 S4).
 
-    def test_reporting_approach_in_detailed_view(
+    Replaces the retired post_crm_detailed view's reporting_approach pin: the
+    same rule (SA-guaranteed leg -> standardised, Art. 235; retained leg keeps
+    the obligor's approach, Art. 161) now lives on the per-leg ledger columns.
+    """
+
+    def test_reporting_approach_on_the_guarantee_legs(
         self,
         aggregator: OutputAggregator,
         partially_guaranteed_irb_results: pl.LazyFrame,
         crr_config: CalculationConfig,
     ) -> None:
-        """Post-CRM detailed view should include reporting_approach column."""
         result = aggregator.aggregate(
             sa_results=EMPTY_SA,
             irb_results=partially_guaranteed_irb_results,
@@ -880,15 +881,12 @@ class TestPostCRMDetailedReportingApproach:
             config=crr_config,
         )
 
-        assert result.post_crm_detailed is not None
-        df = result.post_crm_detailed.collect()
-        assert "reporting_approach" in df.columns
+        df = result.results.collect()
+        retained = df.filter(pl.col("reporting_leg_role") == "retained")
+        assert retained["reporting_approach"][0] == "FIRB"
 
-        unguar = df.filter(pl.col("crm_portion_type") == "unguaranteed")
-        assert unguar["reporting_approach"][0] == "FIRB"
-
-        guar = df.filter(pl.col("crm_portion_type") == "guaranteed")
-        assert guar["reporting_approach"][0] == "standardised"
+        guaranteed = df.filter(pl.col("reporting_leg_role") == "guaranteed")
+        assert guaranteed["reporting_approach"][0] == "standardised"
 
 
 # =============================================================================
@@ -1110,3 +1108,295 @@ class TestELPortfolioSummary:
         assert el is not None
         assert float(el.total_irb_rwa) == pytest.approx(2000000.0)
         assert float(el.t2_credit_cap) == pytest.approx(12000.0)
+
+
+# =============================================================================
+# Reporting Projection Tests (Phase 7 S2 — the canonical per-leg ledger)
+# =============================================================================
+
+
+class TestReportingProjection:
+    """Phase 7 S2: the canonical reporting projection sealed on aggregator_exit.
+
+    The results frame IS the per-leg substitution ledger (physical ``__G_`` /
+    ``__REM`` legs); these columns name it once so no consumer re-derives
+    class/approach/method or sniffs reference suffixes.
+    """
+
+    REPORTING_COLUMNS: tuple[str, ...] = (
+        "reporting_class",
+        "reporting_class_origin",
+        "reporting_approach",
+        "reporting_approach_origin",
+        "reporting_method",
+        "reporting_leg_role",
+        "reporting_on_balance_sheet",
+        "reporting_subclass",
+        "reporting_ead",
+        "reporting_rw",
+        "guarantee_rwa_benefit",
+    )
+
+    @pytest.fixture
+    def guarantee_leg_results(self) -> pl.LazyFrame:
+        """Physical guarantee legs as the CRM stage emits them.
+
+        One FIRB corporate exposure 60% guaranteed by an SA retail guarantor,
+        already split into its ``__G_`` guaranteed leg (is_guaranteed=True,
+        guaranteed_portion=EAD) and ``__REM`` retained leg, plus an Art. 234
+        tranched pair (``__REM_FL`` / ``__REM_SEN``) from a second exposure and
+        one plain unguaranteed exposure.
+        """
+        return pad_irb_branch(
+            pl.LazyFrame(
+                {
+                    "exposure_reference": [
+                        "EXPG__G_GUAR01",
+                        "EXPG__REM",
+                        "EXPT__REM_FL",
+                        "EXPT__REM_SEN",
+                        "EXP_PLAIN",
+                    ],
+                    "counterparty_reference": ["B01", "B01", "B02", "B02", "B03"],
+                    "exposure_class": ["CORPORATE"] * 5,
+                    "approach": ["FIRB"] * 5,
+                    "approach_applied": ["FIRB"] * 5,
+                    "ead_final": [600000.0, 400000.0, 100000.0, 900000.0, 250000.0],
+                    "risk_weight": [0.75, 0.5, 0.5, 0.5, 0.5],
+                    "rwa_final": [450000.0, 200000.0, 50000.0, 450000.0, 125000.0],
+                    "is_guaranteed": [True, False, False, False, False],
+                    "guaranteed_portion": [600000.0, 0.0, 0.0, 0.0, 0.0],
+                    "unguaranteed_portion": [0.0, 400000.0, 100000.0, 900000.0, 0.0],
+                    "guarantor_approach": ["sa", None, None, None, None],
+                    "guarantor_reference": ["GUAR01", None, None, None, None],
+                    "pre_crm_exposure_class": ["CORPORATE"] * 5,
+                    "post_crm_exposure_class_guaranteed": ["RETAIL", None, None, None, None],
+                }
+            )
+        )
+
+    def _aggregate_irb(
+        self,
+        aggregator: OutputAggregator,
+        frame: pl.LazyFrame,
+        config: CalculationConfig,
+    ) -> pl.DataFrame:
+        result = aggregator.aggregate(
+            sa_results=EMPTY_SA,
+            irb_results=frame,
+            slotting_results=EMPTY_SLOTTING,
+            equity_bundle=None,
+            config=config,
+        )
+        return result.results.collect()
+
+    def _aggregate_sa(
+        self,
+        aggregator: OutputAggregator,
+        frame: pl.LazyFrame,
+        config: CalculationConfig,
+    ) -> pl.DataFrame:
+        result = aggregator.aggregate(
+            sa_results=frame,
+            irb_results=EMPTY_IRB,
+            slotting_results=EMPTY_SLOTTING,
+            equity_bundle=None,
+            config=config,
+        )
+        return result.results.collect()
+
+    @pytest.fixture
+    def benefit_leg_results(self) -> pl.LazyFrame:
+        """Guarantee legs carrying the branch RW delta (Phase 7 F8).
+
+        One exposure split across TWO guarantors (multi-guarantor
+        additivity): EXPM__G_GA (EAD 600k, borrower RW 1.0 -> 0.2, delta
+        0.8) and EXPM__G_GB (EAD 200k, delta 0.5), plus its retained leg
+        (200k, delta 0.0) and a plain unguaranteed exposure (delta 0.0).
+        """
+        return pad_irb_branch(
+            pl.LazyFrame(
+                {
+                    "exposure_reference": [
+                        "EXPM__G_GA",
+                        "EXPM__G_GB",
+                        "EXPM__REM",
+                        "EXP_PLAIN",
+                    ],
+                    "counterparty_reference": ["B01", "B01", "B01", "B03"],
+                    "exposure_class": ["CORPORATE"] * 4,
+                    "approach": ["FIRB"] * 4,
+                    "approach_applied": ["FIRB"] * 4,
+                    "ead_final": [600000.0, 200000.0, 200000.0, 250000.0],
+                    "risk_weight": [0.2, 0.5, 1.0, 1.0],
+                    "rwa_final": [120000.0, 100000.0, 200000.0, 250000.0],
+                    "is_guaranteed": [True, True, False, False],
+                    "guaranteed_portion": [600000.0, 200000.0, 0.0, 0.0],
+                    "unguaranteed_portion": [0.0, 0.0, 200000.0, 0.0],
+                    "guarantor_approach": ["sa", "sa", None, None],
+                    "guarantor_reference": ["GA", "GB", None, None],
+                    "parent_exposure_reference": ["EXPM", "EXPM", "EXPM", None],
+                    "pre_crm_risk_weight": [1.0, 1.0, 1.0, None],
+                    "guarantee_benefit_rw": [0.8, 0.5, 0.0, 0.0],
+                }
+            )
+        )
+
+    def test_guarantee_rwa_benefit_is_ead_times_branch_delta(
+        self,
+        aggregator: OutputAggregator,
+        benefit_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """F8: benefit = ead_final x guarantee_benefit_rw per leg, and the
+        per-exposure sum of leg benefits ties to the whole-exposure relief
+        (600k x 0.8 + 200k x 0.5 = 580k across the two guarantors)."""
+        df = self._aggregate_irb(aggregator, benefit_leg_results, crr_config)
+        by_ref = {r["exposure_reference"]: r for r in df.to_dicts()}
+        assert by_ref["EXPM__G_GA"]["guarantee_rwa_benefit"] == pytest.approx(480000.0)
+        assert by_ref["EXPM__G_GB"]["guarantee_rwa_benefit"] == pytest.approx(100000.0)
+        assert by_ref["EXPM__REM"]["guarantee_rwa_benefit"] == pytest.approx(0.0)
+        assert by_ref["EXP_PLAIN"]["guarantee_rwa_benefit"] == pytest.approx(0.0)
+        exposure_total = sum(
+            r["guarantee_rwa_benefit"]
+            for r in df.to_dicts()
+            if r["exposure_reference"].startswith("EXPM")
+        )
+        assert exposure_total == pytest.approx(580000.0)
+
+    def test_guarantee_rwa_benefit_null_without_substitution_machinery(
+        self,
+        aggregator: OutputAggregator,
+        guarantee_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """F8: with no branch delta column (no CRM guarantee sub-step ran),
+        the sealed column is present, Float64, and all-null — relief NOT
+        MODELLED, never 0.0."""
+        df = self._aggregate_irb(aggregator, guarantee_leg_results, crr_config)
+        assert df.schema["guarantee_rwa_benefit"] == pl.Float64
+        assert df["guarantee_rwa_benefit"].null_count() == df.height
+
+    def test_projection_columns_sealed_on_results(
+        self,
+        aggregator: OutputAggregator,
+        sa_results: pl.LazyFrame,
+        irb_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """Every projection column is present on the sealed results frame."""
+        result = aggregator.aggregate(
+            sa_results=sa_results,
+            irb_results=irb_results,
+            slotting_results=EMPTY_SLOTTING,
+            equity_bundle=None,
+            config=crr_config,
+        )
+        schema = result.results.collect_schema()
+        missing = [c for c in self.REPORTING_COLUMNS if c not in schema.names()]
+        assert not missing, f"projection columns missing from aggregator_exit: {missing}"
+        assert schema["reporting_on_balance_sheet"] == pl.Boolean
+        assert schema["reporting_ead"] == pl.Float64
+        assert schema["reporting_rw"] == pl.Float64
+
+    def test_projection_columns_declared_on_edge(self) -> None:
+        """The edge contract declares the projection with its citations."""
+        from rwa_calc.contracts.edges import AGGREGATOR_EXIT_EDGE
+
+        for name in self.REPORTING_COLUMNS:
+            assert name in AGGREGATOR_EXIT_EDGE.columns, name
+        assert AGGREGATOR_EXIT_EDGE.columns["reporting_class"].citation == "CRR Art. 235"
+        assert AGGREGATOR_EXIT_EDGE.columns["reporting_class_origin"].citation == "CRR Art. 112"
+        assert AGGREGATOR_EXIT_EDGE.columns["reporting_leg_role"].citation == "CRR Art. 235"
+        benefit = AGGREGATOR_EXIT_EDGE.columns["guarantee_rwa_benefit"]
+        assert benefit.citation == "CRR Art. 235"
+        assert benefit.null_meaning is not None  # null-not-zero contract stays documented
+
+    def test_aliases_mirror_sealed_sources(
+        self,
+        aggregator: OutputAggregator,
+        guarantee_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """The alias columns equal their sealed sources row-for-row."""
+        df = self._aggregate_irb(aggregator, guarantee_leg_results, crr_config)
+        for alias, source in (
+            ("reporting_class", "exposure_class_post_crm"),
+            ("reporting_class_origin", "exposure_class_applied"),
+            ("reporting_approach", "approach_post_crm"),
+            ("reporting_approach_origin", "approach_applied"),
+            ("reporting_subclass", "exposure_subclass"),
+            ("reporting_ead", "ead_final"),
+            ("reporting_rw", "risk_weight"),
+        ):
+            assert df[alias].to_list() == df[source].to_list(), (alias, source)
+
+    def test_leg_roles_name_the_physical_guarantee_split(
+        self,
+        aggregator: OutputAggregator,
+        guarantee_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """guaranteed = the __G_ leg; retained = __REM/__REM_FL/__REM_SEN; else whole."""
+        df = self._aggregate_irb(aggregator, guarantee_leg_results, crr_config)
+        roles = dict(zip(df["exposure_reference"], df["reporting_leg_role"], strict=True))
+        assert roles == {
+            "EXPG__G_GUAR01": "guaranteed",
+            "EXPG__REM": "retained",
+            "EXPT__REM_FL": "retained",
+            "EXPT__REM_SEN": "retained",
+            "EXP_PLAIN": "whole",
+        }
+
+    def test_substitution_flows_reconstruct_by_grouping(
+        self,
+        aggregator: OutputAggregator,
+        guarantee_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """Outflow/inflow (COREP C 07.00) = two Sum bindings over the ledger."""
+        df = self._aggregate_irb(aggregator, guarantee_leg_results, crr_config)
+        guaranteed = df.filter(pl.col("reporting_leg_role") == "guaranteed")
+        outflow = guaranteed.group_by("reporting_class_origin").agg(pl.col("reporting_ead").sum())
+        inflow = guaranteed.group_by("reporting_class").agg(pl.col("reporting_ead").sum())
+        assert outflow.to_dicts() == [
+            {"reporting_class_origin": "CORPORATE", "reporting_ead": 600000.0}
+        ]
+        assert inflow.to_dicts() == [{"reporting_class": "RETAIL", "reporting_ead": 600000.0}]
+
+    def test_reporting_method_is_post_substitution(
+        self,
+        aggregator: OutputAggregator,
+        guarantee_leg_results: pl.LazyFrame,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """Method labels the post-substitution approach: SA-guaranteed leg -> STD."""
+        df = self._aggregate_irb(aggregator, guarantee_leg_results, crr_config)
+        methods = dict(zip(df["exposure_reference"], df["reporting_method"], strict=True))
+        assert methods["EXPG__G_GUAR01"] == "STD"
+        assert methods["EXPG__REM"] == "FIRB"
+        assert methods["EXP_PLAIN"] == "FIRB"
+
+    def test_on_balance_sheet_derived_from_exposure_type(
+        self,
+        aggregator: OutputAggregator,
+        crr_config: CalculationConfig,
+    ) -> None:
+        """loan -> True; facility/contingent -> False; anything else -> null."""
+        frame = pad_sa_branch(
+            pl.LazyFrame(
+                {
+                    "exposure_reference": ["E1", "E2", "E3", "E4", "E5"],
+                    "counterparty_reference": ["C1", "C2", "C3", "C4", "C5"],
+                    "exposure_class": ["CORPORATE"] * 5,
+                    "approach_applied": ["SA"] * 5,
+                    "exposure_type": ["loan", "facility", "contingent", "derivative", None],
+                    "ead_final": [1.0, 1.0, 1.0, 1.0, 1.0],
+                    "risk_weight": [1.0, 1.0, 1.0, 1.0, 1.0],
+                    "rwa_final": [1.0, 1.0, 1.0, 1.0, 1.0],
+                }
+            )
+        )
+        df = self._aggregate_sa(aggregator, frame, crr_config)
+        on_bs = dict(zip(df["exposure_reference"], df["reporting_on_balance_sheet"], strict=True))
+        assert on_bs == {"E1": True, "E2": False, "E3": False, "E4": None, "E5": None}

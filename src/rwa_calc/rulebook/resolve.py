@@ -37,6 +37,7 @@ from rwa_calc.rulebook.model import (
     FormulaParams,
     IntParam,
     LookupTable,
+    ReportingTemplateSet,
     RuleEntry,
     ScalarParam,
     Schedule,
@@ -151,6 +152,16 @@ class ResolvedRulepack:
     def schedule_value(self, name: str) -> Decimal:
         """Resolve the named ``Schedule`` at ``self.reporting_date``."""
         return self._typed(name, Schedule).resolve(self.reporting_date)
+
+    def reporting(self) -> ReportingTemplateSet:
+        """Return the regime's cited reporting template inventory (Phase 7 S6).
+
+        The single ``reporting_template_set`` entry: which COREP / Pillar 3
+        template families the regime requires, plus the ``variant`` token the
+        declarative reporting layer selects each template's regime
+        ``TemplateSpec`` with.
+        """
+        return self._typed("reporting_template_set", ReportingTemplateSet)
 
     def with_overrides(self, **entries: RuleEntry) -> ResolvedRulepack:
         """Return a copy with the named entries replaced, content hash recomputed.
@@ -283,6 +294,10 @@ def _value_repr(entry: RuleEntry) -> str:
     if isinstance(entry, FormulaParams):
         items = ",".join(f"{key}:{entry.params[key]}" for key in sorted(entry.params))
         return f"{{{items}}}"
+    if isinstance(entry, ReportingTemplateSet):
+        corep = ",".join(entry.corep)
+        pillar3 = ",".join(entry.pillar3)
+        return f"variant={entry.variant};corep=[{corep}];pillar3=[{pillar3}]"
     raise TypeError(f"un-hashable rule entry shape: {type(entry).__name__}")
 
 

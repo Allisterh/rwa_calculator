@@ -24,6 +24,7 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
+from tests.fixtures.recon_ledger import with_reporting_ledger
 
 from rwa_calc.api.export import ExportResult, ResultExporter
 from rwa_calc.api.models import (
@@ -71,7 +72,7 @@ def sample_response(tmp_path: Path) -> CalculationResponse:
     )
 
     cached = cache.sink_results(
-        results=results_lf,
+        results=with_reporting_ledger(results_lf),
         summary_by_class=summary_by_class_lf,
         summary_by_approach=summary_by_approach_lf,
     )
@@ -105,7 +106,7 @@ def minimal_response(tmp_path: Path) -> CalculationResponse:
         }
     )
 
-    cached = cache.sink_results(results=results_lf)
+    cached = cache.sink_results(results=with_reporting_ledger(results_lf))
 
     return CalculationResponse(
         success=True,
@@ -134,7 +135,7 @@ def empty_response(tmp_path: Path) -> CalculationResponse:
         }
     )
 
-    cached = cache.sink_results(results=results_lf)
+    cached = cache.sink_results(results=with_reporting_ledger(results_lf))
 
     return CalculationResponse(
         success=True,
@@ -281,7 +282,20 @@ class TestExportToParquet:
         assert result.row_count == 0
         df = pl.read_parquet(output_dir / "results.parquet")
         assert df.height == 0
-        assert df.columns == ["exposure_reference", "ead_final", "rwa_final"]
+        # The fixture mirrors the sealed ledger shape (with_reporting_ledger),
+        # so the export carries the reporting projection columns too.
+        assert df.columns == [
+            "exposure_reference",
+            "ead_final",
+            "rwa_final",
+            "reporting_class",
+            "reporting_class_origin",
+            "reporting_approach",
+            "reporting_approach_origin",
+            "reporting_ead",
+            "reporting_rw",
+            "reporting_on_balance_sheet",
+        ]
 
     def test_parquet_roundtrip_preserves_data(
         self,
@@ -535,12 +549,14 @@ class TestCsvNestedColumns:
         # Arrange — a results frame with a nested List column CSV cannot hold.
         cache = ResultsCache(tmp_path / "cache")
         cached = cache.sink_results(
-            results=pl.LazyFrame(
-                {
-                    "exposure_reference": ["E1", "E2"],
-                    "rwa_final": [100.0, 200.0],
-                    "ancestor_facilities": [["F1", "F2"], None],
-                }
+            results=with_reporting_ledger(
+                pl.LazyFrame(
+                    {
+                        "exposure_reference": ["E1", "E2"],
+                        "rwa_final": [100.0, 200.0],
+                        "ancestor_facilities": [["F1", "F2"], None],
+                    }
+                )
             ),
         )
         response = CalculationResponse(

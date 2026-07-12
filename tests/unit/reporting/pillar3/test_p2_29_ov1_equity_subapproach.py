@@ -31,7 +31,6 @@ import polars as pl
 import pytest
 
 from rwa_calc.reporting.pillar3.generator import (
-    Pillar3Generator,
     Pillar3TemplateBundle,
 )
 from tests.fixtures.p2_29.p2_29 import (
@@ -50,6 +49,7 @@ from tests.fixtures.p2_29.p2_29 import (
     build_equity_results_lf,
     build_output_floor_summary,
 )
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -64,7 +64,7 @@ def b31_ov1_bundle() -> Pillar3TemplateBundle:
     The output_floor_summary kwarg is passed only if generate_from_lazyframe
     already accepts it (guard via inspect.signature).
     """
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     lf = build_equity_results_lf()
 
     sig = inspect.signature(gen.generate_from_lazyframe)
@@ -297,7 +297,7 @@ class TestP229OV1OutputFloorAdjustment:
         Skipped today because output_floor_summary kwarg does not exist yet.
         """
         # Arrange — check parameter gate
-        gen = Pillar3Generator()
+        gen = LedgerShimPillar3Generator()
         sig = inspect.signature(gen.generate_from_lazyframe)
         if "output_floor_summary" not in sig.parameters:
             pytest.skip(
@@ -329,7 +329,7 @@ class TestP229OV1OutputFloorAdjustment:
         Skipped today because output_floor_summary kwarg does not exist yet.
         """
         # Arrange — check parameter gate
-        gen = Pillar3Generator()
+        gen = LedgerShimPillar3Generator()
         sig = inspect.signature(gen.generate_from_lazyframe)
         if "output_floor_summary" not in sig.parameters:
             pytest.skip(

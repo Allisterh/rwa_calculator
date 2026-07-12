@@ -42,7 +42,6 @@ import polars as pl
 import pytest
 
 from rwa_calc.reporting.pillar3.generator import (
-    Pillar3Generator,
     Pillar3TemplateBundle,
 )
 from tests.fixtures.p2_25.p2_25 import (
@@ -61,6 +60,7 @@ from tests.fixtures.p2_25.p2_25 import (
     PARENT_EAD,
     build_re_split_results_lf,
 )
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 # ---------------------------------------------------------------------------
 # B31 CR5 structural constants (derived from _build_cr5_columns / _letter_ref)
@@ -82,7 +82,7 @@ _CRR_CR5_TOTAL_COL: str = "p"
 @pytest.fixture(scope="module")
 def b31_bundle() -> Pillar3TemplateBundle:
     """Generate the Pillar3TemplateBundle from the RE-split seed frame (BASEL_3_1)."""
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     lf = build_re_split_results_lf()
     return gen.generate_from_lazyframe(lf, framework=FRAMEWORK)
 
@@ -90,7 +90,7 @@ def b31_bundle() -> Pillar3TemplateBundle:
 @pytest.fixture(scope="module")
 def crr_bundle() -> Pillar3TemplateBundle:
     """Generate the Pillar3TemplateBundle from the RE-split seed frame (CRR)."""
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     lf = build_re_split_results_lf()
     return gen.generate_from_lazyframe(lf, framework="CRR")
 

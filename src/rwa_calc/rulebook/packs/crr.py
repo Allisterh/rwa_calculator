@@ -28,6 +28,7 @@ from rwa_calc.rulebook.model import (
     Feature,
     FormulaParams,
     LookupTable,
+    ReportingTemplateSet,
     RuleEntry,
     ScalarParam,
 )
@@ -332,6 +333,21 @@ ENTRIES: dict[str, RuleEntry] = {
     # and PF pre-operational splits — see packs/b31.py. The Feature selects the
     # CRR vs B31 table family in engine/slotting/transforms.py (apply_slotting_
     # weights / apply_el_rates); the VALUES stay in data/tables/{crr,b31}_slotting.
+    "slotting_guarantee_substitution": Feature(
+        name="slotting_guarantee_substitution",
+        enabled=True,
+        citation=Citation(
+            "CRR",
+            "235",
+            "RW substitution applied to slotting by analogy (operator "
+            "decision 2026-07-12): the CRR black-letter scoping is UNSETTLED "
+            "(Art. 235 textually SA-scoped; Art. 236 needs a guarantor PD; "
+            "Art. 161(3) A-IRB-only) but COREP Annex II para 43 expects "
+            "substitution flows on slotting rows and zero relief mis-states "
+            "the risk; covered-part EL zeroing mirrors the IRB SA-guarantor "
+            "precedent. Flip enabled=False to restore zero relief",
+        ),
+    ),
     "slotting_revised_tables": Feature(
         name="slotting_revised_tables",
         enabled=False,
@@ -1037,5 +1053,26 @@ ENTRIES: dict[str, RuleEntry] = {
             "rw_standard": Decimal("1.00"),
         },
         citation=Citation("CRR", "126", "commercial RE LTV<=50%+income 50% / else 100%"),
+    ),
+    # ------------------------------------------------------------------
+    # Reporting template inventory (Phase 7 S6). The COREP credit-risk +
+    # CCR set per Reg (EU) 2021/451 Annex I as onshored (CRR Art. 430
+    # reporting obligation) and the Pillar 3 disclosure set per Part Eight;
+    # ids are the template-bundle field names. The declarative reporting
+    # layer selects each template's regime TemplateSpec by ``variant``.
+    "reporting_template_set": ReportingTemplateSet(
+        name="reporting_template_set",
+        corep=(
+            "c_02_00", "c07_00", "c08_01", "c08_02", "c08_03", "c08_04", "c08_05", "c08_06",
+            "c08_07", "c09_01", "c09_02", "c34_01", "c34_02", "c34_04", "c34_08",
+        ),
+        pillar3=(
+            "ov1", "cr4", "cr5", "cr6", "cr6a", "cr7", "cr7a", "cr8", "cr9", "cr9_1", "cr10",
+            "ccr1", "ccr2", "ccr3", "ccr8",
+        ),
+        variant="crr",
+        citation=Citation(
+            "CRR", "430", "COREP CR/CCR set per Reg (EU) 2021/451 Annex I; Pillar 3 per Part Eight"
+        ),
     ),
 }

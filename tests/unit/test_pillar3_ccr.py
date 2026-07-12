@@ -56,7 +56,8 @@ import pytest
 from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.domain.enums import PermissionMode
 from rwa_calc.engine.pipeline import PipelineOrchestrator
-from rwa_calc.reporting.pillar3.generator import Pillar3Generator, Pillar3TemplateBundle
+from rwa_calc.reporting.pillar3.generator import Pillar3TemplateBundle
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 if TYPE_CHECKING:
     from rwa_calc.contracts.bundles import AggregatedResultBundle
@@ -190,7 +191,7 @@ def cva_a1_result_and_ead():
 
 def _generate_bundle(result: AggregatedResultBundle, *, framework: str) -> Pillar3TemplateBundle:
     """Generate a Pillar3TemplateBundle from a pipeline result."""
-    return Pillar3Generator().generate_from_lazyframe(
+    return LedgerShimPillar3Generator().generate_from_lazyframe(
         result.results,
         framework=framework,
     )

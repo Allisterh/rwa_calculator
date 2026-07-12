@@ -33,7 +33,6 @@ import polars as pl
 import pytest
 
 from rwa_calc.reporting.pillar3.generator import (
-    Pillar3Generator,
     Pillar3TemplateBundle,
 )
 from tests.fixtures.p3_5.p3_5 import (
@@ -61,6 +60,7 @@ from tests.fixtures.p3_5.p3_5 import (
     EXPECTED_TOT_H,
     build_cr9_1_results_lf,
 )
+from tests.fixtures.recon_ledger import LedgerShimPillar3Generator
 
 # ---------------------------------------------------------------------------
 # P2.49 taxonomy update: shadow fixture constant with new leaf key.
@@ -94,7 +94,7 @@ def b31_cr9_1_bundle() -> Pillar3TemplateBundle:
     Uses generate_from_lazyframe with framework="BASEL_3_1" — same calling
     convention as test_p2_29_ov1_equity_subapproach.py.
     """
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     lf = build_cr9_1_results_lf()
     return gen.generate_from_lazyframe(lf, framework="BASEL_3_1")
 
@@ -102,7 +102,7 @@ def b31_cr9_1_bundle() -> Pillar3TemplateBundle:
 @pytest.fixture(scope="module")
 def crr_cr9_1_bundle() -> Pillar3TemplateBundle:
     """Generate the Pillar3TemplateBundle under CRR — cr9_1 must be empty."""
-    gen = Pillar3Generator()
+    gen = LedgerShimPillar3Generator()
     lf = build_cr9_1_results_lf()
     return gen.generate_from_lazyframe(lf, framework="CRR")
 

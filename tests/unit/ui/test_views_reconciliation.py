@@ -19,6 +19,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from tests.fixtures.recon_ledger import with_reporting_ledger
 
 from rwa_calc.analysis.recon_registry import ComponentMapping, LegacyColumnMapping
 from rwa_calc.analysis.reconciliation import ReconciliationRunner
@@ -54,7 +55,7 @@ def _response() -> ReconciliationResponse:
         our_keys=("exposure_reference",),
         components={"ead": ComponentMapping("EAD"), "rwa": ComponentMapping("RWA")},
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(
         bundle, legacy_file=Path("legacy.csv"), framework="CRR"
     )
@@ -129,7 +130,7 @@ def _response_with_class() -> ReconciliationResponse:
             "exposure_class": ComponentMapping("legacy_exposure_class"),
         },
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(
         bundle, legacy_file=Path("legacy.csv"), framework="CRR"
     )
@@ -187,7 +188,7 @@ def _response_with_class_and_method() -> ReconciliationResponse:
             "approach": ComponentMapping("legacy_approach"),
         },
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(
         bundle, legacy_file=Path("legacy.csv"), framework="CRR"
     )
@@ -335,7 +336,7 @@ def test_biggest_breaks_limit_caps_rows() -> None:
         our_keys=("exposure_reference",),
         components={"ead": ComponentMapping("EAD"), "rwa": ComponentMapping("RWA")},
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     resp = ReconciliationResponse.from_bundle(bundle, legacy_file=Path("legacy.csv"))
 
     top = rv.biggest_breaks(resp, limit=1)
@@ -448,7 +449,7 @@ def _response_mixed_method() -> ReconciliationResponse:
         our_keys=("exposure_reference",),
         components={"ead": ComponentMapping("EAD"), "rwa": ComponentMapping("RWA")},
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(
         bundle, legacy_file=Path("legacy.csv"), framework="CRR"
     )
@@ -535,7 +536,7 @@ def _response_with_drivers() -> ReconciliationResponse:
             "risk_weight": ComponentMapping("RW"),
         },
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(bundle, legacy_file=Path("legacy.csv"))
 
 
@@ -589,7 +590,7 @@ def _response_with_crm_components() -> ReconciliationResponse:
             "rwa_final": [75.0],
             "collateral_adjusted_value": [40.0],
             "guaranteed_portion": [10.0],
-            "sa_cqs": [3],
+            "external_cqs": [3],
         }
     )
     legacy = pl.LazyFrame(
@@ -613,7 +614,7 @@ def _response_with_crm_components() -> ReconciliationResponse:
             "cqs": ComponentMapping("CQS"),
         },
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(bundle, legacy_file=Path("legacy.csv"))
 
 
@@ -673,7 +674,7 @@ def test_unmapped_crm_shows_as_ead_driver() -> None:
         our_keys=("exposure_reference",),
         components={"ead": ComponentMapping("EAD"), "rwa": ComponentMapping("RWA")},
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     resp = ReconciliationResponse.from_bundle(bundle, legacy_file=Path("legacy.csv"))
 
     detail = rv.loan_detail(resp, "L1")
@@ -724,7 +725,7 @@ def _response_zero() -> ReconciliationResponse:
             "exposure_class": ComponentMapping("legacy_exposure_class"),
         },
     )
-    bundle = ReconciliationRunner().reconcile(ours, legacy, mapping)
+    bundle = ReconciliationRunner().reconcile(with_reporting_ledger(ours), legacy, mapping)
     return ReconciliationResponse.from_bundle(
         bundle, legacy_file=Path("legacy.csv"), framework="CRR"
     )

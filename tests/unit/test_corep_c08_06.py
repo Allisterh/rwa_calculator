@@ -19,7 +19,6 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator
 from rwa_calc.reporting.corep.templates import (
     B31_C08_06_COLUMNS,
     B31_C08_06_ROWS,
@@ -33,6 +32,7 @@ from rwa_calc.reporting.corep.templates import (
     get_c08_06_rows,
     get_c08_06_sl_types,
 )
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 # =============================================================================
 # TEST FIXTURES (module-level functions, not pytest fixtures)
@@ -276,38 +276,38 @@ class TestC0806Generation:
     """Verify C 08.06 template generation produces correct structure."""
 
     def test_c08_06_is_dict(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         assert isinstance(bundle.c08_06, dict)
 
     def test_c08_06_keys_are_sl_types(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         assert "project_finance" in bundle.c08_06
         assert "ipre" in bundle.c08_06
         assert "object_finance" in bundle.c08_06
 
     def test_c08_06_crr_column_count(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="CRR")
         for sl_type, df in bundle.c08_06.items():
             # 10 data columns + row_ref + row_name = 12
             assert len(df.columns) == 12, f"{sl_type}: expected 12 cols, got {len(df.columns)}"
 
     def test_c08_06_b31_column_count(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="BASEL_3_1")
         for sl_type, df in bundle.c08_06.items():
             # 11 data columns + row_ref + row_name = 13
             assert len(df.columns) == 13, f"{sl_type}: expected 13 cols, got {len(df.columns)}"
 
     def test_c08_06_empty_for_sa_only(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_only_results())
         assert bundle.c08_06 == {}
 
     def test_c08_06_excludes_irb_exposures(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results_with_irb())
         # Only project_finance SL type should appear (the 2 slotting exposures)
         assert "project_finance" in bundle.c08_06
@@ -322,7 +322,7 @@ class TestC0806Generation:
         assert bundle.c08_06 == {}
 
     def test_c08_06_framework_in_bundle(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="CRR")
         assert bundle.framework == "CRR"
 
@@ -336,7 +336,7 @@ class TestC0806RowAssignment:
     """Verify exposures land in correct category × maturity rows."""
 
     def test_strong_short_maturity_row(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         row = pf.filter(pl.col("row_ref") == "0010")
@@ -346,7 +346,7 @@ class TestC0806RowAssignment:
         assert row["0040"][0] == pytest.approx(1_000_000, rel=1e-4)
 
     def test_good_long_maturity_row(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         row = pf.filter(pl.col("row_ref") == "0040")
@@ -355,7 +355,7 @@ class TestC0806RowAssignment:
         assert row["0040"][0] == pytest.approx(2_000_000, rel=1e-4)
 
     def test_satisfactory_short_maturity_row(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         ipre = bundle.c08_06["ipre"]
         row = ipre.filter(pl.col("row_ref") == "0050")
@@ -363,7 +363,7 @@ class TestC0806RowAssignment:
         assert row["0040"][0] == pytest.approx(500_000, rel=1e-4)
 
     def test_weak_long_maturity_row(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         ipre = bundle.c08_06["ipre"]
         row = ipre.filter(pl.col("row_ref") == "0080")
@@ -371,7 +371,7 @@ class TestC0806RowAssignment:
         assert row["0040"][0] == pytest.approx(300_000, rel=1e-4)
 
     def test_default_long_maturity_row(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         ipre = bundle.c08_06["ipre"]
         row = ipre.filter(pl.col("row_ref") == "0100")
@@ -379,7 +379,7 @@ class TestC0806RowAssignment:
         assert row["0040"][0] == pytest.approx(100_000, rel=1e-4)
 
     def test_total_short_row(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         ipre = bundle.c08_06["ipre"]
         row = ipre.filter(pl.col("row_ref") == "0110")
@@ -388,7 +388,7 @@ class TestC0806RowAssignment:
         assert row["0040"][0] == pytest.approx(500_000, rel=1e-4)
 
     def test_total_long_row(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         ipre = bundle.c08_06["ipre"]
         row = ipre.filter(pl.col("row_ref") == "0120")
@@ -398,7 +398,7 @@ class TestC0806RowAssignment:
 
     def test_empty_categories_have_zero_values(self):
         """Categories with no exposures should still appear with zero values."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         # PF has no satisfactory, weak, or default exposures
@@ -416,7 +416,7 @@ class TestC0806ColumnValues:
     """Verify individual column computations are correct."""
 
     def test_col_0010_original_exposure(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         strong_short = pf.filter(pl.col("row_ref") == "0010")
@@ -424,21 +424,21 @@ class TestC0806ColumnValues:
         assert strong_short["0010"][0] == pytest.approx(1_000_000, rel=1e-4)
 
     def test_col_0040_ead(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         good_long = pf.filter(pl.col("row_ref") == "0040")
         assert good_long["0040"][0] == pytest.approx(2_000_000, rel=1e-4)
 
     def test_col_0070_risk_weight(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         strong_short = pf.filter(pl.col("row_ref") == "0010")
         assert strong_short["0070"][0] == pytest.approx(0.50, rel=1e-4)
 
     def test_col_0070_weighted_average_for_total(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         total_long = pf.filter(pl.col("row_ref") == "0120")
@@ -446,28 +446,28 @@ class TestC0806ColumnValues:
         assert total_long["0070"][0] == pytest.approx(0.90, rel=1e-4)
 
     def test_col_0080_rwea(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         strong_short = pf.filter(pl.col("row_ref") == "0010")
         assert strong_short["0080"][0] == pytest.approx(500_000, rel=1e-4)
 
     def test_col_0090_expected_loss(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         strong_short = pf.filter(pl.col("row_ref") == "0010")
         assert strong_short["0090"][0] == pytest.approx(4_000, rel=1e-4)
 
     def test_col_0100_provisions(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         strong_short = pf.filter(pl.col("row_ref") == "0010")
         assert strong_short["0100"][0] == pytest.approx(2_000, rel=1e-4)
 
     def test_col_0030_off_bs_original(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         strong_short = pf.filter(pl.col("row_ref") == "0010")
@@ -476,7 +476,7 @@ class TestC0806ColumnValues:
 
     def test_col_0060_ccr_none_for_populated_rows(self):
         """CCR column is None for rows with actual exposures (CCR is out of scope)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         # Check populated rows (strong/short and good/long have exposures)
@@ -487,7 +487,7 @@ class TestC0806ColumnValues:
 
     def test_total_ead_equals_sum_of_maturity_bands(self):
         """Total short EAD + total long EAD = sum of all individual EADs."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         total_short = pf.filter(pl.col("row_ref") == "0110")["0040"][0]
@@ -496,7 +496,7 @@ class TestC0806ColumnValues:
         assert total_short + total_long == pytest.approx(3_000_000, rel=1e-4)
 
     def test_total_rwea_equals_sum_of_maturity_bands(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf = bundle.c08_06["project_finance"]
         total_short = pf.filter(pl.col("row_ref") == "0110")["0080"][0]
@@ -514,14 +514,14 @@ class TestC0806B31Features:
     """Verify Basel 3.1-specific template features."""
 
     def test_b31_fccm_column_present(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="BASEL_3_1")
         for sl_type, df in bundle.c08_06.items():
             assert "0031" in df.columns, f"{sl_type}: missing col 0031"
 
     def test_b31_fccm_column_null_for_populated_rows(self):
         """FCCM deduction is None for populated rows (not yet wired from pipeline)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="BASEL_3_1")
         pf = bundle.c08_06["project_finance"]
         # Strong/short has actual data — FCCM should be None
@@ -529,20 +529,20 @@ class TestC0806B31Features:
         assert strong_short["0031"][0] is None
 
     def test_b31_hvcre_separate_sl_type(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_b31_slotting_with_hvcre(), framework="BASEL_3_1")
         assert "ipre" in bundle.c08_06
         assert "hvcre" in bundle.c08_06
 
     def test_b31_hvcre_ead_correct(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_b31_slotting_with_hvcre(), framework="BASEL_3_1")
         hvcre = bundle.c08_06["hvcre"]
         total_long = hvcre.filter(pl.col("row_ref") == "0120")
         assert total_long["0040"][0] == pytest.approx(1_000_000, rel=1e-4)
 
     def test_b31_ipre_excludes_hvcre(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_b31_slotting_with_hvcre(), framework="BASEL_3_1")
         ipre = bundle.c08_06["ipre"]
         total_long = ipre.filter(pl.col("row_ref") == "0120")
@@ -550,7 +550,7 @@ class TestC0806B31Features:
         assert total_long["0040"][0] == pytest.approx(2_000_000, rel=1e-4)
 
     def test_b31_substantially_stronger_rows_present(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="BASEL_3_1")
         pf = bundle.c08_06["project_finance"]
         row_0015 = pf.filter(pl.col("row_ref") == "0015")
@@ -560,20 +560,20 @@ class TestC0806B31Features:
 
     def test_b31_substantially_stronger_rows_zero_ead(self):
         """Substantially stronger rows have zero EAD (pipeline doesn't identify them yet)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="BASEL_3_1")
         pf = bundle.c08_06["project_finance"]
         row_0015 = pf.filter(pl.col("row_ref") == "0015")
         assert row_0015["0040"][0] == pytest.approx(0.0)
 
     def test_crr_no_fccm_column(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results(), framework="CRR")
         for sl_type, df in bundle.c08_06.items():
             assert "0031" not in df.columns, f"{sl_type}: CRR should not have col 0031"
 
     def test_crr_combines_ipre_hvcre(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_b31_slotting_with_hvcre(), framework="CRR")
         # Under CRR, IPRE and HVCRE are combined into one SL type
         assert "ipre" in bundle.c08_06
@@ -592,7 +592,7 @@ class TestC0806SupportingFactors:
     """Verify CRR supporting factor handling in RWEA column."""
 
     def test_crr_uses_post_factor_rwea(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_with_supporting_factors(), framework="CRR")
         pf = bundle.c08_06["project_finance"]
         strong_long = pf.filter(pl.col("row_ref") == "0020")
@@ -600,7 +600,7 @@ class TestC0806SupportingFactors:
         assert strong_long["0080"][0] == pytest.approx(525_000, rel=1e-4)
 
     def test_b31_uses_plain_rwea(self):
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _slotting_with_supporting_factors(), framework="BASEL_3_1"
         )
@@ -622,7 +622,7 @@ class TestC0806EdgeCases:
         lf = pl.LazyFrame(
             {"ead_final": [100.0], "rwa_final": [50.0], "slotting_category": ["strong"]}
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(lf)
         assert bundle.c08_06 == {}
 
@@ -634,7 +634,7 @@ class TestC0806EdgeCases:
                 "rwa_final": [50.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(lf)
         assert bundle.c08_06 == {}
 
@@ -646,7 +646,7 @@ class TestC0806EdgeCases:
                 "rwa_final": [50.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(lf)
         assert bundle.c08_06 == {}
 
@@ -666,7 +666,7 @@ class TestC0806EdgeCases:
                 "nominal_amount": [100_000],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(lf)
         assert "specialised_lending" in bundle.c08_06
 
@@ -686,7 +686,7 @@ class TestC0806EdgeCases:
                 "nominal_amount": [100_000],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(lf)
         pf = bundle.c08_06["project_finance"]
         # Short maturity row should have 0 EAD
@@ -711,7 +711,7 @@ class TestC0806EdgeCases:
                 "drawn_amount": [0.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(lf)
         pf = bundle.c08_06["project_finance"]
         strong_short = pf.filter(pl.col("row_ref") == "0010")
@@ -725,13 +725,13 @@ class TestC0806EdgeCases:
                 "rwa_final": [50.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(lf)
         assert any("C08.06" in e for e in bundle.errors)
 
     def test_multiple_sl_types_independent(self):
         """Each SL type gets its own independent template."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_slotting_results())
         pf_total_ead = (
             bundle.c08_06["project_finance"]

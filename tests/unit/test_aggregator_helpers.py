@@ -83,9 +83,6 @@ class TestEmptyInputs:
 
         assert result.summary_by_class is not None
         assert result.summary_by_approach is not None
-        assert result.pre_crm_summary is not None
-        assert result.post_crm_detailed is not None
-        assert result.post_crm_summary is not None
 
     @pytest.mark.parametrize(
         "field",

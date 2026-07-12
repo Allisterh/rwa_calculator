@@ -479,9 +479,6 @@ def _persist_audit_artifacts(
         return
 
     summary_frames: dict[str, pl.LazyFrame | None] = {
-        "pre_crm_summary": result.pre_crm_summary,
-        "post_crm_summary": result.post_crm_summary,
-        "post_crm_detailed": result.post_crm_detailed,
         "summary_by_class": result.summary_by_class,
         "summary_by_approach": result.summary_by_approach,
         "results": result.results,

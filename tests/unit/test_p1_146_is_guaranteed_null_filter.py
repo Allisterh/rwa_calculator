@@ -1,20 +1,27 @@
 """
-Unit tests for P1.146: null ``is_guaranteed`` silently drops rows from aggregator CRM views.
+Unit tests for P1.146: a null ``is_guaranteed`` never drops or mis-buckets a row.
 
 Pipeline position:
-    OutputAggregator._crm_reporting (generate_post_crm_detailed / generate_post_crm_summary)
+    OutputAggregator (reporting ledger + summary group-bys)
 
 Key responsibilities:
-- Assert that an exposure with ``is_guaranteed=null`` appears as a single "original" row
-  in ``post_crm_detailed`` (not silently discarded).
-- Assert ``post_crm_detailed`` height is 4 (EXP_GUAR->2, EXP_PLAIN->1, EXP_NULL->1).
-- Assert ``post_crm_summary`` CORPORATE bucket includes the null-is-guaranteed exposure.
-- Assert ``pre_crm_summary`` totals are unaffected (control).
+- Assert an exposure with ``is_guaranteed=null`` stays on the sealed results
+  ledger as a ``whole`` leg under its applied class (never silently discarded).
+- Assert ``summary_by_class`` counts it in the CORPORATE bucket and the
+  guaranteed leg under the guarantor's class.
+- Control: the ledger's total EAD is exact (nothing dropped, nothing doubled).
+
+History: the original P1.146 defect was the ``_crm_reporting`` re-split's
+``~pl.col("is_guaranteed")`` filters silently dropping the Boolean-null row
+(``~null`` evaluates to null, not True). Phase 7 S4 retired that machinery —
+the summaries are pure group-bys of the sealed reporting ledger, where a null
+``is_guaranteed`` falls through the ``when`` chain to
+``reporting_leg_role="whole"`` and the obligor's applied class. These pins
+keep the null-row semantics locked on the surviving surface.
 
 References:
-    - src/rwa_calc/engine/aggregator/_crm_reporting.py lines 138, 166, 212
-      (~pl.col("is_guaranteed") drops null rows — the defect under test)
-    - tests/integration/test_pre_post_crm_reporting.py (existing aggregator-level pattern)
+    - engine/aggregator/aggregator.py::_add_reporting_projection
+    - engine/aggregator/_summaries.py::generate_summary_by_class
     - P1.146 scenario proposal
 """
 
@@ -29,11 +36,15 @@ from rwa_calc.contracts.config import CalculationConfig
 from rwa_calc.engine.aggregator import OutputAggregator
 from tests.fixtures.contract_columns import pad_irb_branch, pad_slotting_branch
 from tests.fixtures.p1_146.p1_146 import (
+    CORPORATE_EXPOSURE_COUNT,
+    CORPORATE_TOTAL_EAD,
+    EAD_NULL,
     EXP_NULL_REF,
-    POST_CRM_CORPORATE_EXPOSURE_COUNT,
-    POST_CRM_CORPORATE_TOTAL_EAD,
-    POST_CRM_DETAIL_EXPECTED_ROWS,
-    PRE_CRM_TOTAL_EAD,
+    LEDGER_EXPECTED_ROWS,
+    RW_NULL,
+    SOVEREIGN_EXPOSURE_COUNT,
+    SOVEREIGN_TOTAL_EAD,
+    TOTAL_LEDGER_EAD,
     build_sa_results,
 )
 
@@ -56,164 +67,102 @@ def aggregator() -> OutputAggregator:
     return OutputAggregator()
 
 
+def _aggregate(aggregator: OutputAggregator, config: CalculationConfig):
+    return aggregator.aggregate(
+        sa_results=build_sa_results(),
+        irb_results=EMPTY_IRB,
+        slotting_results=EMPTY_SLOTTING,
+        equity_bundle=None,
+        config=config,
+    )
+
+
 class TestP1146IsGuaranteedNullFilter:
-    """Null ``is_guaranteed`` must not silently discard exposures from CRM views."""
+    """Null ``is_guaranteed`` must not silently discard or mis-bucket exposures."""
 
-    def test_post_crm_detailed_height_includes_null_is_guaranteed_row(
+    def test_ledger_keeps_the_null_is_guaranteed_row(
         self,
         aggregator: OutputAggregator,
         crr_config: CalculationConfig,
     ) -> None:
-        """post_crm_detailed must contain 4 rows when one exposure has is_guaranteed=null.
+        """All four physical rows survive to the sealed ledger — nothing dropped.
 
-        Pre-fix, ``_build_non_guaranteed_rows`` filters with ``~pl.col("is_guaranteed")``
-        which evaluates to null (not True) for a Boolean null, so the exposure is silently
-        dropped.  Post-fix it must appear as a single "original" row.
-
-        Arrange: 3-row SA results — EXP_GUAR (True), EXP_PLAIN (False), EXP_NULL (null).
+        Arrange: 4-row SA results — the __G_/__REM legs, EXP_PLAIN (False),
+                 EXP_NULL (Boolean null).
         Act:     aggregate() through OutputAggregator.
-        Assert:  post_crm_detailed has 4 rows (not 3).
+        Assert:  results height == 4 and EXP_NULL is present.
         """
-        # Arrange
-        sa_results = build_sa_results()
+        result = _aggregate(aggregator, crr_config)
 
-        # Act
-        result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY_IRB,
-            slotting_results=EMPTY_SLOTTING,
-            equity_bundle=None,
-            config=crr_config,
+        df = result.results.collect()
+        assert df.height == LEDGER_EXPECTED_ROWS
+        assert EXP_NULL_REF in df["exposure_reference"].to_list(), (
+            "Null is_guaranteed row missing from the sealed results ledger."
         )
 
-        # Assert
-        assert result.post_crm_detailed is not None
-        detailed_df = result.post_crm_detailed.collect()
-        assert detailed_df.height == POST_CRM_DETAIL_EXPECTED_ROWS, (
-            f"Expected {POST_CRM_DETAIL_EXPECTED_ROWS} rows in post_crm_detailed "
-            f"(EXP_GUAR->2, EXP_PLAIN->1, EXP_NULL->1) but got {detailed_df.height}. "
-            "Null is_guaranteed row was silently dropped by ~pl.col('is_guaranteed') filter."
-        )
-
-    def test_null_is_guaranteed_row_appears_as_original_crm_portion(
+    def test_null_is_guaranteed_row_is_a_whole_leg_under_its_applied_class(
         self,
         aggregator: OutputAggregator,
         crr_config: CalculationConfig,
     ) -> None:
-        """EXP_NULL must appear in post_crm_detailed as crm_portion_type='original'.
+        """A Boolean-null flag falls through to whole/applied — never guaranteed.
 
-        Arrange: 3-row SA results with EXP_NULL having is_guaranteed=null.
+        Arrange: EXP_NULL with is_guaranteed = Polars Boolean null.
         Act:     aggregate() through OutputAggregator.
-        Assert:  exactly one row for EXP_NULL with crm_portion_type='original',
-                 reporting_ead=750_000.0, reporting_rw=1.0.
+        Assert:  reporting_leg_role='whole', reporting_class='CORPORATE',
+                 reporting_ead/rw carry the row's sealed values.
         """
-        # Arrange
-        sa_results = build_sa_results()
+        result = _aggregate(aggregator, crr_config)
 
-        # Act
-        result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY_IRB,
-            slotting_results=EMPTY_SLOTTING,
-            equity_bundle=None,
-            config=crr_config,
-        )
+        row = result.results.collect().filter(pl.col("exposure_reference") == EXP_NULL_REF)
+        assert row["reporting_leg_role"][0] == "whole"
+        assert row["reporting_class"][0] == "CORPORATE"
+        assert row["reporting_ead"][0] == pytest.approx(EAD_NULL)
+        assert row["reporting_rw"][0] == pytest.approx(RW_NULL)
 
-        # Assert
-        assert result.post_crm_detailed is not None
-        detailed_df = result.post_crm_detailed.collect()
-        null_rows = detailed_df.filter(pl.col("reporting_exposure_class") == "CORPORATE").filter(
-            pl.col("crm_portion_type") == "original"
-        )
-        # Find the row with reporting_ead == 750_000 (EXP_NULL's EAD)
-        exp_null_rows = null_rows.filter(pl.col("reporting_ead") == 750_000.0)
-        assert len(exp_null_rows) == 1, (
-            f"Expected 1 row for {EXP_NULL_REF} (reporting_ead=750_000, crm_portion_type='original') "
-            f"in post_crm_detailed but found {len(exp_null_rows)}. "
-            "Null is_guaranteed exposure was not rescued into the original-row path."
-        )
-        assert exp_null_rows["reporting_rw"][0] == pytest.approx(1.0), (
-            f"Expected reporting_rw=1.0 for {EXP_NULL_REF} but got {exp_null_rows['reporting_rw'][0]}"
-        )
-
-    def test_post_crm_summary_corporate_includes_null_is_guaranteed_exposure(
+    def test_summary_by_class_buckets_include_the_null_row(
         self,
         aggregator: OutputAggregator,
         crr_config: CalculationConfig,
     ) -> None:
-        """post_crm_summary CORPORATE bucket must include EXP_NULL's EAD.
+        """CORPORATE counts the null row + retained leg; the guaranteed leg
+        reports under the guarantor's class.
 
-        Post-fix CORPORATE total_ead = EXP_PLAIN (1_000_000) + EXP_NULL (750_000)
-        + EXP_GUAR unguaranteed portion (400_000) = 2_150_000.
-        exposure_count = 3 (one row per CORPORATE-mapped portion).
-
-        Arrange: 3-row SA results — EXP_GUAR (True), EXP_PLAIN (False), EXP_NULL (null).
+        Arrange: the 4-row physical fixture.
         Act:     aggregate() through OutputAggregator.
-        Assert:  post_crm_summary CORPORATE row total_ead == 2_150_000, count == 3.
+        Assert:  CORPORATE total_ead=2_150_000 count=3;
+                 CENTRAL_GOVT_CENTRAL_BANK total_ead=600_000 count=1.
         """
-        # Arrange
-        sa_results = build_sa_results()
+        result = _aggregate(aggregator, crr_config)
 
-        # Act
-        result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY_IRB,
-            slotting_results=EMPTY_SLOTTING,
-            equity_bundle=None,
-            config=crr_config,
-        )
+        assert result.summary_by_class is not None
+        summary = result.summary_by_class.collect()
+        corp = summary.filter(pl.col("exposure_class") == "CORPORATE")
+        sov = summary.filter(pl.col("exposure_class") == "CENTRAL_GOVT_CENTRAL_BANK")
 
-        # Assert
-        assert result.post_crm_summary is not None
-        summary_df = result.post_crm_summary.collect()
-        corp_rows = summary_df.filter(pl.col("reporting_exposure_class") == "CORPORATE")
-        assert len(corp_rows) == 1, (
-            f"Expected 1 CORPORATE row in post_crm_summary but found {len(corp_rows)}"
-        )
-        assert corp_rows["total_ead"][0] == pytest.approx(POST_CRM_CORPORATE_TOTAL_EAD), (
-            f"Expected CORPORATE total_ead={POST_CRM_CORPORATE_TOTAL_EAD} "
-            f"but got {corp_rows['total_ead'][0]}. "
-            "EXP_NULL (750_000) or EXP_GUAR unguaranteed (400_000) may be missing."
-        )
-        assert corp_rows["exposure_count"][0] == POST_CRM_CORPORATE_EXPOSURE_COUNT, (
-            f"Expected CORPORATE exposure_count={POST_CRM_CORPORATE_EXPOSURE_COUNT} "
-            f"but got {corp_rows['exposure_count'][0]}"
-        )
+        assert corp["total_ead"][0] == pytest.approx(CORPORATE_TOTAL_EAD)
+        assert corp["exposure_count"][0] == CORPORATE_EXPOSURE_COUNT
+        assert sov["total_ead"][0] == pytest.approx(SOVEREIGN_TOTAL_EAD)
+        assert sov["exposure_count"][0] == SOVEREIGN_EXPOSURE_COUNT
 
-    def test_pre_crm_summary_corporate_total_ead_unaffected(
+    def test_ledger_total_ead_is_exact(
         self,
         aggregator: OutputAggregator,
         crr_config: CalculationConfig,
     ) -> None:
-        """pre_crm_summary total_ead must equal 2_750_000 regardless of the null fix.
+        """Control: the ledger's total EAD — nothing dropped, nothing doubled.
 
-        This is a control assertion: pre-CRM figures come from the original results
-        frame and are not affected by the is_guaranteed null-filter bug.
-
-        Arrange: 3-row SA results — EXP_GUAR (True), EXP_PLAIN (False), EXP_NULL (null).
+        Arrange: the 4-row physical fixture (total EAD 2_750_000).
         Act:     aggregate() through OutputAggregator.
-        Assert:  pre_crm_summary CORPORATE total_ead == 2_750_000.
+        Assert:  sum(reporting_ead) == sum(ead_final) == 2_750_000 and the
+                 summary buckets tie to the same total.
         """
-        # Arrange
-        sa_results = build_sa_results()
+        result = _aggregate(aggregator, crr_config)
 
-        # Act
-        result = aggregator.aggregate(
-            sa_results=sa_results,
-            irb_results=EMPTY_IRB,
-            slotting_results=EMPTY_SLOTTING,
-            equity_bundle=None,
-            config=crr_config,
-        )
+        df = result.results.collect()
+        assert df["reporting_ead"].sum() == pytest.approx(TOTAL_LEDGER_EAD)
+        assert df["ead_final"].sum() == pytest.approx(TOTAL_LEDGER_EAD)
 
-        # Assert
-        assert result.pre_crm_summary is not None
-        pre_crm_df = result.pre_crm_summary.collect()
-        corp_rows = pre_crm_df.filter(pl.col("pre_crm_exposure_class") == "CORPORATE")
-        assert len(corp_rows) == 1, (
-            f"Expected 1 CORPORATE row in pre_crm_summary but found {len(corp_rows)}"
-        )
-        assert corp_rows["total_ead"][0] == pytest.approx(PRE_CRM_TOTAL_EAD), (
-            f"Expected CORPORATE pre_crm total_ead={PRE_CRM_TOTAL_EAD} "
-            f"but got {corp_rows['total_ead'][0]}"
-        )
+        assert result.summary_by_class is not None
+        summary = result.summary_by_class.collect()
+        assert summary["total_ead"].sum() == pytest.approx(TOTAL_LEDGER_EAD)
