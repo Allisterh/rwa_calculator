@@ -8,11 +8,12 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator, COREPTemplateBundle
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
 from rwa_calc.reporting.corep.templates import (
     B31_C08_07_ROWS,
     CRR_C08_07_ROWS,
 )
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 
 def _irb_scope_of_use_results() -> pl.LazyFrame:
@@ -201,13 +202,13 @@ class TestC0807Generation:
     """Tests for C 08.07 / OF 08.07 generation logic."""
 
     def test_c0807_produces_output(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         assert bundle.c08_07 is not None
         assert isinstance(bundle.c08_07, pl.DataFrame)
 
     def test_c0807_crr_has_correct_column_count(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="CRR")
         df = bundle.c08_07
         assert df is not None
@@ -215,7 +216,7 @@ class TestC0807Generation:
         assert len(df.columns) == 7
 
     def test_c0807_b31_has_correct_column_count(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -223,20 +224,20 @@ class TestC0807Generation:
         assert len(df.columns) == 20
 
     def test_c0807_crr_has_17_rows(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         assert bundle.c08_07 is not None
         assert len(bundle.c08_07) == 17
 
     def test_c0807_b31_has_11_rows(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         assert bundle.c08_07 is not None
         assert len(bundle.c08_07) == 11
 
     def test_c0807_none_for_sa_only(self) -> None:
         """Returns None when no IRB or SA data (empty results)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         empty = pl.LazyFrame(
             schema={
                 "exposure_reference": pl.String,
@@ -251,7 +252,7 @@ class TestC0807Generation:
 
     def test_c0807_none_for_missing_columns(self) -> None:
         """Returns None with error when required columns missing."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         no_ead = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -263,7 +264,7 @@ class TestC0807Generation:
         assert any("C 08.07" in e for e in bundle.errors)
 
     def test_c0807_has_row_ref_and_row_name(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -276,7 +277,7 @@ class TestC0807ColumnValues:
 
     def test_corporate_irb_ead(self) -> None:
         """Col 0010 (IRB EAD) for corporate = 5000."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -285,7 +286,7 @@ class TestC0807ColumnValues:
 
     def test_corporate_total_ead(self) -> None:
         """Col 0020 (total EAD) for corporate = 5000 + 3000 = 8000."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -294,7 +295,7 @@ class TestC0807ColumnValues:
 
     def test_corporate_sa_pct(self) -> None:
         """Col 0030 (SA %) for corporate = 3000/8000 * 100 = 37.5%."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -303,7 +304,7 @@ class TestC0807ColumnValues:
 
     def test_corporate_irb_pct(self) -> None:
         """Col 0050 (IRB %) for corporate = 5000/8000 * 100 = 62.5%."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -312,7 +313,7 @@ class TestC0807ColumnValues:
 
     def test_institution_fully_irb(self) -> None:
         """Institution is 100% IRB: SA%=0, IRB%=100."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -323,7 +324,7 @@ class TestC0807ColumnValues:
 
     def test_retail_mortgage_fully_sa(self) -> None:
         """Retail mortgage is 100% SA: IRB EAD=0, SA%=100."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -334,7 +335,7 @@ class TestC0807ColumnValues:
 
     def test_specialised_lending_fully_irb(self) -> None:
         """Specialised lending (slotting) row 0070 is 100% IRB."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -344,7 +345,7 @@ class TestC0807ColumnValues:
 
     def test_total_row_sums(self) -> None:
         """Total row (0170) aggregates all classes correctly."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -358,7 +359,7 @@ class TestC0807ColumnValues:
 
     def test_retail_aggregate_row(self) -> None:
         """CRR row 0090 (Retail) aggregates mortgage + QRRE + other."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -369,7 +370,7 @@ class TestC0807ColumnValues:
 
     def test_equity_row(self) -> None:
         """Equity row (0150) shows 100% SA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -380,7 +381,7 @@ class TestC0807ColumnValues:
 
     def test_rollout_plan_pct_zero(self) -> None:
         """Col 0040 (roll-out plan %) is always 0 — not tracked in pipeline."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -393,7 +394,7 @@ class TestC0807B31Features:
 
     def test_b31_total_rwea(self) -> None:
         """Col 0060 (total RWEA) present and correct under B31."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -403,7 +404,7 @@ class TestC0807B31Features:
 
     def test_b31_irb_rwea(self) -> None:
         """Col 0150 (IRB RWEA) correct under B31."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -413,7 +414,7 @@ class TestC0807B31Features:
 
     def test_b31_sa_rwea_other(self) -> None:
         """Col 0140 (SA RWEA: other) = total SA RWEA when no sa_use_reason."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -423,7 +424,7 @@ class TestC0807B31Features:
 
     def test_b31_materiality_columns_null_for_total(self) -> None:
         """Materiality cols 0160-0180 are null (requires institutional config)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -434,7 +435,7 @@ class TestC0807B31Features:
 
     def test_b31_materiality_row_present(self) -> None:
         """B31 has an aggregate immateriality % row (0280)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -443,7 +444,7 @@ class TestC0807B31Features:
 
     def test_b31_corporate_class_row(self) -> None:
         """B31 row 0200 (Corporate — other) maps to corporate class."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -453,7 +454,7 @@ class TestC0807B31Features:
 
     def test_b31_sa_breakdown_cols_zero_without_reason(self) -> None:
         """SA RWEA breakdown cols 0070-0130 are 0 without sa_use_reason data."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -463,7 +464,7 @@ class TestC0807B31Features:
 
     def test_b31_rwea_additive(self) -> None:
         """Col 0060 = sum of SA RWEA breakdown (0070-0140) + IRB RWEA (0150)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None
@@ -486,7 +487,7 @@ class TestC0807EdgeCases:
 
     def test_c0807_single_irb_class(self) -> None:
         """Works with a single IRB class."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -504,7 +505,7 @@ class TestC0807EdgeCases:
 
     def test_c0807_all_sa(self) -> None:
         """All SA exposures: IRB EAD = 0, IRB% = 0 everywhere."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1", "E2"],
@@ -524,7 +525,7 @@ class TestC0807EdgeCases:
 
     def test_c0807_without_rwa_column(self) -> None:
         """Works even when rwa_final column is absent (CRR only needs EAD)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -538,7 +539,7 @@ class TestC0807EdgeCases:
 
     def test_c0807_zero_ead_class(self) -> None:
         """Class with zero total EAD has 0% for both SA and IRB."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -557,7 +558,7 @@ class TestC0807EdgeCases:
 
     def test_c0807_preserves_row_order(self) -> None:
         """Rows are emitted in the order defined by the template."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results())
         df = bundle.c08_07
         assert df is not None
@@ -567,7 +568,7 @@ class TestC0807EdgeCases:
 
     def test_c0807_b31_preserves_row_order(self) -> None:
         """B31 rows are emitted in the order defined by the template."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_scope_of_use_results(), framework="BASEL_3_1")
         df = bundle.c08_07
         assert df is not None

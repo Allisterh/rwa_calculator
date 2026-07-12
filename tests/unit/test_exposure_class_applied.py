@@ -29,7 +29,7 @@ from rwa_calc.engine.aggregator.aggregator import (
     _add_exposure_class_applied,
     _add_post_crm_reporting_class,
 )
-from rwa_calc.reporting.corep.generator import COREPGenerator
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 # =============================================================================
 # Aggregator helper — _add_exposure_class_applied
@@ -323,17 +323,17 @@ class TestC07BucketsOnAppliedClass:
 
     def test_defaulted_sheet_receives_sa_row(self) -> None:
         """Defaulted SA exposure lands in the 'Exposures in default' sheet."""
-        bundle = COREPGenerator().generate_from_lazyframe(_sa_results_with_applied())
+        bundle = LedgerShimCorepGenerator().generate_from_lazyframe(_sa_results_with_applied())
         assert "defaulted" in bundle.c07_00
         assert _total_ev(bundle.c07_00["defaulted"]) == pytest.approx(800.0)
 
     def test_sme_managed_as_retail_lands_in_retail_sheet(self) -> None:
         """SME managed as retail is reported under the Retail sheet."""
-        bundle = COREPGenerator().generate_from_lazyframe(_sa_results_with_applied())
+        bundle = LedgerShimCorepGenerator().generate_from_lazyframe(_sa_results_with_applied())
         assert "retail_other" in bundle.c07_00
         assert _total_ev(bundle.c07_00["retail_other"]) == pytest.approx(500.0)
 
     def test_corporate_sheet_excludes_moved_rows(self) -> None:
         """The corporate sheet no longer double-counts the defaulted/retail rows."""
-        bundle = COREPGenerator().generate_from_lazyframe(_sa_results_with_applied())
+        bundle = LedgerShimCorepGenerator().generate_from_lazyframe(_sa_results_with_applied())
         assert _total_ev(bundle.c07_00["corporate"]) == pytest.approx(1000.0)

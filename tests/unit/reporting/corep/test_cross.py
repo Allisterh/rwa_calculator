@@ -12,7 +12,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator, COREPTemplateBundle
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 from tests.unit.reporting.corep._builders import (
     _combined_results,
     _get_total_row,
@@ -440,7 +441,7 @@ class TestCombinedGeneration:
 
     def test_all_templates_generated(self) -> None:
         """All three template dicts are non-empty for combined data."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_combined_results())
 
         assert len(bundle.c07_00) > 0
@@ -449,7 +450,7 @@ class TestCombinedGeneration:
 
     def test_sa_and_irb_separated(self) -> None:
         """C 07.00 only has SA data; C 08.01 only has IRB data."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_combined_results())
 
         # Sum EAD across all SA classes
@@ -464,13 +465,13 @@ class TestCombinedGeneration:
 
     def test_bundle_framework_stored(self) -> None:
         """Framework is stored in the template bundle."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_combined_results(), framework="BASEL_3_1")
         assert bundle.framework == "BASEL_3_1"
 
     def test_bundle_errors_empty_on_success(self) -> None:
         """No errors for well-formed input data (geo info messages are acceptable)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_combined_results())
         # C 09.01/09.02 emit info messages when cp_country_code is absent
         non_geo_errors = [e for e in bundle.errors if "C09" not in e]
@@ -478,7 +479,7 @@ class TestCombinedGeneration:
 
     def test_framework_affects_column_set(self) -> None:
         """CRR and Basel 3.1 produce different column sets."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         crr = gen.generate_from_lazyframe(_sa_results(), framework="CRR")
         b31 = gen.generate_from_lazyframe(_sa_results(), framework="BASEL_3_1")
 
@@ -500,7 +501,7 @@ class TestExcelExport:
 
     def test_export_creates_file(self, tmp_path: Path) -> None:
         """COREP export creates an Excel file."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_combined_results())
 
         output = tmp_path / "corep.xlsx"
@@ -513,7 +514,7 @@ class TestExcelExport:
 
     def test_export_has_per_class_sheets(self, tmp_path: Path) -> None:
         """COREP Excel workbook has per-class sheets."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_combined_results())
 
         output = tmp_path / "corep.xlsx"
@@ -529,7 +530,7 @@ class TestExcelExport:
 
     def test_export_round_trip_c07(self, tmp_path: Path) -> None:
         """C 07.00 data survives Excel round-trip."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         output = tmp_path / "corep.xlsx"
@@ -548,7 +549,7 @@ class TestExcelExport:
         denominator in an empty class segment); xlsxwriter rejects NaN/Inf in
         write_number(), so they must become blank rather than abort the export.
         """
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = COREPTemplateBundle(
             c07_00={"corporate": pl.DataFrame({"row": ["Avg RW"], "value": [float("inf")]})},
             c08_01={},
@@ -569,7 +570,7 @@ class TestExcelExport:
 
     def test_export_writes_readable_name_banner_above_refs(self, tmp_path: Path) -> None:
         """The COREP Excel export bands readable column names above the ref codes."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = COREPTemplateBundle(
             c07_00={
                 "corporate": pl.DataFrame(
@@ -604,7 +605,7 @@ class TestExposureTypeRows:
 
     def test_c07_on_bs_row_populated(self) -> None:
         """Row 0070 (on-BS) aggregates on-balance-sheet exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_bs_split())
 
         corp = bundle.c07_00["corporate"]
@@ -614,7 +615,7 @@ class TestExposureTypeRows:
 
     def test_c07_off_bs_row_populated(self) -> None:
         """Row 0080 (off-BS) aggregates off-balance-sheet exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_bs_split())
 
         corp = bundle.c07_00["corporate"]
@@ -624,7 +625,7 @@ class TestExposureTypeRows:
 
     def test_c07_on_plus_off_equals_total(self) -> None:
         """On-BS EAD + off-BS EAD = total EAD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_bs_split())
 
         corp = bundle.c07_00["corporate"]
@@ -635,7 +636,7 @@ class TestExposureTypeRows:
 
     def test_c07_ccr_rows_null(self) -> None:
         """CCR rows (0090-0130) remain null — CCR not implemented."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_bs_split())
 
         corp = bundle.c07_00["corporate"]
@@ -646,7 +647,7 @@ class TestExposureTypeRows:
 
     def test_c0801_on_bs_row_populated(self) -> None:
         """C 08.01 row 0020 (on-BS) is populated when bs_type available."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_phase2_cols())
 
         corp = bundle.c08_01["corporate"]
@@ -656,7 +657,7 @@ class TestExposureTypeRows:
 
     def test_c07_section2_null_without_bs_type(self) -> None:
         """Section 2 rows are null when bs_type column is missing."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())  # no bs_type col
 
         corp = bundle.c07_00["corporate"]
@@ -669,7 +670,7 @@ class TestOfWhichDetailRows:
 
     def test_c07_defaulted_row_populated(self) -> None:
         """Row 0015 (defaulted) is populated when default_status column exists."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols())
 
         corp = bundle.c07_00["corporate"]
@@ -679,7 +680,7 @@ class TestOfWhichDetailRows:
 
     def test_c07_defaulted_row_rwea(self) -> None:
         """Row 0015 RWEA matches defaulted exposures only."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols())
 
         corp = bundle.c07_00["corporate"]
@@ -689,7 +690,7 @@ class TestOfWhichDetailRows:
 
     def test_c07_sme_row_populated(self) -> None:
         """Row 0020 (SME) is populated when sme columns exist."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols())
 
         sme = bundle.c07_00["corporate_sme"]
@@ -699,7 +700,7 @@ class TestOfWhichDetailRows:
 
     def test_c07_defaulted_row_null_without_flag(self) -> None:
         """Row 0015 is null when no defaulted identification columns exist."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())  # no default_status
 
         corp = bundle.c07_00["corporate"]
@@ -708,7 +709,7 @@ class TestOfWhichDetailRows:
 
     def test_c0801_defaulted_ead_col_0125(self) -> None:
         """C 08.01 col 0125 (defaulted EAD) populated from default_status."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_phase2_cols(), framework="BASEL_3_1")
 
         corp = _get_total_row(bundle.c08_01["corporate"])
@@ -717,7 +718,7 @@ class TestOfWhichDetailRows:
 
     def test_c0801_defaulted_rwea_col_0265(self) -> None:
         """C 08.01 col 0265 (defaulted RWEA) populated from default_status."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_phase2_cols(), framework="BASEL_3_1")
 
         corp = _get_total_row(bundle.c08_01["corporate"])
@@ -726,7 +727,7 @@ class TestOfWhichDetailRows:
 
     def test_c0801_defaulted_zero_when_none_defaulted(self) -> None:
         """C 08.01 cols 0125/0265 are 0.0 when no exposures are defaulted."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_phase2_cols(), framework="BASEL_3_1")
 
         inst = _get_total_row(bundle.c08_01["institution"])
@@ -747,7 +748,7 @@ class TestEdgeCases:
                 "rwa_final": [1000.0, 400.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(minimal)
 
         # Should produce C 07.00 per-class output
@@ -770,13 +771,13 @@ class TestEdgeCases:
                 "risk_weight": [1.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(canonical)
         assert len(bundle.c07_00) == 1
 
     def test_sa_only_data(self) -> None:
         """SA-only data produces C 07.00 but empty C 08.01/C 08.02."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         assert len(bundle.c07_00) > 0
@@ -785,7 +786,7 @@ class TestEdgeCases:
 
     def test_irb_only_data(self) -> None:
         """IRB-only data produces C 08.01/C 08.02 but empty C 07.00."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results())
 
         assert bundle.c07_00 == {}
@@ -805,7 +806,7 @@ class TestEdgeCases:
                 "risk_weight": [1.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(single)
 
         assert "corporate" in bundle.c07_00
@@ -815,7 +816,7 @@ class TestEdgeCases:
 
     def test_corporate_sme_separate_from_corporate(self) -> None:
         """corporate_sme gets its own separate template from corporate."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         assert "corporate" in bundle.c07_00
@@ -841,7 +842,7 @@ class TestSubstitutionFlows:
 
     def test_c07_outflow_populated(self) -> None:
         """Col 0090 shows guaranteed portion leaving the class — emitted negative per Annex II §1.3."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_substitution())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -850,7 +851,7 @@ class TestSubstitutionFlows:
 
     def test_c07_inflow_populated(self) -> None:
         """Col 0100 shows guaranteed portion arriving from other classes."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_substitution())
 
         inst = _get_total_row(bundle.c07_00["institution"])
@@ -859,7 +860,7 @@ class TestSubstitutionFlows:
 
     def test_c07_no_flow_class_has_zero(self) -> None:
         """Class with no substitution has 0 outflow and 0 inflow."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_substitution())
 
         retail = _get_total_row(bundle.c07_00["retail_other"])
@@ -868,7 +869,7 @@ class TestSubstitutionFlows:
 
     def test_c07_net_exposure_after_substitution(self) -> None:
         """Col 0110 = net exposure after all CRM deductions (guaranteed outflow removes 500)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_substitution())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -879,7 +880,7 @@ class TestSubstitutionFlows:
 
     def test_c07_outflow_zero_without_substitution_cols(self) -> None:
         """Without pre/post CRM columns, outflow defaults to 0."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -887,7 +888,7 @@ class TestSubstitutionFlows:
 
     def test_c08_guarantee_col_populated(self) -> None:
         """C 08.01 col 0040 shows guaranteed_portion sum."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_substitution())
 
         corp = _get_total_row(bundle.c08_01["corporate"])
@@ -896,7 +897,7 @@ class TestSubstitutionFlows:
 
     def test_c08_outflow_populated(self) -> None:
         """C 08.01 col 0070 shows guaranteed portion leaving the class."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_substitution())
 
         corp = _get_total_row(bundle.c08_01["corporate"])
@@ -904,7 +905,7 @@ class TestSubstitutionFlows:
 
     def test_c08_inflow_populated(self) -> None:
         """C 08.01 col 0080 shows guaranteed portion arriving from other classes."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_substitution())
 
         inst = _get_total_row(bundle.c08_01["institution"])
@@ -912,7 +913,7 @@ class TestSubstitutionFlows:
 
     def test_c08_net_after_substitution(self) -> None:
         """C 08.01 col 0090 = 0020 - 0040 - 0070 + 0080."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_substitution())
 
         corp = _get_total_row(bundle.c08_01["corporate"])
@@ -937,7 +938,7 @@ class TestOnBSNetting:
 
     def test_c07_col_0035_populated_b31(self) -> None:
         """Col 0035 shows summed on_bs_netting_amount for Basel 3.1 — negative per Annex II §1.3."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_netting(), framework="BASEL_3_1")
         corp = _get_total_row(bundle.c07_00["corporate"])
         # SA_CORP_1 has 150 netting, SA_CORP_2 has 0 → total 150; stored as negative deduction
@@ -945,14 +946,14 @@ class TestOnBSNetting:
 
     def test_c07_col_0035_absent_crr(self) -> None:
         """Col 0035 doesn't exist under CRR (no on-BS netting column)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_netting(), framework="CRR")
         corp = _get_total_row(bundle.c07_00["corporate"])
         assert "0035" not in corp.columns
 
     def test_c07_col_0040_includes_netting_b31(self) -> None:
         """Col 0040 is net exposure after provisions and netting deductions."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_netting(), framework="BASEL_3_1")
         corp = _get_total_row(bundle.c07_00["corporate"])
         v_0040 = corp["0040"][0]
@@ -961,14 +962,14 @@ class TestOnBSNetting:
 
     def test_c07_zero_netting_class(self) -> None:
         """Class with no netting exposures reports 0 for col 0035."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_netting(), framework="BASEL_3_1")
         retail = _get_total_row(bundle.c07_00["retail_other"])
         assert retail["0035"][0] == pytest.approx(0.0)
 
     def test_c08_col_0035_populated_b31(self) -> None:
         """C 08.01 col 0035 shows summed on_bs_netting_amount for Basel 3.1."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_netting(), framework="BASEL_3_1")
         corp = _get_total_row(bundle.c08_01["corporate"])
         # IRB_CORP_1 has 300 netting, IRB_CORP_2 has 0 → total 300
@@ -976,14 +977,14 @@ class TestOnBSNetting:
 
     def test_c08_col_0035_absent_crr(self) -> None:
         """C 08.01 col 0035 doesn't exist under CRR."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results_with_netting(), framework="CRR")
         corp = _get_total_row(bundle.c08_01["corporate"])
         assert "0035" not in corp.columns
 
     def test_c07_netting_without_column(self) -> None:
         """Without on_bs_netting_amount in data, col 0035 is None."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         # _sa_results() does not have on_bs_netting_amount
         bundle = gen.generate_from_lazyframe(_sa_results(), framework="BASEL_3_1")
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -1000,7 +1001,7 @@ class TestEquityTransitionalRows:
 
     def test_sa_higher_risk_row(self) -> None:
         """Row 0371: SA transitional, higher risk."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_equity_transitional(), framework="BASEL_3_1"
         )
@@ -1011,7 +1012,7 @@ class TestEquityTransitionalRows:
 
     def test_sa_other_equity_row(self) -> None:
         """Row 0372: SA transitional, other equity."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_equity_transitional(), framework="BASEL_3_1"
         )
@@ -1022,7 +1023,7 @@ class TestEquityTransitionalRows:
 
     def test_irb_higher_risk_row(self) -> None:
         """Row 0373: IRB transitional, higher risk."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_equity_transitional(), framework="BASEL_3_1"
         )
@@ -1033,7 +1034,7 @@ class TestEquityTransitionalRows:
 
     def test_irb_other_equity_row(self) -> None:
         """Row 0374: IRB transitional, other equity."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_equity_transitional(), framework="BASEL_3_1"
         )
@@ -1044,7 +1045,7 @@ class TestEquityTransitionalRows:
 
     def test_equity_rows_absent_crr(self) -> None:
         """Equity transitional rows don't exist under CRR."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_equity_transitional(), framework="CRR"
         )
@@ -1055,7 +1056,7 @@ class TestEquityTransitionalRows:
 
     def test_equity_rows_null_without_column(self) -> None:
         """Without equity_transitional_approach, equity rows are null."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results(), framework="BASEL_3_1")
         corp = bundle.c07_00.get("corporate")
         if corp is not None:
@@ -1069,7 +1070,7 @@ class TestCollateralMethodSplit:
 
     def test_c07_comprehensive_method_columns(self) -> None:
         """C 07.00 cols 0070=0.0, 0080 populated, 0120=0.0 for SA with collateral."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1085,7 +1086,7 @@ class TestCollateralMethodSplit:
 
     def test_c07_vol_mat_adjustment(self) -> None:
         """C 07.00 col 0140 = vol/mat haircut — emitted negative per Annex II §1.3."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1097,7 +1098,7 @@ class TestCollateralMethodSplit:
 
     def test_c07_fully_adjusted_exposure(self) -> None:
         """C 07.00 col 0150 = fully adjusted exposure value after all CRM deductions."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1109,7 +1110,7 @@ class TestCollateralMethodSplit:
 
     def test_c08_collateral_type_breakdown(self) -> None:
         """C 08.01 cols 0180/0190/0200/0210 populated from per-type collateral values."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _irb_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1127,7 +1128,7 @@ class TestCollateralMethodSplit:
 
     def test_c08_other_funded_protection(self) -> None:
         """C 08.01 cols 0170-0173 are 0.0 (catch-all types not tracked)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _irb_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1141,7 +1142,7 @@ class TestCollateralMethodSplit:
 
     def test_c08_guarantees_unfunded(self) -> None:
         """C 08.01 col 0150 = guaranteed_portion sum."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _irb_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1153,7 +1154,7 @@ class TestCollateralMethodSplit:
 
     def test_c08_other_funded_for_irb(self) -> None:
         """C 08.01 col 0060 = non-financial collateral total."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _irb_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1165,7 +1166,7 @@ class TestCollateralMethodSplit:
 
     def test_no_collateral_class(self) -> None:
         """Columns are 0.0 when no collateral in class (institution has no non-fin)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_collateral_split(), framework="BASEL_3_1"
         )
@@ -1183,7 +1184,7 @@ class TestCreditDerivativeTracking:
 
     def test_c07_guarantee_and_cd_split(self) -> None:
         """C 07.00 col 0050=guarantee only (negative), col 0060=credit derivative only (negative)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_credit_derivatives(), framework="BASEL_3_1"
         )
@@ -1197,7 +1198,7 @@ class TestCreditDerivativeTracking:
 
     def test_c07_institution_no_protection(self) -> None:
         """C 07.00 cols 0050/0060 are 0 for institution with no protection."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_credit_derivatives(), framework="BASEL_3_1"
         )
@@ -1209,7 +1210,7 @@ class TestCreditDerivativeTracking:
 
     def test_c07_col_0110_includes_cd_deduction(self) -> None:
         """C 07.00 col 0110 deducts both guarantees and credit derivatives."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_credit_derivatives(), framework="BASEL_3_1"
         )
@@ -1223,7 +1224,7 @@ class TestCreditDerivativeTracking:
 
     def test_c08_guarantee_and_cd_split(self) -> None:
         """C 08.01 col 0040=guarantee only, col 0050=credit derivative only."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _irb_results_with_credit_derivatives(), framework="BASEL_3_1"
         )
@@ -1237,7 +1238,7 @@ class TestCreditDerivativeTracking:
 
     def test_c08_unfunded_protection_split(self) -> None:
         """C 08.01 col 0150=guarantee, col 0160=credit derivative."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _irb_results_with_credit_derivatives(), framework="BASEL_3_1"
         )
@@ -1251,7 +1252,7 @@ class TestCreditDerivativeTracking:
 
     def test_c08_pre_credit_derivatives_rwea(self) -> None:
         """C 08.01 col 0310 = total RWEA (pre-credit-derivative baseline)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _irb_results_with_credit_derivatives(), framework="BASEL_3_1"
         )
@@ -1263,7 +1264,7 @@ class TestCreditDerivativeTracking:
 
     def test_backward_compat_no_protection_type(self) -> None:
         """Without protection_type column, all guaranteed_portion is col 0050 (guarantees)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         # Use the existing collateral split fixture which has guaranteed_portion but no
         # protection_type column — backward compatibility path
         bundle = gen.generate_from_lazyframe(
@@ -1279,7 +1280,7 @@ class TestCreditDerivativeTracking:
 
     def test_crr_framework_includes_cd_cols(self) -> None:
         """CRR framework also has cols 0050/0060 for C 07.00 — negative per Annex II §1.3."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_credit_derivatives(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         total = corp.filter(pl.col("row_ref") == "0010")
@@ -1385,19 +1386,19 @@ class TestSignConvention:
 
     def _sa_bundle_b31(self) -> COREPTemplateBundle:
         """Generate the OF 07.00 bundle (Basel 3.1 framework)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         return gen.generate_from_lazyframe(
             _sa_results_with_sign_convention_cols(), framework="BASEL_3_1"
         )
 
     def _sa_bundle_crr(self) -> COREPTemplateBundle:
         """Generate the C 07.00 bundle (CRR framework)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         return gen.generate_from_lazyframe(_sa_results_with_sign_convention_cols(), framework="CRR")
 
     def _irb_bundle_b31(self) -> COREPTemplateBundle:
         """Generate the OF 08.01 bundle (Basel 3.1 framework)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         return gen.generate_from_lazyframe(
             _irb_results_with_sign_convention_cols(), framework="BASEL_3_1"
         )

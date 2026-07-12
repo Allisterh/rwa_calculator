@@ -9,6 +9,7 @@ import polars as pl
 import pytest
 
 from rwa_calc.contracts.bundles import OutputFloorSummary
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
 from rwa_calc.reporting.corep.templates import (
     B31_C02_00_COLUMN_REFS,
     B31_C02_00_COLUMNS,
@@ -20,7 +21,6 @@ from rwa_calc.reporting.corep.templates import (
     get_c02_00_columns,
     get_c02_00_row_sections,
 )
-from rwa_calc.reporting.corep.generator import COREPTemplateBundle
 from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 from tests.unit.reporting.corep._builders import (
     _sa_results_with_currency_mismatch,

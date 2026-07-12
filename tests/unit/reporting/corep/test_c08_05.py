@@ -8,7 +8,8 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator, COREPTemplateBundle
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 
 def _irb_pd_backtest_results() -> pl.LazyFrame:
@@ -122,20 +123,20 @@ class TestC0805Generation:
     """Test C 08.05 / OF 08.05 generation from pipeline data."""
 
     def test_generates_per_class_dict(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         assert isinstance(bundle.c08_05, dict)
         assert "corporate" in bundle.c08_05
 
     def test_multi_class_separate_dataframes(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_backtest_multi_class(), framework="CRR")
         assert "corporate" in bundle.c08_05
         assert "institution" in bundle.c08_05
 
     def test_dataframe_has_7_columns(self) -> None:
         """5 data columns + row_ref + row_name = 7."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         assert len(corp.columns) == 7
@@ -151,7 +152,7 @@ class TestC0805Generation:
                 "pd_floored": [0.005],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(sa_data, framework="CRR")
         assert bundle.c08_05 == {}
 
@@ -167,7 +168,7 @@ class TestC0805Generation:
                 "counterparty_reference": ["CP_A", "CP_B"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         # Slotting excluded — only corporate appears
         assert "specialised_lending" not in bundle.c08_05
@@ -178,7 +179,7 @@ class TestC0805PDRangeAssignment:
     """Test PD bucket assignment in C 08.05."""
 
     def test_pd_0_002_in_row_0060(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         row = corp.filter(pl.col("row_ref") == "0060")
@@ -186,7 +187,7 @@ class TestC0805PDRangeAssignment:
         assert row["row_name"][0] == "0.20 to < 0.25%"
 
     def test_pd_0_005_in_row_0080(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -194,7 +195,7 @@ class TestC0805PDRangeAssignment:
         assert row["row_name"][0] == "0.50 to < 0.75%"
 
     def test_pd_1_0_in_default_bucket(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         row = corp.filter(pl.col("row_ref") == "0170")
@@ -202,7 +203,7 @@ class TestC0805PDRangeAssignment:
         assert row["row_name"][0] == "100% (Default)"
 
     def test_empty_buckets_omitted(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # 5 exposures across 5 different PD ranges → 5 rows
@@ -210,7 +211,7 @@ class TestC0805PDRangeAssignment:
 
     def test_b31_allocation_uses_original_pd(self) -> None:
         """Basel 3.1 allocates rows by pd (pre-floor)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="BASEL_3_1")
         corp = bundle.c08_05["corporate"]
         # E1: pd=0.001, should go to row 0040 (0.10 to < 0.15%)
@@ -219,7 +220,7 @@ class TestC0805PDRangeAssignment:
 
     def test_crr_allocation_uses_floored_pd(self) -> None:
         """CRR allocates rows by pd_floored."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # E1: pd_floored=0.002, should go to row 0060 (0.20 to < 0.25%)
@@ -232,7 +233,7 @@ class TestC0805ColumnValues:
 
     def test_col_0010_arithmetic_avg_pd(self) -> None:
         """Col 0010 is arithmetic average PD (not exposure-weighted)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # E2 alone in row 0080 (PD 0.005): arithmetic avg = 0.005
@@ -240,7 +241,7 @@ class TestC0805ColumnValues:
         assert row["0010"][0] == pytest.approx(0.005)
 
     def test_col_0010_default_bucket(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         row = corp.filter(pl.col("row_ref") == "0170")
@@ -248,7 +249,7 @@ class TestC0805ColumnValues:
 
     def test_col_0020_obligor_count(self) -> None:
         """Col 0020 is number of obligors."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # E2 alone in row 0080: 1 obligor (CP_B)
@@ -257,7 +258,7 @@ class TestC0805ColumnValues:
 
     def test_col_0030_defaults_count(self) -> None:
         """Col 0030 is count of defaulted obligors."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # Default bucket (row 0170) has 1 defaulted exposure (E5)
@@ -265,7 +266,7 @@ class TestC0805ColumnValues:
         assert row["0030"][0] == pytest.approx(1.0)
 
     def test_col_0030_no_defaults_in_non_default_bucket(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # Row 0080 has E2 (not defaulted)
@@ -274,7 +275,7 @@ class TestC0805ColumnValues:
 
     def test_col_0040_observed_default_rate(self) -> None:
         """Col 0040 = defaults / obligors."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # Default bucket (row 0170): 1 default / 1 obligor = 100%
@@ -282,7 +283,7 @@ class TestC0805ColumnValues:
         assert row["0040"][0] == pytest.approx(1.0)
 
     def test_col_0040_zero_default_rate(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # Row 0080: 0 defaults / 1 obligor = 0%
@@ -291,14 +292,14 @@ class TestC0805ColumnValues:
 
     def test_col_0050_historical_rate_fallback(self) -> None:
         """Without historical data, col 0050 = col 0040 (current observed rate)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         row = corp.filter(pl.col("row_ref") == "0170")
         assert row["0050"][0] == row["0040"][0]
 
     def test_col_0050_zero_rate_non_default_bucket(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -306,7 +307,7 @@ class TestC0805ColumnValues:
 
     def test_multi_class_defaults_isolated(self) -> None:
         """Default counts are per exposure class, not global."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_backtest_multi_class(), framework="CRR")
         # Corporate has 1 default (E3, PD=1.0)
         corp = bundle.c08_05["corporate"]
@@ -333,7 +334,7 @@ class TestC0805ColumnValues:
                 "counterparty_reference": ["CP_A", "CP_B", "CP_A"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         corp = bundle.c08_05["corporate"]
         # All 3 in same bucket (0.50 to < 0.75%), but only 2 unique CPs
@@ -346,7 +347,7 @@ class TestC0805B31Features:
 
     def test_b31_col_0010_reports_post_floor_pd(self) -> None:
         """Basel 3.1 col 0010 reports post-input-floor PD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="BASEL_3_1")
         corp = bundle.c08_05["corporate"]
         # E1: allocated to row 0040 by original PD 0.001, but col 0010 reports
@@ -356,7 +357,7 @@ class TestC0805B31Features:
 
     def test_crr_col_0010_reports_floored_pd(self) -> None:
         """CRR col 0010 reports floored PD (same as allocation PD)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         corp = bundle.c08_05["corporate"]
         # E1: allocated to row 0060 by floored PD 0.002, col 0010 = 0.002
@@ -364,7 +365,7 @@ class TestC0805B31Features:
         assert row["0010"][0] == pytest.approx(0.002)
 
     def test_b31_still_5_columns(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="BASEL_3_1")
         corp = bundle.c08_05["corporate"]
         # 5 data + row_ref + row_name = 7
@@ -372,7 +373,7 @@ class TestC0805B31Features:
 
     def test_b31_different_row_count_from_crr(self) -> None:
         """B31 may produce different row counts due to pre-floor PD allocation."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         crr_bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         b31_bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="BASEL_3_1")
         crr_corp = crr_bundle.c08_05["corporate"]
@@ -402,7 +403,7 @@ class TestC0805EdgeCases:
                 "rwa_final": [500.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         assert bundle.c08_05 == {}
 
@@ -419,7 +420,7 @@ class TestC0805EdgeCases:
                 "counterparty_reference": ["CP_A", "CP_B"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         corp = bundle.c08_05["corporate"]
         unassigned = corp.filter(pl.col("row_ref") == "9999")
@@ -444,7 +445,7 @@ class TestC0805EdgeCases:
                 "counterparty_reference": ["CP_A", "CP_B"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         corp = bundle.c08_05["corporate"]
         # Default bucket (row 0170): PD >= 1.0 → 1 default
@@ -465,7 +466,7 @@ class TestC0805EdgeCases:
                 "is_defaulted": [False, False, False],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         corp = bundle.c08_05["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -474,7 +475,7 @@ class TestC0805EdgeCases:
 
     def test_excel_export_prefix_crr(self) -> None:
         """CRR export uses 'C 08.05' prefix."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="CRR")
         assert bundle.framework == "CRR"
         # Verify the c08_05 dict is populated (Excel prefix tested indirectly)
@@ -482,7 +483,7 @@ class TestC0805EdgeCases:
 
     def test_excel_export_prefix_b31(self) -> None:
         """Basel 3.1 export uses 'OF 08.05' prefix."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_backtest_results(), framework="BASEL_3_1")
         assert bundle.framework == "BASEL_3_1"
         assert len(bundle.c08_05) > 0

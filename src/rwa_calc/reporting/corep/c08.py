@@ -11,11 +11,13 @@ Pipeline position:
 
 Cell semantics (recorded decisions, this slice):
 
-- All five dicts key on RAW ``exposure_class`` (== ``reporting_class_origin``
-  for IRB rows — the obligor basis, number-neutral; no applied-class ladder
-  and NO specialised-lending merge, unlike C 07.00). The population is the
-  origin IRB book (F-IRB / A-IRB / slotting); C 08.03/04/05 exclude
-  slotting per template.
+- All five dicts key the sealed ``reporting_class_origin`` (== raw
+  ``exposure_class`` for IRB rows — the obligor basis, number-neutral
+  convergence; no applied-class ladder and NO specialised-lending merge,
+  unlike C 07.00). The population is the origin IRB book keyed on
+  ``reporting_approach_origin`` (F-IRB / A-IRB / slotting); C 08.03/04/05
+  exclude slotting per template. C 08.07 alone keeps the RAW class key
+  (Art. 147 origination taxonomy over the FULL population).
 - C 08.01/02 share one value surface (computed framework-agnostic, filtered
   by each framework's column refs): gross exposures, the CRM waterfall
   0090 = 0020 - 0040 - 0050 - 0060 - 0070 + 0080 over POSITIVE magnitudes,
@@ -177,7 +179,7 @@ def _observed_rate(cells: Mapping[str, float | None], _prior: bool) -> float | N
 
 def _irb_population(results: pl.LazyFrame, cols: set[str]) -> pl.LazyFrame:
     """The IRB book (retired _filter_by_irb_approach): F-IRB/A-IRB/slotting."""
-    approach_col = pick(cols, "approach_applied")
+    approach_col = pick(cols, "reporting_approach_origin")
     if approach_col is None:
         return results.filter(pl.lit(value=False))
     return results.filter(pl.col(approach_col).is_in(list(_IRB_APPROACHES)))
@@ -501,7 +503,7 @@ def _c08_01_row_terms(framework: str, cols: set[str]) -> dict[str, _Terms | None
             elif ref == "0070":
                 terms[ref] = None  # composed via any_of below
             elif ref == "0080":
-                terms[ref] = (("approach_applied", "slotting"),)
+                terms[ref] = (("reporting_approach_origin", "slotting"),)
             elif ref == "0190":
                 terms[ref] = (("c08_unrated_corp", True),)
             elif ref == "0200":
@@ -519,7 +521,7 @@ def generate_c08_01(
     errors: list[str],
 ) -> dict[str, pl.DataFrame]:
     """Execute C 08.01 per obligor-class sheet over the sealed ledger."""
-    ec_col = pick(cols, "exposure_class")
+    ec_col = pick(cols, "reporting_class_origin")
     ead_col = pick(cols, "ead_final")
     rwa_col = pick(cols, "rwa_final", "rwa_post_factor", "rwa")
     if ec_col is None or ead_col is None or rwa_col is None:
@@ -547,8 +549,8 @@ def generate_c08_01(
             # F-IRB/A-IRB (non-slotting) — a two-limb union.
             pred = RowPredicate(
                 any_of=(
-                    RowPredicate(equals=(("approach_applied", "foundation_irb"),)),
-                    RowPredicate(equals=(("approach_applied", "advanced_irb"),)),
+                    RowPredicate(equals=(("reporting_approach_origin", "foundation_irb"),)),
+                    RowPredicate(equals=(("reporting_approach_origin", "advanced_irb"),)),
                 )
             )
             row_preds[row.ref] = pred
@@ -580,7 +582,7 @@ def generate_c08_01(
     )
 
     result: dict[str, pl.DataFrame] = {}
-    for ec in irb_df[ec_col].unique().sort().to_list():
+    for ec in irb_df[ec_col].drop_nulls().unique().sort().to_list():
         class_df = irb_df.filter(pl.col(ec_col) == ec)
         ctx = ReportingContext(substitution_inflow=inflow_map.get(ec, 0.0))
         frame = execute(spec, class_df, ctx)
@@ -603,7 +605,7 @@ def generate_c08_02(
     errors: list[str],
 ) -> dict[str, pl.DataFrame]:
     """Execute C 08.02 per class sheet with data-driven grade/PD-band rows."""
-    ec_col = pick(cols, "exposure_class")
+    ec_col = pick(cols, "reporting_class_origin")
     ead_col = pick(cols, "ead_final")
     rwa_col = pick(cols, "rwa_final", "rwa_post_factor", "rwa")
     pd_col = pick(cols, "pd_floored", "pd")
@@ -624,7 +626,7 @@ def generate_c08_02(
     value_refs = tuple(ref for ref in column_refs if ref != "0005")
 
     result: dict[str, pl.DataFrame] = {}
-    for ec in irb_df[ec_col].unique().sort().to_list():
+    for ec in irb_df[ec_col].drop_nulls().unique().sort().to_list():
         class_df = irb_df.filter(pl.col(ec_col) == ec)
         labels, keyed = _c08_02_keyed(class_df, pd_col, grade_col)
         if not labels:
@@ -721,7 +723,7 @@ def generate_c08_03(
     errors: list[str],
 ) -> dict[str, pl.DataFrame]:
     """Execute C 08.03 per class sheet over sparse PD-range rows."""
-    ec_col = pick(cols, "exposure_class")
+    ec_col = pick(cols, "reporting_class_origin")
     ead_col = pick(cols, "ead_final")
     rwa_col = pick(cols, "rwa_final", "rwa_post_factor", "rwa")
     if ec_col is None or ead_col is None or rwa_col is None:
@@ -741,7 +743,7 @@ def generate_c08_03(
     lgd_col = pick(data_cols, "lgd_floored", "lgd_input")
 
     result: dict[str, pl.DataFrame] = {}
-    for ec in irb_df[ec_col].unique().sort().to_list():
+    for ec in irb_df[ec_col].drop_nulls().unique().sort().to_list():
         class_df = irb_df.filter(pl.col(ec_col) == ec)
         band_rows, banded = _banded_rows(class_df, alloc_pd_col)
         if not band_rows:
@@ -852,7 +854,7 @@ def generate_c08_05(
     errors: list[str],
 ) -> dict[str, pl.DataFrame]:
     """Execute C 08.05 per class sheet (PD back-testing over sparse ranges)."""
-    ec_col = pick(cols, "exposure_class")
+    ec_col = pick(cols, "reporting_class_origin")
     if ec_col is None:
         errors.append("C08.05: Missing required column (exposure_class)")
         return {}
@@ -871,7 +873,7 @@ def generate_c08_05(
     hist_present = "historical_annual_default_rate" in data_cols
 
     result: dict[str, pl.DataFrame] = {}
-    for ec in irb_df[ec_col].unique().sort().to_list():
+    for ec in irb_df[ec_col].drop_nulls().unique().sort().to_list():
         class_df = irb_df.filter(pl.col(ec_col) == ec)
         band_rows, banded = _banded_rows(class_df, alloc_pd_col)
         if not band_rows:
@@ -975,7 +977,7 @@ def generate_c08_04(
     errors: list[str],
 ) -> dict[str, pl.DataFrame]:
     """Execute C 08.04 per class sheet (only the closing-RWEA row 0090)."""
-    ec_col = pick(cols, "exposure_class")
+    ec_col = pick(cols, "reporting_class_origin")
     if ec_col is None:
         errors.append("C08.04: Missing required column (exposure_class)")
         return {}
@@ -994,7 +996,7 @@ def generate_c08_04(
         name="c08_04", rows=rows, column_refs=column_refs, cells=cells, empty_cell="null"
     )
     result: dict[str, pl.DataFrame] = {}
-    for ec in irb_df[ec_col].unique().sort().to_list():
+    for ec in irb_df[ec_col].drop_nulls().unique().sort().to_list():
         class_df = irb_df.filter(pl.col(ec_col) == ec)
         result[ec] = execute(spec, class_df)
     return result
@@ -1025,14 +1027,14 @@ def generate_c08_06(
     if ead_col is None or rwa_col is None:
         errors.append("C08.06: Missing required columns (ead/rwa)")
         return {}
-    if pick(cols, "approach_applied", "approach") is None:
+    if pick(cols, "reporting_approach_origin", "approach") is None:
         errors.append("C08.06: No approach column — cannot identify slotting exposures")
         return {}
-    # The retired dispatch pre-filtered the IRB book on ``approach_applied``
-    # only — an ``approach``-only frame silently yields nothing.
-    if "approach_applied" not in cols:
+    # The retired dispatch pre-filtered the IRB book on the applied
+    # approach only — an ``approach``-only frame silently yields nothing.
+    if "reporting_approach_origin" not in cols:
         return {}
-    slotting_df = results.filter(pl.col("approach_applied") == "slotting").collect()
+    slotting_df = results.filter(pl.col("reporting_approach_origin") == "slotting").collect()
     if slotting_df.height == 0:
         return {}
     if "slotting_category" not in cols:
@@ -1272,7 +1274,10 @@ def generate_c08_07(
     (the retired ``output_floor_config`` gate was dead code).
     """
     ead_col = pick(cols, "ead_final")
-    approach_col = pick(cols, "approach_applied", "approach")
+    approach_col = pick(cols, "reporting_approach_origin", "approach")
+    # Recorded basis: C 08.07 keys the RAW class over the FULL population
+    # (Art. 147 origination taxonomy has no "defaulted" class) — the one
+    # COREP sheet key deliberately NOT retargeted to the applied ladder.
     ec_col = pick(cols, "exposure_class")
     if ead_col is None or approach_col is None or ec_col is None:
         missing = [
@@ -1389,7 +1394,7 @@ def _null_fixed_rows(frame: pl.DataFrame, row_refs: list[str]) -> pl.DataFrame:
 
 def _non_slotting(results: pl.LazyFrame, cols: set[str]) -> pl.LazyFrame:
     irb = _irb_population(results, cols)
-    approach_col = pick(cols, "approach_applied", "approach")
+    approach_col = pick(cols, "reporting_approach_origin", "approach")
     if approach_col is not None:
         return irb.filter(pl.col(approach_col) != "slotting")
     return irb

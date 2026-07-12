@@ -961,6 +961,31 @@ all columns (recorded gap). Remaining convergence (number-neutral): retarget C 0
 09.02 population+class keys onto the sealed names and swap the remaining COREP unit files to
 the shim.
 
+**F9 convergence completion (EXECUTED 2026-07-12, number-neutral — zero golden changes, no
+regen).** C 07.00: sheet key collapsed to the single sealed `reporting_class_origin` (the
+retired `exposure_class_applied`/`exposure_class` ladder — pick census 31 → 30 banked) and
+`c07_population` filters SA on `reporting_approach_origin` (explicit `candidates=` override;
+the kernel default stays `approach_applied` for Pillar 3). C 08: `_irb_population`,
+`_non_slotting`, C 08.06's population gate+filter and C 08.01's approach-term predicates all
+key `reporting_approach_origin`; the five per-class sheet keys (C 08.01–05) key
+`reporting_class_origin` (== raw for the IRB book, probe-verified). **C 08.07 alone keeps the
+RAW `exposure_class` sheet key (recorded basis): its rows are the Art. 147 origination
+taxonomy over the FULL population, which has no "defaulted" class — the applied ladder would
+silently drop defaulted SA rows from their class rows.** C 09.02: `_irb_population` +
+`c09_slotting`'s approach pick key the sealed approach names; all class-equals predicate
+terms and `_class_union`'s default key `reporting_class_origin`. Attribute/derived reads stay
+raw by prior recorded decision (`str.contains("sme")` fallbacks, `_defaulted_expr` ladders,
+substitution-inflow `pre/post_crm_exposure_class`, lgd/sl_type/property_type). New
+sealed-ledger rule surfaced by the shim: the class column always EXISTS on a sealed frame
+(typed-null when sourceless), so the per-class sheet partitions in C 07/C 08.01–05 now
+`drop_nulls()` — a null class key partitions into no sheet, preserving the retired
+missing-column `{}` contract. All 14 remaining COREP unit files swapped to
+`LedgerShimCorepGenerator` (incl. `test_exposure_class_applied.py`,
+`test_sa_sl_classification.py`; the pipeline-fed acceptance files stay on the real
+generator). The shim `__new__`s gained proper return annotations (`-> COREPGenerator` /
+`-> Pillar3Generator`), clearing the entire shim-typing diagnostic family (ty 125 → 6
+repo-wide; the 6 predate Phase 7).
+
 
 ### G1 — The grain question (the central decision)
 **Recommendation: adopt the per-leg frame as the canonical two-leg substitution ledger; do NOT

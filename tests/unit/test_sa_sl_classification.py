@@ -40,7 +40,7 @@ from rwa_calc.engine.entity_class_maps import (
     ENTITY_TYPE_TO_SA_CLASS,
 )
 from rwa_calc.engine.sa.calculator import SACalculator
-from rwa_calc.reporting.corep.generator import COREPGenerator
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 from tests.fixtures.resolved_bundle import make_counterparty_lookup, make_resolved_bundle
 
 # =============================================================================
@@ -391,7 +391,7 @@ class TestCOREPSLMergedIntoCorporate:
 
     def test_no_separate_sl_key_in_c07(self) -> None:
         """C 07.00 dict should NOT have a 'specialised_lending' key."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         data = pl.LazyFrame(
             {
                 "exposure_reference": ["CORP_1", "SL_1"],
@@ -410,7 +410,7 @@ class TestCOREPSLMergedIntoCorporate:
 
     def test_sl_ead_included_in_corporate_total(self) -> None:
         """Corporate total row includes both regular corporate and SL EAD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         data = pl.LazyFrame(
             {
                 "exposure_reference": ["CORP_1", "SL_1"],
@@ -431,7 +431,7 @@ class TestCOREPSLMergedIntoCorporate:
 
     def test_sl_rwa_included_in_corporate_total(self) -> None:
         """Corporate total row includes SL RWA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         data = pl.LazyFrame(
             {
                 "exposure_reference": ["CORP_1", "SL_1"],
@@ -452,7 +452,7 @@ class TestCOREPSLMergedIntoCorporate:
 
     def test_sl_only_no_regular_corporate(self) -> None:
         """SL-only SA data still appears under 'corporate' key."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         data = pl.LazyFrame(
             {
                 "exposure_reference": ["SL_1"],
@@ -471,7 +471,7 @@ class TestCOREPSLMergedIntoCorporate:
 
     def test_irb_sl_still_separate_class(self) -> None:
         """IRB SL stays as 'specialised_lending' in C 08.01 (Art. 147(8))."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         data = pl.LazyFrame(
             {
                 "exposure_reference": ["SL_IRB_1"],

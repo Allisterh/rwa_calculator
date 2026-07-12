@@ -457,6 +457,7 @@ class TestC0901EdgeCases:
         assert bundle.c09_01 == {}
         assert bundle.c09_02 == {}
 
+
 class TestC0901DefaultedAllocation:
     """Annex II C 09.1 recorded fix (2026-07-12): primary columns follow the
     APPLIED Art. 112 ladder (defaulted -> row 0100, as C 07.00); column

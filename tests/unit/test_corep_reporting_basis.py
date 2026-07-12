@@ -29,7 +29,8 @@ import pytest
 
 from rwa_calc.contracts.config import OutputFloorConfig
 from rwa_calc.domain.enums import InstitutionType, ReportingBasis
-from rwa_calc.reporting.corep.generator import COREPGenerator, COREPTemplateBundle
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 # =============================================================================
 # Fixtures
@@ -129,7 +130,7 @@ class TestCOREPTemplateBundleMetadata:
         assert bundle.institution_type is None
 
     def test_bundle_reporting_basis_from_config(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = _applicable_floor_config()
         bundle = gen.generate_from_lazyframe(
             _b31_sa_results(),
@@ -139,7 +140,7 @@ class TestCOREPTemplateBundleMetadata:
         assert bundle.reporting_basis == "individual"
 
     def test_bundle_institution_type_from_config(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = _applicable_floor_config()
         bundle = gen.generate_from_lazyframe(
             _b31_sa_results(),
@@ -149,7 +150,7 @@ class TestCOREPTemplateBundleMetadata:
         assert bundle.institution_type == "standalone_uk"
 
     def test_bundle_rfb_sub_consolidated(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = _rfb_sub_con_config()
         bundle = gen.generate_from_lazyframe(
             _b31_sa_results(),
@@ -160,7 +161,7 @@ class TestCOREPTemplateBundleMetadata:
         assert bundle.institution_type == "ring_fenced_body"
 
     def test_bundle_none_config_preserves_none_metadata(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_sa_results(),
             framework="BASEL_3_1",
@@ -169,7 +170,7 @@ class TestCOREPTemplateBundleMetadata:
         assert bundle.institution_type is None
 
     def test_bundle_crr_no_metadata(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = _applicable_floor_config()
         bundle = gen.generate_from_lazyframe(
             _crr_results(),
@@ -190,13 +191,13 @@ class TestOF0201FloorApplicability:
 
     def test_of_02_01_none_for_crr(self) -> None:
         """CRR: OF 02.01 is always None."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_crr_results(), framework="CRR")
         assert bundle.of_02_01 is None
 
     def test_of_02_01_present_for_applicable_entity(self) -> None:
         """Applicable B31 entity with floor columns → OF 02.01 generated."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -206,7 +207,7 @@ class TestOF0201FloorApplicability:
 
     def test_of_02_01_none_for_exempt_entity(self) -> None:
         """Exempt entity (international subsidiary) → OF 02.01 skipped."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -216,7 +217,7 @@ class TestOF0201FloorApplicability:
 
     def test_of_02_01_present_when_no_config(self) -> None:
         """No config → backward compatible, OF 02.01 generated."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -225,7 +226,7 @@ class TestOF0201FloorApplicability:
 
     def test_of_02_01_rfb_sub_consolidated_applicable(self) -> None:
         """RFB on sub-consolidated basis → floor applicable → OF 02.01 generated."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -235,7 +236,7 @@ class TestOF0201FloorApplicability:
 
     def test_of_02_01_rfb_individual_exempt(self) -> None:
         """RFB on individual basis → floor not applicable → OF 02.01 skipped."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = OutputFloorConfig.basel_3_1(
             institution_type=InstitutionType.RING_FENCED_BODY,
             reporting_basis=ReportingBasis.INDIVIDUAL,
@@ -269,7 +270,7 @@ class TestOF0200FloorIndicatorRows:
 
     def test_exempt_entity_floor_not_activated(self) -> None:
         """Exempt entity: row 0034 (floor activated) = 0.0."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -281,7 +282,7 @@ class TestOF0200FloorIndicatorRows:
 
     def test_exempt_entity_multiplier_zero(self) -> None:
         """Exempt entity: row 0035 (multiplier) = 0.0."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -293,7 +294,7 @@ class TestOF0200FloorIndicatorRows:
 
     def test_exempt_entity_of_adj_zero(self) -> None:
         """Exempt entity: row 0036 (OF-ADJ) = 0.0."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -305,7 +306,7 @@ class TestOF0200FloorIndicatorRows:
 
     def test_applicable_entity_floor_activated(self) -> None:
         """Applicable entity with binding floor: row 0034 = 1.0."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -318,7 +319,7 @@ class TestOF0200FloorIndicatorRows:
 
     def test_no_config_backward_compat(self) -> None:
         """No config → floor is assumed applicable (backward compat)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -330,7 +331,7 @@ class TestOF0200FloorIndicatorRows:
 
     def test_crr_no_floor_indicator_rows(self) -> None:
         """CRR: rows 0034-0036 not present in C 02.00."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _crr_results(),
             framework="CRR",
@@ -341,7 +342,7 @@ class TestOF0200FloorIndicatorRows:
 
     def test_exempt_all_three_indicator_rows_zero(self) -> None:
         """Exempt entity: all three indicator rows consistently zero."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = OutputFloorConfig.basel_3_1(
             institution_type=InstitutionType.NON_RING_FENCED,
             reporting_basis=ReportingBasis.SUB_CONSOLIDATED,
@@ -369,7 +370,7 @@ class TestC0807MaterialityColumns:
 
     def test_materiality_null_without_config(self) -> None:
         """No config: materiality columns are None (backward compat)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -383,7 +384,7 @@ class TestC0807MaterialityColumns:
 
     def test_materiality_null_for_non_consolidated(self) -> None:
         """Individual basis: materiality columns are None."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -401,7 +402,7 @@ class TestC0807MaterialityColumns:
         When the institutional config provides materiality data, these would
         be populated. For now, they are in scope but not computable.
         """
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -418,7 +419,7 @@ class TestC0807MaterialityColumns:
 
     def test_crr_no_materiality_columns(self) -> None:
         """CRR: C 08.07 has 5 columns, no materiality."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),  # using IRB data for CRR too
             framework="CRR",
@@ -439,7 +440,7 @@ class TestBackwardCompatibility:
 
     def test_generate_from_lazyframe_no_config(self) -> None:
         """No config: bundle generated without errors."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -450,7 +451,7 @@ class TestBackwardCompatibility:
 
     def test_of_02_01_present_without_config(self) -> None:
         """No config: OF 02.01 still generated (backward compat)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -459,7 +460,7 @@ class TestBackwardCompatibility:
 
     def test_c_02_00_floor_rows_present_without_config(self) -> None:
         """No config: floor indicator rows still present."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _b31_irb_results(),
             framework="BASEL_3_1",
@@ -496,7 +497,7 @@ class TestEntityTypeCombinations:
         expect_applicable: bool,
     ) -> None:
         """OF 02.01 presence matches floor applicability."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = OutputFloorConfig.basel_3_1(
             institution_type=inst_type,
             reporting_basis=basis,
@@ -529,7 +530,7 @@ class TestEntityTypeCombinations:
         expect_applicable: bool,
     ) -> None:
         """Row 0034 reflects floor activation only for applicable entities."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         config = OutputFloorConfig.basel_3_1(
             institution_type=inst_type,
             reporting_basis=basis,

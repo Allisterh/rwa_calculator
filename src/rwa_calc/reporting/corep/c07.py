@@ -182,7 +182,9 @@ def generate_c07(
     column records "C07: Missing exposure_class column"; an empty SA
     population yields ``{}``.
     """
-    ec_col = pick(cols, "exposure_class_applied", "exposure_class")
+    # Phase 7 convergence: the sealed obligor applied class, single name
+    # (== the retired exposure_class_applied/exposure_class ladder).
+    ec_col = pick(cols, "reporting_class_origin")
     ead_col = pick(cols, "ead_final")
     rwa_col = pick(cols, "rwa_final", "rwa_post_factor", "rwa")
     if ec_col is None or ead_col is None or rwa_col is None:
@@ -211,7 +213,9 @@ def generate_c07(
     spec = _build_spec(framework, data_cols, ead_col, rwa_col, row_terms)
 
     result: dict[str, pl.DataFrame] = {}
-    for ec in sa_df[ec_col].unique().sort().to_list():
+    # Sealed-ledger rule: the class column always exists; a null key
+    # (no source on a synthetic frame) partitions into NO sheet.
+    for ec in sa_df[ec_col].drop_nulls().unique().sort().to_list():
         class_df = sa_df.filter(pl.col(ec_col) == ec)
         ctx = ReportingContext(substitution_inflow=inflow_map.get(ec, 0.0))
         frame = execute(spec, class_df, ctx)
@@ -224,7 +228,9 @@ def generate_c07(
 def c07_population(results: pl.LazyFrame, cols: set[str]) -> pl.LazyFrame:
     """The C 07.00 population: standardised book plus FCCM SFT synthetic rows
     (SA-CCR derivatives excluded — they report under C 34)."""
-    sa = filter_by_approach(results, "standardised", cols)
+    sa = filter_by_approach(
+        results, "standardised", cols, candidates=("reporting_approach_origin",)
+    )
     if "risk_type" not in cols:
         return sa
     sft = results.filter(pl.col("risk_type") == "CCR_SFT")

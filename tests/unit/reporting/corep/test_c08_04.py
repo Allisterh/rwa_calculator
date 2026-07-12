@@ -8,7 +8,7 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 
 def _irb_flow_results() -> pl.LazyFrame:
@@ -149,25 +149,25 @@ class TestC0804Generation:
     """Test C 08.04 generation — per-class DataFrames with correct structure."""
 
     def test_generates_per_class(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         assert isinstance(bundle.c08_04, dict)
         assert len(bundle.c08_04) > 0
 
     def test_multiple_classes(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         # corporate, corporate_sme, institution, retail_mortgage
         assert len(bundle.c08_04) == 4
 
     def test_each_class_has_9_rows(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         for ec, df in bundle.c08_04.items():
             assert len(df) == 9, f"{ec} has {len(df)} rows instead of 9"
 
     def test_each_class_has_correct_columns(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         for _ec, df in bundle.c08_04.items():
             assert "row_ref" in df.columns
@@ -176,7 +176,7 @@ class TestC0804Generation:
 
     def test_empty_irb_returns_empty_dict(self) -> None:
         """No IRB data produces empty dict."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         sa_only = pl.LazyFrame(
             {
                 "exposure_reference": ["SA1"],
@@ -195,7 +195,7 @@ class TestC0804ClosingRWEA:
 
     def test_closing_rwea_corporate(self) -> None:
         """Corporate closing RWEA = sum of corporate+corporate_sme RWEA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         closing = corp.filter(pl.col("row_ref") == "0090")
@@ -203,21 +203,21 @@ class TestC0804ClosingRWEA:
         assert closing["0010"][0] == pytest.approx(4550.0, rel=1e-4)
 
     def test_closing_rwea_institution(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         inst = bundle.c08_04["institution"]
         closing = inst.filter(pl.col("row_ref") == "0090")
         assert closing["0010"][0] == pytest.approx(600.0, rel=1e-4)
 
     def test_closing_rwea_retail(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         retail = bundle.c08_04["retail_mortgage"]
         closing = retail.filter(pl.col("row_ref") == "0090")
         assert closing["0010"][0] == pytest.approx(1200.0, rel=1e-4)
 
     def test_closing_rwea_sme(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         sme = bundle.c08_04["corporate_sme"]
         closing = sme.filter(pl.col("row_ref") == "0090")
@@ -228,56 +228,56 @@ class TestC0804NullDriverRows:
     """Test that opening and driver rows are null (require prior-period data)."""
 
     def test_opening_rwea_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         opening = corp.filter(pl.col("row_ref") == "0010")
         assert opening["0010"][0] is None
 
     def test_asset_size_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         row = corp.filter(pl.col("row_ref") == "0020")
         assert row["0010"][0] is None
 
     def test_asset_quality_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         row = corp.filter(pl.col("row_ref") == "0030")
         assert row["0010"][0] is None
 
     def test_model_updates_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         row = corp.filter(pl.col("row_ref") == "0040")
         assert row["0010"][0] is None
 
     def test_methodology_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         row = corp.filter(pl.col("row_ref") == "0050")
         assert row["0010"][0] is None
 
     def test_acquisitions_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         row = corp.filter(pl.col("row_ref") == "0060")
         assert row["0010"][0] is None
 
     def test_fx_movements_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         row = corp.filter(pl.col("row_ref") == "0070")
         assert row["0010"][0] is None
 
     def test_other_is_null(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -285,7 +285,7 @@ class TestC0804NullDriverRows:
 
     def test_all_drivers_null(self) -> None:
         """All 7 driver rows + opening are null."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         for ref in ["0010", "0020", "0030", "0040", "0050", "0060", "0070", "0080"]:
@@ -297,14 +297,14 @@ class TestC0804B31Features:
     """Test Basel 3.1 specific features for C 08.04."""
 
     def test_b31_generates_same_row_count(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results(), framework="BASEL_3_1")
         for ec, df in bundle.c08_04.items():
             assert len(df) == 9, f"B31 {ec} has {len(df)} rows"
 
     def test_b31_closing_rwea_matches_crr(self) -> None:
         """Closing RWEA values are framework-independent."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         crr = gen.generate_from_lazyframe(_irb_flow_results(), framework="CRR")
         b31 = gen.generate_from_lazyframe(_irb_flow_results(), framework="BASEL_3_1")
         for ec in crr.c08_04:
@@ -313,7 +313,7 @@ class TestC0804B31Features:
             assert crr_closing == pytest.approx(b31_closing, rel=1e-4)
 
     def test_b31_framework_stored(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results(), framework="BASEL_3_1")
         assert bundle.framework == "BASEL_3_1"
 
@@ -323,7 +323,7 @@ class TestC0804EdgeCases:
 
     def test_excludes_slotting(self) -> None:
         """Slotting exposures excluded from C 08.04."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_with_slotting())
         # Only corporate class, slotting excluded
         assert "corporate" in bundle.c08_04
@@ -331,7 +331,7 @@ class TestC0804EdgeCases:
 
     def test_slotting_rwea_not_in_closing(self) -> None:
         """Closing RWEA excludes slotting RWEA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_with_slotting())
         corp = bundle.c08_04["corporate"]
         closing = corp.filter(pl.col("row_ref") == "0090")
@@ -339,7 +339,7 @@ class TestC0804EdgeCases:
         assert closing["0010"][0] == pytest.approx(4900.0, rel=1e-4)
 
     def test_missing_exposure_class_returns_empty(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         no_ec = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -353,7 +353,7 @@ class TestC0804EdgeCases:
 
     def test_missing_rwa_column(self) -> None:
         """Missing rwa_final still generates template with null closing."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         no_rwa = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -369,7 +369,7 @@ class TestC0804EdgeCases:
 
     def test_zero_rwa(self) -> None:
         """Zero RWEA is reported as 0.0, not null."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         zero_rwa = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -386,7 +386,7 @@ class TestC0804EdgeCases:
 
     def test_row_refs_are_correct(self) -> None:
         """All 9 row refs are the expected 4-digit codes."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         corp = bundle.c08_04["corporate"]
         expected = ["0010", "0020", "0030", "0040", "0050", "0060", "0070", "0080", "0090"]
@@ -394,7 +394,7 @@ class TestC0804EdgeCases:
 
     def test_bundle_has_c08_04_field(self) -> None:
         """COREPTemplateBundle has c08_04 field."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_flow_results())
         assert hasattr(bundle, "c08_04")
         assert isinstance(bundle.c08_04, dict)

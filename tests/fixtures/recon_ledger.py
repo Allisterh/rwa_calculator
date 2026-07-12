@@ -22,7 +22,13 @@ the substitution columns explicitly keep their values.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import polars as pl
+
+if TYPE_CHECKING:
+    from rwa_calc.reporting.corep.generator import COREPGenerator
+    from rwa_calc.reporting.pillar3.generator import Pillar3Generator
 
 
 def with_reporting_ledger(ours: pl.LazyFrame) -> pl.LazyFrame:
@@ -87,7 +93,7 @@ class LedgerShimPillar3Generator:
     production input contract is the sealed aggregator exit, and the unit
     estate must stay shape-identical to it (Phase 7 S0b re-baseline rule)."""
 
-    def __new__(cls):  # noqa: D102 - thin factory, keeps isinstance(Pillar3Generator)
+    def __new__(cls) -> Pillar3Generator:  # noqa: D102 - thin factory, isinstance holds
         from rwa_calc.reporting.pillar3.generator import Pillar3Generator
 
         class _Shim(Pillar3Generator):
@@ -122,7 +128,7 @@ class LedgerShimCorepGenerator:
     Pillar 3 estate does — the shim aliases, it does not re-derive the
     applied ladder."""
 
-    def __new__(cls):  # noqa: D102 - thin factory, keeps isinstance(COREPGenerator)
+    def __new__(cls) -> COREPGenerator:  # noqa: D102 - thin factory, isinstance holds
         from rwa_calc.reporting.corep.generator import COREPGenerator
 
         class _Shim(COREPGenerator):

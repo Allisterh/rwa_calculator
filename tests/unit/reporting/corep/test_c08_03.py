@@ -10,7 +10,8 @@ import math
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator, COREPTemplateBundle
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 
 def _irb_pd_range_results() -> pl.LazyFrame:
@@ -163,14 +164,14 @@ class TestC0803Generation:
 
     def test_c0803_produces_per_class_output(self) -> None:
         """C 08.03 produces a dict keyed by exposure class."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         assert isinstance(bundle.c08_03, dict)
         assert "corporate" in bundle.c08_03
 
     def test_c0803_multiple_classes(self) -> None:
         """C 08.03 produces separate DataFrames for each IRB exposure class."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_multi_class_pd_range())
         assert "corporate" in bundle.c08_03
         assert "institution" in bundle.c08_03
@@ -178,7 +179,7 @@ class TestC0803Generation:
 
     def test_c0803_has_11_columns_plus_row_metadata(self) -> None:
         """Each C 08.03 DataFrame has 11 data columns + 2 metadata (row_ref, row_name)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         # 11 data columns + row_ref + row_name = 13
@@ -186,7 +187,7 @@ class TestC0803Generation:
 
     def test_c0803_empty_for_sa_only(self) -> None:
         """C 08.03 is empty when only SA exposures exist."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -201,7 +202,7 @@ class TestC0803Generation:
 
     def test_c0803_excludes_slotting(self) -> None:
         """C 08.03 excludes slotting exposures — only F-IRB/A-IRB."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1", "E2"],
@@ -225,7 +226,7 @@ class TestC0803PDRangeAssignment:
 
     def test_pd_002_lands_in_020_025_bucket(self) -> None:
         """PD 0.002 (0.20%) falls in '0.20 to < 0.25%' bucket (row 0060)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0060")
@@ -234,7 +235,7 @@ class TestC0803PDRangeAssignment:
 
     def test_pd_005_lands_in_050_075_bucket(self) -> None:
         """PD 0.005 (0.50%) falls in '0.50 to < 0.75%' bucket (row 0080)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -243,7 +244,7 @@ class TestC0803PDRangeAssignment:
 
     def test_pd_001_lands_in_100_250_bucket(self) -> None:
         """PD 0.01 (1.00%) falls in '1.00 to < 2.50%' bucket (row 0100)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0100")
@@ -251,7 +252,7 @@ class TestC0803PDRangeAssignment:
 
     def test_pd_003_lands_in_250_500_bucket(self) -> None:
         """PD 0.03 (3.00%) falls in '2.50 to < 5.00%' bucket (row 0110)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0110")
@@ -259,7 +260,7 @@ class TestC0803PDRangeAssignment:
 
     def test_pd_100_lands_in_default_bucket(self) -> None:
         """PD 1.0 (100%) falls in '100% (Default)' bucket (row 0170)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0170")
@@ -268,7 +269,7 @@ class TestC0803PDRangeAssignment:
 
     def test_empty_buckets_omitted(self) -> None:
         """PD range buckets with no exposures are not included in output."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         # Only 5 buckets should have data (PDs: 0.002, 0.005, 0.01, 0.03, 1.0)
@@ -280,7 +281,7 @@ class TestC0803ColumnValues:
 
     def test_ead_in_050_075_bucket(self) -> None:
         """Col 0040 (EAD) in 0.50-0.75% bucket equals the single exposure's EAD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -289,7 +290,7 @@ class TestC0803ColumnValues:
 
     def test_rwea_in_050_075_bucket(self) -> None:
         """Col 0090 (RWEA) in 0.50-0.75% bucket equals the single exposure's RWA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -298,7 +299,7 @@ class TestC0803ColumnValues:
 
     def test_avg_pd_single_exposure(self) -> None:
         """Col 0050 (avg PD) for a single-exposure bucket equals that exposure's PD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -307,7 +308,7 @@ class TestC0803ColumnValues:
 
     def test_avg_lgd_single_exposure(self) -> None:
         """Col 0070 (avg LGD) for a single-exposure bucket equals that exposure's LGD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -316,7 +317,7 @@ class TestC0803ColumnValues:
 
     def test_avg_maturity_in_years(self) -> None:
         """Col 0080 (avg maturity) is reported in years (not days like C 08.01)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -325,7 +326,7 @@ class TestC0803ColumnValues:
 
     def test_expected_loss(self) -> None:
         """Col 0100 (EL) sums expected loss for the bucket."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -334,7 +335,7 @@ class TestC0803ColumnValues:
 
     def test_provisions(self) -> None:
         """Col 0110 (provisions) sums scra + gcra provisions for the bucket."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -343,7 +344,7 @@ class TestC0803ColumnValues:
 
     def test_obligor_count(self) -> None:
         """Col 0060 (obligors) counts unique counterparty references."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -352,7 +353,7 @@ class TestC0803ColumnValues:
 
     def test_on_bs_exposure(self) -> None:
         """Col 0010 (on-BS) sums drawn_amount + interest for the bucket."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0080")
@@ -361,7 +362,7 @@ class TestC0803ColumnValues:
 
     def test_off_bs_exposure(self) -> None:
         """Col 0020 (off-BS) sums nominal_amount for the bucket."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0060")
@@ -370,7 +371,7 @@ class TestC0803ColumnValues:
 
     def test_default_bucket_has_zero_rwa(self) -> None:
         """Default bucket (PD=100%) has RWEA=0 (K=0 for defaulted exposures)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0170")
@@ -387,7 +388,7 @@ class TestC0803B31Features:
         bucket (row 0040), even though pd_floored=0.002 (0.20%) would
         fall in '0.20 to < 0.25%' (row 0060).
         """
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results(), framework="BASEL_3_1")
         corp = bundle.c08_03["corporate"]
         # E1: pd_original=0.001 → "0.10 to < 0.15%" (row 0040)
@@ -400,7 +401,7 @@ class TestC0803B31Features:
         E1 is in '0.10 to < 0.15%' bucket (by original PD 0.001) but
         col 0050 should report floored PD 0.002.
         """
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results(), framework="BASEL_3_1")
         corp = bundle.c08_03["corporate"]
         row = corp.filter(pl.col("row_ref") == "0040")
@@ -412,7 +413,7 @@ class TestC0803B31Features:
 
         E1 has pd_floored=0.002 (0.20%) → '0.20 to < 0.25%' bucket (row 0060).
         """
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results(), framework="CRR")
         corp = bundle.c08_03["corporate"]
         # E1: pd_floored=0.002 → "0.20 to < 0.25%" (row 0060)
@@ -421,7 +422,7 @@ class TestC0803B31Features:
 
     def test_b31_has_11_columns(self) -> None:
         """Basel 3.1 C 08.03 still produces 11 data columns + 2 metadata."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results(), framework="BASEL_3_1")
         corp = bundle.c08_03["corporate"]
         assert len(corp.columns) == 13
@@ -432,7 +433,7 @@ class TestC0803EdgeCases:
 
     def test_no_pd_column_returns_empty(self) -> None:
         """C 08.03 returns empty dict when no PD column is available."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -447,7 +448,7 @@ class TestC0803EdgeCases:
 
     def test_no_irb_data_returns_empty(self) -> None:
         """C 08.03 returns empty dict when no IRB exposures exist."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1"],
@@ -468,7 +469,7 @@ class TestC0803EdgeCases:
 
     def test_null_pd_goes_to_unassigned(self) -> None:
         """Exposures with null PD go to 'Unassigned' row."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         results = pl.LazyFrame(
             {
                 "exposure_reference": ["E1", "E2"],
@@ -488,7 +489,7 @@ class TestC0803EdgeCases:
 
     def test_total_ead_across_buckets(self) -> None:
         """Total EAD across all PD range buckets equals total input EAD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         total_ead = corp["0040"].sum()
@@ -497,7 +498,7 @@ class TestC0803EdgeCases:
 
     def test_total_rwea_across_buckets(self) -> None:
         """Total RWEA across all PD range buckets equals total input RWEA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         total_rwea = corp["0090"].sum()
@@ -506,7 +507,7 @@ class TestC0803EdgeCases:
 
     def test_ccf_average_weighted_by_nominal(self) -> None:
         """Col 0030 (avg CCF) is weighted by nominal amount, not EAD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         # E1 (PD=0.002, row 0060): nominal=1000, ccf=0.5 → avg=0.5
@@ -515,7 +516,7 @@ class TestC0803EdgeCases:
 
     def test_zero_nominal_bucket_has_null_ccf(self) -> None:
         """Bucket with zero nominal amount has null average CCF."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_pd_range_results())
         corp = bundle.c08_03["corporate"]
         # E2 (PD=0.005, row 0080): nominal=0, ccf=0 → null

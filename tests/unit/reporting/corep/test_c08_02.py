@@ -8,7 +8,7 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 from tests.unit.reporting.corep._builders import (
     _irb_results,
 )
@@ -19,7 +19,7 @@ class TestC0802:
 
     def test_c0802_produces_per_class_output(self) -> None:
         """C 08.02 produces a dict keyed by IRB exposure class."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results())
 
         assert isinstance(bundle.c08_02, dict)
@@ -27,7 +27,7 @@ class TestC0802:
 
     def test_c0802_pd_bands_assigned(self) -> None:
         """Exposures are assigned to correct PD bands."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results())
 
         corp = bundle.c08_02["corporate"]
@@ -38,7 +38,7 @@ class TestC0802:
 
     def test_c0802_per_band_ead(self) -> None:
         """EAD aggregated per PD band."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results())
 
         corp = bundle.c08_02["corporate"]
@@ -53,7 +53,7 @@ class TestC0802:
 
     def test_c0802_weighted_pd_per_band(self) -> None:
         """Weighted PD within a single-exposure band equals the exposure PD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results())
 
         corp = bundle.c08_02["corporate"]
@@ -62,7 +62,7 @@ class TestC0802:
 
     def test_c0802_has_obligor_grade_identifier(self) -> None:
         """C 08.02 rows include obligor grade identifier (col 0005)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results())
 
         corp = bundle.c08_02["corporate"]
@@ -70,7 +70,7 @@ class TestC0802:
 
     def test_c0802_maturity_in_days(self) -> None:
         """C 08.02 maturity (col 0250) is also in days."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_irb_results())
 
         corp = bundle.c08_02["corporate"]

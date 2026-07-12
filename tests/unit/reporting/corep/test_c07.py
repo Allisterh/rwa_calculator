@@ -8,11 +8,11 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator
 from rwa_calc.reporting.corep.templates import (
     B31_C07_COLUMNS,
     CRR_C07_COLUMNS,
 )
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 from tests.unit.reporting.corep._builders import (
     _combined_results,
     _get_total_row,
@@ -365,7 +365,7 @@ class TestC0700:
 
     def test_c07_produces_per_class_output(self) -> None:
         """C 07.00 produces a dict keyed by exposure class."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         assert isinstance(bundle.c07_00, dict)
@@ -376,7 +376,7 @@ class TestC0700:
 
     def test_c07_each_class_has_row_sections(self) -> None:
         """Each per-class DataFrame has rows from all 5 sections."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = bundle.c07_00["corporate"]
@@ -396,7 +396,7 @@ class TestC0700:
 
     def test_c07_uses_4_digit_column_refs(self) -> None:
         """DataFrame columns use 4-digit COREP refs."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = bundle.c07_00["corporate"]
@@ -411,7 +411,7 @@ class TestC0700:
 
     def test_c07_total_row_original_exposure(self) -> None:
         """Total row (0010) aggregates original exposure correctly."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -420,7 +420,7 @@ class TestC0700:
 
     def test_c07_total_row_provisions(self) -> None:
         """Provisions (col 0030) sum SCRA + GCRA amounts — emitted negative per Annex II §1.3."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -429,7 +429,7 @@ class TestC0700:
 
     def test_c07_total_row_net_exposure(self) -> None:
         """Net exposure (col 0040) = original - provisions."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -438,7 +438,7 @@ class TestC0700:
 
     def test_c07_total_row_guarantees(self) -> None:
         """Guarantees (col 0050) are aggregated correctly — emitted negative per Annex II §1.3."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -447,7 +447,7 @@ class TestC0700:
 
     def test_c07_total_row_collateral(self) -> None:
         """Collateral (col 0130) is aggregated correctly — emitted negative per Annex II §1.3."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -456,7 +456,7 @@ class TestC0700:
 
     def test_c07_total_row_ead(self) -> None:
         """Exposure value (col 0200) matches EAD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -465,7 +465,7 @@ class TestC0700:
 
     def test_c07_total_row_rwea(self) -> None:
         """RWEA (col 0220) matches RWA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -474,7 +474,7 @@ class TestC0700:
 
     def test_c07_zero_rw_for_sovereign(self) -> None:
         """Central government with CQS 1 gets 0% RW, hence 0 RWEA."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         sovn = _get_total_row(bundle.c07_00["central_govt_central_bank"])
@@ -483,7 +483,7 @@ class TestC0700:
 
     def test_c07_ecai_assessment(self) -> None:
         """ECAI column (0230) only includes rated exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -492,7 +492,7 @@ class TestC0700:
 
     def test_c07_no_irb_in_sa_output(self) -> None:
         """C 07.00 dict must not include IRB-only exposure classes."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_combined_results())
 
         # retail_mortgage is IRB-only in test data
@@ -500,7 +500,7 @@ class TestC0700:
 
     def test_c07_empty_results(self) -> None:
         """C 07.00 handles empty results gracefully."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         empty = pl.LazyFrame(
             schema={
                 "approach_applied": pl.String,
@@ -522,7 +522,7 @@ class TestC0700RiskWeightSection:
 
     def test_rw_section_100pct_for_corporates(self) -> None:
         """Corporates with RW=1.00 appear in the 100% row."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = bundle.c07_00["corporate"]
@@ -534,7 +534,7 @@ class TestC0700RiskWeightSection:
 
     def test_rw_section_0pct_for_sovereign(self) -> None:
         """Sovereign with 0% RW appears in the 0% row."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         sovn = bundle.c07_00["central_govt_central_bank"]
@@ -545,7 +545,7 @@ class TestC0700RiskWeightSection:
 
     def test_rw_section_75pct_for_retail(self) -> None:
         """Retail exposures with 75% RW appear in the 75% row."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         retail = bundle.c07_00["retail_other"]
@@ -557,7 +557,7 @@ class TestC0700RiskWeightSection:
 
     def test_rw_section_empty_bands_are_null(self) -> None:
         """RW bands with no exposures have null values."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = bundle.c07_00["corporate"]
@@ -568,7 +568,7 @@ class TestC0700RiskWeightSection:
 
     def test_rw_section_rwea_populated(self) -> None:
         """RW section rows have RWEA values populated."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         retail = bundle.c07_00["retail_other"]
@@ -582,7 +582,7 @@ class TestSupportingFactors:
 
     def test_c07_supporting_factor_pre_rwea(self) -> None:
         """Col 0215 (RWEA pre factors) is populated from rwa_before_sme_factor."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -591,7 +591,7 @@ class TestSupportingFactors:
 
     def test_c07_sme_factor_benefit(self) -> None:
         """Col 0216 (SME factor benefit) = pre - post for SME-eligible exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols())
 
         sme = _get_total_row(bundle.c07_00["corporate_sme"])
@@ -600,7 +600,7 @@ class TestSupportingFactors:
 
     def test_c07_infra_factor_benefit(self) -> None:
         """Col 0217 (infrastructure factor benefit) computed for eligible exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -609,7 +609,7 @@ class TestSupportingFactors:
 
     def test_c07_supporting_factors_not_in_b31(self) -> None:
         """Supporting factor columns (0215-0217) absent from Basel 3.1 output."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols(), framework="BASEL_3_1")
 
         corp = next(iter(bundle.c07_00.values()))
@@ -619,7 +619,7 @@ class TestSupportingFactors:
 
     def test_c07_rwea_relationship(self) -> None:
         """Col 0220 = 0215 - 0216 - 0217 (RWEA after factors)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols())
 
         sme = _get_total_row(bundle.c07_00["corporate_sme"])
@@ -635,7 +635,7 @@ class TestECAIUnratedSplit:
 
     def test_b31_ecai_unrated_column_present(self) -> None:
         """Col 0235 (without ECAI) present in Basel 3.1 output."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols(), framework="BASEL_3_1")
 
         corp = next(iter(bundle.c07_00.values()))
@@ -643,7 +643,7 @@ class TestECAIUnratedSplit:
 
     def test_b31_unrated_exposure_in_0235(self) -> None:
         """Unrated exposure (sa_cqs=null) RWA goes to col 0235."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols(), framework="BASEL_3_1")
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -652,7 +652,7 @@ class TestECAIUnratedSplit:
 
     def test_b31_rated_plus_unrated_equals_total(self) -> None:
         """Col 0230 (rated) + col 0235 (unrated) = col 0220 (total RWEA)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_phase2_cols(), framework="BASEL_3_1")
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -667,7 +667,7 @@ class TestCCFBreakdown:
 
     def test_c07_ccf_columns_populated(self) -> None:
         """CCF breakdown columns are populated when ccf_applied is available."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_ccf())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -679,7 +679,7 @@ class TestCCFBreakdown:
 
     def test_c07_ccf_sum_equals_off_bs_ead(self) -> None:
         """Sum of CCF columns = total off-BS EAD."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_ccf())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -694,7 +694,7 @@ class TestCCFBreakdown:
 
     def test_c07_ccf_null_without_column(self) -> None:
         """CCF columns are null when ccf_applied not in data."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results())
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -720,7 +720,7 @@ class TestCCFBreakdown:
                 "ccf_applied": [0.1, 0.4],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="BASEL_3_1")
 
         corp = _get_total_row(bundle.c07_00["corporate"])
@@ -730,7 +730,7 @@ class TestCCFBreakdown:
 
     def test_c07_ccf_on_rw_section_rows(self) -> None:
         """CCF breakdown also works within risk weight section rows."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_ccf())
 
         corp = bundle.c07_00["corporate"]
@@ -753,7 +753,7 @@ class TestC0700Col0020:
     def test_crr_c0700_has_col_0020_with_value(self) -> None:
         """CRR C 07.00 corporate row reports own_funds_deduction_amount in col 0020."""
         # Arrange
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         lf = _sa_results_with_own_funds_deduction()
 
         # Act
@@ -772,7 +772,7 @@ class TestC0700Col0020:
     def test_b31_of0700_has_col_0020_with_value(self) -> None:
         """Basel 3.1 OF 07.00 corporate row reports own_funds_deduction_amount in col 0020."""
         # Arrange
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         lf = _sa_results_with_own_funds_deduction()
 
         # Act
@@ -791,7 +791,7 @@ class TestC0700Col0020:
     def test_c0700_col_0020_is_none_when_field_absent(self) -> None:
         """Without own_funds_deduction_amount in data, col 0020 is None."""
         # Arrange
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         lf = _sa_results_without_own_funds_deduction()
 
         # Act
@@ -840,7 +840,7 @@ class TestSpecialisedLendingRows:
 
     def test_object_finance_row_populated(self) -> None:
         """Row 0021 shows object finance exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row_0021 = corp.filter(pl.col("row_ref") == "0021")
@@ -850,7 +850,7 @@ class TestSpecialisedLendingRows:
 
     def test_commodities_finance_row_populated(self) -> None:
         """Row 0022 shows commodities finance exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row_0022 = corp.filter(pl.col("row_ref") == "0022")
@@ -860,7 +860,7 @@ class TestSpecialisedLendingRows:
 
     def test_project_finance_row_is_total(self) -> None:
         """Row 0023 shows total project finance (all phases)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row_0023 = corp.filter(pl.col("row_ref") == "0023")
@@ -870,7 +870,7 @@ class TestSpecialisedLendingRows:
 
     def test_project_finance_pre_operational(self) -> None:
         """Row 0024 shows pre-operational project finance."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row_0024 = corp.filter(pl.col("row_ref") == "0024")
@@ -879,7 +879,7 @@ class TestSpecialisedLendingRows:
 
     def test_project_finance_operational(self) -> None:
         """Row 0025 shows operational project finance."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row_0025 = corp.filter(pl.col("row_ref") == "0025")
@@ -888,7 +888,7 @@ class TestSpecialisedLendingRows:
 
     def test_project_finance_hq_operational(self) -> None:
         """Row 0026 shows high quality operational project finance."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row_0026 = corp.filter(pl.col("row_ref") == "0026")
@@ -897,7 +897,7 @@ class TestSpecialisedLendingRows:
 
     def test_sl_rows_absent_crr(self) -> None:
         """SL detail rows don't exist under CRR (no rows 0021-0026)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         sl_rows = corp.filter(
@@ -907,7 +907,7 @@ class TestSpecialisedLendingRows:
 
     def test_sl_rows_null_without_sl_data(self) -> None:
         """Without sl_type column, SL rows are null."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         # _sa_results() has no sl_type column
         bundle = gen.generate_from_lazyframe(_sa_results(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
@@ -917,7 +917,7 @@ class TestSpecialisedLendingRows:
 
     def test_phase_sum_equals_total_pf(self) -> None:
         """Sum of phase rows (0024-0026) equals total project finance row (0023)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_sl(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         total_pf = corp.filter(pl.col("row_ref") == "0023")["0200"][0]
@@ -937,7 +937,7 @@ class TestRealEstateRows:
 
     def test_residential_re_total(self) -> None:
         """Row 0330 shows total regulatory residential RE."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         # RE exposures are in "secured_by_re_residential" class
         re_res = bundle.c07_00.get("secured_by_re_residential")
@@ -949,7 +949,7 @@ class TestRealEstateRows:
 
     def test_residential_not_dependent(self) -> None:
         """Row 0331: residential, not materially dependent."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         re_res = bundle.c07_00["secured_by_re_residential"]
         row = re_res.filter(pl.col("row_ref") == "0331")
@@ -959,7 +959,7 @@ class TestRealEstateRows:
 
     def test_residential_dependent(self) -> None:
         """Row 0332: residential, materially dependent."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         re_res = bundle.c07_00["secured_by_re_residential"]
         row = re_res.filter(pl.col("row_ref") == "0332")
@@ -969,7 +969,7 @@ class TestRealEstateRows:
 
     def test_commercial_re_total(self) -> None:
         """Row 0340 shows total regulatory commercial RE."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         re_comm = bundle.c07_00.get("secured_by_re_commercial")
         assert re_comm is not None
@@ -981,7 +981,7 @@ class TestRealEstateRows:
 
     def test_commercial_not_dependent_non_sme(self) -> None:
         """Row 0341: commercial, not dependent, non-SME."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         re_comm = bundle.c07_00["secured_by_re_commercial"]
         row = re_comm.filter(pl.col("row_ref") == "0341")
@@ -991,7 +991,7 @@ class TestRealEstateRows:
 
     def test_commercial_sme_not_dependent(self) -> None:
         """Row 0343: commercial, not dependent, SME."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         re_comm = bundle.c07_00["secured_by_re_commercial"]
         row = re_comm.filter(pl.col("row_ref") == "0343")
@@ -1001,7 +1001,7 @@ class TestRealEstateRows:
 
     def test_adc_row(self) -> None:
         """Row 0360 shows ADC exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         re_comm = bundle.c07_00["secured_by_re_commercial"]
         row = re_comm.filter(pl.col("row_ref") == "0360")
@@ -1011,7 +1011,7 @@ class TestRealEstateRows:
 
     def test_re_rows_absent_crr(self) -> None:
         """RE detail rows don't exist under CRR."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="CRR")
         re_res = bundle.c07_00.get("secured_by_re_residential")
         if re_res is not None:
@@ -1022,7 +1022,7 @@ class TestRealEstateRows:
 
     def test_dependent_splits_sum_to_total(self) -> None:
         """Rows 0331 + 0332 = 0330 for residential RE."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re(), framework="BASEL_3_1")
         re_res = bundle.c07_00["secured_by_re_residential"]
         total = re_res.filter(pl.col("row_ref") == "0330")["0200"][0]
@@ -1042,7 +1042,7 @@ class TestCurrencyMismatchRow:
 
     def test_b31_row_0380_populated(self) -> None:
         """Row 0380 aggregates exposures with currency mismatch applied."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_currency_mismatch(), framework="BASEL_3_1"
         )
@@ -1056,7 +1056,7 @@ class TestCurrencyMismatchRow:
 
     def test_b31_mortgage_row_0380(self) -> None:
         """Row 0380 works for retail_mortgage class too."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_currency_mismatch(), framework="BASEL_3_1"
         )
@@ -1069,7 +1069,7 @@ class TestCurrencyMismatchRow:
 
     def test_b31_corporate_row_0380_null(self) -> None:
         """Corporate class — no mismatch exposures → row 0380 is null."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_currency_mismatch(), framework="BASEL_3_1"
         )
@@ -1080,7 +1080,7 @@ class TestCurrencyMismatchRow:
 
     def test_crr_no_row_0380(self) -> None:
         """CRR framework does not have row 0380 — it's a B3.1-only memorandum."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_currency_mismatch(), framework="CRR")
         ret = bundle.c07_00.get("retail_other")
         if ret is not None:
@@ -1089,7 +1089,7 @@ class TestCurrencyMismatchRow:
 
     def test_no_mismatch_column_row_0380_null(self) -> None:
         """Without currency_mismatch_multiplier_applied column, row 0380 is null."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results(), framework="BASEL_3_1")
         corp = bundle.c07_00.get("corporate")
         if corp is not None:
@@ -1118,7 +1118,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0300_defaulted_rw_100(self) -> None:
         """Row 0300 filters defaulted exposures with RW = 100%."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0300")
@@ -1129,7 +1129,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0320_defaulted_rw_150(self) -> None:
         """Row 0320 filters defaulted exposures with RW = 150%."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0320")
@@ -1140,7 +1140,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0300_excludes_non_defaulted(self) -> None:
         """Row 0300 must not include non-defaulted exposures even at RW 100%."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row_0300 = corp.filter(pl.col("row_ref") == "0300")
@@ -1150,7 +1150,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0320_retail_class(self) -> None:
         """Row 0320 applies within each exposure class independently."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="CRR")
         retail = bundle.c07_00["retail_other"]
         row = retail.filter(pl.col("row_ref") == "0320")
@@ -1160,7 +1160,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0300_null_when_no_defaults_at_100(self) -> None:
         """Row 0300 is null when no defaulted exposures have RW = 100%."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="CRR")
         retail = bundle.c07_00["retail_other"]
         row = retail.filter(pl.col("row_ref") == "0300")
@@ -1169,7 +1169,7 @@ class TestC0700MemorandumRows:
 
     def test_b31_rows_0300_0320_present(self) -> None:
         """Basel 3.1 OF 07.00 also has rows 0300 and 0320."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row_refs = corp["row_ref"].to_list()
@@ -1178,7 +1178,7 @@ class TestC0700MemorandumRows:
 
     def test_b31_row_0300_populated(self) -> None:
         """B31 row 0300 is populated from defaulted exposures at RW 100%."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="BASEL_3_1")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0300")
@@ -1186,7 +1186,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0290_crr_commercial_re(self) -> None:
         """CRR row 0290: commercial immovable property secured exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re_memorandum(), framework="CRR")
         re = bundle.c07_00["secured_by_re_property"]
         row = re.filter(pl.col("row_ref") == "0290")
@@ -1198,7 +1198,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0310_crr_residential_re(self) -> None:
         """CRR row 0310: residential immovable property secured exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re_memorandum(), framework="CRR")
         re = bundle.c07_00["secured_by_re_property"]
         row = re.filter(pl.col("row_ref") == "0310")
@@ -1209,7 +1209,7 @@ class TestC0700MemorandumRows:
 
     def test_row_0290_null_for_non_re_class(self) -> None:
         """Row 0290 is null for classes without RE-secured exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_re_memorandum(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0290")
@@ -1217,7 +1217,7 @@ class TestC0700MemorandumRows:
 
     def test_b31_no_rows_0290_0310(self) -> None:
         """B31 OF 07.00 does not have rows 0290/0310 (replaced by Section 1 RE breakdown)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_re_memorandum(), framework="BASEL_3_1"
         )
@@ -1246,7 +1246,7 @@ class TestC0700MemorandumRows:
                 "counterparty_reference": ["CP_A"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0300")
@@ -1255,7 +1255,7 @@ class TestC0700MemorandumRows:
 
     def test_memorandum_columns_complete(self) -> None:
         """Memorandum rows have the full set of COREP columns."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_defaulted(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row_0300 = corp.filter(pl.col("row_ref") == "0300")
@@ -1283,7 +1283,7 @@ class TestC0700SupportingFactorRows:
 
     def test_row_0030_sme_exposures(self) -> None:
         """Row 0030 filters SME exposures with supporting factor applied."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         # corporate_sme merges into corporate for C 07.00
         corp = bundle.c07_00["corporate"]
@@ -1295,7 +1295,7 @@ class TestC0700SupportingFactorRows:
 
     def test_row_0035_infrastructure_exposures(self) -> None:
         """Row 0035 filters infrastructure exposures with factor applied."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0035")
@@ -1306,7 +1306,7 @@ class TestC0700SupportingFactorRows:
 
     def test_row_0030_excludes_non_sme(self) -> None:
         """Row 0030 excludes non-SME exposures even with factor applied."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row_0030 = corp.filter(pl.col("row_ref") == "0030")
@@ -1315,7 +1315,7 @@ class TestC0700SupportingFactorRows:
 
     def test_row_0035_excludes_non_infrastructure(self) -> None:
         """Row 0035 excludes non-infrastructure exposures."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row_0035 = corp.filter(pl.col("row_ref") == "0035")
@@ -1324,7 +1324,7 @@ class TestC0700SupportingFactorRows:
 
     def test_row_0030_null_when_no_sme(self) -> None:
         """Row 0030 is null when no SME exposures exist."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0030")
@@ -1332,7 +1332,7 @@ class TestC0700SupportingFactorRows:
 
     def test_b31_no_supporting_factor_rows(self) -> None:
         """B31 has no supporting factor rows (removed under Basel 3.1)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_supporting_factors(), framework="BASEL_3_1"
         )
@@ -1344,7 +1344,7 @@ class TestC0700SupportingFactorRows:
 
     def test_supporting_factor_without_flag_column(self) -> None:
         """Rows 0030/0035 are null when is_sme/is_infrastructure absent."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         # _sa_results() has no is_sme or is_infrastructure columns
         bundle = gen.generate_from_lazyframe(_sa_results(), framework="CRR")
         corp = bundle.c07_00["corporate"]
@@ -1355,7 +1355,7 @@ class TestC0700SupportingFactorRows:
 
     def test_original_exposure_correct_for_sme(self) -> None:
         """Row 0030 original exposure (col 0010) = drawn + undrawn for SME."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         row = corp.filter(pl.col("row_ref") == "0030")
@@ -1381,7 +1381,7 @@ class TestC0700SupportingFactorRWEA:
 
     def test_col_0215_pre_factor_rwa(self) -> None:
         """Col 0215 uses rwa_pre_factor when rwa_before_sme_factor absent."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         total = corp.filter(pl.col("row_ref") == "0010")
@@ -1390,7 +1390,7 @@ class TestC0700SupportingFactorRWEA:
 
     def test_col_0216_sme_adjustment(self) -> None:
         """Col 0216 computes SME factor adjustment from pipeline columns."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         total = corp.filter(pl.col("row_ref") == "0010")
@@ -1400,7 +1400,7 @@ class TestC0700SupportingFactorRWEA:
 
     def test_col_0217_infra_adjustment(self) -> None:
         """Col 0217 computes infrastructure factor adjustment."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         total = corp.filter(pl.col("row_ref") == "0010")
@@ -1410,7 +1410,7 @@ class TestC0700SupportingFactorRWEA:
 
     def test_col_0220_post_factor_rwa(self) -> None:
         """Col 0220 (post-factor RWEA) is the sum of rwa_final."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         total = corp.filter(pl.col("row_ref") == "0010")
@@ -1419,7 +1419,7 @@ class TestC0700SupportingFactorRWEA:
 
     def test_pre_minus_adjustments_equals_post(self) -> None:
         """RWEA integrity: 0215 - 0216 - 0217 ≈ 0220."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results_with_supporting_factors(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         total = corp.filter(pl.col("row_ref") == "0010")
@@ -1432,7 +1432,7 @@ class TestC0700SupportingFactorRWEA:
 
     def test_col_0216_null_without_pipeline_columns(self) -> None:
         """Col 0216 is null when neither legacy nor pipeline columns exist."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_results(), framework="CRR")
         corp = bundle.c07_00["corporate"]
         total = corp.filter(pl.col("row_ref") == "0010")
@@ -1440,7 +1440,7 @@ class TestC0700SupportingFactorRWEA:
 
     def test_b31_no_supporting_factor_columns(self) -> None:
         """B31 does not have cols 0215-0217 (supporting factors removed)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(
             _sa_results_with_supporting_factors(), framework="BASEL_3_1"
         )
@@ -1479,7 +1479,7 @@ class TestOF0700RESubRowFallback:
                 "sa_cqs": [None] * 3,
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="BASEL_3_1")
         re_res = bundle.c07_00["secured_by_re_residential"]
         # 0331: residential, NOT dependent → RE_1 + RE_3 (EAD 100+300=400)
@@ -1513,7 +1513,7 @@ class TestOF0700RESubRowFallback:
                 "sa_cqs": [None] * 2,
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="BASEL_3_1")
         re_res = bundle.c07_00["secured_by_re_residential"]
         r0331 = re_res.filter(pl.col("row_ref") == "0331")
@@ -1539,7 +1539,7 @@ class TestOF0700RESubRowFallback:
                 "sa_cqs": [None],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="BASEL_3_1")
         re_res = bundle.c07_00["secured_by_re_residential"]
         r0331 = re_res.filter(pl.col("row_ref") == "0331")
@@ -1568,7 +1568,7 @@ class TestOF0700RESubRowFallback:
                 "sa_cqs": [None],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="BASEL_3_1")
         re_res = bundle.c07_00["secured_by_re_residential"]
         ead_col = "0200" if "0200" in re_res.columns else "0010"

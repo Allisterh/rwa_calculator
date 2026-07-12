@@ -28,7 +28,7 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator, COREPTemplateBundle
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
 
 # Grade-path fixture builder and constants
 from tests.fixtures.p4_20.p4_20 import (
@@ -45,6 +45,7 @@ from tests.fixtures.p4_20.p4_20 import (
     SAME_BUCKET_LABEL,
     build_grade_path_irb_results_lf,
 )
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 # Fallback fixture reused from existing test module (do NOT modify)
 from tests.unit.reporting.corep._builders import _irb_results
@@ -87,7 +88,7 @@ class TestP420GradePath:
     @pytest.fixture()
     def bundle(self) -> COREPTemplateBundle:
         """Generate C 08.02 bundle from the grade-path fixture (CRR framework)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         lf = build_grade_path_irb_results_lf()
         return gen.generate_from_lazyframe(lf, framework=FRAMEWORK)
 
@@ -352,7 +353,7 @@ class TestP420FallbackPath:
     @pytest.fixture()
     def bundle(self) -> COREPTemplateBundle:
         """Generate C 08.02 bundle from the existing _irb_results() fixture (CRR)."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         return gen.generate_from_lazyframe(_irb_results(), framework="CRR")
 
     @pytest.fixture()

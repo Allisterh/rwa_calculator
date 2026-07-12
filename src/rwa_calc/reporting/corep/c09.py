@@ -14,10 +14,12 @@ Cell semantics (recorded decisions, this slice):
   SA exposure moves to row 0100 exactly as C 07.00 assigns it), while the
   0020 "Defaulted exposures" MEMORANDUM keys the raw ORIGINAL class (the
   instruction's counterfactual "would have been" row) — a two-basis
-  template like Pillar 3 CR4. C 09.02 keys the RAW ``exposure_class``
-  (== the obligor origin for the IRB book; the IRB template has no
-  default row by design). Under B31 the RE-split mortgage classes match
-  no class row and surface ONLY in the Total row.
+  template like Pillar 3 CR4. C 09.02 keys the sealed
+  ``reporting_class_origin`` (== raw ``exposure_class`` for the IRB
+  book — number-neutral convergence; the IRB template has no default
+  row by design) over the ``reporting_approach_origin`` population.
+  Under B31 the RE-split mortgage classes match no class row and
+  surface ONLY in the Total row.
 - C 09.01 shares C 07.00's population (``c07_population`` — the SA book
   plus FCCM SFT synthetic rows); C 09.02 is the IRB book INCLUDING
   slotting (the retired inline comment claiming exclusion was misleading).
@@ -161,9 +163,7 @@ def generate_c09_01(
     return _per_country_sheets(data, spec, row_preds, post=None)
 
 
-def _c09_01_row_pred(
-    row_def: COREPRow, basis_col: str
-) -> RowPredicate | None:
+def _c09_01_row_pred(row_def: COREPRow, basis_col: str) -> RowPredicate | None:
     """The reverse-map keying over ``basis_col``: rows whose key is not a
     class-map VALUE are permanently null (the map short-circuits before
     the SME / RE / SL / CIU sub-filters ever run — recorded dead code).
@@ -255,7 +255,7 @@ def generate_c09_02(
     irb_df = _irb_population(results, cols).collect()
     if irb_df.height == 0:
         return {}
-    approach_col = pick(cols, "approach_applied", "approach")
+    approach_col = pick(cols, "reporting_approach_origin", "approach")
     data = _c09_02_prepare(irb_df, cols, approach_col)
     ead_col = pick(cols, "ead_final")
     pd_col = pick(cols, "pd_floored", "pd")
@@ -272,9 +272,9 @@ def generate_c09_02(
 
 def _irb_population(results: pl.LazyFrame, cols: set[str]) -> pl.LazyFrame:
     """The retired _filter_by_irb_approach: keyed to approach_applied only."""
-    if "approach_applied" not in cols:
+    if "reporting_approach_origin" not in cols:
         return results.filter(pl.lit(value=False))
-    return results.filter(pl.col("approach_applied").is_in(list(_IRB_APPROACHES)))
+    return results.filter(pl.col("reporting_approach_origin").is_in(list(_IRB_APPROACHES)))
 
 
 def _c09_02_prepare(data: pl.DataFrame, cols: set[str], approach_col: str | None) -> pl.DataFrame:
@@ -314,11 +314,13 @@ def _c09_02_row_pred(  # noqa: PLR0911 - the retired branch cascade, one return 
     if key is None or key in _C09_02_EMPTY_KEYS:
         return None
     if key in _C09_02_DIRECT_EC:
-        return RowPredicate(equals=(("exposure_class", key),))
+        return RowPredicate(equals=(("reporting_class_origin", key),))
     if key == "corporate":
         return _class_union(*_CORPORATE_FAMILY, "specialised_lending")
     if key == "sl_excl_slotting":
-        terms: tuple[tuple[str, str | bool], ...] = (("exposure_class", "specialised_lending"),)
+        terms: tuple[tuple[str, str | bool], ...] = (
+            ("reporting_class_origin", "specialised_lending"),
+        )
         if approach_col is not None:
             terms = (*terms, ("c09_slotting", False))
         return RowPredicate(equals=terms)
@@ -326,7 +328,7 @@ def _c09_02_row_pred(  # noqa: PLR0911 - the retired branch cascade, one return 
         if approach_col is None:
             return None
         return RowPredicate(
-            equals=(("exposure_class", "specialised_lending"), ("c09_slotting", True))
+            equals=(("reporting_class_origin", "specialised_lending"), ("c09_slotting", True))
         )
     if key == "corporate_sme":
         return _conjoin(_class_union(*_CORPORATE_FAMILY), ("c09_sme", True))
@@ -338,14 +340,14 @@ def _c09_02_row_pred(  # noqa: PLR0911 - the retired branch cascade, one return 
         return _class_union("retail_mortgage", "retail_qrre", "retail_other")
     if key in ("retail_mortgage_sme", "retail_mortgage_non_sme"):
         flag = "c09_sme" if key == "retail_mortgage_sme" else "c09_non_sme"
-        return RowPredicate(equals=(("exposure_class", "retail_mortgage"), (flag, True)))
+        return RowPredicate(equals=(("reporting_class_origin", "retail_mortgage"), (flag, True)))
     if key in ("retail_other_sme", "retail_other_non_sme"):
         flag = "c09_sme" if key == "retail_other_sme" else "c09_non_sme"
-        return RowPredicate(equals=(("exposure_class", "retail_other"), (flag, True)))
+        return RowPredicate(equals=(("reporting_class_origin", "retail_other"), (flag, True)))
     if key in _C09_02_RE_ROWS:
         ptypes, is_sme = _C09_02_RE_ROWS[key]
         terms = (
-            ("exposure_class", "retail_mortgage"),
+            ("reporting_class_origin", "retail_mortgage"),
             ("c09_sme" if is_sme else "c09_non_sme", True),
         )
         # The retired code skips the property filter when the column is
@@ -486,17 +488,13 @@ def _one_sheet(
     return frame
 
 
-def _class_union(*classes: str, col: str = "exposure_class") -> RowPredicate:
+def _class_union(*classes: str, col: str = "reporting_class_origin") -> RowPredicate:
     if len(classes) == 1:
         return RowPredicate(equals=((col, classes[0]),))
-    return RowPredicate(
-        any_of=tuple(RowPredicate(equals=((col, ec),)) for ec in classes)
-    )
+    return RowPredicate(any_of=tuple(RowPredicate(equals=((col, ec),)) for ec in classes))
 
 
-def _either_pred(
-    primary: RowPredicate | None, memo: RowPredicate | None
-) -> RowPredicate | None:
+def _either_pred(primary: RowPredicate | None, memo: RowPredicate | None) -> RowPredicate | None:
     """The row-emptiness basis for C 09.01: a row is null only when BOTH
     its primary (applied-class) and memo (original-class) subsets are
     empty — a class row whose only exposures defaulted keeps its 0020
