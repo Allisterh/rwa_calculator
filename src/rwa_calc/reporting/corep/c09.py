@@ -60,6 +60,8 @@ from rwa_calc.reporting.cellspec import (
     TemplateSpec,
     WeightedAvg,
     execute,
+    matched_counts,
+    subset_rows,
 )
 from rwa_calc.reporting.corep.c07 import c07_population
 from rwa_calc.reporting.corep.templates import (
@@ -397,10 +399,9 @@ def _c09_02_avg_postfix(
     if pd_col is None and lgd_col is None:
         return frame
     overrides: dict[str, dict[str, float | None]] = {}
-    for ref, pred in row_preds.items():
-        if pred is None:
-            continue
-        subset = pred.apply(country_df)
+    live_preds = {ref: pred for ref, pred in row_preds.items() if pred is not None}
+    row_subsets = subset_rows(country_df, live_preds)
+    for ref, subset in row_subsets.items():
         if subset.height == 0:
             continue
         fixes: dict[str, float | None] = {}
@@ -509,10 +510,16 @@ def _null_empty_rows(
 ) -> pl.DataFrame:
     """Render dead rows (no predicate) and empty class subsets ALL-NULL —
     the Total row (no equals/any_of terms) is never nulled."""
+    constrained = {
+        ref: pred
+        for ref, pred in row_preds.items()
+        if pred is not None and (pred.equals or pred.any_of)
+    }
+    counts = matched_counts(country_df, constrained)
     null_refs = [
         ref
         for ref, pred in row_preds.items()
-        if pred is None or ((pred.equals or pred.any_of) and pred.apply(country_df).height == 0)
+        if pred is None or ((pred.equals or pred.any_of) and counts[ref] == 0)
     ]
     if not null_refs:
         return frame

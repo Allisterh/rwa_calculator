@@ -991,6 +991,20 @@ Consumer-facing surface = `reporting_class`, `reporting_class_origin`, `reportin
   scale; if benchmarks flag the reporting stage on 10M-row frames, add a grouped-aggregation
   kernel behind `execute()` (one group-by per (predicate-family, verb) instead of per-cell
   filters) — an executor-internal change, specs untouched.
+  **DONE 2026-07-12 (post-Sn).** Root cause measured: an eager expression-filter carries
+  ~7ms of Polars plan overhead regardless of frame size, and the executor paid it per CELL
+  (R×C filters). The kernel: (1) subsets are built once per DISTINCT predicate (RowPredicate
+  is frozen/hashable — cells share their row's few predicates); (2) ALL predicate masks
+  compile in ONE `select` per frame and subsets become boolean-mask filters (~10x cheaper);
+  (3) two public batched helpers (`cellspec.subset_rows`, `cellspec.matched_counts` — the
+  latter is one select of mask sums, zero filters) replace the per-row `pred.apply` loops in
+  the c07/c08/c09 module post-passes. Prior-frame masks compile against the prior frame's
+  OWN columns (tolerant terms stay per-frame). Number-neutral by construction (same subsets,
+  same `_evaluate`, null masks drop rows in both paths): goldens passed WITHOUT regen.
+  Measured on 10-14k-row frames: C 08.01 25,987→1,741 ms (14.9x), C 07.00 76,003→5,811 ms
+  (13.1x), CR6 63,366→9,298 ms (6.8x — its residue is generate-time spec construction, not
+  filtering; acceptable). Knock-on: the golden gate 65s→14s; the unit chunk ~197s→108s;
+  chunk B ~500s→161s — the full dev-loop suite is now ~4.5 min (was ~12).
 - **CR9 back-testing series carriers (F6, found during S8-CR9; behaviour predates the
   slice):** columns c/e/h are defined over prior-period and five-year default-rate series
   (obligors at previous year-end; one-year observed default rates; five-year average) that a

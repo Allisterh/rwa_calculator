@@ -70,6 +70,7 @@ from rwa_calc.reporting.cellspec import (
     Sum,
     TemplateSpec,
     execute,
+    matched_counts,
 )
 from rwa_calc.reporting.corep.templates import (
     get_c07_columns,
@@ -302,7 +303,10 @@ def _prepare(data: pl.DataFrame, cols: set[str], framework: str) -> pl.DataFrame
         band_expr = pl.lit("Other risk weights")
         for rw_value, label in reversed(get_sa_risk_weight_bands(framework)):
             band_expr = (
-                pl.when(pl.col("risk_weight").cast(pl.Float64, strict=False).round(4) == round(rw_value, 4))
+                pl.when(
+                    pl.col("risk_weight").cast(pl.Float64, strict=False).round(4)
+                    == round(rw_value, 4)
+                )
                 .then(pl.lit(label))
                 .otherwise(band_expr)
             )
@@ -314,7 +318,10 @@ def _prepare(data: pl.DataFrame, cols: set[str], framework: str) -> pl.DataFrame
         bucket_expr: pl.Expr = pl.lit(None, dtype=pl.String)
         for ccf_value, ref in ccf_map.items():
             bucket_expr = (
-                pl.when(pl.col("ccf_applied").cast(pl.Float64, strict=False).round(4) == round(ccf_value, 4))
+                pl.when(
+                    pl.col("ccf_applied").cast(pl.Float64, strict=False).round(4)
+                    == round(ccf_value, 4)
+                )
                 .then(pl.lit(ref))
                 .otherwise(bucket_expr)
             )
@@ -607,9 +614,7 @@ def _row_cells(  # noqa: PLR0913 - the full 24-column surface of one row
         cells["0215"] = CellSpec(
             Sum("rwa_pre_factor" if "rwa_pre_factor" in cols else rwa_col), predicate=member
         )
-        cells["0216"] = _sf_adjustment_cell(
-            terms, cols, "sme_supporting_factor_applied", "is_sme"
-        )
+        cells["0216"] = _sf_adjustment_cell(terms, cols, "sme_supporting_factor_applied", "is_sme")
         cells["0217"] = _sf_adjustment_cell(
             terms, cols, "infrastructure_factor_applied", "is_infrastructure"
         )
@@ -667,11 +672,16 @@ def _null_empty_rows(
     """Render inert rows and rows with EMPTY subsets all-null — the retired
     ``_null_row`` contract (the COREP zero policy applies only to populated
     rows' unbound cells)."""
+    constrained = {
+        ref: RowPredicate(equals=terms)
+        for ref, terms in row_terms.items()
+        if terms is not None and len(terms) > 0
+    }
+    counts = matched_counts(class_df, constrained)
     null_refs = [
         ref
         for ref, terms in row_terms.items()
-        if terms is None
-        or (len(terms) > 0 and RowPredicate(equals=terms).apply(class_df).height == 0)
+        if terms is None or (len(terms) > 0 and counts[ref] == 0)
     ]
     if not null_refs:
         return frame

@@ -92,6 +92,8 @@ from rwa_calc.reporting.cellspec import (
     TemplateSpec,
     WeightedAvg,
     execute,
+    matched_counts,
+    subset_rows,
 )
 from rwa_calc.reporting.corep.templates import (
     C08_03_PD_RANGES,
@@ -1181,8 +1183,9 @@ def _c08_06_sheet(
     -> provision_held provisions ladder."""
     frame = execute(spec, type_df)
     overrides: dict[str, dict[str, float | None]] = {}
+    row_subsets = subset_rows(type_df, dict(row_preds))
     for row_ref, label, _is_short, rw_display in row_defs:
-        subset = row_preds[row_ref].apply(type_df)
+        subset = row_subsets[row_ref]
         if subset.height == 0 and label != "Total":
             overrides[row_ref] = _c08_06_zero_row(spec.column_refs, rw_display)
             continue
@@ -1396,10 +1399,16 @@ def _null_empty_rows(
     frame: pl.DataFrame, class_df: pl.DataFrame, row_preds: dict[str, RowPredicate | None]
 ) -> pl.DataFrame:
     """Render inert rows and rows with EMPTY subsets all-null."""
+    constrained = {
+        ref: pred
+        for ref, pred in row_preds.items()
+        if pred is not None and (pred.equals or pred.any_of)
+    }
+    counts = matched_counts(class_df, constrained)
     null_refs = [
         ref
         for ref, pred in row_preds.items()
-        if pred is None or ((pred.equals or pred.any_of) and pred.apply(class_df).height == 0)
+        if pred is None or ((pred.equals or pred.any_of) and counts[ref] == 0)
     ]
     if not null_refs:
         return frame
@@ -1426,7 +1435,7 @@ def _provisions_postfix(
     instead (a value-dependent branch — applied per row subset)."""
     if ref not in frame.columns or "provision_held" not in cols:
         return frame
-    fixes: dict[str, float] = {}
+    needed: dict[str, RowPredicate | None] = {}
     for row_ref, pred in row_preds.items():
         if pred is None:
             continue
@@ -1435,7 +1444,9 @@ def _provisions_postfix(
             continue
         if abs(current[ref][0]) >= 1e-9:
             continue
-        subset = pred.apply(class_df)
+        needed[row_ref] = pred
+    fixes: dict[str, float] = {}
+    for row_ref, subset in subset_rows(class_df, needed).items():
         if subset.height == 0:
             continue
         fixes[row_ref] = float(subset["provision_held"].fill_null(0.0).sum())

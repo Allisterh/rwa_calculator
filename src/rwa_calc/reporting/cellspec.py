@@ -363,7 +363,14 @@ def execute(
     empty_default: float | None = 0.0 if spec.empty_cell == "zero" else None
     empty_as_none = spec.empty_cell == "null"
 
-    # Pass 1: every non-formula cell, keyed (row_ref, col_ref).
+    # Pass 1: every non-formula cell, keyed (row_ref, col_ref). The
+    # grouped-aggregation kernel (Phase 7 S8-CR6 recorded follow-up):
+    # cells share their row's few predicates, so subsets are built once per
+    # DISTINCT predicate — and all predicate masks compile in ONE select
+    # (an eager expression-filter carries ~7ms of plan overhead; a
+    # boolean-mask filter is ~10x cheaper). Same subsets, same _evaluate —
+    # number-neutral by construction.
+    subsets = _predicate_subsets(spec, data, prior_df)
     computed: dict[tuple[str, str], float | None] = {}
     formulas: list[tuple[str, str, Formula]] = []
     for row_def in spec.rows:
@@ -375,8 +382,7 @@ def execute(
             if isinstance(cell.binding, Formula):
                 formulas.append((row_def.ref, col_ref, cell.binding))
                 continue
-            cell_data = _narrow(data, cell.predicate)
-            cell_prior = _narrow(prior_df, cell.predicate) if prior_df is not None else None
+            cell_data, cell_prior = subsets[cell.predicate]
             cell_empty_as_none = (
                 empty_as_none if cell.empty_cell is None else cell.empty_cell == "null"
             )
@@ -423,6 +429,112 @@ def execute(
 
 def _narrow(data: pl.DataFrame, predicate: RowPredicate | None) -> pl.DataFrame:
     return predicate.apply(data) if predicate is not None else data
+
+
+def subset_rows(
+    frame: pl.DataFrame, preds: Mapping[str, RowPredicate | None]
+) -> dict[str, pl.DataFrame]:
+    """Batched ``pred.apply(frame)`` for a keyed predicate family.
+
+    All masks compile against ``frame``'s columns and evaluate in ONE
+    ``select``; each subset is then a boolean-mask filter (~10x cheaper
+    than per-predicate expression filters). ``None`` predicates (and
+    constraint-free ones) share the whole frame. Same row sets as
+    per-predicate ``apply`` — the module post-passes' batched kernel.
+    """
+    keys = list(preds)
+    exprs: list[pl.Expr] = []
+    free: list[bool] = []
+    cols = set(frame.columns)
+    for i, key in enumerate(keys):
+        pred = preds[key]
+        expr = None if pred is None else pred._compile(cols)  # noqa: SLF001 - same-module kernel
+        free.append(expr is None)
+        exprs.append((pl.lit(value=True) if expr is None else expr).alias(f"__mask_{i}"))
+    mask_frame = frame.select(exprs) if exprs else None
+    out: dict[str, pl.DataFrame] = {}
+    for i, key in enumerate(keys):
+        if free[i] or mask_frame is None:
+            out[key] = frame
+        else:
+            out[key] = frame.filter(mask_frame[f"__mask_{i}"])
+    return out
+
+
+def matched_counts(frame: pl.DataFrame, preds: Mapping[str, RowPredicate | None]) -> dict[str, int]:
+    """Batched ``pred.apply(frame).height`` — one select of mask sums,
+    no filters at all (the empty-row post-passes only need counts)."""
+    keys = list(preds)
+    cols = set(frame.columns)
+    exprs: list[pl.Expr] = []
+    free: list[bool] = []
+    for i, key in enumerate(keys):
+        pred = preds[key]
+        expr = None if pred is None else pred._compile(cols)  # noqa: SLF001 - same-module kernel
+        free.append(expr is None)
+        exprs.append(
+            (pl.lit(value=True) if expr is None else expr).cast(pl.UInt32).sum().alias(f"__n_{i}")
+        )
+    counts = frame.select(exprs) if exprs else None
+    out: dict[str, int] = {}
+    for i, key in enumerate(keys):
+        if free[i] or counts is None:
+            out[key] = frame.height
+        else:
+            value = counts[f"__n_{i}"][0]
+            out[key] = int(value) if value is not None else 0
+    return out
+
+
+def _predicate_subsets(
+    spec: TemplateSpec,
+    data: pl.DataFrame,
+    prior_df: pl.DataFrame | None,
+) -> dict[RowPredicate | None, tuple[pl.DataFrame, pl.DataFrame | None]]:
+    """Build the (data, prior) subset per DISTINCT cell predicate.
+
+    All predicate expressions compile against the frame's own columns
+    (tolerant terms compile per frame — a column present on ``data`` but
+    absent on the prior frame still matches nothing there) and evaluate in
+    ONE ``select`` per frame; subsets are then boolean-mask filters. A
+    constraint-free predicate shares the whole frame.
+    """
+    subsets: dict[RowPredicate | None, tuple[pl.DataFrame, pl.DataFrame | None]] = {
+        None: (data, prior_df)
+    }
+    preds: list[RowPredicate] = []
+    for cell in spec.cells.values():
+        if isinstance(cell.binding, Formula) or cell.predicate is None:
+            continue
+        if cell.predicate not in subsets:
+            subsets[cell.predicate] = (data, prior_df)  # placeholder, filled below
+            preds.append(cell.predicate)
+    if not preds:
+        return subsets
+
+    def masks_for(frame: pl.DataFrame) -> list[pl.Series | None]:
+        cols = set(frame.columns)
+        exprs: list[pl.Expr] = []
+        free: list[bool] = []
+        for i, pred in enumerate(preds):
+            expr = pred._compile(cols)  # noqa: SLF001 - same-module kernel
+            free.append(expr is None)
+            exprs.append((pl.lit(value=True) if expr is None else expr).alias(f"__mask_{i}"))
+        mask_frame = frame.select(exprs)
+        return [None if free[i] else mask_frame[f"__mask_{i}"] for i in range(len(preds))]
+
+    data_masks = masks_for(data)
+    prior_masks = masks_for(prior_df) if prior_df is not None else None
+    for i, pred in enumerate(preds):
+        mask = data_masks[i]
+        narrowed = data if mask is None else data.filter(mask)
+        if prior_df is None:
+            narrowed_prior = None
+        else:
+            prior_mask = prior_masks[i] if prior_masks is not None else None
+            narrowed_prior = prior_df if prior_mask is None else prior_df.filter(prior_mask)
+        subsets[pred] = (narrowed, narrowed_prior)
+    return subsets
 
 
 def _conj(expr: pl.Expr | None, term: pl.Expr) -> pl.Expr:
