@@ -21,9 +21,11 @@ Cell semantics (recorded decisions, this slice):
   (total > pre-floor + 0.01).
 - Equity RWA appears in THREE rows by design (0210 SA class, 0060 SA
   total, 0420 equity approach) while the flat total counts it once.
-- SA class rows key RAW ``exposure_class`` through the many-to-one
-  ACCUMULATING ``C02_00_SA_CLASS_MAP`` (retail fans four classes into
-  0140; corporate absorbs specialised_lending into 0130).
+- Class rows key the APPLIED Art. 112 class (``reporting_class_origin``
+  — recorded fix 2026-07-12, tying the SA breakdown to C 07.00: defaulted
+  SA RWA reports under row 0160) through the many-to-one ACCUMULATING
+  ``C02_00_SA_CLASS_MAP`` (retail fans four classes into 0140; corporate
+  absorbs specialised_lending into 0130). Identical for IRB rows.
 - The ``_irb_*_split`` fallbacks are NOT filters: with no sub-row data the
   whole total lands in one bucket (corporate -> non-SME 0297/0356; RE ->
   residential-non-SME 0383; retail-other -> SME 0400 for CRR heritage).
@@ -105,7 +107,11 @@ def generate_c02_00(
     column_refs = B31_C02_00_COLUMN_REFS if is_b31 else CRR_C02_00_COLUMN_REFS
     row_sections = get_c02_00_row_sections(framework)
 
-    ec_col = pick(cols, "exposure_class")
+    # Recorded fix (2026-07-12): class rows key the APPLIED Art. 112 class
+    # (the sealed obligor ladder) so the SA breakdown ties to C 07.00 —
+    # defaulted SA RWA reports under row 0160, not the origination class.
+    # Identical values for IRB rows (raw == applied for the IRB book).
+    ec_col = pick(cols, "reporting_class_origin")
     approach_col = pick(cols, "approach_applied")
 
     approach_rwa: dict[str, float] = {}

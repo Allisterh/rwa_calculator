@@ -8,7 +8,8 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from rwa_calc.reporting.corep.generator import COREPGenerator, COREPTemplateBundle
+from rwa_calc.reporting.corep.generator import COREPTemplateBundle
+from tests.fixtures.recon_ledger import LedgerShimCorepGenerator
 
 
 def _sa_geo_results() -> pl.LazyFrame:
@@ -191,19 +192,19 @@ class TestC0901Generation:
     """Test C 09.01 / OF 09.01 generation from pipeline data."""
 
     def test_generates_per_country_dict(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         assert isinstance(bundle.c09_01, dict)
         assert "TOTAL" in bundle.c09_01
 
     def test_generates_gb_and_us_countries(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         assert "GB" in bundle.c09_01
         assert "US" in bundle.c09_01
 
     def test_total_has_all_exposure_classes(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         refs = total["row_ref"].to_list()
@@ -213,14 +214,14 @@ class TestC0901Generation:
 
     def test_dataframe_has_correct_column_count_crr(self) -> None:
         """13 data columns + row_ref + row_name = 15."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         assert len(total.columns) == 15  # 13 data + 2 meta
 
     def test_dataframe_has_correct_column_count_b31(self) -> None:
         """10 data columns + row_ref + row_name = 12."""
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="BASEL_3_1")
         total = bundle.c09_01["TOTAL"]
         assert len(total.columns) == 12  # 10 data + 2 meta
@@ -235,7 +236,7 @@ class TestC0901Generation:
                 "rwa_final": [500.0],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         assert bundle.c09_01 == {}
 
@@ -250,7 +251,7 @@ class TestC0901Generation:
                 "cp_country_code": ["GB", "GB"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         # C 09.01 is SA only — IRB exposures excluded
         if "TOTAL" in bundle.c09_01:
@@ -260,7 +261,7 @@ class TestC0901Generation:
             assert total_row["0075"][0] == pytest.approx(500.0)
 
     def test_multi_country_isolation(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         gb = bundle.c09_01["GB"]
         us = bundle.c09_01["US"]
@@ -277,7 +278,7 @@ class TestC0901ColumnValues:
     """Test C 09.01 column value computation."""
 
     def test_col_0010_original_exposure(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         total_row = total.filter(pl.col("row_ref") == "0170")
@@ -285,7 +286,7 @@ class TestC0901ColumnValues:
         assert total_row["0010"][0] == pytest.approx(7400.0)
 
     def test_col_0020_defaulted_exposure(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         total_row = total.filter(pl.col("row_ref") == "0170")
@@ -293,7 +294,7 @@ class TestC0901ColumnValues:
         assert total_row["0020"][0] == pytest.approx(300.0)
 
     def test_col_0075_exposure_value(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         total_row = total.filter(pl.col("row_ref") == "0170")
@@ -301,7 +302,7 @@ class TestC0901ColumnValues:
         assert total_row["0075"][0] == pytest.approx(6700.0)
 
     def test_col_0090_rwea(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         total_row = total.filter(pl.col("row_ref") == "0170")
@@ -309,14 +310,14 @@ class TestC0901ColumnValues:
         assert total_row["0090"][0] == pytest.approx(3250.0)
 
     def test_col_0080_crr_pre_supporting_factors(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         total_row = total.filter(pl.col("row_ref") == "0170")
         assert total_row["0080"][0] == pytest.approx(3250.0)
 
     def test_corporate_row_values(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         corp_row = total.filter(pl.col("row_ref") == "0070")
@@ -324,7 +325,7 @@ class TestC0901ColumnValues:
         assert corp_row["0075"][0] == pytest.approx(1500.0)
 
     def test_institution_row_values(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         inst_row = total.filter(pl.col("row_ref") == "0060")
@@ -332,7 +333,7 @@ class TestC0901ColumnValues:
         assert inst_row["0075"][0] == pytest.approx(2000.0)
 
     def test_defaulted_row_values(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total = bundle.c09_01["TOTAL"]
         def_row = total.filter(pl.col("row_ref") == "0100")
@@ -344,7 +345,7 @@ class TestC0901B31Features:
     """Test Basel 3.1 specific features of OF 09.01."""
 
     def test_no_supporting_factor_columns(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="BASEL_3_1")
         total = bundle.c09_01["TOTAL"]
         assert "0080" not in total.columns
@@ -352,17 +353,17 @@ class TestC0901B31Features:
         assert "0082" not in total.columns
 
     def test_col_0090_is_plain_rwea(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="BASEL_3_1")
         total = bundle.c09_01["TOTAL"]
         total_row = total.filter(pl.col("row_ref") == "0170")
         assert total_row["0090"][0] == pytest.approx(3250.0)
 
     def test_b31_has_more_rows(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_multi_class(), framework="BASEL_3_1")
         total_b31 = bundle.c09_01["TOTAL"]
-        gen2 = COREPGenerator()
+        gen2 = LedgerShimCorepGenerator()
         bundle2 = gen2.generate_from_lazyframe(_sa_geo_multi_class(), framework="CRR")
         total_crr = bundle2.c09_01["TOTAL"]
         # B31 has more rows due to SL and RE sub-rows
@@ -383,7 +384,7 @@ class TestC0901EdgeCases:
                 "cp_country_code": ["GB"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         assert bundle.c09_01 == {}
 
@@ -398,7 +399,7 @@ class TestC0901EdgeCases:
                 "cp_country_code": ["GB", None],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         # TOTAL includes both, but only GB gets its own sheet
         assert "TOTAL" in bundle.c09_01
@@ -417,7 +418,7 @@ class TestC0901EdgeCases:
                 "cp_country_code": ["GB"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         assert len(bundle.c09_01) == 2  # TOTAL + GB
         # TOTAL and GB should have same values
@@ -426,7 +427,7 @@ class TestC0901EdgeCases:
         assert total_rwa == pytest.approx(gb_rwa)
 
     def test_total_equals_sum_of_countries(self) -> None:
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(_sa_geo_results(), framework="CRR")
         total_rwa = bundle.c09_01["TOTAL"].filter(pl.col("row_ref") == "0170")["0090"][0]
         gb_rwa = bundle.c09_01["GB"].filter(pl.col("row_ref") == "0170")["0090"][0]
@@ -445,7 +446,7 @@ class TestC0901EdgeCases:
                 "cp_country_code": ["GB"],
             }
         )
-        gen = COREPGenerator()
+        gen = LedgerShimCorepGenerator()
         bundle = gen.generate_from_lazyframe(data, framework="CRR")
         total = bundle.c09_01["TOTAL"]
         total_row = total.filter(pl.col("row_ref") == "0170")
@@ -455,3 +456,76 @@ class TestC0901EdgeCases:
         bundle = COREPTemplateBundle(c07_00={}, c08_01={}, c08_02={})
         assert bundle.c09_01 == {}
         assert bundle.c09_02 == {}
+
+class TestC0901DefaultedAllocation:
+    """Annex II C 09.1 recorded fix (2026-07-12): primary columns follow the
+    APPLIED Art. 112 ladder (defaulted -> row 0100, as C 07.00); column
+    0020 is a MEMORANDUM on the obligor's ORIGINAL class row ("where the
+    obligors would have been reported if those exposures were not assigned
+    to 'exposures in default'")."""
+
+    @staticmethod
+    def _defaulted_corporate() -> pl.LazyFrame:
+        return pl.LazyFrame(
+            {
+                "exposure_reference": ["E1", "E2"],
+                "approach_applied": ["standardised", "standardised"],
+                "exposure_class": ["corporate", "corporate"],
+                "exposure_class_applied": ["corporate", "defaulted"],
+                "ead_final": [1000.0, 200.0],
+                "ead_gross": [1200.0, 300.0],
+                "rwa_final": [1000.0, 300.0],
+                "cp_country_code": ["GB", "GB"],
+                "default_status": [False, True],
+            }
+        )
+
+    def test_primary_columns_move_to_default_row(self) -> None:
+        gen = LedgerShimCorepGenerator()
+        bundle = gen.generate_from_lazyframe(self._defaulted_corporate(), framework="CRR")
+        total = bundle.c09_01["TOTAL"]
+        default_row = total.filter(pl.col("row_ref") == "0100")
+        assert default_row["0010"][0] == pytest.approx(300.0)
+        assert default_row["0075"][0] == pytest.approx(200.0)
+        assert default_row["0090"][0] == pytest.approx(300.0)
+
+    def test_corporate_row_primary_excludes_defaulted(self) -> None:
+        gen = LedgerShimCorepGenerator()
+        bundle = gen.generate_from_lazyframe(self._defaulted_corporate(), framework="CRR")
+        corp = bundle.c09_01["TOTAL"].filter(pl.col("row_ref") == "0070")
+        assert corp["0010"][0] == pytest.approx(1200.0)
+        assert corp["0075"][0] == pytest.approx(1000.0)
+
+    def test_memo_0020_stays_on_original_class_row(self) -> None:
+        gen = LedgerShimCorepGenerator()
+        bundle = gen.generate_from_lazyframe(self._defaulted_corporate(), framework="CRR")
+        total = bundle.c09_01["TOTAL"]
+        corp = total.filter(pl.col("row_ref") == "0070")
+        default_row = total.filter(pl.col("row_ref") == "0100")
+        assert corp["0020"][0] == pytest.approx(300.0)  # the memo look-through
+        assert default_row["0020"][0] == pytest.approx(0.0)
+
+    def test_memo_survives_when_class_row_otherwise_empty(self) -> None:
+        """A class whose ONLY exposure defaulted keeps its 0020 memo while
+        the primary columns sit in row 0100."""
+        frame = pl.LazyFrame(
+            {
+                "exposure_reference": ["E1"],
+                "approach_applied": ["standardised"],
+                "exposure_class": ["institution"],
+                "exposure_class_applied": ["defaulted"],
+                "ead_final": [500.0],
+                "ead_gross": [600.0],
+                "rwa_final": [750.0],
+                "cp_country_code": ["GB"],
+                "default_status": [True],
+            }
+        )
+        gen = LedgerShimCorepGenerator()
+        bundle = gen.generate_from_lazyframe(frame, framework="CRR")
+        total = bundle.c09_01["TOTAL"]
+        inst = total.filter(pl.col("row_ref") == "0060")
+        assert inst["0020"][0] == pytest.approx(600.0)
+        assert inst["0010"][0] == pytest.approx(0.0)  # primary moved to 0100
+        default_row = total.filter(pl.col("row_ref") == "0100")
+        assert default_row["0010"][0] == pytest.approx(600.0)

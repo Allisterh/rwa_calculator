@@ -937,6 +937,31 @@ the ratchets+docs commit).**
 
 ## 7. Recorded-decision candidates
 
+**F9 (recorded 2026-07-12) — the C 09.01 / C 02.00 defaulted-allocation fix.** The Annex II
+instructions (verbatim, both regimes near-identical): C 09.1's PRIMARY columns are defined
+"same as the CR SA template" columns — a defaulted SA exposure moves to row 0100 "Exposures
+in default" per Art. 112(j), exactly as C 07.00 assigns it — while column 0020 "Defaulted
+exposures" is a MEMORANDUM re-attributing the defaulted amounts to the obligor's ORIGINAL
+class row ("where the obligors would have been reported if those exposures were not assigned
+to the exposure classes 'exposures in default'"; column 0040 likewise reports new defaults
+"against the exposure class to which the obligor originally belonged"). The preserved raw
+keying was therefore WRONG for the primary columns. FIX EXECUTED: C 09.01 primaries key
+`reporting_class_origin` (the sealed applied ladder), 0020 keys the raw original class +
+defaulted (a two-basis template, the CR4 pattern); row-nulling uses the either-basis rule (a
+class row whose only exposures defaulted keeps its memo). C 02.00's class group-by keys
+`reporting_class_origin` for the same reason (its SA rows must tie to C 07.00's applied-basis
+totals; identical values for IRB rows). Golden movers (per-cell signed off, both regimes):
+C 09.01 row 0070 → 0100 primary swap (0020 memo unchanged on 0070); C 02.00 0130 → 0160
+(1.5M CRR). C 09.02 confirmed CORRECT as-is (the IRB template has no default row by design —
+"of which defaulted" columns on obligor rows). `LedgerShimCorepGenerator` introduced
+(mirrors the Pillar 3 shim; c09_01/c02_00 unit estates swapped). NOTED for follow-up, not
+this slice: Annex II para 87 attributes original exposure by IMMEDIATE obligor country but
+exposure value/RWEA by ULTIMATE obligor country — the engine keys one `cp_country_code` for
+all columns (recorded gap). Remaining convergence (number-neutral): retarget C 07/C 08/C
+09.02 population+class keys onto the sealed names and swap the remaining COREP unit files to
+the shim.
+
+
 ### G1 — The grain question (the central decision)
 **Recommendation: adopt the per-leg frame as the canonical two-leg substitution ledger; do NOT
 collapse to one applied class; do NOT introduce a new normalised frame — name the ledger already

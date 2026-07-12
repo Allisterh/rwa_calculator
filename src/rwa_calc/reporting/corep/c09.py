@@ -8,11 +8,16 @@ Pipeline position:
 
 Cell semantics (recorded decisions, this slice):
 
-- BOTH templates key rows on the RAW ``exposure_class`` — NOT the applied
-  ladder C 07.00 keys. Load-bearing: a defaulted SA exposure keeps its raw
-  class row (lighting the "of which defaulted" column) while the
-  "Exposures in default" row stays null; under B31 the RE-split mortgage
-  classes match no class row and surface ONLY in the Total row.
+- C 09.01's PRIMARY columns key the APPLIED Art. 112 class
+  (``reporting_class_origin`` — recorded fix 2026-07-12: the Annex II
+  instructions define them "same as the CR SA template", so a defaulted
+  SA exposure moves to row 0100 exactly as C 07.00 assigns it), while the
+  0020 "Defaulted exposures" MEMORANDUM keys the raw ORIGINAL class (the
+  instruction's counterfactual "would have been" row) — a two-basis
+  template like Pillar 3 CR4. C 09.02 keys the RAW ``exposure_class``
+  (== the obligor origin for the IRB book; the IRB template has no
+  default row by design). Under B31 the RE-split mortgage classes match
+  no class row and surface ONLY in the Total row.
 - C 09.01 shares C 07.00's population (``c07_population`` — the SA book
   plus FCCM SFT synthetic rows); C 09.02 is the IRB book INCLUDING
   slotting (the retired inline comment claiming exclusion was misleading).
@@ -152,14 +157,24 @@ def generate_c09_01(
     if sa_df.height == 0:
         return {}
     data = sa_df.with_columns(_defaulted_expr(cols).alias("c09_defaulted"))
-    spec, row_preds = _c09_01_spec(cols, framework)
+    spec, row_preds = _c09_01_spec(set(data.columns), framework)
     return _per_country_sheets(data, spec, row_preds, post=None)
 
 
-def _c09_01_row_pred(row_def: COREPRow) -> RowPredicate | None:
-    """The retired reverse-map keying: rows whose key is not a class-map
-    VALUE are permanently null (the map short-circuits before the SME /
-    RE / SL / CIU sub-filters ever run — recorded dead code)."""
+def _c09_01_row_pred(
+    row_def: COREPRow, basis_col: str
+) -> RowPredicate | None:
+    """The reverse-map keying over ``basis_col``: rows whose key is not a
+    class-map VALUE are permanently null (the map short-circuits before
+    the SME / RE / SL / CIU sub-filters ever run — recorded dead code).
+
+    Recorded fix (2026-07-12, Annex II C 09.1 instructions): the PRIMARY
+    columns key the APPLIED Art. 112 class (``reporting_class_origin`` —
+    "same definition as the CR SA template" columns, so a defaulted SA
+    exposure moves to row 0100 exactly as in C 07.00), while the 0020
+    "Defaulted exposures" MEMORANDUM keys the raw ORIGINAL class ("where
+    the obligors would have been reported if those exposures were not
+    assigned to 'exposures in default'")."""
     if row_def.ref == "0170":
         return RowPredicate()
     key = row_def.exposure_class_value
@@ -168,7 +183,7 @@ def _c09_01_row_pred(row_def: COREPRow) -> RowPredicate | None:
     classes = sorted(ec for ec, mapped in C09_01_SA_CLASS_MAP.items() if mapped == key)
     if not classes:
         return None
-    return _class_union(*classes)
+    return _class_union(*classes, col=basis_col)
 
 
 def _c09_01_spec(
@@ -183,16 +198,22 @@ def _c09_01_spec(
     row_preds: dict[str, RowPredicate | None] = {}
     cells: dict[tuple[str, str], CellSpec] = {}
     for row_def in row_defs:
-        pred = _c09_01_row_pred(row_def)
-        row_preds[row_def.ref] = pred
+        # Primary columns: the APPLIED Art. 112 class (the sealed obligor
+        # applied ladder — defaulted exposures sit in row 0100, as C 07.00).
+        pred = _c09_01_row_pred(row_def, "reporting_class_origin")
+        # 0020 memo: the raw ORIGINAL class + defaulted (the counterfactual
+        # "would have been" row of the instruction).
+        memo_pred = _c09_01_row_pred(row_def, "exposure_class")
+        row_preds[row_def.ref] = _either_pred(pred, memo_pred)
         if pred is None:
             continue
         ref = row_def.ref
-        def_pred = _conjoin(pred, ("c09_defaulted", True))
         cells[(ref, "0010")] = _sum_or_null(ead_gross_col, pred)
-        if ead_gross_col is not None:
-            # absent gross column -> the retired explicit 0.0 (left unbound)
-            cells[(ref, "0020")] = CellSpec(Sum(ead_gross_col), predicate=def_pred)
+        if ead_gross_col is not None and memo_pred is not None:
+            cells[(ref, "0020")] = CellSpec(
+                Sum(ead_gross_col),
+                predicate=_conjoin(memo_pred, ("c09_defaulted", True)),
+            )
         cells[(ref, "0050")] = CellSpec(Sum("gcra_provision_amount"), predicate=pred)
         cells[(ref, "0055")] = CellSpec(Sum("scra_provision_amount"), predicate=pred)
         for null_ref in ("0040", "0060", "0061", "0070"):
@@ -465,12 +486,34 @@ def _one_sheet(
     return frame
 
 
-def _class_union(*classes: str) -> RowPredicate:
+def _class_union(*classes: str, col: str = "exposure_class") -> RowPredicate:
     if len(classes) == 1:
-        return RowPredicate(equals=(("exposure_class", classes[0]),))
+        return RowPredicate(equals=((col, classes[0]),))
     return RowPredicate(
-        any_of=tuple(RowPredicate(equals=(("exposure_class", ec),)) for ec in classes)
+        any_of=tuple(RowPredicate(equals=((col, ec),)) for ec in classes)
     )
+
+
+def _either_pred(
+    primary: RowPredicate | None, memo: RowPredicate | None
+) -> RowPredicate | None:
+    """The row-emptiness basis for C 09.01: a row is null only when BOTH
+    its primary (applied-class) and memo (original-class) subsets are
+    empty — a class row whose only exposures defaulted keeps its 0020
+    memo while the primary columns move to row 0100."""
+    if primary is None:
+        return memo
+    if memo is None:
+        return primary
+    limbs: list[RowPredicate] = []
+    for pred in (primary, memo):
+        if pred.any_of:
+            limbs.extend(pred.any_of)
+        elif pred.equals:
+            limbs.append(RowPredicate(equals=pred.equals))
+    if not limbs:
+        return RowPredicate()
+    return RowPredicate(any_of=tuple(limbs))
 
 
 def _conjoin(pred: RowPredicate, term: tuple[str, str | bool]) -> RowPredicate:

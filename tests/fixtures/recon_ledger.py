@@ -111,3 +111,35 @@ class LedgerShimPillar3Generator:
                 )
 
         return _Shim()
+
+
+class LedgerShimCorepGenerator:
+    """Test shim: a COREPGenerator whose lazyframe entry first mirrors the
+    sealed reporting projection onto the hand-rolled synthetic frame — the
+    production input contract is the sealed aggregator exit (Phase 7 COREP
+    ledger convergence). Fixtures pinning defaulted/substituted behaviour
+    must supply ``exposure_class_applied`` (etc.) explicitly, exactly as the
+    Pillar 3 estate does — the shim aliases, it does not re-derive the
+    applied ladder."""
+
+    def __new__(cls):  # noqa: D102 - thin factory, keeps isinstance(COREPGenerator)
+        from rwa_calc.reporting.corep.generator import COREPGenerator
+
+        class _Shim(COREPGenerator):
+            # Mirrors the parent signature exactly.
+            def generate_from_lazyframe(
+                self,
+                results,
+                *,
+                framework="CRR",
+                output_floor_summary=None,
+                output_floor_config=None,
+            ):
+                return super().generate_from_lazyframe(
+                    with_reporting_ledger(results),
+                    framework=framework,
+                    output_floor_summary=output_floor_summary,
+                    output_floor_config=output_floor_config,
+                )
+
+        return _Shim()
